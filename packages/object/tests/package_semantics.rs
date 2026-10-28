@@ -2,8 +2,8 @@
 
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    BuiltinName, BuiltinPackage, ObjectError, Runtime, ThreadContext, Word, cdr, make_string,
-    pop_root, push_root, string_length, string_ref, symbol_name, symbol_package,
+    BuiltinName, BuiltinPackage, FunctionObject, ObjectError, Runtime, ThreadContext, Word, cdr,
+    make_string, pop_root, push_root, string_length, string_ref, symbol_name, symbol_package,
 };
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
@@ -633,4 +633,68 @@ fn symbol_name_round_trip_is_preserved() {
     for (index, expected) in "ROUNDTRIP".chars().enumerate() {
         assert_eq!(string_ref(&ctx, name, index), Ok(expected));
     }
+}
+
+#[test]
+fn package_nickname_intern_and_import_update_metadata() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let package = Package::new(&mut ctx, &runtime, "METADATA")
+        .unwrap_or_else(|error| panic!("package: {error:?}"));
+
+    let (interned, status) = package
+        .intern(&mut ctx, &runtime, "INTERNED")
+        .unwrap_or_else(|error| panic!("intern: {error:?}"));
+    assert_eq!(status, FindStatus::Internal);
+    assert_eq!(symbol_package(&ctx, interned), Ok(package.as_word()));
+
+    let nickname = string(&mut ctx, &runtime, "META");
+    assert_eq!(package.add_nickname(&mut ctx, &runtime, nickname), Ok(true));
+    let nicknames = package
+        .nicknames(&ctx)
+        .unwrap_or_else(|error| panic!("nicknames: {error:?}"));
+    assert_eq!(ncl_object::car(&ctx, nicknames), Ok(nickname));
+
+    let name = string(&mut ctx, &runtime, "IMPORTED");
+    let uninterned = ncl_object::make_symbol(&mut ctx, &runtime, name)
+        .unwrap_or_else(|error| panic!("uninterned symbol: {error:?}"));
+    assert_eq!(symbol_package(&ctx, uninterned), Ok(Word::NIL));
+    package
+        .import(&mut ctx, &runtime, name, uninterned)
+        .unwrap_or_else(|error| panic!("import: {error:?}"));
+    assert_eq!(symbol_package(&ctx, uninterned), Ok(package.as_word()));
+    assert_eq!(
+        package.find_symbol(&mut ctx, name),
+        Ok(Some((uninterned, FindStatus::Internal)))
+    );
+}
+
+#[test]
+fn try_from_word_rejects_non_package_values() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    assert_eq!(
+        Package::try_from_word(&ctx, Word::fixnum(25)),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn gc_registers_a_callable_builtin() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    ncl_object::register(&mut ctx, &runtime)
+        .unwrap_or_else(|error| panic!("NCL-GC registration: {error:?}"));
+    let gc = runtime
+        .function(&mut ctx, "NCL-GC", "GC")
+        .and_then(|word| FunctionObject::try_from(word).ok())
+        .unwrap_or_else(|| panic!("GC builtin missing"));
+
+    assert_eq!(runtime.call_builtin(&mut ctx, gc, &[]), Ok(Word::NIL));
 }

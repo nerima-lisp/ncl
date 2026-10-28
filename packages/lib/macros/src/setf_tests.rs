@@ -32,6 +32,21 @@ fn place_expander(
     })
 }
 
+fn invalid_place_expander(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    arguments: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    let value = arguments.first().copied().ok_or(ObjectError::TypeError)?;
+    Ok(SetfExpansion {
+        temporary_variables: Vec::new(),
+        value_forms: vec![value],
+        store_variables: vec![Word::NIL],
+        store_form: Word::NIL,
+        access_form: value,
+    })
+}
+
 fn place_form(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -211,6 +226,44 @@ fn place_value_preserves_the_type_chain_and_rejects_malformed_the() -> Result<()
 }
 
 #[test]
+fn place_rejects_a_foreign_registry_malformed_the_and_invalid_expansion() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    let other_runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    let registry = PlaceRegistry::new(&runtime);
+    let value = symbol(&mut ctx, &runtime, "PLACE-VALUE")?;
+
+    assert!(matches!(
+        expand_get_setf_expansion(
+            &mut ctx,
+            &runtime,
+            &PlaceRegistry::new(&other_runtime),
+            value,
+        ),
+        Err(ObjectError::TypeError)
+    ));
+
+    let the = symbol(&mut ctx, &runtime, "THE")?;
+    let fixnum = symbol(&mut ctx, &runtime, "FIXNUM")?;
+    let malformed_the = list(&mut ctx, &runtime, &[the, fixnum, value, Word::NIL])?;
+    assert!(matches!(
+        expand_get_setf_expansion(&mut ctx, &runtime, &registry, malformed_the),
+        Err(ObjectError::TypeError)
+    ));
+
+    let operator = symbol(&mut ctx, &runtime, "INVALID-PLACE-EXPANSION")?;
+    registry.define(&ctx, operator, invalid_place_expander)?;
+    let invalid_place = place_form(&mut ctx, &runtime, operator, value)?;
+    assert!(matches!(
+        expand_get_setf_expansion(&mut ctx, &runtime, &registry, invalid_place),
+        Err(ObjectError::TypeError)
+    ));
+    Ok(())
+}
+
+#[test]
 fn setf_construction_survives_moving_gc_between_places() -> Result<(), ObjectError> {
     let _guard = PLACE_TEST_LOCK.lock().map_err(|_| ObjectError::TypeError)?;
     let runtime = Runtime::new()?;
@@ -313,6 +366,21 @@ fn quasiquote_handles_nested_unquote_list_splicing_and_top_level_error() -> Resu
     let unquote_form = scope_list(&mut scope, &runtime, &[unquote, variable])?;
     let value_form = super::eval_quasiquote(&mut scope, &runtime, unquote_form, &environment, 1)?;
     assert_eq!(scope.get(value_form).as_word(), Word::fixnum(42));
+
+    let vector_item_word = scope.get(unquote_form).as_word();
+    let vector_word =
+        ncl_object::make_simple_vector(scope.context_mut(), &runtime, &[vector_item_word])?;
+    let vector = scope.root(ncl_object::Local::from_word(vector_word));
+    let vector_result = super::eval_quasiquote(&mut scope, &runtime, vector, &environment, 1)?;
+    let vector_word = scope.get(vector_result).as_word();
+    assert_eq!(
+        ncl_object::simple_vector_length(scope.context(), vector_word)?,
+        1
+    );
+    assert_eq!(
+        ncl_object::simple_vector_ref(scope.context(), vector_word, 0)?,
+        Word::fixnum(42)
+    );
 
     let nested_unquote = scope_list(&mut scope, &runtime, &[quasiquote, unquote_form])?;
     let nested_result =

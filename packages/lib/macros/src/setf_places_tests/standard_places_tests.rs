@@ -271,6 +271,12 @@ fn standardized_cons_helper_returns_none_for_other_accessors() {
         super::standard_cons_place(&mut ctx, &runtime, foreign_second, &[]),
         Ok(None)
     ));
+    let foreign_caar = symbol(&mut ctx, &runtime, "N25-FOREIGN::CAAR")
+        .unwrap_or_else(super::test_operation_failure);
+    assert!(matches!(
+        super::standard_cons_place(&mut ctx, &runtime, foreign_caar, &[Word::NIL]),
+        Ok(None)
+    ));
 
     let caar = symbol(&mut ctx, &runtime, "CAAR").unwrap_or_else(super::test_operation_failure);
     let sequence =
@@ -446,4 +452,16 @@ fn subseq_without_end_builds_a_start_only_replace_store() {
         symbol(&mut ctx, &runtime, "KEYWORD::START").unwrap_or_else(super::test_operation_failure)
     );
     assert_eq!(replace_parts[4], expansion.temporary_variables[1]);
+
+    for arguments in [
+        &[sequence][..],
+        &[sequence, start, Word::fixnum(1), Word::NIL][..],
+    ] {
+        let malformed = place_form(&mut ctx, &runtime, "SUBSEQ", arguments)
+            .unwrap_or_else(super::test_operation_failure);
+        assert!(matches!(
+            expand_get_setf_expansion(&mut ctx, &runtime, &registry, malformed),
+            Err(ObjectError::TypeError)
+        ));
+    }
 }

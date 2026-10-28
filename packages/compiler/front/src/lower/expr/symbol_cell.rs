@@ -13,34 +13,27 @@ impl Context<'_> {
         name: &SymbolRef,
         values: &[ValueId],
     ) -> Result<Option<ValueId>, LowerError> {
-        let field =
-            if matches!(name.name.as_str(), "symbol-value" | "SYMBOL-VALUE") && values.len() == 1 {
-                Some((ncl_object::symbol_offset::VALUE, false))
-            } else if name.name == "set-symbol-value" && values.len() == 2 {
-                Some((ncl_object::symbol_offset::VALUE, true))
-            } else {
-                None
-            };
-        let Some((field, store)) = field else {
-            return Ok(None);
-        };
-        let field = u32::try_from(field).map_err(|_| LowerError::Ir {
-            detail: "symbol cell offset does not fit u32".to_owned(),
-        })?;
-        let object = values.first().copied().ok_or_else(|| LowerError::Ir {
-            detail: "symbol cell operation requires a symbol".to_owned(),
-        })?;
-        if store {
-            let value = values.get(1).copied().ok_or_else(|| LowerError::Ir {
-                detail: "symbol cell store requires a value".to_owned(),
-            })?;
-            f.none(OpKind::StoreField {
-                object,
-                field,
-                value,
-            })?;
-            return Ok(Some(value));
+        if matches!(name.name.as_str(), "symbol-value" | "SYMBOL-VALUE")
+            && let [object] = values
+        {
+            return self.load_bound_symbol_value(f, *object).map(Some);
         }
-        self.load_bound_symbol_value(f, object).map(Some)
+
+        if name.name == "set-symbol-value"
+            && let [object, value] = values
+        {
+            let field =
+                u32::try_from(ncl_object::symbol_offset::VALUE).map_err(|_| LowerError::Ir {
+                    detail: "symbol cell offset does not fit u32".to_owned(),
+                })?;
+            f.none(OpKind::StoreField {
+                object: *object,
+                field,
+                value: *value,
+            })?;
+            return Ok(Some(*value));
+        }
+
+        Ok(None)
     }
 }

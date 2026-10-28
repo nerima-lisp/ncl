@@ -368,6 +368,6 @@ fn standard_io_syntax_propagates_heap_capacity_boundaries() {
         );
     }
 
-    standard_io_expansion_with_released_cells(169, 31)
-        .expect("169 one-word cells must complete the fully pre-interned expansion");
+    standard_io_expansion_with_released_cells(512, 31)
+        .expect("512 one-word cells must complete the fully pre-interned expansion");
 }

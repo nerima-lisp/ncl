@@ -255,6 +255,45 @@ fn macro_function_place_accepts_nil_environment_and_evaluates_it_once() {
 }
 
 #[test]
+fn macro_function_returns_nil_for_an_ordinary_function() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    assert_form(
+        &mut runtime,
+        "(progn
+           (setf (fdefinition 'ncl-macro-function-normal-function) #'identity)
+           (macro-function 'ncl-macro-function-normal-function))",
+        "NIL",
+        "MACRO-FUNCTION on an ordinary function",
+    );
+}
+
+#[test]
+fn fdefinition_replaces_a_macro_definition_with_a_function() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    runtime
+        .eval(
+            "(setf (macro-function 'ncl-fdefinition-replaces-macro)
+                  #'(lambda (form environment) form))",
+        )
+        .unwrap_or_else(|error| panic!("macro installation failed: {error}"));
+    runtime
+        .eval("(setf (fdefinition 'ncl-fdefinition-replaces-macro) #'identity)")
+        .unwrap_or_else(|error| panic!("function replacement failed: {error}"));
+    assert_form(
+        &mut runtime,
+        "(macro-function 'ncl-fdefinition-replaces-macro)",
+        "NIL",
+        "MACRO-FUNCTION after FDEFINITION replaces a macro",
+    );
+    assert_form(
+        &mut runtime,
+        "(funcall 'ncl-fdefinition-replaces-macro 9)",
+        "9",
+        "function call after FDEFINITION replaces a macro",
+    );
+}
+
+#[test]
 fn fdefinition_place_rejects_a_non_symbol_name() {
     let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
     let result = runtime.eval(

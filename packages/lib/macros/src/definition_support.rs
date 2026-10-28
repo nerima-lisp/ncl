@@ -4,8 +4,8 @@
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, FunctionObject, HandleVec, LambdaList, ObjectError, Runtime,
-    Scope, ThreadContext, Word, make_cons, rplaca, set_symbol_macro, symbol_function, symbol_name,
-    symbol_plist,
+    Scope, ThreadContext, Word, make_cons, rplaca, set_symbol_macro, symbol_function,
+    symbol_is_macro, symbol_name, symbol_plist,
 };
 
 use crate::form::{list, symbol};
@@ -76,6 +76,7 @@ fn set_fdefinition_builtin(
     let name = checked_symbol(ctx, args.required(0)?)?;
     let function = checked_function(args.required(1)?)?;
     ctx.write_object_slot(name, ncl_object::symbol_offset::FUNCTION, function)?;
+    set_symbol_macro(ctx, name, false)?;
     Ok(function)
 }
 
@@ -86,6 +87,9 @@ fn macro_function_builtin(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     let name = checked_symbol(ctx, args.required(0)?)?;
+    if !symbol_is_macro(ctx, name)? {
+        return Ok(Word::NIL);
+    }
     let function = symbol_function(ctx, name)?;
     Ok(FunctionObject::try_from(function).map_or(Word::NIL, Word::from))
 }
@@ -282,15 +286,15 @@ fn definition_place(
             .map(ncl_object::HeapRootedWord::get)
             .collect::<Vec<_>>();
         ncl_object::with_roots(ctx, &temporary_variables, |ctx, temporaries| {
+            let first_temporary = temporaries.first().ok_or(ObjectError::TypeError)?.get();
             let mut setter = symbol(ctx, runtime, setter)?;
             ncl_object::with_root(ctx, &mut setter, |ctx, setter| {
                 let mut variable = symbol(ctx, runtime, "NCL::STORE")?;
                 ncl_object::with_root(ctx, &mut variable, |ctx, variable| {
                     let mut store_form =
-                        list(ctx, runtime, &[*setter, temporaries[0].get(), *variable])?;
+                        list(ctx, runtime, &[*setter, first_temporary, *variable])?;
                     ncl_object::with_root(ctx, &mut store_form, |ctx, store_form| {
-                        let access_form =
-                            place_form(ctx, runtime, accessor, &[temporaries[0].get()])?;
+                        let access_form = place_form(ctx, runtime, accessor, &[first_temporary])?;
                         Ok(ncl_object::SetfExpansion {
                             temporary_variables: temporaries.iter().map(|value| **value).collect(),
                             value_forms: roots.iter().map(|value| **value).collect(),

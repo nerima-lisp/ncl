@@ -523,6 +523,14 @@ def make_scoreboard(
             ansi_data["reason"] = str(ansi_report["reason"])
     if ansi_counts is not None:
         ansi_data.update({key: int(ansi_counts[key]) for key in ("passed", "failed", "unexecuted")})
+    if ansi_report is not None:
+        for key in ("error", "timeout", "harness_error"):
+            if key in ansi_report:
+                ansi_data[key] = int(ansi_report[key])
+        if isinstance(ansi_report.get("tests"), list):
+            ansi_data["tests"] = ansi_report["tests"]
+        if isinstance(ansi_report.get("comparison"), dict):
+            ansi_data["comparison"] = ansi_report["comparison"]
     bench_status = bench.status
     if bench_status == "passed" and (
         bench_driver_error is not None
@@ -567,7 +575,11 @@ def make_scoreboard(
     bench_data["stderr_tail"], bench_data["stderr_truncated"] = _stderr_tail(bench.stderr)
     return {
         "schema_version": 2,
-        "measured_on": date.today().isoformat(),
+        "measured_on": (
+            str(ansi_report.get("measured_on"))
+            if ansi_report is not None and ansi_report.get("measured_on")
+            else date.today().isoformat()
+        ),
         "sources": SOURCES,
         "ansi-test": ansi_data,
         "cl-bench": bench_data,
@@ -583,12 +595,25 @@ def render_markdown(scoreboard: Mapping[str, Any]) -> str:
         counts = str(ansi.get("reason", "no reason supplied"))
     elif "passed" in ansi:
         counts = f"{ansi['passed']} passed, {ansi['failed']} failed, {ansi['unexecuted']} unexecuted"
+        details = []
+        for key, label in (("error", "error"), ("timeout", "timeout"), ("harness_error", "harness error")):
+            value = int(ansi.get(key, 0))
+            if value:
+                details.append(f"{value} {label}{'' if value == 1 else 's'}")
+        if details:
+            counts += f" ({', '.join(details)})"
     lines.append(f"| ansi-test | {ansi['status']} | {counts} |")
     mean = str(bench.get("geometric_mean", ""))
     lines.append(f"| cl-bench | {bench['status']} | geometric mean: {mean} |")
     lines.extend(["", "| suite | commit |", "| --- | --- |"])
     for name in ("ansi-test", "cl-bench"):
         lines.append(f"| {name} | `{scoreboard['sources'][name]['commit']}` |")
+    test_rows = [row for row in ansi.get("tests", []) if row["status"] != "passed"]
+    if test_rows:
+        lines.extend(["", "## ANSI test outcomes", "", "| Test | Status | Reason |", "| --- | --- | --- |"])
+        for row in test_rows:
+            reason = str(row.get("reason", "")).replace("|", "\\|").replace("\n", " ")
+            lines.append(f"| `{row['name']}` | {row['status']} | {reason} |")
     return "\n".join(lines) + "\n"
 
 
@@ -600,6 +625,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache-dir", type=Path, default=Path(".cache/conformance"))
     parser.add_argument("--ansi-command", help="command emitting {passed,failed,unexecuted} JSON")
+    parser.add_argument("--ansi-report", type=Path, help="read a completed ANSI report JSON directly")
     parser.add_argument(
         "--cl-bench-command",
         help="command emitting {status, times, benchmarks} JSON",
@@ -613,16 +639,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     ansi_command = _command(args.ansi_command)
     bench_command = _command(args.cl_bench_command)
-    if ansi_command is None or bench_command is None:
-        parser.error("--ansi-command and --cl-bench-command are required")
+    if (ansi_command is None) == (args.ansi_report is None) or bench_command is None:
+        parser.error("supply exactly one of --ansi-command and --ansi-report, plus --cl-bench-command")
     try:
-        ansi_source = checkout_source(
-            "ansi-test",
-            args.cache_dir,
-            timeout=args.source_timeout,
-            connect_timeout=args.connect_timeout,
-            retries=args.source_retries,
-        )
+        if args.ansi_report is None:
+            ansi_source = checkout_source(
+                "ansi-test",
+                args.cache_dir,
+                timeout=args.source_timeout,
+                connect_timeout=args.connect_timeout,
+                retries=args.source_retries,
+            )
+        else:
+            ansi_source = None
         bench_source = checkout_source(
             "cl-bench",
             args.cache_dir,
@@ -632,9 +661,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as error:
         parser.exit(1, f"scoreboard: source acquisition failed: {error}\n")
-    ansi = run_command(ansi_command, cwd=ansi_source, timeout=args.timeout)
-    ansi_counts = None
     ansi_report = None
+    if args.ansi_report is None:
+        assert ansi_command is not None and ansi_source is not None
+        ansi = run_command(ansi_command, cwd=ansi_source, timeout=args.timeout)
+    else:
+        try:
+            ansi_report = _json_output(ProcessResult(
+                "passed", 0, args.ansi_report.read_text(encoding="utf-8"),
+            ))
+            comparison = ansi_report.get("comparison")
+            if ansi_report.get("status") != "complete" or not isinstance(comparison, dict):
+                raise ValueError("ANSI report must contain a completed comparison")
+            missing_count = int(comparison.get("t_ansi_count", -1))
+            if missing_count < 0:
+                raise ValueError("ANSI report comparison has an invalid missing-test count")
+            ansi_status = "failed" if missing_count else "passed"
+            ansi_returncode = 1 if ansi_status == "failed" else 0
+            ansi = ProcessResult(
+                ansi_status, ansi_returncode, json.dumps(ansi_report), "",
+            )
+        except (OSError, ValueError, TypeError) as error:
+            parser.exit(1, f"scoreboard: ANSI report is invalid: {error}\n")
+    ansi_counts = None
+    if args.ansi_report is not None:
+        ansi_counts = {key: int(ansi_report[key]) for key in ("passed", "failed", "unexecuted")}
     bench_times = None
     bench_report = None
     bench_driver_error = None
@@ -663,7 +714,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 bench_driver_error = str(error)
             else:
                 bench_times = bench_report["times"]
-    if ansi.stdout:
+    if ansi.stdout and args.ansi_report is None:
         ansi_report = _json_output(ansi)
         ansi_counts = {key: int(ansi_report[key]) for key in ("passed", "failed", "unexecuted")}
     if bench.status != "timeout" and not bench.stdout:

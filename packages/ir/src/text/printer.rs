@@ -1,6 +1,9 @@
 //! Text serialization printer.
-use crate::{BasicBlock, Constant, Function, OpKind, Terminator, Ty};
+use crate::{BasicBlock, Function, OpKind, Terminator, Ty};
 use std::fmt::{self, Display, Formatter, Write};
+
+mod constant;
+use constant::constant;
 
 fn esc(s: &str) -> String {
     s.bytes().fold(String::new(), |mut out, byte| {
@@ -117,86 +120,6 @@ fn encode_function(w: &mut Writer, f: &Function) {
         w.u(d.line.into());
         w.u(d.column.into());
         w.u(d.form.0.into());
-    }
-}
-fn constant(w: &mut Writer, c: &Constant) {
-    match c {
-        Constant::Fixnum(n) => {
-            w.u(0);
-            w.i(*n);
-        }
-        Constant::Character(n) => {
-            w.u(1);
-            w.u((*n).into());
-        }
-        Constant::SingleFloat(n) => {
-            w.u(2);
-            w.u(n.to_bits().into());
-        }
-        Constant::DoubleFloat(n) => {
-            w.u(3);
-            w.u(n.to_bits());
-        }
-        Constant::Symbol { package, name } => {
-            w.u(4);
-            w.s(package);
-            w.s(name);
-        }
-        Constant::Object(i) => {
-            w.u(5);
-            w.u(i.0.into());
-        }
-        Constant::StringBytes(v) => {
-            w.u(6);
-            vec_len(w, v.len());
-            for b in v {
-                w.u((*b).into());
-            }
-        }
-        Constant::Structure { kind, elements } => {
-            w.u(11);
-            w.u(match kind {
-                crate::StructureKind::Cons => 0,
-                crate::StructureKind::SimpleVector => 1,
-            });
-            vec_len(w, elements.len());
-            for element in elements {
-                w.u(element.0.into());
-            }
-        }
-        Constant::Nil => w.u(7),
-        Constant::T => w.u(8),
-        Constant::Unbound => w.u(9),
-        Constant::FunctionEntry(id) => {
-            w.u(10);
-            w.u(id.0.into());
-        }
-        Constant::Bignum { negative, limbs } => {
-            w.u(12);
-            w.b(*negative);
-            vec_len(w, limbs.len());
-            for limb in limbs {
-                w.u((*limb).into());
-            }
-        }
-        Constant::Ratio {
-            numerator,
-            denominator,
-        } => {
-            w.u(13);
-            w.u(numerator.0.into());
-            w.u(denominator.0.into());
-        }
-        Constant::Complex { real, imaginary } => {
-            w.u(14);
-            w.u(real.0.into());
-            w.u(imaginary.0.into());
-        }
-        Constant::UninternedSymbol { identity, name } => {
-            w.u(15);
-            w.u((*identity).into());
-            w.s(name);
-        }
     }
 }
 fn block(w: &mut Writer, b: &BasicBlock) {

@@ -142,10 +142,12 @@ fn materialize(
             })
             .map_err(object_error)
         }
-        // check-added-lines: allow(wildcard) Literal is #[non_exhaustive]; the wildcard is required to compile.
-        Literal::Array { .. } | Literal::BitVector(_) | _ => Err(unsupported(
-            "macrolet: this literal shape is not supported in a local macro body",
-        )),
+        Literal::Array { .. } | Literal::SpecializedArray { .. } | /* check-added-lines: allow(wildcard) Literal is non-exhaustive across crates. */ _ => {
+            // check-added-lines: allow(wildcard) Literal is non-exhaustive across crates.
+            Err(unsupported(
+                "macrolet: this literal shape is not supported in a local macro body",
+            ))
+        }
     }
 }
 

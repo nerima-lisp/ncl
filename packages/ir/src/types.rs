@@ -107,11 +107,43 @@ pub struct DebugLocation {
     pub form: FormId,
 }
 
+/// Element representation used by a specialized simple array.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpecializedArrayElementType {
+    Bit,
+    Character,
+    BaseChar,
+    Fixnum,
+    Signed,
+    Unsigned,
+    SingleFloat,
+    DoubleFloat,
+}
+/// Element representation of a general array constant.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArrayElementType {
+    T,
+    Bit,
+    Character,
+    BaseChar,
+    Fixnum,
+    Signed,
+    Unsigned,
+    SingleFloat,
+    DoubleFloat,
+}
 /// The shape of a frozen heap object described by a constant.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StructureKind {
     Cons,
     SimpleVector,
+    SpecializedArray {
+        element_type: SpecializedArrayElementType,
+    },
+    Array {
+        dimensions: Vec<usize>,
+        element_type: ArrayElementType,
+    },
 }
 
 /// A constant descriptor resolved by the runtime or code generator.
@@ -130,6 +162,10 @@ pub enum Constant {
         name: String,
     },
     Object(ConstantIndex),
+    LiteralObject {
+        identity: u32,
+        value: ConstantIndex,
+    },
     StringBytes(Vec<u8>),
     Structure {
         kind: StructureKind,

@@ -8,18 +8,18 @@
 use std::collections::HashMap;
 
 use ncl_object::{
-    Bignum, Complex, DoubleFloat, Instance, ObjectRef, Package, Ratio, Runtime, ThreadContext,
-    Word, array_dimensions, array_row_major_ref, bignum_limbs, bignum_sign, car, cdr, classify,
-    classify_object, complex_imag, complex_real, double_value, instance_class, ratio_denominator,
-    ratio_numerator, simple_vector_length, simple_vector_ref, slot_ref, string_length, string_ref,
-    symbol_name, symbol_package,
+    ArrayElementType, Bignum, Complex, DoubleFloat, Instance, ObjectRef, Package, Ratio, Runtime,
+    ThreadContext, Word, array_dimensions, array_row_major_ref, bignum_limbs, bignum_sign, car,
+    cdr, classify, classify_object, complex_imag, complex_real, double_value, instance_class,
+    ratio_denominator, ratio_numerator, simple_vector_length, simple_vector_ref, slot_ref,
+    specialized_array_element_type, string_length, string_ref, symbol_name, symbol_package,
 };
 
 use crate::error::FrontError;
 use crate::literal::{Literal, NumberLiteral};
 use crate::symbols::SymbolRef;
 
-/// Assigns expansion-local identities to uninterned symbols.
+/// Assigns expansion-local identities to symbols and arrays.
 ///
 /// An uninterned symbol has no home package, so two of them with the same name
 /// are distinct objects. The table keys on the symbol's raw `Word` bits, which
@@ -28,6 +28,8 @@ use crate::symbols::SymbolRef;
 #[derive(Debug, Default)]
 pub struct UninternedTable {
     identities: HashMap<Word, u32>,
+    arrays: HashMap<Word, u32>, // check-added-lines: allow(word-table) Conversion does not allocate, so observed Words stay stable.
+    specialized_arrays: HashMap<Word, u32>, // check-added-lines: allow(word-table) Conversion does not allocate, so observed Words stay stable.
     next: u32,
 }
 
@@ -46,6 +48,28 @@ impl UninternedTable {
         let identity = self.next;
         self.next = self.next.wrapping_add(1);
         self.identities.insert(symbol, identity);
+        identity
+    }
+
+    /// Assign an expansion-local identity to a general array.
+    pub fn array_identity(&mut self, array: Word) -> u32 {
+        if let Some(identity) = self.arrays.get(&array) {
+            return *identity;
+        }
+        let identity = self.next;
+        self.next = self.next.wrapping_add(1);
+        self.arrays.insert(array, identity);
+        identity
+    }
+
+    /// Assign an expansion-local identity to a specialized array.
+    pub fn specialized_array_identity(&mut self, array: Word) -> u32 {
+        if let Some(identity) = self.specialized_arrays.get(&array) {
+            return *identity;
+        }
+        let identity = self.next;
+        self.next = self.next.wrapping_add(1);
+        self.specialized_arrays.insert(array, identity);
         identity
     }
 }
@@ -143,6 +167,7 @@ pub fn literal(
         ObjectRef::Cons(_) => cons_literal(ctx, runtime, table, word),
         ObjectRef::String(_) => Ok(Literal::String(word_characters(ctx, word)?)),
         ObjectRef::SimpleVector(_) => vector_literal(ctx, runtime, table, word),
+        ObjectRef::SpecializedArray(array) => specialized_array_literal(ctx, runtime, table, array),
         ObjectRef::Array(_) => array_literal(ctx, runtime, table, word),
         ObjectRef::Instance(_) => pathname_literal(ctx, runtime, word),
         ObjectRef::Bignum(_)
@@ -280,6 +305,8 @@ fn array_literal(
     word: Word,
 ) -> Result<Literal, FrontError> {
     let dimensions = array_dimensions(ctx, word)?;
+    let element_type = ncl_object::array::array_element_type(ctx, word)?;
+    let identity = table.array_identity(word);
     let total = dimensions
         .iter()
         .try_fold(1_usize, |size, dimension| size.checked_mul(*dimension))
@@ -294,7 +321,45 @@ fn array_literal(
         )?);
     }
     Ok(Literal::Array {
+        identity,
         dimensions,
+        element_type,
+        elements,
+    })
+}
+
+/// Convert a specialized-array word into a typed literal.
+fn specialized_array_literal(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    table: &mut UninternedTable,
+    word: Word,
+) -> Result<Literal, FrontError> {
+    let element_type = specialized_array_element_type(ctx, word)?;
+    if element_type == ArrayElementType::T {
+        return Err(FrontError::UnsupportedLiteral);
+    }
+    let dimensions = array_dimensions(ctx, word)?;
+    if dimensions.len() != 1 {
+        return Err(FrontError::UnsupportedLiteral);
+    }
+    let [length] = dimensions.as_slice() else {
+        return Err(FrontError::UnsupportedLiteral);
+    };
+    let length = *length;
+    let identity = table.specialized_array_identity(word);
+    let mut elements = Vec::with_capacity(length);
+    for index in 0..length {
+        elements.push(literal(
+            ctx,
+            runtime,
+            table,
+            array_row_major_ref(ctx, word, index)?,
+        )?);
+    }
+    Ok(Literal::SpecializedArray {
+        identity,
+        element_type,
         elements,
     })
 }

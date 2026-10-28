@@ -1,12 +1,13 @@
 //! Text serialization parser.
 
 mod checked;
+mod constant;
 use super::ParseError;
 use crate::{
-    BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert, DebugLocation,
-    DebugLocationId, FileId, FormId, Function, FunctionId, HandlerKind, HandlerRegion,
-    HandlerRegionId, Local, LocalId, Op, OpKind, Param, Prim, StructureKind, Terminator, Ty,
-    ValueId,
+    ArrayElementType, BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert,
+    DebugLocation, DebugLocationId, FileId, FormId, Function, FunctionId, HandlerKind,
+    HandlerRegion, HandlerRegionId, Local, LocalId, Op, OpKind, Param, Prim,
+    SpecializedArrayElementType, StructureKind, Terminator, Ty, ValueId,
 };
 
 use checked::{u8, u32};
@@ -124,7 +125,7 @@ fn decode_function(r: &mut Reader<'_>) -> Result<Function, ParseError> {
         .map(|_| read_ty(r))
         .collect::<Result<Vec<_>, _>>()?;
     let constants = (0..r.u()?)
-        .map(|_| constant_read(r))
+        .map(|_| constant::constant_read(r))
         .collect::<Result<Vec<_>, _>>()?;
     let blocks = (0..r.u()?)
         .map(|_| block_read(r))
@@ -161,61 +162,6 @@ fn decode_function(r: &mut Reader<'_>) -> Result<Function, ParseError> {
         constants,
         handler_regions,
         debug,
-    })
-}
-
-fn constant_read(r: &mut Reader<'_>) -> Result<Constant, ParseError> {
-    Ok(match r.u()? {
-        0 => Constant::Fixnum(r.i()?),
-        1 => Constant::Character(u32(r.u()?)?),
-        2 => Constant::SingleFloat(f32::from_bits(u32(r.u()?)?)),
-        3 => Constant::DoubleFloat(f64::from_bits(r.u()?)),
-        4 => Constant::Symbol {
-            package: r.s()?,
-            name: r.s()?,
-        },
-        5 => Constant::Object(ConstantIndex(u32(r.u()?)?)),
-        6 => Constant::StringBytes(
-            (0..r.u()?)
-                .map(|_| Ok(u8(r.u()?)?))
-                .collect::<Result<Vec<_>, ParseError>>()?,
-        ),
-        11 => {
-            let kind = match r.u()? {
-                0 => StructureKind::Cons,
-                1 => StructureKind::SimpleVector,
-                _ => return Err(ParseError("bad structure kind".into())), // check-added-lines: allow(wildcard) encoded descriptor kind is validated explicitly
-            };
-            Constant::Structure {
-                kind,
-                elements: (0..r.u()?)
-                    .map(|_| Ok(ConstantIndex(u32(r.u()?)?)))
-                    .collect::<Result<Vec<_>, ParseError>>()?,
-            }
-        }
-        7 => Constant::Nil,
-        8 => Constant::T,
-        9 => Constant::Unbound,
-        10 => Constant::FunctionEntry(FunctionId(u32(r.u()?)?)),
-        12 => Constant::Bignum {
-            negative: r.b()?,
-            limbs: (0..r.u()?)
-                .map(|_| u32(r.u()?))
-                .collect::<Result<Vec<_>, ParseError>>()?,
-        },
-        13 => Constant::Ratio {
-            numerator: ConstantIndex(u32(r.u()?)?),
-            denominator: ConstantIndex(u32(r.u()?)?),
-        },
-        14 => Constant::Complex {
-            real: ConstantIndex(u32(r.u()?)?),
-            imaginary: ConstantIndex(u32(r.u()?)?),
-        },
-        15 => Constant::UninternedSymbol {
-            identity: u32(r.u()?)?,
-            name: r.s()?,
-        },
-        _ => return Err(ParseError("bad constant".into())),
     })
 }
 

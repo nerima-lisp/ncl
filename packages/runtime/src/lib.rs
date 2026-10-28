@@ -216,10 +216,15 @@ impl Runtime {
                 .insert(function.id.0, PublishedFunction { entry });
         }
         let mut uninterned_symbols = HashMap::new();
+        let mut literal_objects = HashMap::new();
         for (function, (code, metadata)) in compiled.iter().skip(1) {
             let entry = code.address().saturating_add(metadata.entry_offset);
-            let (_function_object, entry_code) =
-                self.make_function_object(function, &(code, metadata), &mut uninterned_symbols)?;
+            let (_function_object, entry_code) = self.make_function_object(
+                function,
+                &(code, metadata),
+                &mut uninterned_symbols,
+                &mut literal_objects,
+            )?;
             self.evaluator
                 .root_entry_code(&mut self.context, entry, entry_code);
         }
@@ -231,6 +236,7 @@ impl Runtime {
             &entry,
             &(entry_code, entry_metadata),
             &mut uninterned_symbols,
+            &mut literal_objects,
         )?;
         let entry_address = entry_code
             .address()
@@ -292,9 +298,10 @@ impl Runtime {
         function: &ncl_ir::Function,
         compiled: &(&CodePtr, &CodeObjectMetadata),
         uninterned_symbols: &mut HashMap<u32, HeapRootedWord>,
+        literal_objects: &mut HashMap<u32, HeapRootedWord>,
     ) -> Result<(Word, Word), RuntimeError> {
         let entry = compiled.0.address().saturating_add(compiled.1.entry_offset);
-        let constants = self.make_constants(function, uninterned_symbols)?;
+        let constants = self.make_constants(function, uninterned_symbols, literal_objects)?;
         let code_object = ncl_object::make_code_object(
             &mut self.context,
             &self.object,
@@ -320,6 +327,7 @@ impl Runtime {
         &mut self,
         function: &ncl_ir::Function,
         uninterned_symbols: &mut HashMap<u32, HeapRootedWord>,
+        literal_objects: &mut HashMap<u32, HeapRootedWord>,
     ) -> Result<Word, RuntimeError> {
         let mut values = Vec::with_capacity(function.constants.len());
         let mut roots = Vec::with_capacity(function.constants.len());
@@ -345,6 +353,7 @@ impl Runtime {
                     constant,
                     &values,
                     uninterned_symbols,
+                    literal_objects,
                 )?
             };
             values.push(value);

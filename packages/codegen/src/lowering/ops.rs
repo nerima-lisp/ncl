@@ -105,6 +105,7 @@ pub(super) fn constant_value(
         Constant::Symbol { .. }
         | Constant::UninternedSymbol { .. }
         | Constant::Object(_)
+        | Constant::LiteralObject { .. }
         | Constant::StringBytes(_)
         | Constant::Bignum { .. }
         | Constant::Ratio { .. }

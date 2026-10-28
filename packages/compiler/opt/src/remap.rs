@@ -129,6 +129,10 @@ fn remap_constant(
         Constant::Object(child) => {
             Constant::Object(remap_constant(child, constants, caller_constants, callee))
         }
+        Constant::LiteralObject { identity, value } => Constant::LiteralObject {
+            identity,
+            value: remap_constant(value, constants, caller_constants, callee),
+        },
         Constant::Structure { kind, elements } => Constant::Structure {
             kind,
             elements: elements

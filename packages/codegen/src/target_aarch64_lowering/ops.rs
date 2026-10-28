@@ -151,6 +151,7 @@ pub fn lower_op(
                 ncl_ir::Constant::Symbol { .. }
                     | ncl_ir::Constant::UninternedSymbol { .. }
                     | ncl_ir::Constant::Object(_)
+                    | ncl_ir::Constant::LiteralObject { .. }
                     | ncl_ir::Constant::StringBytes(_)
                     | ncl_ir::Constant::Structure { .. }
                     | ncl_ir::Constant::Bignum { .. }

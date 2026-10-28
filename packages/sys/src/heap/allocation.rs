@@ -33,6 +33,9 @@ impl Heap {
         tag: TypeTag,
         words: usize,
     ) -> Result<Word, StorageCondition> {
+        if thread.native_state() == crate::NativeState::Native {
+            return Err(StorageCondition::NativeAllocationRequiresRoot);
+        }
         let mut thread = thread.enter_lisp_state();
         self.allocate(
             &mut thread,
@@ -48,6 +51,9 @@ impl Heap {
         tag: TypeTag,
         words: usize,
     ) -> Result<Word, StorageCondition> {
+        if thread.native_state() == crate::NativeState::Native {
+            return Err(StorageCondition::NativeAllocationRequiresRoot);
+        }
         let mut thread = thread.enter_lisp_state();
         self.allocate(
             &mut thread,
@@ -63,10 +69,154 @@ impl Heap {
         car: Word,
         cdr: Word,
     ) -> Result<Word, StorageCondition> {
+        if thread.native_state() == crate::NativeState::Native {
+            return Err(StorageCondition::NativeAllocationRequiresRoot);
+        }
         let mut car = car;
         let mut cdr = cdr;
         let mut thread = thread.enter_lisp_state();
         self.allocate_cons_with_coordinator(&mut thread, &mut car, &mut cdr)
+    }
+
+    /// Allocate a header object into a caller-owned heap root slot.
+    ///
+    /// The slot is registered before entering Lisp state and remains rooted on
+    /// success. Keep it alive at the same address until its token is
+    /// unregistered from this heap.
+    ///
+    /// # Safety
+    /// `output` must remain valid at the same address until the returned token
+    /// is removed. The caller must not access it while its thread is in Native
+    /// state or while a collection may rewrite it.
+    pub(crate) unsafe fn alloc_rooted(
+        &self,
+        thread: &mut Thread,
+        tag: TypeTag,
+        words: usize,
+        output: &mut Word,
+    ) -> Result<crate::RootToken, StorageCondition> {
+        let words = words.checked_add(1).ok_or(StorageCondition::InvalidSize)?;
+        self.allocate_into_root(thread, output, PageKind::HeaderObject, tag, words)
+    }
+
+    /// Allocate a large object into a caller-owned heap root slot.
+    ///
+    /// The slot is registered before entering Lisp state and remains rooted on
+    /// success. Keep it alive at the same address until its token is
+    /// unregistered from this heap.
+    ///
+    /// # Safety
+    /// `output` must remain valid at the same address until the returned token
+    /// is removed. The caller must not access it while its thread is in Native
+    /// state or while a collection may rewrite it.
+    pub(crate) unsafe fn alloc_large_rooted(
+        &self,
+        thread: &mut Thread,
+        tag: TypeTag,
+        words: usize,
+        output: &mut Word,
+    ) -> Result<crate::RootToken, StorageCondition> {
+        let words = words.checked_add(1).ok_or(StorageCondition::InvalidSize)?;
+        self.allocate_into_root(thread, output, PageKind::Large, tag, words)
+    }
+
+    /// Allocate a cons cell from caller-owned root slots into a caller-owned
+    /// heap root slot.
+    ///
+    /// The output slot remains rooted on success. Keep it alive at the same
+    /// address until its token is unregistered from this heap.
+    ///
+    /// # Safety
+    /// `car` and `cdr` must be distinct, stable slots containing values already
+    /// kept alive by collector-visible roots until this method registers them.
+    /// In Native state, they must not refer only to unregistered Native locals.
+    /// `output` must be distinct from both inputs, remain valid at the same
+    /// address until its token is removed, and not be accessed by the caller
+    /// while its thread is in Native state or while a collection may rewrite
+    /// any of these slots.
+    pub(crate) unsafe fn alloc_cons_rooted(
+        &self,
+        thread: &mut Thread,
+        car: &mut Word,
+        cdr: &mut Word,
+        output: &mut Word,
+    ) -> Result<crate::RootToken, StorageCondition> {
+        self.alloc_cons_rooted_before_registration(thread, car, cdr, output, || {})
+    }
+
+    #[cfg(test)]
+    /// Runs `before_first_root` while the caller is still Native and before
+    /// this method registers any of its slots.
+    ///
+    /// # Safety
+    /// The caller must uphold the same slot and root requirements as
+    /// [`Heap::alloc_cons_rooted`].
+    pub(crate) unsafe fn alloc_cons_rooted_with_test_hook(
+        &self,
+        thread: &mut Thread,
+        car: &mut Word,
+        cdr: &mut Word,
+        output: &mut Word,
+        before_first_root: impl FnOnce(),
+    ) -> Result<crate::RootToken, StorageCondition> {
+        self.alloc_cons_rooted_before_registration(thread, car, cdr, output, before_first_root)
+    }
+
+    fn alloc_cons_rooted_before_registration(
+        &self,
+        thread: &mut Thread,
+        car: &mut Word,
+        cdr: &mut Word,
+        output: &mut Word,
+        before_first_root: impl FnOnce(),
+    ) -> Result<crate::RootToken, StorageCondition> {
+        before_first_root();
+        let output_root = self.push_root(output);
+        let first_input_root = self.push_root(car);
+        let second_input_root = self.push_root(cdr);
+        let result = {
+            let mut thread = thread.enter_lisp_state();
+            self.allocate_cons_with_coordinator_into_root(&mut thread, car, cdr, output)
+        };
+        let _ = self.unregister_root(second_input_root);
+        let _ = self.unregister_root(first_input_root);
+        match result {
+            Ok(_) => Ok(output_root),
+            Err(error) => {
+                let _ = self.unregister_root(output_root);
+                Err(error)
+            }
+        }
+    }
+
+    fn allocate_into_root(
+        &self,
+        thread: &mut Thread,
+        output: &mut Word,
+        kind: PageKind,
+        tag: TypeTag,
+        words: usize,
+    ) -> Result<crate::RootToken, StorageCondition> {
+        let output_root = self.push_root(output);
+        let result = {
+            let mut thread = thread.enter_lisp_state();
+            match self.allocate_with_coordinator(&mut thread, kind, tag, words) {
+                Ok(allocation) => {
+                    let value = allocation.value;
+                    *output = value;
+                    drop(allocation);
+                    Ok(())
+                }
+                Err(error) => Err(error),
+            }
+        };
+        match result {
+            Ok(()) => Ok(output_root),
+            Err(error) => {
+                let _ = self.unregister_root(output_root);
+                Err(error)
+            }
+        }
     }
 
     pub(super) fn allocate_cons_with_coordinator(
@@ -75,7 +225,17 @@ impl Heap {
         car: &mut Word,
         cdr: &mut Word,
     ) -> Result<Word, StorageCondition> {
-        self.allocate_cons_with_coordinator_inner(thread, car, cdr)
+        self.allocate_cons_with_coordinator_inner(thread, car, cdr, None)
+    }
+
+    fn allocate_cons_with_coordinator_into_root(
+        &self,
+        thread: &mut Thread,
+        car: &mut Word,
+        cdr: &mut Word,
+        output: &mut Word,
+    ) -> Result<Word, StorageCondition> {
+        self.allocate_cons_with_coordinator_inner(thread, car, cdr, Some(output))
     }
 
     fn allocate_cons_with_coordinator_inner(
@@ -83,6 +243,7 @@ impl Heap {
         thread: &mut Thread,
         car: &mut Word,
         cdr: &mut Word,
+        output: Option<&mut Word>,
     ) -> Result<Word, StorageCondition> {
         let first_root = thread.push_root(car);
         let second_root = thread.push_root(cdr);
@@ -92,6 +253,9 @@ impl Heap {
             Ok(allocation) => {
                 self.write_words(allocation.value, &[(0, *car), (1, *cdr)]);
                 let value = allocation.value;
+                if let Some(output) = output {
+                    *output = value;
+                }
                 drop(allocation);
                 let _ = thread.pop_root(second_root);
                 let _ = thread.pop_root(first_root);

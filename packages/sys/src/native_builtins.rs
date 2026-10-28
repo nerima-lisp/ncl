@@ -5,15 +5,80 @@
 //! therefore not an error payload and must not be replaced with `UNBOUND`.
 
 use crate::{
-    Heap, NativeError, NativeOperation, OverflowSemantics, Thread, Word, collect, read_cons_word,
+    Heap, NativeError, NativeOperation, OverflowSemantics, RootToken, StorageCondition, Thread,
+    TypeTag, Word, collect, read_cons_word,
 };
 use std::ptr::NonNull;
+
+/// Allocate a header object into a caller-owned heap root slot.
+///
+/// # Errors
+/// Returns a storage condition if the request cannot be allocated.
+///
+/// # Safety
+/// `output` must remain valid at the same address until its token is removed
+/// with [`crate::unregister_heap_root`]. Do not access it while the thread is
+/// Native or collection may update the slot.
+pub unsafe fn alloc_rooted(
+    thread: &mut Thread,
+    heap: &Heap,
+    tag: TypeTag,
+    words: usize,
+    output: &mut Word,
+) -> Result<RootToken, StorageCondition> {
+    // SAFETY: the caller upholds the output-slot requirements documented above.
+    unsafe { heap.alloc_rooted(thread, tag, words, output) }
+}
+
+/// Allocate a large object into a caller-owned heap root slot.
+///
+/// # Errors
+/// Returns a storage condition if the request cannot be allocated.
+///
+/// # Safety
+/// `output` must remain valid at the same address until its token is removed
+/// with [`crate::unregister_heap_root`]. Do not access it while the thread is
+/// Native or collection may update the slot.
+pub unsafe fn alloc_large_rooted(
+    thread: &mut Thread,
+    heap: &Heap,
+    tag: TypeTag,
+    words: usize,
+    output: &mut Word,
+) -> Result<RootToken, StorageCondition> {
+    // SAFETY: the caller upholds the output-slot requirements documented above.
+    unsafe { heap.alloc_large_rooted(thread, tag, words, output) }
+}
+
+/// Allocate a cons cell from caller-owned input slots into a caller-owned root slot.
+///
+/// # Errors
+/// Returns a storage condition if the request cannot be allocated.
+///
+/// # Safety
+/// `car` and `cdr` must be distinct stable slots already kept alive by roots;
+/// Native callers must not pass unrooted Native-local values. `output` must be
+/// distinct and stable until its token is removed with
+/// [`crate::unregister_heap_root`]. Do not access any slot while Native or a
+/// collection may update it.
+pub unsafe fn alloc_cons_rooted(
+    thread: &mut Thread,
+    heap: &Heap,
+    car: &mut Word,
+    cdr: &mut Word,
+    output: &mut Word,
+) -> Result<RootToken, StorageCondition> {
+    // SAFETY: the caller upholds the root-slot requirements documented above.
+    unsafe { heap.alloc_cons_rooted(thread, car, cdr, output) }
+}
 
 /// Allocate a cons cell through the heap already associated with `thread`.
 ///
 /// This is the native-entry boundary used by generated code. The caller must
 /// pass a registered thread pointer that remains valid for the duration of the
 /// call; the generated entry owns that condition through its pinned context.
+/// Generated Lisp code must call this while its thread is in Lisp state. A
+/// Native-state caller must use a rooted allocation API instead.
 ///
 /// # Safety
 /// `thread` must point to a registered live thread and remain valid for the

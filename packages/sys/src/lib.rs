@@ -34,7 +34,8 @@ pub use heap::{
 };
 pub use invoke::{invoke_entry, invoke_entry_with_function, invoke_entry_with_function_address};
 pub use native_builtins::{
-    native_add, native_car, native_cons, native_less, native_mul, native_safepoint, native_sub,
+    alloc_cons_rooted, alloc_large_rooted, alloc_rooted, native_add, native_car, native_cons,
+    native_less, native_mul, native_safepoint, native_sub,
 };
 pub use native_error::{NativeError, NativeOperation, OverflowSemantics};
 pub use native_words::{CALL_ARGUMENTS_LIMIT, NativeWordCopyError, copy_native_words};
@@ -172,7 +173,10 @@ fn snapshot_callee_saved() -> [u64; 16] {
 ///
 /// # Errors
 ///
-/// Returns a storage condition when the size is invalid, the thread is not registered, or capacity is exhausted.
+/// Returns [`StorageCondition::NativeAllocationRequiresRoot`] in Native state;
+/// use [`alloc_rooted`] to keep the result live there. Also returns a storage
+/// condition when the size is invalid, the thread is not registered, or
+/// capacity is exhausted.
 pub fn alloc(
     thread: &mut Thread,
     heap: &Heap,
@@ -186,7 +190,10 @@ pub fn alloc(
 ///
 /// # Errors
 ///
-/// Returns a storage condition when the size is invalid, the thread is not registered, or capacity is exhausted.
+/// Returns [`StorageCondition::NativeAllocationRequiresRoot`] in Native state;
+/// use [`alloc_large_rooted`] to keep the result live there. Also returns a
+/// storage condition when the size is invalid, the thread is not registered, or
+/// capacity is exhausted.
 pub fn alloc_large(
     thread: &mut Thread,
     heap: &Heap,
@@ -200,7 +207,10 @@ pub fn alloc_large(
 ///
 /// # Errors
 ///
-/// Returns a storage condition when the thread is not registered or capacity is exhausted.
+/// Returns [`StorageCondition::NativeAllocationRequiresRoot`] in Native state;
+/// use [`alloc_cons_rooted`] to keep the result live there. Also returns a
+/// storage condition when the thread is not registered or capacity is
+/// exhausted.
 pub fn alloc_cons(
     thread: &mut Thread,
     heap: &Heap,

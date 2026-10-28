@@ -147,6 +147,15 @@ fn common_lisp_load_is_a_callable_builtin() {
 }
 
 #[test]
+fn load_parent_local_function_reference_with_nested_ncl_gc_does_not_crash() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/clbench_gc_load.lisp");
+    let result = output(ncl().args(["--load", path_str(&fixture)]));
+
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "42");
+}
+
+#[test]
 fn evals_internal_time_constant_and_functions() {
     let units = output(ncl().args(["--eval", "internal-time-units-per-second"]));
     assert!(units.status.success(), "{units:?}");

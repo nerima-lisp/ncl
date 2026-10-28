@@ -106,6 +106,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # Build first to warm the incremental cache for the release tests below.
       - run: cargo build --locked --workspace --release
+      - name: Smoke test cl-bench GC load on aarch64 macOS
+        if: matrix.name == 'aarch64 macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          output=$(target/release/ncl --load tests/fixtures/clbench_gc_load.lisp)
+          test "$output" = 42
       - run: cargo test --locked --workspace --all-features --all-targets --release
 
   gc-stress:

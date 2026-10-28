@@ -46,6 +46,53 @@ fn native_poll_and_conservative_snapshot_cover_unregistered_paths() {
     assert!(!thread.frame_snapshot_failed());
 }
 
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn conservative_snapshot_uses_valid_stack_start_only_for_lisp_threads() {
+    let first_word = Word::fixnum(17);
+    let second_word = Word::fixnum(29);
+    let stack_words = [first_word, second_word];
+    let bounds_start = std::ptr::from_ref(&stack_words[0]).addr();
+    let scan_start = std::ptr::from_ref(&stack_words[1]).addr();
+    let bounds_end = bounds_start + std::mem::size_of_val(&stack_words);
+    let mut thread = Thread::new();
+    thread.stack_bounds = Some((bounds_start, bounds_end));
+    thread.stack_scan_start = Some(scan_start);
+
+    let values = thread.conservative_snapshot();
+    assert!(!values.contains(&first_word));
+    assert!(values.contains(&second_word));
+
+    thread.native = NativeState::Native;
+    let values = thread.conservative_snapshot();
+    assert!(values.contains(&first_word));
+    assert!(values.contains(&second_word));
+
+    thread.native = NativeState::Lisp;
+    thread.stack_scan_start = Some(bounds_end);
+    let values = thread.conservative_snapshot();
+    assert!(values.contains(&first_word));
+    assert!(values.contains(&second_word));
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+#[test]
+fn conservative_snapshot_uses_full_bounds_when_lisp_stack_start_may_be_stale() {
+    let first_word = Word::fixnum(17);
+    let second_word = Word::fixnum(29);
+    let stack_words = [first_word, second_word];
+    let bounds_start = std::ptr::from_ref(&stack_words[0]).addr();
+    let scan_start = std::ptr::from_ref(&stack_words[1]).addr();
+    let bounds_end = bounds_start + std::mem::size_of_val(&stack_words);
+    let mut thread = Thread::new();
+    thread.stack_bounds = Some((bounds_start, bounds_end));
+    thread.stack_scan_start = Some(scan_start);
+
+    let values = thread.conservative_snapshot();
+    assert!(values.contains(&first_word));
+    assert!(values.contains(&second_word));
+}
+
 #[test]
 fn publish_gc_state_recovers_poisoned_mutex() {
     let thread = Thread::new();

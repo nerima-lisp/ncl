@@ -457,9 +457,26 @@ fn weak_entry_after_gc(
         .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
         .as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
-    let (mut key_root, mut value_root) = insert_weak_entry(
-        &mut ctx, &runtime, table_word, weakness, keep_key, keep_value,
-    );
+    // Let the allocator thread exit before collection so stale stack/register values cannot keep referents alive.
+    let (mut key_root, mut value_root) = std::thread::scope(|scope| {
+        let worker = scope.spawn(|| {
+            let mut worker_ctx = ThreadContext::new();
+            worker_ctx
+                .register(&runtime)
+                .unwrap_or_else(|error| panic!("worker registration failed: {error:?}"));
+            insert_weak_entry(
+                &mut worker_ctx,
+                &runtime,
+                table_word,
+                weakness,
+                keep_key,
+                keep_value,
+            )
+        });
+        worker
+            .join()
+            .unwrap_or_else(|_| panic!("weak-entry worker panicked"))
+    });
     let key_token = keep_key.then(|| ncl_object::push_root(&mut ctx, &mut key_root));
     let value_token = keep_value.then(|| ncl_object::push_root(&mut ctx, &mut value_root));
     assert!(ctx.collect(true).is_ok());

@@ -42,16 +42,24 @@ impl TokenChar {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Token {
     characters: Vec<TokenChar>,
+    ends_with_empty_multiple_escape: bool,
 }
 
 impl Token {
-    fn from_parts(chars: Vec<char>, escaped: Vec<bool>) -> Self {
+    fn from_parts(
+        chars: Vec<char>,
+        escaped: Vec<bool>,
+        ends_with_empty_multiple_escape: bool,
+    ) -> Self {
         let characters = chars
             .into_iter()
             .zip(escaped)
             .map(|(character, escaped)| TokenChar::new(character, escaped))
             .collect();
-        Self { characters }
+        Self {
+            characters,
+            ends_with_empty_multiple_escape,
+        }
     }
 
     #[must_use]
@@ -67,7 +75,7 @@ impl Token {
 
     /// Split this token into package and name components.
     fn split(&self) -> Result<TokenParts, ReadError> {
-        split_marker(&self.characters)
+        split_marker(&self.characters, self.ends_with_empty_multiple_escape)
     }
 
     /// Fold a token component according to the readtable case.
@@ -136,6 +144,7 @@ pub fn read_token_chars(
 ) -> Result<Option<Token>, ReadError> {
     let mut chars: Vec<char> = Vec::new();
     let mut escaped: Vec<bool> = Vec::new();
+    let mut empty_multiple_escape_position = None;
     while let Some(next) = source.peek_char() {
         let kind = syntax_kind(ctx, readtable_from_word(rt.get())?, next)?;
         match kind {
@@ -154,12 +163,19 @@ pub fn read_token_chars(
             }
             SyntaxKind::MultipleEscape => {
                 source.read_char();
+                let mut had_escaped_character = false;
                 loop {
                     match source.read_char() {
-                        Some('|') => break,
+                        Some('|') => {
+                            if !had_escaped_character {
+                                empty_multiple_escape_position = Some(chars.len());
+                            }
+                            break;
+                        }
                         Some(ch) => {
                             chars.push(ch);
                             escaped.push(true);
+                            had_escaped_character = true;
                         }
                         None => return Err(ReadError::UnexpectedEof),
                     }
@@ -171,10 +187,15 @@ pub fn read_token_chars(
             | SyntaxKind::CustomMacro(_) => break,
         }
     }
-    if chars.is_empty() {
+    let ends_with_empty_multiple_escape = empty_multiple_escape_position == Some(chars.len());
+    if chars.is_empty() && !ends_with_empty_multiple_escape {
         return Ok(None);
     }
-    Ok(Some(Token::from_parts(chars, escaped)))
+    Ok(Some(Token::from_parts(
+        chars,
+        escaped,
+        ends_with_empty_multiple_escape,
+    )))
 }
 
 /// Read one token (a number or a symbol), or `None` at end of input.
@@ -208,7 +229,10 @@ pub fn read_token(
 }
 
 /// Split a raw token on its unescaped colon package marker.
-fn split_marker(chars: &[TokenChar]) -> Result<TokenParts, ReadError> {
+fn split_marker(
+    chars: &[TokenChar],
+    ends_with_empty_multiple_escape: bool,
+) -> Result<TokenParts, ReadError> {
     let colons: Vec<usize> = chars
         .iter()
         .enumerate()
@@ -225,7 +249,7 @@ fn split_marker(chars: &[TokenChar]) -> Result<TokenParts, ReadError> {
         }),
         [p] => {
             if *p == 0 {
-                if length == 1 {
+                if length == 1 && !ends_with_empty_multiple_escape {
                     return Err(ReadError::InvalidSymbolToken(token));
                 }
                 Ok(TokenParts {
@@ -234,11 +258,19 @@ fn split_marker(chars: &[TokenChar]) -> Result<TokenParts, ReadError> {
                     name: 1..length,
                 })
             } else if *p == length - 1 {
-                Ok(TokenParts {
-                    marker: Marker::PackageObject,
-                    package: 0..*p,
-                    name: *p..*p,
-                })
+                if ends_with_empty_multiple_escape {
+                    Ok(TokenParts {
+                        marker: Marker::Named,
+                        package: 0..*p,
+                        name: length..length,
+                    })
+                } else {
+                    Ok(TokenParts {
+                        marker: Marker::PackageObject,
+                        package: 0..*p,
+                        name: *p..*p,
+                    })
+                }
             } else {
                 Ok(TokenParts {
                     marker: Marker::Named,
@@ -252,11 +284,19 @@ fn split_marker(chars: &[TokenChar]) -> Result<TokenParts, ReadError> {
                 return Err(ReadError::InvalidSymbolToken(token));
             }
             if *p2 == length - 1 {
-                Ok(TokenParts {
-                    marker: Marker::PackageObject,
-                    package: 0..*p1,
-                    name: *p1..*p1,
-                })
+                if ends_with_empty_multiple_escape {
+                    Ok(TokenParts {
+                        marker: Marker::Named,
+                        package: 0..*p1,
+                        name: length..length,
+                    })
+                } else {
+                    Ok(TokenParts {
+                        marker: Marker::PackageObject,
+                        package: 0..*p1,
+                        name: *p1..*p1,
+                    })
+                }
             } else {
                 Ok(TokenParts {
                     marker: Marker::Named,

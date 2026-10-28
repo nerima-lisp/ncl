@@ -1,5 +1,8 @@
 //! Per-mutator thread registration and control state.
 
+mod evaluator_access;
+use evaluator_access::EvaluatorAccessSlot;
+
 use crate::{LispError, ObjectError, Runtime};
 use core::cell::Cell;
 use ncl_sys::{
@@ -68,6 +71,7 @@ pub struct ThreadContext {
     pub(crate) frames: Vec<crate::nonlocal::DynamicFrame>,
     pub(crate) pending_unwind: Vec<crate::nonlocal::PendingExit>,
     evaluator_runtime: Option<std::ptr::NonNull<()>>,
+    evaluator_access: EvaluatorAccessSlot,
 }
 impl ThreadContext {
     /// Create an unregistered context.
@@ -92,6 +96,7 @@ impl ThreadContext {
             frames: Vec::new(),
             pending_unwind: Vec::new(),
             evaluator_runtime: None,
+            evaluator_access: EvaluatorAccessSlot::default(),
         }
     }
 
@@ -125,6 +130,7 @@ impl ThreadContext {
     pub const fn evaluator_runtime(&self) -> Option<std::ptr::NonNull<()>> {
         self.evaluator_runtime
     }
+
     /// Register this context with a runtime.
     ///
     /// The thread state is heap allocated, so moving this context after registration is safe.

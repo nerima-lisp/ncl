@@ -11,7 +11,23 @@ fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {
         .unwrap_or_else(|error| panic!("context: {error:?}"));
     ncl_lib_sequences::register(&runtime).unwrap_or_else(|error| panic!("sequences: {error:?}"));
     let functions = [
-        "APPEND", "CAR", "CONS", "EQUAL", "LIST", "LISTP", "NCONC", "NREVERSE", "REMOVE", "SUBST",
+        "APPEND",
+        "CAR",
+        "CONS",
+        "EQUAL",
+        "LIST",
+        "LISTP",
+        "NCONC",
+        "NREVERSE",
+        "REMOVE",
+        "SUBLIS",
+        "NSUBLIS",
+        "SUBST",
+        "SUBST-IF",
+        "SUBST-IF-NOT",
+        "NSUBST",
+        "NSUBST-IF",
+        "NSUBST-IF-NOT",
     ]
     .into_iter()
     .map(|name| {
@@ -101,6 +117,19 @@ fn assert_subst_type_error(
 ) {
     assert_eq!(
         call_result(runtime, ctx, functions, "SUBST", args),
+        Err(ObjectError::TypeError)
+    );
+}
+
+fn assert_tree_substitution_type_error(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    functions: &HashMap<String, FunctionObject>,
+    name: &str,
+    args: &[Word],
+) {
+    assert_eq!(
+        call_result(runtime, ctx, functions, name, args),
         Err(ObjectError::TypeError)
     );
 }
@@ -336,6 +365,38 @@ fn subst_uses_test_key_and_test_not_on_subtrees() {
 }
 
 #[test]
+fn subst_propagates_key_errors_from_nested_candidates() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut tree = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::NIL],
+    );
+    let tree_root = ncl_object::push_root(&mut ctx, &mut tree);
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    let key_root = ncl_object::push_root(&mut ctx, &mut key_keyword);
+    let mut car = builtin_word(&mut ctx, &runtime, "CAR");
+    let car_root = ncl_object::push_root(&mut ctx, &mut car);
+
+    assert_eq!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "SUBST",
+            &[Word::fixnum(9), Word::fixnum(2), tree, key_keyword, car],
+        ),
+        Err(ObjectError::TypeError)
+    );
+
+    assert!(ncl_object::pop_root(&mut ctx, car_root));
+    assert!(ncl_object::pop_root(&mut ctx, key_root));
+    assert!(ncl_object::pop_root(&mut ctx, tree_root));
+}
+
+#[test]
 fn subst_checks_keyword_arguments() {
     let (runtime, mut ctx, functions) = setup();
     let mut root_tokens = Vec::new();
@@ -418,6 +479,885 @@ fn subst_checks_keyword_arguments() {
     );
 
     for token in root_tokens.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn subst_if_uses_keyed_tree_candidates_without_mutating_the_input() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut tree = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut tree));
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    roots.push(ncl_object::push_root(&mut ctx, &mut key_keyword));
+    let mut listp = builtin_word(&mut ctx, &runtime, "LISTP");
+    roots.push(ncl_object::push_root(&mut ctx, &mut listp));
+
+    let result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "SUBST-IF",
+        &[Word::fixnum(9), listp, tree, key_keyword, listp],
+    );
+    assert_eq!(ncl_object::car(&ctx, result), Ok(Word::fixnum(9)));
+    assert_eq!(ncl_object::cdr(&ctx, result), Ok(Word::fixnum(9)));
+    assert_eq!(ncl_object::car(&ctx, tree), Ok(Word::fixnum(1)));
+    assert_eq!(ncl_object::cdr(&ctx, tree), Ok(Word::fixnum(2)));
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn subst_if_not_matches_false_keyed_predicates_without_mutating_the_input() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut leaf = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut leaf));
+    let mut tree = call(&runtime, &mut ctx, &functions, "CONS", &[leaf, Word::NIL]);
+    roots.push(ncl_object::push_root(&mut ctx, &mut tree));
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    roots.push(ncl_object::push_root(&mut ctx, &mut key_keyword));
+    let mut car = builtin_word(&mut ctx, &runtime, "CAR");
+    roots.push(ncl_object::push_root(&mut ctx, &mut car));
+    let mut listp = builtin_word(&mut ctx, &runtime, "LISTP");
+    roots.push(ncl_object::push_root(&mut ctx, &mut listp));
+
+    let result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "SUBST-IF-NOT",
+        &[Word::fixnum(9), listp, tree, key_keyword, car],
+    );
+    assert_eq!(ncl_object::car(&ctx, result), Ok(Word::fixnum(9)));
+    assert_eq!(ncl_object::cdr(&ctx, result), Ok(Word::NIL));
+    assert_eq!(ncl_object::car(&ctx, tree), Ok(leaf));
+    assert_eq!(ncl_object::cdr(&ctx, tree), Ok(Word::NIL));
+    assert_eq!(ncl_object::car(&ctx, leaf), Ok(Word::fixnum(1)));
+    assert_eq!(ncl_object::cdr(&ctx, leaf), Ok(Word::fixnum(2)));
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn nsubst_mutates_conses_and_matches_subst_with_key_and_test() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut original = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut original));
+    let mut mutated = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut mutated));
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    roots.push(ncl_object::push_root(&mut ctx, &mut key_keyword));
+    let mut test_keyword = keyword(&mut ctx, &runtime, "TEST");
+    roots.push(ncl_object::push_root(&mut ctx, &mut test_keyword));
+    let mut consp = builtin_word(&mut ctx, &runtime, "CONSP");
+    roots.push(ncl_object::push_root(&mut ctx, &mut consp));
+    let mut equal = builtin_word(&mut ctx, &runtime, "EQUAL");
+    roots.push(ncl_object::push_root(&mut ctx, &mut equal));
+
+    let expected = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "SUBST",
+        &[
+            Word::fixnum(9),
+            Word::NIL,
+            original,
+            key_keyword,
+            consp,
+            test_keyword,
+            equal,
+        ],
+    );
+    let mut expected = expected;
+    roots.push(ncl_object::push_root(&mut ctx, &mut expected));
+    assert_eq!(ncl_object::car(&ctx, original), Ok(Word::fixnum(1)));
+    assert_eq!(ncl_object::cdr(&ctx, original), Ok(Word::fixnum(2)));
+
+    let result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "NSUBST",
+        &[
+            Word::fixnum(9),
+            Word::NIL,
+            mutated,
+            key_keyword,
+            consp,
+            test_keyword,
+            equal,
+        ],
+    );
+    assert_eq!(result, mutated);
+    assert_eq!(ncl_object::car(&ctx, mutated), Ok(Word::fixnum(9)));
+    assert_eq!(ncl_object::cdr(&ctx, mutated), Ok(Word::fixnum(9)));
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUAL", &[expected, result]),
+        Word::TRUE
+    );
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn nsubst_mutates_conses_and_matches_subst_with_key_and_test_not() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut original = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut original));
+    let mut mutated = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut mutated));
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    roots.push(ncl_object::push_root(&mut ctx, &mut key_keyword));
+    let mut test_not_keyword = keyword(&mut ctx, &runtime, "TEST-NOT");
+    roots.push(ncl_object::push_root(&mut ctx, &mut test_not_keyword));
+    let mut consp = builtin_word(&mut ctx, &runtime, "CONSP");
+    roots.push(ncl_object::push_root(&mut ctx, &mut consp));
+    let mut equal = builtin_word(&mut ctx, &runtime, "EQUAL");
+    roots.push(ncl_object::push_root(&mut ctx, &mut equal));
+
+    let expected = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "SUBST",
+        &[
+            Word::fixnum(9),
+            Word::TRUE,
+            original,
+            key_keyword,
+            consp,
+            test_not_keyword,
+            equal,
+        ],
+    );
+    let mut expected = expected;
+    roots.push(ncl_object::push_root(&mut ctx, &mut expected));
+    assert_eq!(ncl_object::car(&ctx, original), Ok(Word::fixnum(1)));
+    assert_eq!(ncl_object::cdr(&ctx, original), Ok(Word::fixnum(2)));
+
+    let result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "NSUBST",
+        &[
+            Word::fixnum(9),
+            Word::TRUE,
+            mutated,
+            key_keyword,
+            consp,
+            test_not_keyword,
+            equal,
+        ],
+    );
+    assert_eq!(result, mutated);
+    assert_eq!(ncl_object::car(&ctx, mutated), Ok(Word::fixnum(9)));
+    assert_eq!(ncl_object::cdr(&ctx, mutated), Ok(Word::fixnum(9)));
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUAL", &[expected, result]),
+        Word::TRUE
+    );
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn nsubst_if_mutates_conses_and_matches_subst_if() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut original = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut original));
+    let mut mutated = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut mutated));
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    roots.push(ncl_object::push_root(&mut ctx, &mut key_keyword));
+    let mut listp = builtin_word(&mut ctx, &runtime, "LISTP");
+    roots.push(ncl_object::push_root(&mut ctx, &mut listp));
+
+    let expected = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "SUBST-IF",
+        &[Word::fixnum(9), listp, original, key_keyword, listp],
+    );
+    let mut expected = expected;
+    roots.push(ncl_object::push_root(&mut ctx, &mut expected));
+    assert_eq!(ncl_object::car(&ctx, original), Ok(Word::fixnum(1)));
+    assert_eq!(ncl_object::cdr(&ctx, original), Ok(Word::fixnum(2)));
+
+    let result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "NSUBST-IF",
+        &[Word::fixnum(9), listp, mutated, key_keyword, listp],
+    );
+    assert_eq!(result, mutated);
+    assert_eq!(ncl_object::car(&ctx, mutated), Ok(Word::fixnum(9)));
+    assert_eq!(ncl_object::cdr(&ctx, mutated), Ok(Word::fixnum(9)));
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUAL", &[expected, result]),
+        Word::TRUE
+    );
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn nsubst_if_not_mutates_conses_and_matches_subst_if_not() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut original_leaf = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut original_leaf));
+    let mut original = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[original_leaf, Word::NIL],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut original));
+    let mut mutated_leaf = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut mutated_leaf));
+    let mut mutated = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[mutated_leaf, Word::NIL],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut mutated));
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    roots.push(ncl_object::push_root(&mut ctx, &mut key_keyword));
+    let mut car = builtin_word(&mut ctx, &runtime, "CAR");
+    roots.push(ncl_object::push_root(&mut ctx, &mut car));
+    let mut listp = builtin_word(&mut ctx, &runtime, "LISTP");
+    roots.push(ncl_object::push_root(&mut ctx, &mut listp));
+
+    let expected = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "SUBST-IF-NOT",
+        &[Word::fixnum(9), listp, original, key_keyword, car],
+    );
+    let mut expected = expected;
+    roots.push(ncl_object::push_root(&mut ctx, &mut expected));
+    assert_eq!(ncl_object::car(&ctx, original), Ok(original_leaf));
+    assert_eq!(ncl_object::car(&ctx, original_leaf), Ok(Word::fixnum(1)));
+    assert_eq!(ncl_object::cdr(&ctx, original_leaf), Ok(Word::fixnum(2)));
+
+    let result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "NSUBST-IF-NOT",
+        &[Word::fixnum(9), listp, mutated, key_keyword, car],
+    );
+    assert_eq!(result, mutated);
+    assert_eq!(ncl_object::car(&ctx, mutated), Ok(Word::fixnum(9)));
+    assert_eq!(ncl_object::cdr(&ctx, mutated), Ok(Word::NIL));
+    assert_eq!(ncl_object::car(&ctx, original), Ok(original_leaf));
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUAL", &[expected, result]),
+        Word::TRUE
+    );
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn sublis_uses_first_alist_match_and_test_argument_order() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut first_entry = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(3), Word::fixnum(10)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut first_entry));
+    let mut second_entry = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(3), Word::fixnum(20)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut second_entry));
+    let mut duplicate_alist = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "LIST",
+        &[first_entry, second_entry],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut duplicate_alist));
+    let mut test_keyword = keyword(&mut ctx, &runtime, "TEST");
+    roots.push(ncl_object::push_root(&mut ctx, &mut test_keyword));
+    let mut equal = builtin_word(&mut ctx, &runtime, "EQUAL");
+    roots.push(ncl_object::push_root(&mut ctx, &mut equal));
+
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "SUBLIS",
+            &[duplicate_alist, Word::fixnum(3), test_keyword, equal],
+        ),
+        Word::fixnum(10)
+    );
+
+    let mut order_entry = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(3), Word::fixnum(9)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut order_entry));
+    let mut order_alist = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[order_entry, Word::NIL],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut order_alist));
+    let mut order_tree = call(&runtime, &mut ctx, &functions, "LIST", &[Word::fixnum(3)]);
+    roots.push(ncl_object::push_root(&mut ctx, &mut order_tree));
+    let mut member = builtin_word(&mut ctx, &runtime, "MEMBER");
+    roots.push(ncl_object::push_root(&mut ctx, &mut member));
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "SUBLIS",
+            &[order_alist, order_tree, test_keyword, member],
+        ),
+        Word::fixnum(9)
+    );
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn sublis_keys_only_tree_candidates_with_test_and_test_not() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut test_keyword = keyword(&mut ctx, &runtime, "TEST");
+    roots.push(ncl_object::push_root(&mut ctx, &mut test_keyword));
+    let mut equal = builtin_word(&mut ctx, &runtime, "EQUAL");
+    roots.push(ncl_object::push_root(&mut ctx, &mut equal));
+
+    let mut keyed_entry = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(3), Word::fixnum(9)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut keyed_entry));
+    let mut keyed_alist = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[keyed_entry, Word::NIL],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut keyed_alist));
+    let mut tree_candidate = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(3), Word::fixnum(4)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut tree_candidate));
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    roots.push(ncl_object::push_root(&mut ctx, &mut key_keyword));
+    let mut car = builtin_word(&mut ctx, &runtime, "CAR");
+    roots.push(ncl_object::push_root(&mut ctx, &mut car));
+
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "SUBLIS",
+            &[
+                keyed_alist,
+                tree_candidate,
+                key_keyword,
+                car,
+                test_keyword,
+                equal,
+            ],
+        ),
+        Word::fixnum(9)
+    );
+    assert_eq!(ncl_object::car(&ctx, tree_candidate), Ok(Word::fixnum(3)));
+    assert_eq!(ncl_object::cdr(&ctx, tree_candidate), Ok(Word::fixnum(4)));
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn sublis_applies_test_not_after_key() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    roots.push(ncl_object::push_root(&mut ctx, &mut key_keyword));
+    let mut equal = builtin_word(&mut ctx, &runtime, "EQUAL");
+    roots.push(ncl_object::push_root(&mut ctx, &mut equal));
+
+    let mut not_entry = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::TRUE, Word::fixnum(9)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut not_entry));
+    let mut not_alist = call(&runtime, &mut ctx, &functions, "LIST", &[not_entry]);
+    roots.push(ncl_object::push_root(&mut ctx, &mut not_alist));
+    let mut not_tree = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut not_tree));
+    let mut test_not_keyword = keyword(&mut ctx, &runtime, "TEST-NOT");
+    roots.push(ncl_object::push_root(&mut ctx, &mut test_not_keyword));
+    let mut consp = builtin_word(&mut ctx, &runtime, "CONSP");
+    roots.push(ncl_object::push_root(&mut ctx, &mut consp));
+    let result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "SUBLIS",
+        &[
+            not_alist,
+            not_tree,
+            key_keyword,
+            consp,
+            test_not_keyword,
+            equal,
+        ],
+    );
+    assert_eq!(ncl_object::car(&ctx, result), Ok(Word::fixnum(9)));
+    assert_eq!(ncl_object::cdr(&ctx, result), Ok(Word::fixnum(9)));
+    assert_eq!(ncl_object::car(&ctx, not_tree), Ok(Word::fixnum(1)));
+    assert_eq!(ncl_object::cdr(&ctx, not_tree), Ok(Word::fixnum(2)));
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn nsublis_mutates_conses_and_matches_sublis_with_test_not() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut alist_entry = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::TRUE, Word::fixnum(9)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut alist_entry));
+    let mut alist = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[alist_entry, Word::NIL],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut alist));
+    let mut original = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut original));
+    let mut mutated = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut mutated));
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    roots.push(ncl_object::push_root(&mut ctx, &mut key_keyword));
+    let mut test_not_keyword = keyword(&mut ctx, &runtime, "TEST-NOT");
+    roots.push(ncl_object::push_root(&mut ctx, &mut test_not_keyword));
+    let mut consp = builtin_word(&mut ctx, &runtime, "CONSP");
+    roots.push(ncl_object::push_root(&mut ctx, &mut consp));
+    let mut equal = builtin_word(&mut ctx, &runtime, "EQUAL");
+    roots.push(ncl_object::push_root(&mut ctx, &mut equal));
+
+    let expected = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "SUBLIS",
+        &[alist, original, key_keyword, consp, test_not_keyword, equal],
+    );
+    let mut expected = expected;
+    roots.push(ncl_object::push_root(&mut ctx, &mut expected));
+    assert_eq!(ncl_object::car(&ctx, original), Ok(Word::fixnum(1)));
+    assert_eq!(ncl_object::cdr(&ctx, original), Ok(Word::fixnum(2)));
+
+    let result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "NSUBLIS",
+        &[alist, mutated, key_keyword, consp, test_not_keyword, equal],
+    );
+    assert_eq!(result, mutated);
+    assert_eq!(ncl_object::car(&ctx, mutated), Ok(Word::fixnum(9)));
+    assert_eq!(ncl_object::cdr(&ctx, mutated), Ok(Word::fixnum(9)));
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EQUAL", &[expected, result]),
+        Word::TRUE
+    );
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn nsublis_uses_first_alist_match() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut first_entry = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(3), Word::fixnum(10)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut first_entry));
+    let mut second_entry = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(3), Word::fixnum(20)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut second_entry));
+    let mut rest = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[second_entry, Word::NIL],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut rest));
+    let mut ordered_alist = call(&runtime, &mut ctx, &functions, "CONS", &[first_entry, rest]);
+    roots.push(ncl_object::push_root(&mut ctx, &mut ordered_alist));
+    let mut test_keyword = keyword(&mut ctx, &runtime, "TEST");
+    roots.push(ncl_object::push_root(&mut ctx, &mut test_keyword));
+    let mut equal = builtin_word(&mut ctx, &runtime, "EQUAL");
+    roots.push(ncl_object::push_root(&mut ctx, &mut equal));
+
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "NSUBLIS",
+            &[ordered_alist, Word::fixnum(3), test_keyword, equal],
+        ),
+        Word::fixnum(10)
+    );
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn nsublis_keys_only_tree_candidates() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut entry = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(3), Word::fixnum(9)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut entry));
+    let mut alist = call(&runtime, &mut ctx, &functions, "LIST", &[entry]);
+    roots.push(ncl_object::push_root(&mut ctx, &mut alist));
+    let mut tree = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(3), Word::fixnum(4)],
+    );
+    roots.push(ncl_object::push_root(&mut ctx, &mut tree));
+    let mut key_keyword = keyword(&mut ctx, &runtime, "KEY");
+    roots.push(ncl_object::push_root(&mut ctx, &mut key_keyword));
+    let mut consp = builtin_word(&mut ctx, &runtime, "CONSP");
+    roots.push(ncl_object::push_root(&mut ctx, &mut consp));
+
+    let result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "NSUBLIS",
+        &[alist, tree, key_keyword, consp],
+    );
+    assert_eq!(result, tree);
+    assert_eq!(ncl_object::car(&ctx, tree), Ok(Word::fixnum(3)));
+    assert_eq!(ncl_object::cdr(&ctx, tree), Ok(Word::fixnum(4)));
+
+    for token in roots.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+}
+
+#[test]
+fn sublis_and_nsublis_skip_nil_alist_entries() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut nil_key_entry = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::NIL, Word::fixnum(7)],
+    );
+    let entry_root = ncl_object::push_root(&mut ctx, &mut nil_key_entry);
+    let mut alist = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "LIST",
+        &[Word::NIL, nil_key_entry],
+    );
+    let alist_root = ncl_object::push_root(&mut ctx, &mut alist);
+    let mut tree = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::NIL, Word::NIL],
+    );
+    let tree_root = ncl_object::push_root(&mut ctx, &mut tree);
+
+    let mut result = call(&runtime, &mut ctx, &functions, "SUBLIS", &[alist, tree]);
+    let result_root = ncl_object::push_root(&mut ctx, &mut result);
+    assert_eq!(ncl_object::car(&ctx, result), Ok(Word::fixnum(7)));
+    assert_eq!(ncl_object::cdr(&ctx, result), Ok(Word::fixnum(7)));
+
+    let mut destructive_tree = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::NIL, Word::NIL],
+    );
+    let destructive_tree_root = ncl_object::push_root(&mut ctx, &mut destructive_tree);
+    let mut destructive_result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "NSUBLIS",
+        &[alist, destructive_tree],
+    );
+    let destructive_result_root = ncl_object::push_root(&mut ctx, &mut destructive_result);
+    assert_eq!(destructive_result, destructive_tree);
+    assert_eq!(ncl_object::car(&ctx, destructive_tree), Ok(Word::fixnum(7)));
+    assert_eq!(ncl_object::cdr(&ctx, destructive_tree), Ok(Word::fixnum(7)));
+
+    assert!(ncl_object::pop_root(&mut ctx, destructive_result_root));
+    assert!(ncl_object::pop_root(&mut ctx, destructive_tree_root));
+    assert!(ncl_object::pop_root(&mut ctx, result_root));
+    assert!(ncl_object::pop_root(&mut ctx, tree_root));
+    assert!(ncl_object::pop_root(&mut ctx, alist_root));
+    assert!(ncl_object::pop_root(&mut ctx, entry_root));
+}
+
+#[test]
+fn tree_substitution_rejects_conflicting_and_predicate_test_options() {
+    let (runtime, mut ctx, functions) = setup();
+    let mut roots = Vec::new();
+    let mut test_keyword = keyword(&mut ctx, &runtime, "TEST");
+    roots.push(ncl_object::push_root(&mut ctx, &mut test_keyword));
+    let mut test_not_keyword = keyword(&mut ctx, &runtime, "TEST-NOT");
+    roots.push(ncl_object::push_root(&mut ctx, &mut test_not_keyword));
+    let mut equal = builtin_word(&mut ctx, &runtime, "EQUAL");
+    roots.push(ncl_object::push_root(&mut ctx, &mut equal));
+
+    for name in ["SUBST", "NSUBST"] {
+        assert_tree_substitution_type_error(
+            &runtime,
+            &mut ctx,
+            &functions,
+            name,
+            &[
+                Word::fixnum(9),
+                Word::fixnum(1),
+                Word::fixnum(1),
+                test_keyword,
+                equal,
+                test_not_keyword,
+                equal,
+            ],
+        );
+    }
+    for name in ["SUBST-IF", "SUBST-IF-NOT", "NSUBST-IF", "NSUBST-IF-NOT"] {
+        assert_tree_substitution_type_error(
+            &runtime,
+            &mut ctx,
+            &functions,
+            name,
+            &[
+                Word::fixnum(9),
+                equal,
+                Word::fixnum(1),
+                test_keyword,
+                equal,
+                test_not_keyword,
+                equal,
+            ],
+        );
+        assert_tree_substitution_type_error(
+            &runtime,
+            &mut ctx,
+            &functions,
+            name,
+            &[Word::fixnum(9), equal, Word::fixnum(1), test_keyword, equal],
+        );
+        assert_tree_substitution_type_error(
+            &runtime,
+            &mut ctx,
+            &functions,
+            name,
+            &[
+                Word::fixnum(9),
+                equal,
+                Word::fixnum(1),
+                test_not_keyword,
+                equal,
+            ],
+        );
+    }
+    for name in ["SUBLIS", "NSUBLIS"] {
+        assert_tree_substitution_type_error(
+            &runtime,
+            &mut ctx,
+            &functions,
+            name,
+            &[
+                Word::NIL,
+                Word::fixnum(1),
+                test_keyword,
+                equal,
+                test_not_keyword,
+                equal,
+            ],
+        );
+    }
+
+    for token in roots.into_iter().rev() {
         assert!(ncl_object::pop_root(&mut ctx, token));
     }
 }

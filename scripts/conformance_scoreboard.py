@@ -345,13 +345,27 @@ def _driver_times(
     return times
 
 
+def _driver_wall_time(value: Any, *, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"cl-bench {field} must be a finite non-negative number")
+    try:
+        normalized = float(value)
+    except OverflowError as error:
+        raise ValueError(
+            f"cl-bench {field} must be a finite non-negative number"
+        ) from error
+    if not math.isfinite(normalized) or normalized < 0:
+        raise ValueError(f"cl-bench {field} must be a finite non-negative number")
+    return normalized
+
+
 def _validate_cl_bench_benchmark(
     name: str, record: Any
 ) -> tuple[dict[str, Any], list[float]]:
     if not isinstance(name, str) or not name:
         raise ValueError("cl-bench benchmark names must be non-empty strings")
     if not isinstance(record, dict) or set(record) != {
-        "status", "stage", "times", "condition",
+        "status", "stage", "times", "condition", "wall_time_seconds",
     }:
         raise ValueError(f"cl-bench benchmark {name} has an unexpected shape")
     row_status = record.get("status")
@@ -367,6 +381,9 @@ def _validate_cl_bench_benchmark(
         record.get("times"),
         field=f"{name} times",
         require_positive=row_status not in ("failed", "timeout"),
+    )
+    wall_time_seconds = _driver_wall_time(
+        record.get("wall_time_seconds"), field=f"{name} wall_time_seconds"
     )
 
     if row_status == "passed":
@@ -389,6 +406,7 @@ def _validate_cl_bench_benchmark(
         "stage": stage,
         "times": row_times,
         "condition": condition,
+        "wall_time_seconds": wall_time_seconds,
     }, passed_times
 
 
@@ -552,6 +570,7 @@ def make_scoreboard(
                     if row["condition"] is not None
                     else None
                 ),
+                "wall_time_seconds": row["wall_time_seconds"],
             }
             for name, row in bench_report["benchmarks"].items()
         }

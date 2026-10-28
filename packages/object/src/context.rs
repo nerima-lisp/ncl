@@ -6,8 +6,8 @@ use evaluator_access::EvaluatorAccessSlot;
 use crate::{LispError, ObjectError, Runtime};
 use core::cell::Cell;
 use ncl_sys::{
-    Heap, RootToken, RuntimeErrorPayloadKind, RuntimeErrorPayloadSlot, RuntimeErrorSource,
-    StorageCondition, Thread, Word,
+    Heap, NativeState, RootToken, RuntimeErrorPayloadKind, RuntimeErrorPayloadSlot,
+    RuntimeErrorSource, StorageCondition, Thread, Word,
 };
 use std::sync::Arc;
 
@@ -366,6 +366,32 @@ impl ThreadContext {
     /// ```
     pub fn thread_access(&mut self) -> ncl_sys::ThreadAccess<'_> {
         ncl_sys::ThreadAccess::new(self.thread.as_mut())
+    }
+    /// Return the thread's current Lisp or native state.
+    #[must_use]
+    pub const fn native_state(&self) -> NativeState {
+        self.thread.native_state()
+    }
+    /// Runtime-internal bridge for capturing a frame during a trampoline callback.
+    ///
+    /// `frame_fp` and `return_pc` must identify a live generated caller frame supplied by
+    /// the trampoline. The trampoline must call `write_back_frame_snapshot` before it returns.
+    #[doc(hidden)]
+    pub fn capture_native_frame(&mut self, frame_fp: usize, return_pc: usize) -> bool {
+        self.thread.capture_native_frame(frame_fp, return_pc);
+        !self.thread.frame_snapshot_failed()
+    }
+    /// Whether the most recent generated-frame capture could not find its PC map.
+    #[must_use]
+    pub const fn frame_snapshot_failed(&self) -> bool {
+        self.thread.frame_snapshot_failed()
+    }
+    /// Complete a trampoline callback that successfully captured a generated frame.
+    ///
+    /// Call this before the trampoline returns, and only for a frame captured by that invocation.
+    #[doc(hidden)]
+    pub fn write_back_frame_snapshot(&mut self) {
+        self.thread.write_back_frame_snapshot();
     }
     /// Mark an object as weak with the requested policy.
     ///

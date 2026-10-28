@@ -15,6 +15,10 @@ const EMPTY_VALUES_ID: BuiltinIdentifier = BuiltinIdentifier::new(
     BuiltinPackage::NclTest,
     BuiltinName::new("RUNTIME-EMPTY-VALUES"),
 );
+const NATIVE_ALLOCATING_ID: BuiltinIdentifier = BuiltinIdentifier::new(
+    BuiltinPackage::NclTest,
+    BuiltinName::new("RUNTIME-NATIVE-ALLOCATING"),
+);
 const PARAMETERS: &[Parameter] = &[
     Parameter {
         name: BuiltinName::new("LEFT"),
@@ -59,6 +63,21 @@ fn optional_empty_values(
     Ok(Word::fixnum(7))
 }
 
+fn allocating_builtin_observes_native_state(
+    context: &mut ncl_object::ThreadContext,
+    runtime: &ncl_object::Runtime,
+    _args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ncl_object::ObjectError> {
+    let entered_native = context.native_state() == ncl_sys::NativeState::Native;
+    ncl_object::make_cons(context, runtime, Word::TRUE, Word::NIL)?;
+    Ok(if entered_native {
+        Word::TRUE
+    } else {
+        Word::NIL
+    })
+}
+
 fn register_builtin(runtime: &mut Runtime) -> ncl_object::FunctionObject {
     let descriptor = Builtin {
         lambda_list: LambdaList::new(PARAMETERS, &[], None, &[], false),
@@ -87,6 +106,21 @@ fn register_empty_values_builtin(runtime: &mut Runtime) -> ncl_object::FunctionO
             BuiltinImplementation::direct(descriptor, optional_empty_values),
         )
         .unwrap_or_else(|error| panic!("register empty-values builtin: {error:?}"))
+}
+
+fn register_native_allocating_builtin(runtime: &mut Runtime) -> FunctionObject {
+    let descriptor = Builtin {
+        lambda_list: LambdaList::new(&[], &[], None, &[], false),
+        convention: BuiltinConvention::Direct(Arity::exact(0)),
+    };
+    runtime
+        .object
+        .register_builtin(
+            &mut runtime.context,
+            NATIVE_ALLOCATING_ID,
+            BuiltinImplementation::direct(descriptor, allocating_builtin_observes_native_state),
+        )
+        .unwrap_or_else(|error| panic!("register native allocating builtin: {error:?}"))
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
@@ -140,6 +174,10 @@ fn native_builtin_trampoline_publishes_values_within_the_abi_limit() {
             &mut values,
         ),
         Ok(Word::fixnum(7))
+    );
+    assert!(
+        !runtime.context.frame_snapshot_failed(),
+        "direct Rust ENTRY call must not capture its unmapped caller PC"
     );
     assert_eq!(values.as_slice(), &[Word::fixnum(7)]);
     assert!(values.is_explicit());
@@ -200,6 +238,31 @@ fn native_builtin_trampoline_publishes_values_within_the_abi_limit() {
     );
     assert!(values.is_empty());
     assert!(!values.is_explicit());
+}
+
+#[test]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+fn direct_rust_builtin_entry_enters_native_while_allocating() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let function = register_native_allocating_builtin(&mut runtime);
+    let code = function_code(&runtime.context, Function::from_word(function.as_word()))
+        .unwrap_or_else(|error| panic!("native allocating code object: {error:?}"));
+    runtime.context.set_gc_stress(true);
+    let mut args = [];
+    let mut values = MultipleValues::new();
+
+    assert_eq!(
+        call_builtin_through_native_trampoline(
+            &mut runtime,
+            function,
+            code,
+            &mut args,
+            &mut values,
+        ),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(runtime.context.native_state(), ncl_sys::NativeState::Lisp);
+    assert!(!runtime.context.frame_snapshot_failed());
 }
 
 #[test]

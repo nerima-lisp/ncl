@@ -82,6 +82,14 @@ impl EvaluatorService {
             .map(|(word, _)| **word)
     }
 
+    fn contains_pc(&self, context: &ThreadContext, pc: usize) -> bool {
+        self.state
+            .entry_codes
+            .borrow()
+            .values()
+            .any(|(word, _)| code_object_contains_pc(context, **word, pc))
+    }
+
     pub(crate) fn push_code(&self, code: CodePtr) {
         self.state.code.borrow_mut().push(code);
     }
@@ -102,12 +110,19 @@ impl EntryCodeLookup for EvaluatorService {
     fn code_object_word(&self, entry: usize) -> Option<Word> {
         self.entry_code(entry)
     }
+
+    fn contains_generated_pc(&self, context: &ThreadContext, pc: usize) -> bool {
+        self.contains_pc(context, pc)
+    }
 }
 
 /// Returns a copied rooted code-object word so lookup borrows end before callbacks allocate.
 pub trait EntryCodeLookup {
     /// Resolve an entry to a copied code-object word before allocation can run.
     fn code_object_word(&self, entry: usize) -> Option<Word>;
+
+    /// Whether a continuation PC belongs to a rooted generated code object.
+    fn contains_generated_pc(&self, context: &ThreadContext, pc: usize) -> bool;
 }
 
 // check-added-lines: allow(word-table) legacy callers retain each code object's RootToken
@@ -115,6 +130,36 @@ impl EntryCodeLookup for BTreeMap<usize, (Box<Word>, RootToken)> {
     fn code_object_word(&self, entry: usize) -> Option<Word> {
         self.get(&entry).map(|(word, _)| **word)
     }
+
+    fn contains_generated_pc(&self, context: &ThreadContext, pc: usize) -> bool {
+        self.values()
+            .any(|(word, _)| code_object_contains_pc(context, **word, pc))
+    }
+}
+
+fn code_object_contains_pc(context: &ThreadContext, word: Word, pc: usize) -> bool {
+    let code = CodeObject::from_word(word);
+    let Ok(entry) = ncl_object::code_entry(context, code) else {
+        return false;
+    };
+    let Ok(size) = ncl_object::code_size(context, code) else {
+        return false;
+    };
+    let Some(entry) = entry
+        .as_fixnum()
+        .and_then(|value| usize::try_from(value).ok())
+    else {
+        return false;
+    };
+    let Some(size) = size
+        .as_fixnum()
+        .and_then(|value| usize::try_from(value).ok())
+    else {
+        return false;
+    };
+    entry
+        .checked_add(size)
+        .is_some_and(|end| entry <= pc && pc < end)
 }
 
 pub struct NativeInvocation<'a> {
@@ -189,6 +234,33 @@ mod tests {
 
         assert_eq!(evaluator.code_object_word(17), Some(Word::TRUE));
         assert_eq!(evaluator.code_object_word(18), None);
+
+        evaluator.clear_roots(&mut context);
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn evaluator_service_matches_only_pcs_inside_rooted_code_objects() {
+        let object = ncl_object::Runtime::new().expect("object runtime");
+        let mut context = ncl_object::ThreadContext::new();
+        context.register(&object).expect("thread registration");
+        let evaluator = EvaluatorService::new(Vec::new(), 0);
+        let code_entry = 0x1000_usize;
+        let code = ncl_object::make_code_object(
+            &mut context,
+            &object,
+            code_entry,
+            32,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .expect("generated code object");
+        evaluator.root_entry_code(&mut context, code_entry, code.as_word());
+
+        assert!(evaluator.contains_generated_pc(&context, code_entry));
+        assert!(evaluator.contains_generated_pc(&context, code_entry + 31));
+        assert!(!evaluator.contains_generated_pc(&context, code_entry + 32));
 
         evaluator.clear_roots(&mut context);
     }

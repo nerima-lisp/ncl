@@ -21,8 +21,9 @@ pub const fn record_boundary_error(context: &mut ThreadContext, error: ncl_objec
 /// shared `extern "C"` dispatcher receives them. `argc`/`a0..a3`/`rest` mirror
 /// the native Lisp calling convention's own argument-count/argument-list
 /// registers; `function_object`/`thread_ptr` are the two pinned registers the
-/// ISA stub moves into ordinary argument slots before tail-calling this
-/// function.
+/// ISA stub moves into ordinary argument slots. The stub also passes the
+/// caller's frame pointer and continuation PC so this boundary can publish a
+/// generated frame before dispatching the builtin.
 #[allow(clippy::similar_names, clippy::too_many_arguments)]
 pub(super) extern "C" fn dispatch(
     argc: u64,
@@ -33,11 +34,19 @@ pub(super) extern "C" fn dispatch(
     rest: u64,
     function_object: u64,
     thread_ptr: u64,
+    frame_fp: u64,
+    return_pc: u64,
 ) -> NativeCallResult {
     let Ok(address) = usize::try_from(thread_ptr) else {
         return error_result();
     };
     let Some(thread) = NonNull::new(std::ptr::without_provenance_mut::<Thread>(address)) else {
+        return error_result();
+    };
+    let Ok(frame_fp) = usize::try_from(frame_fp) else {
+        return error_result();
+    };
+    let Ok(return_pc) = usize::try_from(return_pc) else {
         return error_result();
     };
     // `unwrap_or_else` is banned project-wide by `check_added_lines.py`
@@ -46,7 +55,9 @@ pub(super) extern "C" fn dispatch(
     // form clippy would otherwise prefer.
     #[allow(clippy::option_if_let_else)]
     match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
-        dispatch_with_context(invocation, argc, [a0, a1, a2, a3], rest, function_object)
+        super::boundary_stub::with_generated_frame(invocation, frame_fp, return_pc, |invocation| {
+            dispatch_with_context(invocation, argc, [a0, a1, a2, a3], rest, function_object)
+        })
     }) {
         Some(result) => result,
         None => error_result(),

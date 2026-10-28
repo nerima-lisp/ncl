@@ -83,11 +83,17 @@ impl EvaluatorService {
     }
 
     fn contains_pc(&self, context: &ThreadContext, pc: usize) -> bool {
-        self.state
-            .entry_codes
-            .borrow()
-            .values()
-            .any(|(word, _)| code_object_contains_pc(context, **word, pc))
+        let entry_codes = self.state.entry_codes.borrow();
+        let Some((&entry, (word, _))) = entry_codes.range(..=pc).next_back() else {
+            return false;
+        };
+        if code_object_contains_pc(context, **word, pc) {
+            return true;
+        }
+        entry_codes
+            .range(..entry)
+            .rev()
+            .any(|(_, (word, _))| code_object_contains_pc(context, **word, pc))
     }
 
     pub(crate) fn push_code(&self, code: CodePtr) {
@@ -132,8 +138,15 @@ impl EntryCodeLookup for BTreeMap<usize, (Box<Word>, RootToken)> {
     }
 
     fn contains_generated_pc(&self, context: &ThreadContext, pc: usize) -> bool {
-        self.values()
-            .any(|(word, _)| code_object_contains_pc(context, **word, pc))
+        let Some((&entry, (word, _))) = self.range(..=pc).next_back() else {
+            return false;
+        };
+        if code_object_contains_pc(context, **word, pc) {
+            return true;
+        }
+        self.range(..entry)
+            .rev()
+            .any(|(_, (word, _))| code_object_contains_pc(context, **word, pc))
     }
 }
 
@@ -257,10 +270,36 @@ mod tests {
         )
         .expect("generated code object");
         evaluator.root_entry_code(&mut context, code_entry, code.as_word());
+        let overlapping_code = ncl_object::make_code_object(
+            &mut context,
+            &object,
+            code_entry + 16,
+            8,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .expect("overlapping generated code object");
+        evaluator.root_entry_code(&mut context, code_entry + 16, overlapping_code.as_word());
+        let next_entry = code_entry + 64;
+        let next_code = ncl_object::make_code_object(
+            &mut context,
+            &object,
+            next_entry,
+            32,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .expect("next generated code object");
+        evaluator.root_entry_code(&mut context, next_entry, next_code.as_word());
 
         assert!(evaluator.contains_generated_pc(&context, code_entry));
         assert!(evaluator.contains_generated_pc(&context, code_entry + 31));
         assert!(!evaluator.contains_generated_pc(&context, code_entry + 32));
+        assert!(evaluator.contains_generated_pc(&context, next_entry));
+        assert!(evaluator.contains_generated_pc(&context, next_entry + 31));
+        assert!(!evaluator.contains_generated_pc(&context, next_entry + 32));
 
         evaluator.clear_roots(&mut context);
     }

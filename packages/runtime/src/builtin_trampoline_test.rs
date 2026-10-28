@@ -36,6 +36,34 @@ fn x86_stub_places_pinned_and_frame_arguments_in_sysv_stack_slots() -> Result<()
 }
 
 #[test]
+fn aarch64_stub_saves_frame_and_calls_dispatcher() -> Result<(), String> {
+    let bytes = super::boundary_stub::build_aarch64_stub(0x1122_3344_5566_7788)
+        .map_err(|error| format!("aarch64 stub assembly: {error}"))?;
+    let contains = |instruction| bytes.windows(4).any(|window| window == instruction);
+    // check-added-lines: allow(panic) test-only
+    assert!(
+        bytes.len() == 56
+            && bytes.starts_with(&[0xff, 0x83, 0x00, 0xd1])
+            && contains([0xfd, 0x03, 0x00, 0xf8])
+            && contains([0xfe, 0x83, 0x00, 0xf8])
+            && contains([0xfe, 0x03, 0x01, 0xf8])
+            && contains([0xe6, 0x03, 0x10, 0xaa])
+            && contains([0xe7, 0x03, 0x15, 0xaa])
+            && contains([0x20, 0x01, 0x3f, 0xd6])
+            && contains([0xfe, 0x03, 0x41, 0xf8])
+            && contains([0xff, 0x83, 0x00, 0x91])
+            && bytes.ends_with(&[0xc0, 0x03, 0x5f, 0xd6])
+    );
+    Ok(())
+}
+
+#[test]
+fn x86_stub_rejects_unrepresentable_dispatch_address() {
+    // check-added-lines: allow(panic) test-only
+    assert!(build_x86_64_stub(u64::MAX).is_err());
+}
+
+#[test]
 fn boundary_non_local_exit_is_dropped_during_unwind() {
     let mut context = ThreadContext::new();
     context.set_non_local_exit(true);

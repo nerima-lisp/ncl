@@ -74,6 +74,23 @@ fn assert_defgeneric_error_for_options(
     assert_defgeneric_error_expansion(runtime, context, form_word, generic_name)
 }
 
+fn defgeneric_form<'ctx>(
+    scope: &mut Scope<'ctx>,
+    runtime: &Runtime,
+    generic_name: &str,
+    lambda_list: Option<Word>,
+    options: &[Word],
+) -> Result<ncl_object::Handle<'ctx, Word>, ObjectError> {
+    let defgeneric = scope.intern(runtime, COMMON_LISP, "DEFGENERIC")?;
+    let name = scope.intern(runtime, "NCL", generic_name)?;
+    let mut fields = vec![scope.get(defgeneric).as_word(), scope.get(name).as_word()];
+    if let Some(lambda_list) = lambda_list {
+        fields.push(lambda_list);
+    }
+    fields.extend_from_slice(options);
+    make_list(scope, runtime, &fields)
+}
+
 #[test]
 fn defgeneric_macroexpansion_rejects_invalid_method_combination_options() -> Result<(), ObjectError>
 {
@@ -138,6 +155,135 @@ fn defgeneric_macroexpansion_rejects_invalid_method_combination_options() -> Res
 
     for (generic_name, options) in invalid_cases {
         assert_defgeneric_error_for_options(&runtime, &mut context, generic_name, options)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn defgeneric_macroexpansion_rejects_malformed_method_combination_option_shapes()
+-> Result<(), ObjectError> {
+    let (runtime, mut context) = setup()?;
+    for (generic_name, option_kind) in [
+        ("INVALID-NONLIST-COMBINATION-OPTION", "non-list"),
+        ("INVALID-EMPTY-COMBINATION-OPTION", "empty"),
+        ("INVALID-NONSYMBOL-COMBINATION", "non-symbol"),
+        ("INVALID-NONSYMBOL-COMBINATION-ORDER", "invalid-order"),
+    ] {
+        let mut scope = Scope::new(&mut context);
+        let value = scope.intern(&runtime, "NCL", "VALUE")?;
+        let value_word = scope.get(value).as_word();
+        let lambda_list = make_list(&mut scope, &runtime, &[value_word])?;
+        let lambda_list_word = scope.get(lambda_list).as_word();
+        let method_combination = scope.intern(&runtime, "KEYWORD", "METHOD-COMBINATION")?;
+        let and = scope.intern(&runtime, COMMON_LISP, "AND")?;
+        let option = match option_kind {
+            "non-list" => Word::fixnum(73),
+            "empty" => Word::NIL,
+            "non-symbol" => {
+                let fields = [scope.get(method_combination).as_word(), Word::fixnum(73)];
+                let option = make_list(&mut scope, &runtime, &fields)?;
+                scope.get(option).as_word()
+            }
+            "invalid-order" => {
+                let fields = [
+                    scope.get(method_combination).as_word(),
+                    scope.get(and).as_word(),
+                    Word::fixnum(73),
+                ];
+                let option = make_list(&mut scope, &runtime, &fields)?;
+                scope.get(option).as_word()
+            }
+            _ => unreachable!(),
+        };
+        let form = defgeneric_form(
+            &mut scope,
+            &runtime,
+            generic_name,
+            Some(lambda_list_word),
+            &[option],
+        )?;
+        let mut form_word = scope.get(form).as_word();
+        let _form_root = ncl_object::push_heap_root(&runtime, &mut form_word);
+        drop(scope);
+
+        assert_defgeneric_error_expansion(&runtime, &mut context, form_word, generic_name)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn defgeneric_macroexpansion_defaults_explicit_combination_order() -> Result<(), ObjectError> {
+    let (runtime, mut context) = setup()?;
+    for (generic_name, combination_name) in [
+        ("EXPLICIT-STANDARD-COMBINATION", "STANDARD"),
+        ("EXPLICIT-AND-COMBINATION", "AND"),
+    ] {
+        let mut scope = Scope::new(&mut context);
+        let value = scope.intern(&runtime, "NCL", "VALUE")?;
+        let value_word = scope.get(value).as_word();
+        let lambda_list = make_list(&mut scope, &runtime, &[value_word])?;
+        let lambda_list_word = scope.get(lambda_list).as_word();
+        let method_combination = scope.intern(&runtime, "KEYWORD", "METHOD-COMBINATION")?;
+        let combination = scope.intern(&runtime, COMMON_LISP, combination_name)?;
+        let option_fields = [
+            scope.get(method_combination).as_word(),
+            scope.get(combination).as_word(),
+        ];
+        let option = make_list(&mut scope, &runtime, &option_fields)?;
+        let option_word = scope.get(option).as_word();
+        let form = defgeneric_form(
+            &mut scope,
+            &runtime,
+            generic_name,
+            Some(lambda_list_word),
+            &[option_word],
+        )?;
+        let mut form_word = scope.get(form).as_word();
+        let _form_root = ncl_object::push_heap_root(&runtime, &mut form_word);
+        drop(scope);
+
+        let input = [form_word];
+        let args = BuiltinArgs::new(&input);
+        let mut values = MultipleValues::new();
+        let mut expansion_word =
+            defgeneric_macro_builtin(&mut context, &runtime, &args, &mut values)?;
+        let _expansion_root = ncl_object::push_heap_root(&runtime, &mut expansion_word);
+        let mut scope = Scope::new(&mut context);
+        let forms = list_words(&mut scope, expansion_word)?;
+        assert_eq!(symbol_name_string(scope.context(), forms[0])?, "PROGN");
+        let set_combination = list_words(&mut scope, forms[2])?;
+        assert_eq!(
+            symbol_name_string(scope.context(), set_combination[0])?,
+            "SETF"
+        );
+        let quoted_descriptor = list_words(&mut scope, set_combination[2])?;
+        let descriptor = list_words(&mut scope, quoted_descriptor[1])?;
+        assert_eq!(
+            symbol_name_string(scope.context(), descriptor[0])?,
+            combination_name
+        );
+        assert_eq!(
+            symbol_name_string(scope.context(), descriptor[1])?,
+            "MOST-SPECIFIC-FIRST"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn defgeneric_macroexpansion_rejects_missing_or_malformed_lambda_list() -> Result<(), ObjectError> {
+    let (runtime, mut context) = setup()?;
+    for (generic_name, lambda_list) in [
+        ("MISSING-GENERIC-LAMBDA-LIST", None),
+        ("MALFORMED-GENERIC-LAMBDA-LIST", Some(Word::fixnum(73))),
+    ] {
+        let mut scope = Scope::new(&mut context);
+        let form = defgeneric_form(&mut scope, &runtime, generic_name, lambda_list, &[])?;
+        let mut form_word = scope.get(form).as_word();
+        let _form_root = ncl_object::push_heap_root(&runtime, &mut form_word);
+        drop(scope);
+
+        assert_defgeneric_error_expansion(&runtime, &mut context, form_word, generic_name)?;
     }
     Ok(())
 }

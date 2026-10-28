@@ -329,6 +329,31 @@ mod included_tests {
         )
     }
 
+    fn set_test_method_combination_designator(
+        runtime: &Runtime,
+        context: &mut ThreadContext,
+        generic: Word,
+        combination: Word,
+        order_name: &str,
+    ) -> Result<(), ncl_object::ObjectError> {
+        let mut scope = ncl_object::Scope::new(context);
+        let generic = scope.root(Local::<Word>::from_word(generic));
+        let combination = scope.root(Local::<Word>::from_word(combination));
+        let key = scope.intern(runtime, "NCL", METHOD_COMBINATION_KEY_NAME)?;
+        let order = scope.intern(runtime, "KEYWORD", order_name)?;
+        let mut fields = scope.root_many(&[]);
+        super::super::dispatch_push_handle(&mut scope, &mut fields, combination);
+        super::super::dispatch_push_handle(&mut scope, &mut fields, order);
+        let descriptor = scope.make_list(runtime, &fields)?;
+        super::super::set_symbol_plist_property(
+            &mut scope,
+            runtime,
+            generic,
+            key,
+            descriptor,
+        )
+    }
+
     fn add_test_method(
         runtime: &Runtime,
         context: &mut ThreadContext,
@@ -1041,6 +1066,43 @@ mod included_tests {
     }
 
     #[test]
+    fn standard_around_selection_short_circuits_primary_through_dispatch() {
+        let _lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (runtime, mut context) = setup();
+        register_trace_methods(&runtime, &mut context);
+        let generic = define_test_generic(&runtime, &mut context);
+        let t = class_symbol(&runtime, &mut context, "T");
+        let around = scope_intern(&runtime, &mut context, "KEYWORD", "AROUND");
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            t,
+            &[],
+            "TRACE-STANDARD-PRIMARY",
+        )
+        .expect("standard primary");
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            t,
+            &[around],
+            "TRACE-AROUND-SHORT-CIRCUIT",
+        )
+        .expect("standard around method");
+
+        reset_method_log();
+        let (result, returned) =
+            dispatch_with_values(&runtime, &mut context, generic).expect("around result");
+        assert_eq!(result, Word::fixnum(99));
+        assert_eq!(returned, [Word::fixnum(99)]);
+        assert_eq!(method_log(), [9]);
+    }
+
+    #[test]
     fn standard_around_call_next_method_invokes_primary_and_preserves_values() {
         let _lock = TRACE_TEST_LOCK
             .lock()
@@ -1170,6 +1232,55 @@ mod included_tests {
                 method_log(),
                 [],
                 "standard qualifier validation must finish before invoking methods"
+            );
+        }
+    }
+
+    #[test]
+    fn dispatch_rejects_invalid_stored_method_combinations_before_invoking_methods() {
+        let _lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for invalid_combination in ["non-symbol", "unknown-symbol"] {
+            let (runtime, mut context) = setup();
+            register_trace_methods(&runtime, &mut context);
+            let generic = define_test_generic(&runtime, &mut context);
+            let t = class_symbol(&runtime, &mut context, "T");
+            add_test_method(
+                &runtime,
+                &mut context,
+                generic,
+                t,
+                &[],
+                "TRACE-STANDARD-PRIMARY",
+            )
+            .expect("primary method");
+            let combination = match invalid_combination {
+                "non-symbol" => Word::fixnum(73),
+                "unknown-symbol" => {
+                    scope_intern(&runtime, &mut context, "NCL", "NO-SUCH-METHOD-COMBINATION")
+                }
+                _ => unreachable!(),
+            };
+            set_test_method_combination_designator(
+                &runtime,
+                &mut context,
+                generic,
+                combination,
+                "MOST-SPECIFIC-FIRST",
+            )
+            .expect("method combination property");
+
+            reset_method_log();
+            let outcome = dispatch_with_values(&runtime, &mut context, generic);
+            assert!(
+                matches!(outcome, Err(ncl_object::ObjectError::TypeError)),
+                "{invalid_combination} stored method combination must signal TypeError: {outcome:?}"
+            );
+            assert_eq!(
+                method_log(),
+                [],
+                "invalid stored method combination must fail before invoking methods"
             );
         }
     }

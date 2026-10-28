@@ -269,8 +269,9 @@ impl Heap {
             .count()
     }
     fn find_raw(state: &State, value: Word) -> Option<usize> {
-        let is_heap_pointer =
-            value.is_cons() || value.lowtag() == crate::LowTag::OtherPointer as u8;
+        // check-added-lines: allow(as-cast) LowTag has repr(u8), so conversion is lossless.
+        let other_pointer_tag = crate::LowTag::OtherPointer as u8;
+        let is_heap_pointer = value.is_cons() || value.lowtag() == other_pointer_tag;
         if !is_heap_pointer {
             return None;
         }

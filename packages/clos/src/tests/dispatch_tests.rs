@@ -36,6 +36,39 @@ mod included_tests {
             .clone()
     }
 
+    struct AroundNextMethodCaller {
+        function: Word,
+        argument: Word,
+    }
+
+    impl ncl_object::FunctionCaller for AroundNextMethodCaller {
+        fn call_function(
+            &mut self,
+            context: &mut ThreadContext,
+            runtime: &Runtime,
+            designator: ncl_object::FunctionDesignator,
+            args: ncl_object::FunctionArguments<'_>,
+            values: &mut MultipleValues,
+        ) -> Result<Word, ncl_object::ObjectError> {
+            let ncl_object::FunctionDesignator::Function(function) = designator else {
+                return Err(ncl_object::ObjectError::TypeError);
+            };
+            if function.as_word() != self.function
+                || args.len() != 3
+                || args.get(2) != Some(self.argument)
+            {
+                return Err(ncl_object::ObjectError::TypeError);
+            }
+            let next_method_args = [
+                args.get(0).ok_or(ncl_object::ObjectError::Layout)?,
+                args.get(1).ok_or(ncl_object::ObjectError::Layout)?,
+            ];
+            record_method(9);
+            let next_method_args = BuiltinArgs::new(&next_method_args);
+            super::super::clos_call_next_method_builtin(context, runtime, &next_method_args, values)
+        }
+    }
+
     macro_rules! trace_method {
         ($name:ident, $event:expr, $result:expr, $returns:expr) => {
             fn $name(
@@ -100,6 +133,7 @@ mod included_tests {
     );
     trace_method!(trace_standard_before, 1, Word::NIL, &[Word::NIL]);
     trace_method!(trace_standard_after, 3, Word::NIL, &[Word::NIL]);
+    trace_method!(trace_standard_after_general, 4, Word::NIL, &[Word::NIL]);
 
     fn trace_list(
         ctx: &mut ThreadContext,
@@ -201,7 +235,7 @@ mod included_tests {
     }
 
     fn register_trace_methods(runtime: &Runtime, context: &mut ThreadContext) {
-        let callbacks: [(&str, ncl_object::RustBuiltin); 14] = [
+        let callbacks: [(&str, ncl_object::RustBuiltin); 15] = [
             ("TRACE-SPECIFIC-TWO", trace_specific_two),
             ("TRACE-GENERAL-THREE", trace_general_three),
             ("TRACE-FALSE-SPECIFIC", trace_false_specific),
@@ -214,6 +248,7 @@ mod included_tests {
             ("TRACE-STANDARD-PRIMARY", trace_standard_primary),
             ("TRACE-STANDARD-BEFORE", trace_standard_before),
             ("TRACE-STANDARD-AFTER", trace_standard_after),
+            ("TRACE-STANDARD-AFTER-GENERAL", trace_standard_after_general),
             ("TRACE-LIST-ONE", trace_list_one),
             ("TRACE-LIST-TWO", trace_list_two),
         ];
@@ -631,10 +666,16 @@ mod included_tests {
             "TRACE-AROUND-SHORT-CIRCUIT",
         )
         .expect("around without primary");
+        reset_method_log();
         let outcome = dispatch_with_values(&runtime, &mut context, generic);
         assert!(
             matches!(outcome, Err(ncl_object::ObjectError::UndefinedFunction)),
             "around without primary must signal UndefinedFunction: {outcome:?}"
+        );
+        assert_eq!(
+            method_log(),
+            [],
+            "a generic function without an applicable primary must not invoke around methods"
         );
     }
 
@@ -982,12 +1023,155 @@ mod included_tests {
             "TRACE-STANDARD-AFTER",
         )
         .expect("after method");
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            t,
+            &[after],
+            "TRACE-STANDARD-AFTER-GENERAL",
+        )
+        .expect("general after method");
         reset_method_log();
         let (result, returned) =
             dispatch_with_values(&runtime, &mut context, generic).expect("standard result");
         assert_eq!(result, Word::fixnum(17));
         assert_eq!(returned, [Word::fixnum(17)]);
-        assert_eq!(method_log(), [1, 2, 3]);
+        assert_eq!(method_log(), [1, 2, 4, 3]);
+    }
+
+    #[test]
+    fn standard_around_call_next_method_invokes_primary_and_preserves_values() {
+        let _lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (runtime, mut context) = setup();
+        register_trace_methods(&runtime, &mut context);
+        let mut scope = ncl_object::Scope::new(&mut context);
+        let standard = scope
+            .intern(&runtime, COMMON_LISP, "STANDARD")
+            .expect("standard combination");
+        let around_name = scope
+            .intern(&runtime, "NCL-TEST", "TRACE-STANDARD-AROUND-NEXT")
+            .expect("around name");
+        let around_name_word = scope.get(around_name).as_word();
+        let code = ncl_object::make_code_object(
+            scope.context_mut(),
+            &runtime,
+            1,
+            0,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .expect("around code object");
+        let around = ncl_object::make_simple_fun(
+            scope.context_mut(),
+            &runtime,
+            1,
+            around_name_word,
+            Word::NIL,
+            code,
+        )
+        .expect("around function");
+        let around = scope.root(Local::from_word(around.as_word()));
+        let around_word = scope.get(around).as_word();
+        let mut around_methods = scope.root_many(&[]);
+        super::super::dispatch_push_handle(&mut scope, &mut around_methods, around);
+
+        let primary_function = runtime
+            .function(scope.context_mut(), "NCL-TEST", "TRACE-STANDARD-PRIMARY")
+            .expect("primary function");
+        let primary_function = scope.root(Local::from_word(primary_function));
+        let mut primary = scope.root_many(&[]);
+        super::super::dispatch_push_handle(&mut scope, &mut primary, primary_function);
+        let before = scope.root_many(&[]);
+        let after = scope.root_many(&[]);
+        let arguments = scope.root_many(&[Local::from_word(Word::fixnum(7))]);
+        let argument_list = scope
+            .make_list(&runtime, &arguments)
+            .expect("argument list");
+        let mut caller = AroundNextMethodCaller {
+            function: around_word,
+            argument: Word::fixnum(7),
+        };
+        let mut values = MultipleValues::new();
+
+        reset_method_log();
+        let result = super::super::invoke_dispatch(
+            &mut scope,
+            &runtime,
+            standard,
+            &before,
+            &primary,
+            &after,
+            &around_methods,
+            &arguments,
+            argument_list,
+            &mut caller,
+            &mut values,
+        )
+        .expect("around continuation result");
+        assert_eq!(scope.get(result).as_word(), Word::fixnum(17));
+        assert_eq!(values.as_slice(), [Word::fixnum(17)]);
+        assert_eq!(method_log(), [9, 2]);
+    }
+
+    #[test]
+    fn standard_dispatch_rejects_invalid_qualifiers_before_invoking_methods() {
+        let _lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for invalid_qualifier_case in ["unknown", "multiple"] {
+            let (runtime, mut context) = setup();
+            register_trace_methods(&runtime, &mut context);
+            let generic = define_test_generic(&runtime, &mut context);
+            let integer = class_symbol(&runtime, &mut context, "INTEGER");
+            let t = class_symbol(&runtime, &mut context, "T");
+            add_test_method(
+                &runtime,
+                &mut context,
+                generic,
+                t,
+                &[],
+                "TRACE-STANDARD-PRIMARY",
+            )
+            .expect("standard primary");
+            let invalid_qualifiers = match invalid_qualifier_case {
+                "unknown" => vec![scope_intern(
+                    &runtime,
+                    &mut context,
+                    "KEYWORD",
+                    "UNSUPPORTED",
+                )],
+                "multiple" => vec![
+                    scope_intern(&runtime, &mut context, "KEYWORD", "BEFORE"),
+                    scope_intern(&runtime, &mut context, "KEYWORD", "AFTER"),
+                ],
+                _ => unreachable!(),
+            };
+            add_test_method(
+                &runtime,
+                &mut context,
+                generic,
+                integer,
+                &invalid_qualifiers,
+                "TRACE-GENERAL-THREE",
+            )
+            .expect("invalid standard qualifier method");
+
+            reset_method_log();
+            let outcome = dispatch_with_values(&runtime, &mut context, generic);
+            assert!(
+                matches!(outcome, Err(ncl_object::ObjectError::TypeError)),
+                "{invalid_qualifier_case} standard qualifier must signal TypeError: {outcome:?}"
+            );
+            assert_eq!(
+                method_log(),
+                [],
+                "standard qualifier validation must finish before invoking methods"
+            );
+        }
     }
 
     #[test]

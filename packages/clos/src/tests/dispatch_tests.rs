@@ -135,6 +135,17 @@ mod included_tests {
     trace_method!(trace_standard_after, 3, Word::NIL, &[Word::NIL]);
     trace_method!(trace_standard_after_general, 4, Word::NIL, &[Word::NIL]);
 
+    fn trace_type_error(
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        args: &BuiltinArgs<'_>,
+        _values: &mut MultipleValues,
+    ) -> Result<Word, ncl_object::ObjectError> {
+        let _ = args.required(0)?;
+        record_method(10);
+        Err(ncl_object::ObjectError::TypeError)
+    }
+
     fn trace_list(
         ctx: &mut ThreadContext,
         runtime: &Runtime,
@@ -235,7 +246,7 @@ mod included_tests {
     }
 
     fn register_trace_methods(runtime: &Runtime, context: &mut ThreadContext) {
-        let callbacks: [(&str, ncl_object::RustBuiltin); 15] = [
+        let callbacks: [(&str, ncl_object::RustBuiltin); 16] = [
             ("TRACE-SPECIFIC-TWO", trace_specific_two),
             ("TRACE-GENERAL-THREE", trace_general_three),
             ("TRACE-FALSE-SPECIFIC", trace_false_specific),
@@ -249,6 +260,7 @@ mod included_tests {
             ("TRACE-STANDARD-BEFORE", trace_standard_before),
             ("TRACE-STANDARD-AFTER", trace_standard_after),
             ("TRACE-STANDARD-AFTER-GENERAL", trace_standard_after_general),
+            ("TRACE-TYPE-ERROR", trace_type_error),
             ("TRACE-LIST-ONE", trace_list_one),
             ("TRACE-LIST-TWO", trace_list_two),
         ];
@@ -1066,6 +1078,105 @@ mod included_tests {
     }
 
     #[test]
+    fn standard_method_errors_propagate_from_before_and_after_methods() {
+        let _lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for failing_qualifier in ["BEFORE", "AFTER"] {
+            let (runtime, mut context) = setup();
+            register_trace_methods(&runtime, &mut context);
+            let generic = define_test_generic(&runtime, &mut context);
+            let integer = class_symbol(&runtime, &mut context, "INTEGER");
+            let t = class_symbol(&runtime, &mut context, "T");
+            let qualifier = scope_intern(&runtime, &mut context, "KEYWORD", failing_qualifier);
+
+            if failing_qualifier == "BEFORE" {
+                add_test_method(
+                    &runtime,
+                    &mut context,
+                    generic,
+                    integer,
+                    &[qualifier],
+                    "TRACE-TYPE-ERROR",
+                )
+                .expect("failing before method");
+                add_test_method(
+                    &runtime,
+                    &mut context,
+                    generic,
+                    t,
+                    &[],
+                    "TRACE-STANDARD-PRIMARY",
+                )
+                .expect("primary method");
+            } else {
+                add_test_method(
+                    &runtime,
+                    &mut context,
+                    generic,
+                    t,
+                    &[],
+                    "TRACE-STANDARD-PRIMARY",
+                )
+                .expect("primary method");
+                add_test_method(
+                    &runtime,
+                    &mut context,
+                    generic,
+                    integer,
+                    &[qualifier],
+                    "TRACE-TYPE-ERROR",
+                )
+                .expect("failing after method");
+            }
+
+            reset_method_log();
+            let outcome = dispatch_with_values(&runtime, &mut context, generic);
+            assert!(
+                matches!(outcome, Err(ncl_object::ObjectError::TypeError)),
+                "{failing_qualifier} method errors must propagate: {outcome:?}"
+            );
+            let expected_events = if failing_qualifier == "BEFORE" {
+                vec![10]
+            } else {
+                vec![2, 10]
+            };
+            assert_eq!(method_log(), expected_events);
+        }
+    }
+
+    #[test]
+    fn short_method_combination_errors_propagate_from_primary_methods() {
+        let _lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for combination in ["AND", "OR", "PROGN", "+"] {
+            let (runtime, mut context) = setup();
+            let generic =
+                prepare_short_generic(&runtime, &mut context, combination, "MOST-SPECIFIC-FIRST");
+            let t = class_symbol(&runtime, &mut context, "T");
+            let qualifier = class_symbol(&runtime, &mut context, combination);
+            add_test_method(
+                &runtime,
+                &mut context,
+                generic,
+                t,
+                &[qualifier],
+                "TRACE-TYPE-ERROR",
+            )
+            .expect("failing primary method");
+
+            reset_method_log();
+            let outcome = dispatch_with_values(&runtime, &mut context, generic);
+            assert!(
+                matches!(outcome, Err(ncl_object::ObjectError::TypeError)),
+                "{combination} method errors must propagate: {outcome:?}"
+            );
+            assert_eq!(method_log(), [10], "{combination} failing method call");
+        }
+    }
+
+    #[test]
     fn standard_around_selection_short_circuits_primary_through_dispatch() {
         let _lock = TRACE_TEST_LOCK
             .lock()
@@ -1241,7 +1352,7 @@ mod included_tests {
         let _lock = TRACE_TEST_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        for invalid_combination in ["non-symbol", "unknown-symbol"] {
+        for invalid_combination in ["non-symbol", "unknown-symbol", "invalid-order"] {
             let (runtime, mut context) = setup();
             register_trace_methods(&runtime, &mut context);
             let generic = define_test_generic(&runtime, &mut context);
@@ -1260,6 +1371,7 @@ mod included_tests {
                 "unknown-symbol" => {
                     scope_intern(&runtime, &mut context, "NCL", "NO-SUCH-METHOD-COMBINATION")
                 }
+                "invalid-order" => scope_intern(&runtime, &mut context, COMMON_LISP, "AND"),
                 _ => unreachable!(),
             };
             set_test_method_combination_designator(
@@ -1267,7 +1379,11 @@ mod included_tests {
                 &mut context,
                 generic,
                 combination,
-                "MOST-SPECIFIC-FIRST",
+                if invalid_combination == "invalid-order" {
+                    "UNSUPPORTED"
+                } else {
+                    "MOST-SPECIFIC-FIRST"
+                },
             )
             .expect("method combination property");
 
@@ -1283,6 +1399,50 @@ mod included_tests {
                 "invalid stored method combination must fail before invoking methods"
             );
         }
+    }
+
+    #[test]
+    fn dispatch_rejects_malformed_stored_method_combination_descriptor() {
+        let _lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (runtime, mut context) = setup();
+        register_trace_methods(&runtime, &mut context);
+        let generic = define_test_generic(&runtime, &mut context);
+        let t = class_symbol(&runtime, &mut context, "T");
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            t,
+            &[],
+            "TRACE-STANDARD-PRIMARY",
+        )
+        .expect("primary method");
+
+        let mut scope = ncl_object::Scope::new(&mut context);
+        let generic_handle = scope.root(Local::from_word(generic));
+        let key = scope
+            .intern(&runtime, "NCL", METHOD_COMBINATION_KEY_NAME)
+            .expect("method combination key");
+        let malformed_descriptor = scope.root(Local::from_word(Word::NIL));
+        super::super::set_symbol_plist_property(
+            &mut scope,
+            &runtime,
+            generic_handle,
+            key,
+            malformed_descriptor,
+        )
+        .expect("malformed descriptor property");
+        drop(scope);
+
+        reset_method_log();
+        let outcome = dispatch_with_values(&runtime, &mut context, generic);
+        assert!(
+            matches!(outcome, Err(ncl_object::ObjectError::TypeError)),
+            "malformed method combination descriptor must signal TypeError: {outcome:?}"
+        );
+        assert_eq!(method_log(), []);
     }
 
     #[test]

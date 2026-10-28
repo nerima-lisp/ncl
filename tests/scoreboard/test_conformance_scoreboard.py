@@ -3,6 +3,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 import unittest
 from collections import Counter
 from datetime import date
@@ -29,6 +30,12 @@ merge = importlib.util.module_from_spec(merge_spec)
 assert merge_spec.loader is not None
 sys.modules[merge_spec.name] = merge
 merge_spec.loader.exec_module(merge)
+DRIVER_PATH = Path(__file__).parents[2] / "conformance" / "cl-bench" / "driver_supervisor.py"
+driver_spec = importlib.util.spec_from_file_location("cl_bench_driver_supervisor", DRIVER_PATH)
+driver = importlib.util.module_from_spec(driver_spec)
+assert driver_spec.loader is not None
+sys.modules[driver_spec.name] = driver
+driver_spec.loader.exec_module(driver)
 
 
 class ScoreboardTests(unittest.TestCase):
@@ -122,6 +129,78 @@ class ScoreboardTests(unittest.TestCase):
         self.assertEqual(bench["benchmarks"], {})
         self.assertNotIn("samples", bench)
         self.assertNotIn("geometric_mean", bench)
+
+    def test_timeout_checkpoint_keeps_a_timed_out_benchmark_row(self):
+        records = [
+            {"type": "header", "version": 1, "expected": ["ACKERMANN"]},
+            {
+                "type": "row",
+                "name": "ACKERMANN",
+                "benchmark": {
+                    "status": "timeout",
+                    "stage": "execute",
+                    "times": [],
+                    "condition": "child exceeded its 20 second timeout",
+                },
+            },
+        ]
+        checkpoint = "".join(json.dumps(record) + "\n" for record in records).encode()
+
+        exit_status, report = self._run_timeout_scoreboard(checkpoint)
+
+        bench = report["cl-bench"]
+        self.assertEqual(exit_status, 1)
+        self.assertEqual(bench["status"], "timeout")
+        self.assertEqual(bench["driver_status"], "partial")
+        self.assertEqual(
+            bench["progress"],
+            {"complete": True, "expected": ["ACKERMANN"], "completed": 1},
+        )
+        self.assertEqual(
+            bench["benchmarks"]["ACKERMANN"],
+            {
+                "status": "timeout",
+                "stage": "execute",
+                "times": [],
+                "condition": "child exceeded its 20 second timeout",
+            },
+        )
+
+    def test_driver_report_accepts_timeout_rows_without_samples(self):
+        report = scoreboard.validate_cl_bench_report({
+            "status": "failed",
+            "times": [0.25],
+            "benchmarks": {
+                "ACKERMANN": {
+                    "status": "passed",
+                    "stage": "finish",
+                    "times": [0.25],
+                    "condition": None,
+                },
+                "BIGNUM": {
+                    "status": "timeout",
+                    "stage": "execute",
+                    "times": [],
+                    "condition": "child exceeded its 20 second timeout",
+                },
+            },
+        })
+
+        self.assertEqual(report["benchmarks"]["BIGNUM"]["status"], "timeout")
+        self.assertEqual(report["times"], [0.25])
+        with self.assertRaisesRegex(ValueError, "timed out benchmark.*sample times"):
+            scoreboard.validate_cl_bench_report({
+                "status": "failed",
+                "times": [],
+                "benchmarks": {
+                    "BIGNUM": {
+                        "status": "timeout",
+                        "stage": "execute",
+                        "times": [0.25],
+                        "condition": "too slow",
+                    },
+                },
+            })
 
     def test_checkpoint_ignores_torn_tail_and_rejects_duplicate_or_unexpected_rows(self):
         header = {"type": "header", "version": 1, "expected": ["ACKERMANN"]}
@@ -974,6 +1053,274 @@ class ScoreboardTests(unittest.TestCase):
         self.assertEqual(report["cl-bench"]["status"], "failed")
         self.assertIn("invalid stage", report["cl-bench"]["driver_error"])
         self.assertNotIn("benchmarks", report["cl-bench"])
+
+
+class ClBenchSupervisorTests(unittest.TestCase):
+    def _run_workers(
+        self,
+        names,
+        run_child,
+        *,
+        registered=None,
+        failures=None,
+        timed_out_sources=None,
+        checkpoint=None,
+    ):
+        with patch.object(
+            driver,
+            "_command",
+            side_effect=lambda **arguments: list(arguments["selection"]),
+        ):
+            with patch.object(driver, "_run_child", side_effect=run_child):
+                return driver._run_benchmark_workers(
+                    engine="ncl",
+                    runner="ncl",
+                    mode="default",
+                    driver=Path("driver.lisp"),
+                    selected_rows=tuple(names),
+                    registered=registered or {name: () for name in names},
+                    failures=failures or {},
+                    timed_out_sources=timed_out_sources or set(),
+                    cwd=Path("."),
+                    checkpoint=checkpoint,
+                )
+
+    def _passed_child(self, command, name=None):
+        benchmark = name or command[0]
+        row = {
+            "status": "passed",
+            "stage": "finish",
+            "times": [1.0],
+            "condition": None,
+        }
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps({"status": "passed", "times": [1.0], "benchmarks": {benchmark: row}}),
+            "",
+        )
+
+    def test_child_timeout_kills_process_group_and_waits_for_communicate(self):
+        child = Mock(pid=42, returncode=None)
+        child.communicate.side_effect = [
+            subprocess.TimeoutExpired(["ncl"], 0.01),
+            ("partial stdout", "partial stderr"),
+        ]
+        with patch.object(driver.subprocess, "Popen", return_value=child) as popen:
+            with patch.object(driver.os, "killpg") as killpg:
+                result = driver._run_child(["ncl"], Path("."), timeout=0.01)
+
+        self.assertIsNone(result.returncode)
+        self.assertEqual(result.stdout, "partial stdout")
+        self.assertEqual(result.stderr, "partial stderr")
+        self.assertEqual(child.communicate.call_count, 2)
+        self.assertEqual(popen.call_args.kwargs["start_new_session"], driver.os.name == "posix")
+        killpg.assert_called_once_with(42, driver.signal.SIGKILL)
+
+    def test_default_child_timeout_is_the_budgeted_limit(self):
+        child = Mock(pid=42, returncode=0)
+        child.communicate.return_value = ("", "")
+        with patch.object(driver.subprocess, "Popen", return_value=child):
+            driver._run_child(["ncl"], Path("."))
+
+        child.communicate.assert_called_once_with(timeout=driver.CHILD_TIMEOUT_SECONDS)
+
+    def test_child_timeout_budget_reserves_workflow_overhead(self):
+        child_limit = driver.CHILD_TIMEOUT_SECONDS
+        child_count = len(driver.SOURCE_FILES) + 65
+
+        self.assertEqual(len(driver.SOURCE_FILES), 13)
+        self.assertEqual(child_limit, 20)
+        self.assertEqual(child_count, 78)
+        self.assertEqual(child_count * child_limit, 1560)
+        self.assertEqual(1800 - child_count * child_limit, 240)
+
+    def test_parallel_workers_aggregate_rows_in_selection_order(self):
+        names = ("FIRST", "SECOND", "THIRD", "FOURTH")
+        lock = threading.Lock()
+        first_two_started = threading.Event()
+        active = 0
+        peak = 0
+
+        def run_child(command, cwd):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+                if active >= 2:
+                    first_two_started.set()
+            try:
+                if not first_two_started.wait(timeout=2):
+                    raise AssertionError("benchmark workers did not overlap")
+                time.sleep(0.01)
+                return self._passed_child(command)
+            finally:
+                with lock:
+                    active -= 1
+
+        result = self._run_workers(names, run_child)
+
+        self.assertGreaterEqual(peak, 2)
+        self.assertEqual(tuple(result["benchmarks"]), names)
+        self.assertEqual(set(result["benchmarks"]), set(names))
+
+    def test_shared_output_benchmarks_are_serialized(self):
+        names = ("COMPILER", "LOAD-FASL", "FPRINT/PRETTY", "FPRINT/UGLY")
+        lock = threading.Lock()
+        active = 0
+        peak = 0
+
+        def run_child(command, cwd):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            try:
+                time.sleep(0.01)
+                return self._passed_child(command)
+            finally:
+                with lock:
+                    active -= 1
+
+        result = self._run_workers(names, run_child)
+
+        self.assertEqual(peak, 1)
+        self.assertEqual(tuple(result["benchmarks"]), names)
+
+    def test_benchmark_child_timeout_retains_id_and_stage(self):
+        names = ("ACKERMANN",)
+        process = subprocess.CompletedProcess(
+            ["ACKERMANN"], None, "", "CL-BENCH-STAGE execute 1\npartial output"
+        )
+
+        result = self._run_workers(names, lambda command, cwd: process)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(
+            result["benchmarks"]["ACKERMANN"],
+            {
+                "status": "timeout",
+                "stage": "execute",
+                "times": [],
+                "condition": "child exceeded its 20 second timeout: partial output",
+            },
+        )
+
+    def test_source_preflight_timeout_becomes_timeout_rows_at_load(self):
+        names = ("ACKERMANN", "BIGNUM")
+        with patch.object(driver, "_source_owner", return_value="arrays.lisp"):
+            result = self._run_workers(
+                names,
+                lambda command, cwd: self.fail("timed-out source must not launch a benchmark child"),
+                registered={name: (name.lower(),) for name in names},
+                failures={"arrays.lisp": "child exceeded its 20 second timeout"},
+                timed_out_sources={"arrays.lisp"},
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(
+            tuple((row["status"], row["stage"]) for row in result["benchmarks"].values()),
+            (("timeout", "load"), ("timeout", "load")),
+        )
+
+    def test_source_preflight_children_are_bounded_and_timeout_rows_are_emitted(self):
+        registered = {"ACKERMANN": ("ackermann",)}
+        preflight_results = [
+            subprocess.CompletedProcess(["source"], None, "", ""),
+            *[
+                subprocess.CompletedProcess(["source"], 0, "", "")
+                for _ in driver.SOURCE_FILES[1:]
+            ],
+        ]
+        with patch.object(driver, "_registered_functions", return_value=registered):
+            with patch.object(driver, "_command", return_value=["source"]):
+                with patch.object(driver, "_source_owner", return_value=driver.SOURCE_FILES[0]):
+                    with patch.object(driver, "_run_child", side_effect=preflight_results) as run_child:
+                        with patch.object(sys, "stdout") as stdout:
+                            exit_status = driver._run_supervisor(
+                                engine="ncl",
+                                runner="ncl",
+                                mode="default",
+                                driver=Path("driver.lisp"),
+                                selection=("ACKERMANN",),
+                                cwd=Path("."),
+                                checkpoint=None,
+                            )
+
+        report = json.loads("".join(call.args[0] for call in stdout.write.call_args_list))
+        self.assertEqual(exit_status, 1)
+        self.assertEqual(run_child.call_count, len(driver.SOURCE_FILES))
+        self.assertEqual(len(driver.SOURCE_FILES), 13)
+        self.assertEqual(
+            report["benchmarks"]["ACKERMANN"],
+            {
+                "status": "timeout",
+                "stage": "load",
+                "times": [],
+                "condition": "child exceeded its 20 second timeout",
+            },
+        )
+
+    def test_supervisor_emits_all_65_rows_in_input_order_with_timeout_rows(self):
+        names = driver._comparison_benchmarks()
+        self.assertEqual(len(names), 65)
+        timeout_names = {names[index] for index in range(0, len(names), 9)}
+        exception_name = names[1]
+        registered = {name: () for name in names}
+
+        def command(**arguments):
+            if arguments.get("preflight_file") is not None:
+                return ["source"]
+            return ["benchmark", arguments["selection"][0]]
+
+        def run_child(child_command, cwd):
+            if child_command[0] == "source":
+                return subprocess.CompletedProcess(child_command, 0, "", "")
+            name = child_command[1]
+            if name in timeout_names:
+                return subprocess.CompletedProcess(
+                    child_command, None, "", "CL-BENCH-STAGE execute 1\n"
+                )
+            if name == exception_name:
+                raise RuntimeError("injected worker failure")
+            return self._passed_child(child_command, name)
+
+        with TemporaryDirectory() as directory:
+            checkpoint_path = Path(directory) / "checkpoint.jsonl"
+            with checkpoint_path.open("x", encoding="utf-8") as checkpoint:
+                with patch.object(driver, "_registered_functions", return_value=registered):
+                    with patch.object(driver, "_command", side_effect=command):
+                        with patch.object(driver, "_run_child", side_effect=run_child):
+                            with patch.object(sys, "stdout") as stdout:
+                                exit_status = driver._run_supervisor(
+                                    engine="ncl",
+                                    runner="ncl",
+                                    mode="default",
+                                    driver=Path("driver.lisp"),
+                                    selection=names,
+                                    cwd=Path("."),
+                                    checkpoint=checkpoint,
+                                )
+            checkpoint_report, progress = scoreboard.read_cl_bench_checkpoint(checkpoint_path)
+
+        report = json.loads("".join(call.args[0] for call in stdout.write.call_args_list))
+        self.assertEqual(exit_status, 1)
+        self.assertEqual(list(report["benchmarks"]), list(names))
+        self.assertEqual(len(report["benchmarks"]), 65)
+        self.assertEqual(
+            {name for name, row in report["benchmarks"].items() if row["status"] == "timeout"},
+            timeout_names,
+        )
+        self.assertTrue(all(report["benchmarks"][name]["stage"] == "execute" for name in timeout_names))
+        self.assertEqual(report["benchmarks"][exception_name]["status"], "failed")
+        self.assertEqual(report["benchmarks"][exception_name]["stage"], "load")
+        self.assertIn("RuntimeError: injected worker failure", report["benchmarks"][exception_name]["condition"])
+        self.assertEqual(set(checkpoint_report["benchmarks"]), set(names))
+        self.assertEqual(progress, {"complete": True, "expected": list(names), "completed": 65})
+        self.assertEqual(
+            checkpoint_report["benchmarks"][exception_name],
+            report["benchmarks"][exception_name],
+        )
 
 
 if __name__ == "__main__":

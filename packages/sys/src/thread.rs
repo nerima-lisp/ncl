@@ -57,6 +57,21 @@ pub struct Thread {
     stack_scan_start: Option<usize>,
     gc_state: std::sync::OnceLock<PublishedThreadGcStateHandle>,
 }
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ConservativeRootSource {
+    Explicit,
+    CalleeSaved,
+    StackSlot,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ConservativeRootTrace {
+    pub(crate) source: ConservativeRootSource,
+    pub(crate) location: usize,
+    pub(crate) value_index: usize,
+}
+
 impl Default for Thread {
     fn default() -> Self {
         Self::new()
@@ -250,6 +265,60 @@ impl Thread {
             while address.checked_add(8).is_some_and(|next| next <= end) {
                 // SAFETY: the collector reads only a published, stopped stack interval at word alignment.
                 values.push(unsafe { Word::from_bits((address as *const u64).read()) });
+                address += 8;
+            }
+        }
+        values
+    }
+    pub(crate) fn conservative_snapshot_traced(
+        &self,
+        trace: &mut Vec<ConservativeRootTrace>,
+    ) -> Vec<Word> {
+        let mut values = self.conservative_roots.clone();
+        trace.extend(
+            (0..self.conservative_roots.len()).map(|index| ConservativeRootTrace {
+                source: ConservativeRootSource::Explicit,
+                location: index,
+                value_index: index,
+            }),
+        );
+        for (index, bits) in self.callee_saved.iter().copied().enumerate() {
+            trace.push(ConservativeRootTrace {
+                source: ConservativeRootSource::CalleeSaved,
+                location: index,
+                value_index: values.len(),
+            });
+            values.push(Word::from_bits(bits));
+        }
+        if let Some((bounds_start, end)) = self.stack_bounds {
+            let start = if self.native == NativeState::Lisp {
+                #[cfg(target_arch = "x86_64")]
+                {
+                    self.stack_scan_start
+                        .filter(|&stack_pointer| {
+                            gc_state::valid_stack_interval((bounds_start, end), stack_pointer)
+                        })
+                        .unwrap_or(bounds_start)
+                }
+                #[cfg(not(target_arch = "x86_64"))]
+                {
+                    bounds_start
+                }
+            } else {
+                bounds_start
+            };
+            let mut address = start.next_multiple_of(8);
+            while address.checked_add(8).is_some_and(|next| next <= end) {
+                // SAFETY: the collector reads only a published, stopped stack interval at word alignment.
+                let value_index = values.len();
+                trace.push(ConservativeRootTrace {
+                    source: ConservativeRootSource::StackSlot,
+                    location: address,
+                    value_index,
+                });
+                values.push(unsafe {
+                    Word::from_bits(ptr::with_exposed_provenance::<u64>(address).read())
+                });
                 address += 8;
             }
         }

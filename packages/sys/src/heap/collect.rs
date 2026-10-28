@@ -15,9 +15,30 @@ const HASH_TABLE_INDEX: usize = 13;
 const VECTOR_DATA: usize = 2;
 const TOMBSTONE: i64 = -2;
 
+#[derive(Clone, Copy)]
+struct RootTraceCandidate {
+    source: &'static str,
+    location: usize,
+    value: Word,
+    conservative: bool,
+}
+
+const fn weakness_name(weakness: Weakness) -> &'static str {
+    match weakness {
+        Weakness::Key => "Key",
+        Weakness::Value => "Value",
+        Weakness::KeyAndValue => "KeyAndValue",
+        Weakness::KeyOrValue => "KeyOrValue",
+    }
+}
+
 impl super::Heap {
     pub(crate) fn collect(&self, full: bool) {
         let mut state = self.lock_state();
+        let trace_test = std::thread::current()
+            .name()
+            .filter(|name| name.starts_with("weak_"))
+            .map(str::to_owned);
         state.gc_epoch = state.gc_epoch.wrapping_add(1);
         for object in &mut state.objects {
             object.pinned = false;
@@ -27,12 +48,22 @@ impl super::Heap {
         let mut weak_kv = HashMap::new();
         let mut pending_weak_tables = Vec::new();
         let mut root_slots = state.roots.clone();
+        let mut root_slot_sources = if trace_test.is_some() {
+            vec!["heap_root"; root_slots.len()]
+        } else {
+            Vec::new()
+        };
         let mut conservative_values = Vec::new();
+        let mut conservative_sources = Vec::new();
         let mut frame_values = Vec::new();
         for thread in state.threads.iter().copied() {
             // SAFETY: registered thread pointers remain valid until unregister_thread.
             unsafe {
                 root_slots.extend((*thread).roots.iter().copied());
+                if trace_test.is_some() {
+                    root_slot_sources
+                        .extend(std::iter::repeat_n("thread_root", (*thread).roots.len()));
+                }
                 // The multiple-value return area (used both for ordinary
                 // multi-value returns and, while a non-local exit is
                 // propagating, for the `catch` tag and thrown value) is a
@@ -43,8 +74,22 @@ impl super::Heap {
                 let mv_base: *mut Word = core::ptr::addr_of_mut!((*thread).mv).cast();
                 for index in 0..mv_live.min(crate::MULTIPLE_VALUE_AREA_WORDS) {
                     root_slots.push(mv_base.add(index));
+                    if trace_test.is_some() {
+                        root_slot_sources.push("multiple_value");
+                    }
                 }
-                conservative_values.extend((*thread).conservative_snapshot());
+                let base = conservative_values.len();
+                if trace_test.is_some() {
+                    let mut sources = Vec::new();
+                    conservative_values
+                        .extend((*thread).conservative_snapshot_traced(&mut sources));
+                    conservative_sources.extend(sources.into_iter().map(|mut source| {
+                        source.value_index += base;
+                        source
+                    }));
+                } else {
+                    conservative_values.extend((*thread).conservative_snapshot());
+                }
                 let mut values = Vec::new();
                 if (*thread).has_native_frame_snapshot() {
                     let _ = (*thread).scan_native_frame(&state.code_registry, |value| {
@@ -66,8 +111,36 @@ impl super::Heap {
                 frame_values.extend(values);
             }
         }
+        let mut trace_candidates = Vec::new();
+        if trace_test.is_some() {
+            for source in conservative_sources {
+                let Some(value) = conservative_values.get(source.value_index).copied() else {
+                    continue;
+                };
+                let location = source.location;
+                let (source, conservative) = match source.source {
+                    crate::thread::ConservativeRootSource::Explicit => ("conservative_root", true),
+                    crate::thread::ConservativeRootSource::CalleeSaved => ("callee_saved", true),
+                    crate::thread::ConservativeRootSource::StackSlot => ("stack_slot", true),
+                };
+                trace_candidates.push(RootTraceCandidate {
+                    source,
+                    location,
+                    value,
+                    conservative,
+                });
+            }
+            trace_candidates.extend(frame_values.iter().copied().enumerate().map(
+                |(index, value)| RootTraceCandidate {
+                    source: "frame_value",
+                    location: index,
+                    value,
+                    conservative: false,
+                },
+            ));
+        }
         let mut conservative_indices = Vec::new();
-        for value in conservative_values {
+        for value in conservative_values.iter().copied() {
             if let Some(index) = Self::find_conservative(&state, value) {
                 state.objects[index].pinned = true;
                 conservative_indices.push(index);
@@ -80,17 +153,27 @@ impl super::Heap {
                 }
             }
         }
-        for root in root_slots.iter().copied() {
+        for (slot_index, root) in root_slots.iter().copied().enumerate() {
             if !root.is_null() {
                 // SAFETY: registered root slots outlive registration.
                 let value = unsafe { *root };
+                if trace_test.is_some() {
+                    if let Some(source) = root_slot_sources.get(slot_index).copied() {
+                        trace_candidates.push(RootTraceCandidate {
+                            source,
+                            location: root.addr(),
+                            value,
+                            conservative: false,
+                        });
+                    }
+                }
                 if let Some(index) = Self::find(&state, value) {
                     stack.push(index);
                 }
             }
         }
         stack.extend(conservative_indices);
-        for value in frame_values {
+        for value in frame_values.iter().copied() {
             if let Some(index) = Self::find(&state, value) {
                 stack.push(index);
             }
@@ -104,6 +187,10 @@ impl super::Heap {
             pending: &mut pending_weak_tables,
         };
         mark.drain();
+        drop(mark);
+        if let Some(test) = trace_test.as_deref() {
+            Self::trace_weak_root_candidates(&state, &live, full, &trace_candidates, test);
+        }
         let moved = Self::move_live_objects(&mut state, &mut live);
         let hooks = Self::finish_collection(&mut state, &root_slots, &moved, &live, full);
         drop(state);
@@ -397,6 +484,92 @@ impl super::Heap {
             *value_slot = relocated_value;
             false
         }
+    }
+
+    fn trace_weak_root_candidates(
+        state: &super::State,
+        live: &HashSet<usize>,
+        full: bool,
+        candidates: &[RootTraceCandidate],
+        test: &str,
+    ) {
+        for table in 0..state.objects.len() {
+            let Some(table_object) = state.objects.get(table) else {
+                continue;
+            };
+            if !table_object.alive {
+                continue;
+            }
+            let Some((weakness, kv, _, marker, high_water)) =
+                Self::hash_table_cleanup_data(state, table)
+            else {
+                continue;
+            };
+            let Some(kv_object) = state.objects.get(kv) else {
+                continue;
+            };
+            for position in 0..high_water {
+                let key_offset = VECTOR_DATA + position * 2;
+                let Some(key_bits) = kv_object.words.get(key_offset).copied() else {
+                    continue;
+                };
+                if key_bits == marker {
+                    continue;
+                }
+                let Some(value_bits) = kv_object.words.get(key_offset + 1).copied() else {
+                    continue;
+                };
+                let key = Word::from_bits(key_bits);
+                let value = Word::from_bits(value_bits);
+                let key_live = weak_mark::referent_is_live(state, live, full, key);
+                let value_live = weak_mark::referent_is_live(state, live, full, value);
+                let retained = match weakness {
+                    Weakness::Key => key_live,
+                    Weakness::Value => value_live,
+                    Weakness::KeyAndValue => key_live && value_live,
+                    Weakness::KeyOrValue => key_live || value_live,
+                };
+                if !retained {
+                    continue;
+                }
+                let key_matches = Self::matching_root_sources(state, candidates, key);
+                let value_matches = Self::matching_root_sources(state, candidates, value);
+                eprintln!(
+                    "NCL_GC_ROOT_TRACE test={test} table={table} position={position} weakness={} key={:#x} key_live={key_live} key_sources=[{}] value={:#x} value_live={value_live} value_sources=[{}]",
+                    weakness_name(weakness),
+                    key.bits(),
+                    key_matches.join(","),
+                    value.bits(),
+                    value_matches.join(","),
+                );
+            }
+        }
+    }
+
+    fn matching_root_sources(
+        state: &super::State,
+        candidates: &[RootTraceCandidate],
+        target: Word,
+    ) -> Vec<String> {
+        let target_index = Self::find(state, target);
+        candidates
+            .iter()
+            .filter_map(|candidate| {
+                let index = if candidate.conservative {
+                    Self::find_conservative(state, candidate.value)
+                } else {
+                    Self::find(state, candidate.value)
+                };
+                (target_index.is_some() && target_index == index).then(|| {
+                    format!(
+                        "{}@{:#x}={:#x}",
+                        candidate.source,
+                        candidate.location,
+                        candidate.value.bits()
+                    )
+                })
+            })
+            .collect()
     }
 
     fn remove_hash_table_entry(

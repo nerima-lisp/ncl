@@ -1,5 +1,9 @@
 use super::*;
 
+#[cfg(test)]
+#[path = "defgeneric_macro_tests.rs"]
+mod defgeneric_macro_tests;
+
 fn make_list<'ctx>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,

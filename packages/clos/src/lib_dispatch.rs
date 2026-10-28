@@ -47,7 +47,7 @@ fn clos_ensure_initialization_base_builtin(
         scope.make_list(runtime, &values)?
     };
     let function = scope.root(Local::from_word(function));
-    let qualifier = scope.root(Local::from_word(Word::fixnum(METHOD_QUALIFIER_PRIMARY)));
+    let qualifier = scope.root(Local::from_word(Word::NIL));
     let method = allocate_standard_method(&mut scope, runtime)?;
     let qualifier_list = scope.root(Local::from_word(Word::NIL));
     let origin = scope.root(Local::from_word(Word::NIL));
@@ -183,69 +183,55 @@ fn invoke_core<'ctx, C: ncl_object::FunctionCaller>(
     values: &mut MultipleValues,
 ) -> Result<ncl_object::Handle<'ctx>, ObjectError> {
     let method_word = scope.get(effective_method).as_word();
-    let before = scope.root(Local::from_word(simple_vector_ref(
+    let combination = scope.root(Local::from_word(simple_vector_ref(
         scope.context(),
         method_word,
         1,
     )?));
-    let primary = scope.root(Local::from_word(simple_vector_ref(
+    let before = scope.root(Local::from_word(simple_vector_ref(
         scope.context(),
         method_word,
         2,
     )?));
-    let after = scope.root(Local::from_word(simple_vector_ref(
+    let primary = scope.root(Local::from_word(simple_vector_ref(
         scope.context(),
         method_word,
         3,
     )?));
+    let after = scope.root(Local::from_word(simple_vector_ref(
+        scope.context(),
+        method_word,
+        4,
+    )?));
+    let combination_kind =
+        method_combination_kind(scope.context(), scope.get(combination).as_word())?;
     let before = dispatch_list_to_handles(scope, before)?;
     let primary = dispatch_list_to_handles(scope, primary)?;
     let after = dispatch_list_to_handles(scope, after)?;
-    for function in before.iter().copied() {
-        let nil = scope.root(Local::from_word(Word::NIL));
-        call_method(
+    if combination_kind == MethodCombination::Standard {
+        return lib_dispatch_effective_methods::invoke_standard_effective_method(
             scope,
             runtime,
-            function,
+            &before,
+            &primary,
+            &after,
             arguments,
             argument_list,
-            nil,
             caller,
             values,
-        )?;
+        );
     }
-    let first = *primary
-        .as_slice()
-        .first()
-        .ok_or(ObjectError::UndefinedFunction)?;
-    let rest = tail_handles(scope, &primary);
-    let next = scope.make_list(runtime, &rest)?;
-    let result = call_method(
+    lib_dispatch_effective_methods::invoke_short_effective_method(
         scope,
         runtime,
-        first,
+        combination_kind,
+        combination,
+        &primary,
         arguments,
         argument_list,
-        next,
         caller,
         values,
-    )?;
-    let returned = values.as_slice().to_vec();
-    for function in after.iter().copied() {
-        let nil = scope.root(Local::from_word(Word::NIL));
-        call_method(
-            scope,
-            runtime,
-            function,
-            arguments,
-            argument_list,
-            nil,
-            caller,
-            values,
-        )?;
-    }
-    values.set(&returned);
-    Ok(result)
+    )
 }
 
 fn invoke_continuation<'ctx, C: ncl_object::FunctionCaller>(
@@ -310,6 +296,7 @@ fn invoke_continuation<'ctx, C: ncl_object::FunctionCaller>(
 fn invoke_dispatch<'ctx, C: ncl_object::FunctionCaller>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,
+    combination: ncl_object::Handle<'ctx>,
     before: &ncl_object::HandleVec<'ctx>,
     primary: &ncl_object::HandleVec<'ctx>,
     after: &ncl_object::HandleVec<'ctx>,
@@ -326,6 +313,7 @@ fn invoke_dispatch<'ctx, C: ncl_object::FunctionCaller>(
         let mut values = scope.root_many(&[]);
         let tag = scope.intern(runtime, "KEYWORD", "CLOS-CORE")?;
         dispatch_push_handle(scope, &mut values, tag);
+        dispatch_push_handle(scope, &mut values, combination);
         dispatch_push_handle(scope, &mut values, before_list);
         dispatch_push_handle(scope, &mut values, primary_list);
         dispatch_push_handle(scope, &mut values, after_list);
@@ -375,70 +363,58 @@ fn clos_dispatch_builtin(
     if !has_method_registry(&mut scope, runtime, name)? {
         return Err(ObjectError::UndefinedFunction);
     }
-    let argument_words = arguments
-        .iter()
-        .map(|handle| scope.get(*handle).as_word())
-        .collect::<Vec<_>>();
+    let (combination, order) = generic_method_combination(&mut scope, runtime, name)?;
+    let combination_kind =
+        method_combination_kind(scope.context(), scope.get(combination).as_word())?;
+    let most_specific_first = scope.intern(runtime, "KEYWORD", "MOST-SPECIFIC-FIRST")?;
+    let most_specific_last = scope.intern(runtime, "KEYWORD", "MOST-SPECIFIC-LAST")?;
+    if combination_kind != MethodCombination::Standard
+        && scope.get(order).as_word() != scope.get(most_specific_first).as_word()
+        && scope.get(order).as_word() != scope.get(most_specific_last).as_word()
+    {
+        return Err(ObjectError::TypeError);
+    }
     let registry = method_registry(&mut scope, runtime, name)?;
     let entries = dispatch_list_to_handles(&mut scope, registry)?;
-    let mut matches = Vec::new();
-    for entry in entries.iter().copied() {
-        let fields = dispatch_list_to_handles(&mut scope, entry)?;
-        let specializers = scope
-            .get(*fields.as_slice().first().ok_or(ObjectError::TypeError)?)
-            .as_word();
-        let qualifier = scope
-            .get(*fields.as_slice().get(1).ok_or(ObjectError::TypeError)?)
-            .as_word();
-        let function = scope
-            .get(*fields.as_slice().get(2).ok_or(ObjectError::TypeError)?)
-            .as_word();
-        if let Some(specificity) =
-            dispatch_method_match(scope.context_mut(), runtime, specializers, &argument_words)?
-        {
-            matches.push((specificity, qualifier, function));
-        }
-    }
-    matches.sort_by(|left, right| right.0.cmp(&left.0));
-    let mut before_words = Vec::new();
-    let mut primary_words = Vec::new();
-    let mut after_words = Vec::new();
-    let mut around_words = Vec::new();
-    for (_, qualifier, function) in matches {
-        match qualifier.as_fixnum() {
-            Some(METHOD_QUALIFIER_AROUND) => around_words.push(function),
-            Some(METHOD_QUALIFIER_BEFORE) => before_words.push(function),
-            Some(METHOD_QUALIFIER_AFTER) => after_words.push(function),
-            _ => primary_words.push(function), // check-added-lines: allow(wildcard) primary fallback
-        }
-    }
-    after_words.reverse();
-    if primary_words.is_empty() {
+    let groups = lib_dispatch_selection::collect_applicable_methods(
+        &mut scope,
+        runtime,
+        combination,
+        combination_kind,
+        order,
+        &arguments,
+        &entries,
+    )?;
+    if groups.primary.is_empty() {
         return Err(ObjectError::UndefinedFunction);
     }
     let before = scope.root_many(
-        &before_words
+        &groups
+            .before
             .iter()
             .copied()
             .map(Local::from_word)
             .collect::<Vec<_>>(),
     );
     let primary = scope.root_many(
-        &primary_words
+        &groups
+            .primary
             .iter()
             .copied()
             .map(Local::from_word)
             .collect::<Vec<_>>(),
     );
     let after = scope.root_many(
-        &after_words
+        &groups
+            .after
             .iter()
             .copied()
             .map(Local::from_word)
             .collect::<Vec<_>>(),
     );
     let around = scope.root_many(
-        &around_words
+        &groups
+            .around
             .iter()
             .copied()
             .map(Local::from_word)
@@ -448,6 +424,7 @@ fn clos_dispatch_builtin(
     let result = invoke_dispatch(
         &mut scope,
         runtime,
+        combination,
         &before,
         &primary,
         &after,

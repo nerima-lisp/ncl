@@ -194,6 +194,32 @@ fn method_registry_key<'ctx>(
     scope.intern(runtime, "NCL", METHOD_REGISTRY_KEY_NAME)
 }
 
+fn generic_method_combination<'ctx>(
+    scope: &mut Scope<'ctx>,
+    runtime: &Runtime,
+    name: ncl_object::Handle<'ctx>,
+) -> Result<
+    (
+        ncl_object::Handle<'ctx>,
+        ncl_object::Handle<'ctx>,
+    ),
+    ObjectError,
+> {
+    let key = scope.intern(runtime, "NCL", METHOD_COMBINATION_KEY_NAME)?;
+    if let Some(encoded) = symbol_plist_property(scope, name, key)? {
+        let fields = scope.list_to_handle_vec(Local::from_word(scope.get(encoded).as_word()))?;
+        if fields.len() != 2 {
+            return Err(ObjectError::TypeError);
+        }
+        let combination = *fields.as_slice().first().ok_or(ObjectError::TypeError)?;
+        let order = *fields.as_slice().get(1).ok_or(ObjectError::TypeError)?;
+        return Ok((combination, order));
+    }
+    let standard = scope.intern(runtime, COMMON_LISP, "STANDARD")?;
+    let order = scope.intern(runtime, "KEYWORD", "MOST-SPECIFIC-FIRST")?;
+    Ok((standard, order))
+}
+
 fn method_definition_parts<'ctx>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,
@@ -222,28 +248,10 @@ fn method_definition_parts<'ctx>(
         let origin = fields.as_slice().get(4).copied().unwrap_or(default_origin);
         return Ok((specializers, qualifier, qualifier_list, origin));
     }
-    let qualifier = scope.root(Local::from_word(Word::fixnum(METHOD_QUALIFIER_PRIMARY)));
+    let qualifier = scope.root(Local::from_word(Word::NIL));
     let qualifier_list = scope.root(Local::from_word(Word::NIL));
     let origin = scope.root(Local::from_word(Word::NIL));
     Ok((encoded, qualifier, qualifier_list, origin))
 }
 
-fn method_qualifier(ctx: &ThreadContext, value: Word) -> Result<Option<Word>, ObjectError> {
-    if !matches!(
-        ncl_object::classify_object(ctx, value),
-        ObjectRef::Symbol(_)
-    ) {
-        return Ok(None);
-    }
-    let name = symbol_name_string(ctx, value)?;
-    let qualifier = if matches!(name.as_str(), ":BEFORE" | "BEFORE") {
-        METHOD_QUALIFIER_BEFORE
-    } else if matches!(name.as_str(), ":AFTER" | "AFTER") {
-        METHOD_QUALIFIER_AFTER
-    } else if matches!(name.as_str(), ":AROUND" | "AROUND") {
-        METHOD_QUALIFIER_AROUND
-    } else {
-        return Ok(None);
-    };
-    Ok(Some(Word::fixnum(qualifier)))
-}
+

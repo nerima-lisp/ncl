@@ -211,7 +211,8 @@ fn copy_pprint_dispatch_rejects_bad_arity_and_non_tables() {
 
 #[test]
 fn printer_registration_propagates_heap_capacity_failure() {
-    let mut found_capacity_error = false;
+    let mut found_registration_capacity_error = false;
+    let mut found_successful_registration = false;
     'capacities: for bytes in [
         64 * 1024,
         128 * 1024,
@@ -253,41 +254,68 @@ fn printer_registration_propagates_heap_capacity_failure() {
             }
         }
 
-        let mut retained = Word::NIL;
-        let token = ncl_object::push_root(&mut ctx, &mut retained);
-        let allocation_error = exhaust_heap(&mut ctx, &runtime, &mut retained);
-        assert_capacity_exceeded(allocation_error, "heap exhaustion");
-        let mut saw_registration_failure = false;
-        let mut copy_registered = false;
-        for _ in 0..256 {
-            let registration_result = ncl_printer::register(&mut ctx, &runtime);
-            if runtime
-                .function(&mut ctx, "COMMON-LISP", "COPY-PPRINT-DISPATCH")
-                .is_some()
-            {
-                copy_registered = true;
-                break;
-            }
-            assert_eq!(registration_result, Err(allocation_error));
-            saw_registration_failure = true;
-            for _ in 0..64 {
-                if retained == Word::NIL {
-                    break;
+        let roots = vec![Word::NIL; 1_024];
+        let retry_succeeded = match ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+            let mut next_root = 0;
+            for words in [65_536, 4_096, 256, 16, 1] {
+                loop {
+                    match ncl_object::allocate(ctx, &runtime, 0x7f, words) {
+                        Ok(value) => {
+                            roots[next_root] = value;
+                            next_root += 1;
+                        }
+                        Err(error) => {
+                            assert_capacity_exceeded(error, "heap fill");
+                            break;
+                        }
+                    }
                 }
-                retained = ncl_object::cdr(&ctx, retained).unwrap();
             }
+
+            let registration_error = match ncl_printer::register(ctx, &runtime) {
+                Ok(()) => {
+                    panic!("printer registration succeeded while heap allocations were rooted")
+                }
+                Err(error) => error,
+            };
+            assert_capacity_exceeded(registration_error, "printer registration");
+
+            for root in &mut roots[..next_root] {
+                *root = Word::NIL;
+            }
+            ctx.collect(true)?;
+
+            match ncl_printer::register(ctx, &runtime) {
+                Ok(()) => Ok(true),
+                Err(error) => {
+                    assert_capacity_exceeded(error, "printer registration retry");
+                    Ok(false)
+                }
+            }
+        }) {
+            Ok(succeeded) => succeeded,
+            Err(error) => panic!("unexpected printer registration error: {error:?}"),
+        };
+        found_registration_capacity_error = true;
+
+        if retry_succeeded {
+            assert!(
+                runtime
+                    .function(&mut ctx, "COMMON-LISP", "COPY-PPRINT-DISPATCH")
+                    .is_some(),
+                "COPY-PPRINT-DISPATCH should be registered after heap collection"
+            );
+            found_successful_registration = true;
+            break 'capacities;
         }
-        assert!(saw_registration_failure);
-        assert!(ncl_object::pop_root(&mut ctx, token));
-        if !copy_registered {
-            continue 'capacities;
-        }
-        found_capacity_error = true;
-        break;
     }
     assert!(
-        found_capacity_error,
-        "no configured heap reached COPY-PPRINT-DISPATCH registration after CapacityExceeded"
+        found_registration_capacity_error,
+        "no configured heap reached printer registration after heap exhaustion"
+    );
+    assert!(
+        found_successful_registration,
+        "printer registration did not succeed after releasing heap pressure"
     );
 }
 

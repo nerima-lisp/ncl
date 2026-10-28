@@ -5,6 +5,8 @@
 //! It is the AST counterpart of `ncl_ir::Constant` plus the structural data
 //! that `Constant::Object` defers to the constant table.
 
+use ncl_object::ArrayElementType;
+
 use crate::symbols::SymbolRef;
 
 /// A numeric literal.
@@ -64,13 +66,24 @@ pub enum Literal {
     Vector(Vec<Self>),
     /// A general array, in row-major order.
     Array {
-        /// The dimensions, most significant first.
+        /// The source object's identity within this expansion.
+        identity: u32,
+        /// Its dimensions, most significant first.
         dimensions: Vec<usize>,
+        /// Its element representation in the object layer.
+        element_type: ArrayElementType,
         /// The row-major elements.
         elements: Vec<Self>,
     },
-    /// A bit vector, one boolean per element.
-    BitVector(Vec<bool>),
+    /// A specialized simple array with its storage element type.
+    SpecializedArray {
+        /// The source object's identity within this expansion.
+        identity: u32,
+        /// Its element representation in the object layer.
+        element_type: ArrayElementType,
+        /// Its row-major elements.
+        elements: Vec<Self>,
+    },
 }
 
 impl Literal {

@@ -663,33 +663,75 @@ fn text_round_trips_documented_op_payloads_and_types() {
 
 #[test]
 fn text_round_trips_extended_constant_descriptors() {
+    let mut constants = vec![
+        Constant::Fixnum(i64::MIN),
+        Constant::Bignum {
+            negative: true,
+            limbs: vec![0x89ab_cdef, 0x0123_4567],
+        },
+        Constant::Structure {
+            kind: StructureKind::Cons,
+            elements: vec![ConstantIndex(0), ConstantIndex(1)],
+        },
+        Constant::Structure {
+            kind: StructureKind::SimpleVector,
+            elements: vec![ConstantIndex(2)],
+        },
+        Constant::Ratio {
+            numerator: ConstantIndex(0),
+            denominator: ConstantIndex(1),
+        },
+        Constant::Complex {
+            real: ConstantIndex(4),
+            imaginary: ConstantIndex(0),
+        },
+        Constant::Fixnum(1),
+    ];
+    constants.extend(
+        [
+            SpecializedArrayElementType::Bit,
+            SpecializedArrayElementType::Character,
+            SpecializedArrayElementType::BaseChar,
+            SpecializedArrayElementType::Fixnum,
+            SpecializedArrayElementType::Signed,
+            SpecializedArrayElementType::Unsigned,
+            SpecializedArrayElementType::SingleFloat,
+            SpecializedArrayElementType::DoubleFloat,
+        ]
+        .into_iter()
+        .map(|element_type| Constant::Structure {
+            kind: StructureKind::SpecializedArray { element_type },
+            elements: vec![ConstantIndex(6)],
+        }),
+    );
+    constants.extend([
+        Constant::Character(u32::from('A')),
+        Constant::Character(u32::from('B')),
+        Constant::Structure {
+            kind: StructureKind::Array {
+                dimensions: vec![2],
+                element_type: ArrayElementType::Character,
+            },
+            elements: vec![ConstantIndex(15), ConstantIndex(16)],
+        },
+        Constant::LiteralObject {
+            identity: 11,
+            value: ConstantIndex(17),
+        },
+        Constant::Structure {
+            kind: StructureKind::Array {
+                dimensions: vec![2, 0],
+                element_type: ArrayElementType::T,
+            },
+            elements: Vec::new(),
+        },
+    ]);
+
     let function = finish(
         "constant-descriptors",
         Vec::new(),
         Vec::new(),
-        vec![
-            Constant::Fixnum(i64::MIN),
-            Constant::Bignum {
-                negative: true,
-                limbs: vec![0x89ab_cdef, 0x0123_4567],
-            },
-            Constant::Structure {
-                kind: StructureKind::Cons,
-                elements: vec![ConstantIndex(0), ConstantIndex(1)],
-            },
-            Constant::Structure {
-                kind: StructureKind::SimpleVector,
-                elements: vec![ConstantIndex(2)],
-            },
-            Constant::Ratio {
-                numerator: ConstantIndex(0),
-                denominator: ConstantIndex(1),
-            },
-            Constant::Complex {
-                real: ConstantIndex(4),
-                imaginary: ConstantIndex(0),
-            },
-        ],
+        constants,
         vec![block(
             0,
             Vec::new(),
@@ -1082,12 +1124,12 @@ fn text_rejects_malformed_identity_and_constant_fields() {
         ),
         (
             "constant tag",
-            "0,bad,0,0,1,10,0,1,0,0,0,5,0,0,0,0,",
+            "0,bad,0,0,1,12,0,1,0,0,0,5,0,0,0,0,",
             "bad constant",
         ),
         (
             "structure constant kind",
-            "0,bad,0,0,1,b,2,0,1,0,0,0,5,0,0,0,0,",
+            "0,bad,0,0,1,b,4,0,1,0,0,0,5,0,0,0,0,",
             "bad structure kind",
         ),
     ]);

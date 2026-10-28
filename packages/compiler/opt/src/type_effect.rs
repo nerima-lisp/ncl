@@ -360,6 +360,7 @@ fn scalar_constant(constant: &Constant) -> ScalarType {
         | Constant::UninternedSymbol { .. }
         | Constant::StringBytes(_)
         | Constant::Structure { .. }
+        | Constant::LiteralObject { .. }
         | Constant::FunctionEntry(_)
         | Constant::Unbound => ScalarType::NonNumber,
         Constant::Object(_) => ScalarType::Unknown,

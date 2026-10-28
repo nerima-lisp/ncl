@@ -16,6 +16,71 @@ fn eval_builtin_evaluates_a_form() {
     assert_eq!(runtime.format_result(value), "42");
 }
 
+#[test]
+fn specialized_array_literals_preserve_values_types_and_identity() {
+    let mut runtime = new_runtime();
+    let forms = [
+        r"(and (equalp #* #()) (eq (array-element-type #*) 'bit))",
+        r"(and (equalp #*101 #(1 0 1)) (equal #*101 #*101)
+               (eq (array-element-type #*101) 'bit))",
+        r"(let ((pair #.(let ((array #*101)) (vector array array))))
+              (eq (aref pair 0) (aref pair 1)))",
+        r"(let ((array #1=#*101)) (funcall (lambda () (eq array #1#))))",
+    ];
+    for form in forms {
+        let value = runtime
+            .eval(form)
+            .unwrap_or_else(|error| panic!("evaluation failed for {form}: {error:?}"));
+        assert_eq!(runtime.format_result(value), "T", "{form}");
+    }
+
+    match runtime.compile("(defun specialized-array-literal-repeated-value () #*101)") {
+        Ok(_) => {}
+        Err(error) => panic!("literal function compilation failed: {error:?}"),
+    }
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(eq (specialized-array-literal-repeated-value) (specialized-array-literal-repeated-value))",
+        ),
+        "T",
+    );
+}
+
+#[test]
+fn general_array_literals_preserve_shape_type_contents_and_identity() {
+    let mut runtime = new_runtime();
+    let forms = [
+        r"(let ((array #.(make-array 2 :element-type 'character :initial-contents '(#\A #\B))))
+              (and (equalp array #(#\A #\B))
+                   (equal (array-dimensions array) '(2))
+                   (eq (array-element-type array) 'character)))",
+        r"(let ((array #.(make-array 0 :element-type 'character)))
+              (and (equalp array #())
+                   (equal (array-dimensions array) '(0))
+                   (eq (array-element-type array) 'character)))",
+        r"(let ((array #.(make-array 3 :element-type 'bit :initial-contents '(1 0 1))))
+              (and (equalp array #*101)
+                   (equal (array-dimensions array) '(3))
+                   (eq (array-element-type array) 'bit)))",
+        r"(let ((array #.(make-array '(2 2) :initial-contents '((1 2) (3 4)))))
+              (equal (array-dimensions array) '(2 2)))",
+        r"(let ((array #.(make-array '(2 2) :initial-contents '((1 2) (3 4)))))
+              (= (aref array 1 0) 3))",
+        r"(let ((array #.(make-array '(2 2) :initial-contents '((1 2) (3 4)))))
+              (= (aref array 1 1) 4))",
+        r"(let ((array #1=#.(make-array 2 :element-type 'character
+                                         :initial-contents '(#\A #\B))))
+              (funcall (lambda () (eq array #1#))))",
+    ];
+    for form in forms {
+        let value = runtime
+            .eval(form)
+            .unwrap_or_else(|error| panic!("evaluation failed for {form}: {error:?}"));
+        assert_eq!(runtime.format_result(value), "T", "{form}");
+    }
+}
+
 fn new_runtime() -> Runtime {
     match Runtime::new() {
         Ok(runtime) => runtime,

@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use ncl_ir::{
-    BlockId, Constant, Function, FunctionBuilder, FunctionId, OpKind, Param, Terminator, Ty,
-    ValueId,
+    BlockId, Constant, ConstantIndex, Function, FunctionBuilder, FunctionId, OpKind, Param,
+    Terminator, Ty, ValueId,
 };
 
 use crate::symbols::SymbolRef;
@@ -59,6 +59,7 @@ pub(super) struct FunctionLowerer {
     env: LowerEnv,
     current: BlockId,
     terminated: bool,
+    literal_constants: HashMap<u32, ConstantIndex>,
 }
 
 impl FunctionLowerer {
@@ -75,6 +76,7 @@ impl FunctionLowerer {
             env: LowerEnv::new(),
             current: BlockId(0),
             terminated: false,
+            literal_constants: HashMap::new(),
         }
     }
 
@@ -150,6 +152,16 @@ impl FunctionLowerer {
 
     pub(super) fn add_constant(&mut self, constant: Constant) -> ncl_ir::ConstantIndex {
         self.builder.add_constant(constant)
+    }
+
+    /// Return a constant index already assigned to a source literal object.
+    pub(super) fn literal_constant(&self, identity: u32) -> Option<ConstantIndex> {
+        self.literal_constants.get(&identity).copied()
+    }
+
+    /// Record the constant index for a source literal object.
+    pub(super) fn remember_literal_constant(&mut self, identity: u32, constant: ConstantIndex) {
+        self.literal_constants.insert(identity, constant);
     }
 
     /// Append `nil` as a `Word`.
@@ -242,6 +254,7 @@ const fn constant_type(constant: &Constant) -> Ty {
         | Constant::Symbol { .. }
         | Constant::UninternedSymbol { .. }
         | Constant::Object(_)
+        | Constant::LiteralObject { .. }
         | Constant::StringBytes(_)
         | Constant::Structure { .. }
         | Constant::Bignum { .. }

@@ -1,11 +1,14 @@
 //! Lowering quoted and self-evaluating literals to `ncl-ir` constants.
 //!
 //! The constant table holds scalars, symbols, strings, and descriptors, plus
-//! structural entries (cons, vector, bignum, ratio, complex) that reference
-//! earlier table entries by index. Arrays and bit-vectors have no
-//! representation yet and are reported as [`LowerError::Unsupported`].
+//! structural entries (cons, vector, array, bignum, ratio, complex) that
+//! reference earlier table entries by index.
 
-use ncl_ir::{Constant, Convert, OpKind, StructureKind, Ty, ValueId};
+use ncl_ir::{
+    ArrayElementType as IrArrayElementType, Constant, ConstantIndex, Convert, OpKind,
+    SpecializedArrayElementType, StructureKind, Ty, ValueId,
+};
+use ncl_object::ArrayElementType;
 
 use crate::literal::{Literal, NumberLiteral};
 use crate::symbols::SymbolRef;
@@ -37,10 +40,10 @@ pub(super) fn lower_literal(
             let descriptor = structure_constant(f, literal)?;
             f.word_constant(descriptor)
         }
-        // check-added-lines: allow(unsupported) unsupported literal families remain explicit
-        Literal::Array { .. } | Literal::BitVector(_) => Err(LowerError::Unsupported {
-            form: "quoted structure",
-        }),
+        Literal::Array { identity, .. } | Literal::SpecializedArray { identity, .. } => {
+            let index = array_constant_index(f, literal, *identity)?;
+            f.word_constant(Constant::Object(index))
+        }
     }
 }
 
@@ -86,15 +89,35 @@ fn structure_constant(f: &mut FunctionLowerer, literal: &Literal) -> Result<Cons
     let (kind, children): (StructureKind, Vec<&Literal>) = match literal {
         Literal::Cons(car, cdr) => (StructureKind::Cons, vec![car, cdr]),
         Literal::Vector(elements) => (StructureKind::SimpleVector, elements.iter().collect()),
+        Literal::SpecializedArray {
+            element_type,
+            elements,
+            ..
+        } => (
+            StructureKind::SpecializedArray {
+                element_type: ir_specialized_array_element_type(*element_type)?,
+            },
+            elements.iter().collect(),
+        ),
+        Literal::Array {
+            dimensions,
+            element_type,
+            elements,
+            ..
+        } => (
+            StructureKind::Array {
+                dimensions: dimensions.clone(),
+                element_type: ir_array_element_type(*element_type),
+            },
+            elements.iter().collect(),
+        ),
         Literal::Nil
         | Literal::T
         | Literal::Symbol(_)
         | Literal::Number(_)
         | Literal::Character(_)
         | Literal::String(_)
-        | Literal::Pathname(_)
-        | Literal::Array { .. }
-        | Literal::BitVector(_) => {
+        | Literal::Pathname(_) => {
             // check-added-lines: allow(unsupported) unsupported literal families remain explicit
             return Err(LowerError::Unsupported {
                 form: "quoted structure",
@@ -109,6 +132,57 @@ fn structure_constant(f: &mut FunctionLowerer, literal: &Literal) -> Result<Cons
         })
         .collect::<Result<Vec<_>, LowerError>>()?;
     Ok(Constant::Structure { kind, elements })
+}
+
+fn array_constant_index(
+    f: &mut FunctionLowerer,
+    literal: &Literal,
+    identity: u32,
+) -> Result<ConstantIndex, LowerError> {
+    if let Some(index) = f.literal_constant(identity) {
+        return Ok(index);
+    }
+    let descriptor = structure_constant(f, literal)?;
+    let descriptor = f.add_constant(descriptor);
+    let index = f.add_constant(Constant::LiteralObject {
+        identity,
+        value: descriptor,
+    });
+    f.remember_literal_constant(identity, index);
+    Ok(index)
+}
+
+const fn ir_specialized_array_element_type(
+    element_type: ArrayElementType,
+) -> Result<SpecializedArrayElementType, LowerError> {
+    match element_type {
+        ArrayElementType::Bit => Ok(SpecializedArrayElementType::Bit),
+        ArrayElementType::Character => Ok(SpecializedArrayElementType::Character),
+        ArrayElementType::BaseChar => Ok(SpecializedArrayElementType::BaseChar),
+        ArrayElementType::Fixnum => Ok(SpecializedArrayElementType::Fixnum),
+        ArrayElementType::Signed => Ok(SpecializedArrayElementType::Signed),
+        ArrayElementType::Unsigned => Ok(SpecializedArrayElementType::Unsigned),
+        ArrayElementType::SingleFloat => Ok(SpecializedArrayElementType::SingleFloat),
+        ArrayElementType::DoubleFloat => Ok(SpecializedArrayElementType::DoubleFloat),
+        // check-added-lines: allow(unsupported) T is a general-array element type, not a specialized-array element type.
+        ArrayElementType::T => Err(LowerError::Unsupported {
+            form: "specialized array with element type T",
+        }),
+    }
+}
+
+const fn ir_array_element_type(element_type: ArrayElementType) -> IrArrayElementType {
+    match element_type {
+        ArrayElementType::T => IrArrayElementType::T,
+        ArrayElementType::Bit => IrArrayElementType::Bit,
+        ArrayElementType::Character => IrArrayElementType::Character,
+        ArrayElementType::BaseChar => IrArrayElementType::BaseChar,
+        ArrayElementType::Fixnum => IrArrayElementType::Fixnum,
+        ArrayElementType::Signed => IrArrayElementType::Signed,
+        ArrayElementType::Unsigned => IrArrayElementType::Unsigned,
+        ArrayElementType::SingleFloat => IrArrayElementType::SingleFloat,
+        ArrayElementType::DoubleFloat => IrArrayElementType::DoubleFloat,
+    }
 }
 
 fn scalar_or_structure_constant(
@@ -130,7 +204,11 @@ fn scalar_or_structure_constant(
         }
         Literal::Number(number) => number_literal_constant(f, number),
         Literal::Cons(_, _) | Literal::Vector(_) => structure_constant(f, literal),
-        Literal::Pathname(_) | Literal::Array { .. } | Literal::BitVector(_) => {
+        Literal::Array { identity, .. } | Literal::SpecializedArray { identity, .. } => {
+            let index = array_constant_index(f, literal, *identity)?;
+            Ok(Constant::Object(index))
+        }
+        Literal::Pathname(_) => {
             // check-added-lines: allow(unsupported) unsupported literal families remain explicit
             Err(LowerError::Unsupported {
                 form: "quoted structure",

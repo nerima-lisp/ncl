@@ -12,8 +12,13 @@ mod forms;
 use forms::Fixture;
 
 use ncl_compiler_front::{lower_toplevel, lower_toplevel_for_eval};
-use ncl_ir::{Compare, Constant, Function, HandlerKind, OpKind, Terminator, verify};
-use ncl_object::Word;
+use ncl_ir::{
+    ArrayElementType, Compare, Constant, Function, HandlerKind, OpKind, StructureKind, Terminator,
+    verify,
+};
+use ncl_object::{
+    ArrayElementType as ObjectArrayElementType, ArrayOptions, Word, array_row_major_set, make_array,
+};
 
 /// Fail with the function's text form when it does not verify.
 fn assert_verifies(function: &Function) {
@@ -57,6 +62,61 @@ fn eval_lowering_publishes_single_value_defaults_in_nested_functions() {
     assert!(any_op(&eval.entry, is_value_default));
     assert_eq!(eval.nested.len(), 1);
     assert!(any_op(&eval.nested[0], is_value_default));
+}
+
+#[test]
+fn lowers_general_array_literal_with_shape_type_and_identity() {
+    let mut fx = Fixture::new();
+    let array = make_array(
+        &mut fx.ctx,
+        &fx.runtime,
+        &[2, 1],
+        ArrayOptions {
+            element_type: ObjectArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )
+    .expect("array allocation");
+    array_row_major_set(&mut fx.ctx, array, 0, Word::fixnum(7)).expect("first array element");
+    array_row_major_set(&mut fx.ctx, array, 1, Word::fixnum(8)).expect("second array element");
+
+    let expr = fx.expand(array).expect("expand array literal");
+    let lowered = lower_toplevel(&expr).expect("lower array literal");
+    assert_verifies(&lowered.entry);
+
+    let literal_object = lowered
+        .entry
+        .constants
+        .iter()
+        .find_map(|constant| match constant {
+            Constant::LiteralObject { identity, value } => Some((*identity, *value)),
+            _ => None,
+        })
+        .expect("array literal identity descriptor");
+    let descriptor = lowered
+        .entry
+        .constants
+        .get(usize::try_from(literal_object.1.0).expect("constant index"))
+        .expect("array structure descriptor");
+    match descriptor {
+        Constant::Structure {
+            kind:
+                StructureKind::Array {
+                    dimensions,
+                    element_type,
+                },
+            elements,
+        } => {
+            assert_eq!(dimensions, &[2, 1]);
+            assert_eq!(*element_type, ArrayElementType::T);
+            assert_eq!(elements.len(), 2);
+        }
+        other => panic!("expected array structure descriptor, found {other:?}"),
+    }
 }
 
 /// Rule: a variable captured and assigned by two closures is boxed in one cell.

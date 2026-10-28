@@ -21,6 +21,7 @@ struct RootTraceCandidate {
     location: usize,
     value: Word,
     conservative: bool,
+    thread: Option<usize>,
 }
 
 const fn weakness_name(weakness: Weakness) -> &'static str {
@@ -118,6 +119,7 @@ impl super::Heap {
                     continue;
                 };
                 let location = source.location;
+                let thread = source.thread;
                 let (source, conservative) = match source.source {
                     crate::thread::ConservativeRootSource::Explicit => ("conservative_root", true),
                     crate::thread::ConservativeRootSource::CalleeSaved => ("callee_saved", true),
@@ -128,6 +130,7 @@ impl super::Heap {
                     location,
                     value,
                     conservative,
+                    thread: Some(thread),
                 });
             }
             trace_candidates.extend(frame_values.iter().copied().enumerate().map(
@@ -136,6 +139,7 @@ impl super::Heap {
                     location: index,
                     value,
                     conservative: false,
+                    thread: None,
                 },
             ));
         }
@@ -164,6 +168,7 @@ impl super::Heap {
                             location: root.addr(),
                             value,
                             conservative: false,
+                            thread: None,
                         });
                     }
                 }
@@ -561,12 +566,17 @@ impl super::Heap {
                     Self::find(state, candidate.value)
                 };
                 (target_index.is_some() && target_index == index).then(|| {
-                    format!(
+                    let source = format!(
                         "{}@{:#x}={:#x}",
                         candidate.source,
                         candidate.location,
                         candidate.value.bits()
-                    )
+                    );
+                    if let Some(thread) = candidate.thread {
+                        format!("{source}:thread@{thread:#x}")
+                    } else {
+                        source
+                    }
                 })
             })
             .collect()

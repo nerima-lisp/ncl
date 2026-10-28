@@ -1,6 +1,15 @@
 use crate::{Heap, NativeState, SafepointState, Thread};
 use std::collections::HashSet;
 
+#[cfg(target_arch = "x86_64")]
+fn log_stack_diagnostic(test: &str, phase: &str, thread: &Thread, rsp: usize) {
+    let (bounds, scan_start) = thread.diagnostic_stack_state();
+    eprintln!(
+        "NCL_GC_STACK_DIAG phase={phase} test={test} thread={:#x} rsp={rsp:#x} bounds={bounds:?} scan_start={scan_start:?}",
+        std::ptr::from_ref(thread).expose_provenance(),
+    );
+}
+
 #[derive(Debug, Default)]
 pub struct StopWorld {
     pub(crate) epoch: u64,
@@ -104,8 +113,28 @@ impl Heap {
 
     pub(crate) fn collect_with_gate(&self, thread: &mut Thread, full: bool) {
         #[cfg(target_arch = "x86_64")]
+        let diagnostic_test = {
+            let current = std::thread::current();
+            current
+                .name()
+                .filter(|name| name.starts_with("weak_"))
+                .map(str::to_owned)
+        };
+        #[cfg(target_arch = "x86_64")]
         if !thread.has_native_frame_snapshot() {
             thread.publish_snapshot();
+        }
+        #[cfg(target_arch = "x86_64")]
+        if let Some(test) = diagnostic_test.as_deref() {
+            let rsp: usize;
+            unsafe {
+                core::arch::asm!(
+                    "mov {}, rsp",
+                    out(reg) rsp,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+            log_stack_diagnostic(test, "after_publish_snapshot", thread, rsp);
         }
         {
             let _stop_world = self
@@ -121,6 +150,18 @@ impl Heap {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             thread.state = SafepointState::Collecting;
+        }
+        #[cfg(target_arch = "x86_64")]
+        if let Some(test) = diagnostic_test.as_deref() {
+            let rsp: usize;
+            unsafe {
+                core::arch::asm!(
+                    "mov {}, rsp",
+                    out(reg) rsp,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+            log_stack_diagnostic(test, "before_collection", thread, rsp);
         }
         self.collect(full);
         self.reset_allocation_debt();

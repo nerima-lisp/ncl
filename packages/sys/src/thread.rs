@@ -70,6 +70,7 @@ pub(crate) struct ConservativeRootTrace {
     pub(crate) source: ConservativeRootSource,
     pub(crate) location: usize,
     pub(crate) value_index: usize,
+    pub(crate) thread: usize,
 }
 
 impl Default for Thread {
@@ -189,8 +190,38 @@ impl Thread {
         }
     }
     pub(crate) fn publish_snapshot(&mut self) {
+        #[cfg(target_arch = "x86_64")]
+        let entry_sp: usize;
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            core::arch::asm!(
+                "mov {}, rsp",
+                out(reg) entry_sp,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
         self.publish_stack_interval();
         self.callee_saved = crate::snapshot_callee_saved();
+        #[cfg(target_arch = "x86_64")]
+        {
+            let exit_sp: usize;
+            unsafe {
+                core::arch::asm!(
+                    "mov {}, rsp",
+                    out(reg) exit_sp,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+            let current = std::thread::current();
+            if let Some(test) = current.name().filter(|name| name.starts_with("weak_")) {
+                eprintln!(
+                    "NCL_GC_STACK_DIAG phase=publish_snapshot test={test} thread={:#x} entry_sp={entry_sp:#x} exit_sp={exit_sp:#x} bounds={:?} scan_start={:?}",
+                    std::ptr::from_ref(self).expose_provenance(),
+                    self.stack_bounds,
+                    self.stack_scan_start,
+                );
+            }
+        }
     }
     pub(crate) fn gc_state_handle(&self) -> PublishedThreadGcStateHandle {
         self.gc_state
@@ -228,7 +259,21 @@ impl Thread {
         published.frame_snapshot_failed = self.frame_snapshot_failed;
         published.published_epoch = epoch;
     }
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) fn diagnostic_stack_state(&self) -> (Option<(usize, usize)>, Option<usize>) {
+        (self.stack_bounds, self.stack_scan_start)
+    }
     pub(crate) fn publish_stack_interval(&mut self) {
+        #[cfg(target_arch = "x86_64")]
+        let entry_sp: usize;
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            core::arch::asm!(
+                "mov {}, rsp",
+                out(reg) entry_sp,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
         self.stack_bounds = stack::current_stack_bounds();
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         let stack_pointer = Some(stack::current_stack_pointer());
@@ -240,6 +285,26 @@ impl Thread {
                 .and_then(|(bounds, stack_pointer)| {
                     gc_state::valid_stack_interval(bounds, stack_pointer).then_some(stack_pointer)
                 });
+        #[cfg(target_arch = "x86_64")]
+        {
+            let exit_sp: usize;
+            unsafe {
+                core::arch::asm!(
+                    "mov {}, rsp",
+                    out(reg) exit_sp,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+            let current = std::thread::current();
+            if let Some(test) = current.name().filter(|name| name.starts_with("weak_")) {
+                eprintln!(
+                    "NCL_GC_STACK_DIAG phase=publish_stack_interval test={test} thread={:#x} entry_sp={entry_sp:#x} exit_sp={exit_sp:#x} bounds={:?} scan_start={:?}",
+                    std::ptr::from_mut(self).expose_provenance(),
+                    self.stack_bounds,
+                    self.stack_scan_start,
+                );
+            }
+        }
     }
     pub(crate) fn conservative_snapshot(&self) -> Vec<Word> {
         let mut values = self.conservative_roots.clone();
@@ -280,6 +345,7 @@ impl Thread {
                 source: ConservativeRootSource::Explicit,
                 location: index,
                 value_index: index,
+                thread: std::ptr::from_ref(self).expose_provenance(),
             }),
         );
         for (index, bits) in self.callee_saved.iter().copied().enumerate() {
@@ -287,6 +353,7 @@ impl Thread {
                 source: ConservativeRootSource::CalleeSaved,
                 location: index,
                 value_index: values.len(),
+                thread: std::ptr::from_ref(self).expose_provenance(),
             });
             values.push(Word::from_bits(bits));
         }
@@ -315,6 +382,7 @@ impl Thread {
                     source: ConservativeRootSource::StackSlot,
                     location: address,
                     value_index,
+                    thread: std::ptr::from_ref(self).expose_provenance(),
                 });
                 values.push(unsafe {
                     Word::from_bits(ptr::with_exposed_provenance::<u64>(address).read())

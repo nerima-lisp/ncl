@@ -49,6 +49,7 @@ impl Heap {
             }
             let epoch = stop_world.epoch;
             thread.safepoint_epoch = epoch;
+            thread.publish_snapshot();
             thread.state = SafepointState::Published;
             stop_world.parked.insert(pointer);
             self.stop_world_ready.notify_all();
@@ -103,8 +104,9 @@ impl Heap {
     }
 
     pub(crate) fn collect_with_gate(&self, thread: &mut Thread, full: bool) {
-        #[cfg(target_arch = "x86_64")]
-        if !thread.has_native_frame_snapshot() {
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        {
+            // Capture caller frames below the collection entry as part of the collector stack.
             thread.publish_snapshot();
         }
         {

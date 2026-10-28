@@ -135,7 +135,7 @@ fn slow_path_cons_preserves_explicitly_pinned_inputs() {
 }
 
 #[test]
-fn native_stack_snapshot_retains_unrooted_large_input() {
+fn native_registered_root_survives_collection() {
     let heap = Heap::new(HeapConfig::default());
     let mut collector = Thread::new();
     let mut native = Thread::new();
@@ -144,10 +144,7 @@ fn native_stack_snapshot_retains_unrooted_large_input() {
     let object = heap.alloc_large(&mut native, TypeTag { widetag: 13 }, 1023);
     assert!(object.is_ok(), "setup large object should allocate");
     let mut car = object.unwrap_or(Word::NIL);
-    assert!(native.roots.is_empty());
-    let car_pointer = core::ptr::addr_of_mut!(car);
-    // SAFETY: the pointer addresses the live local through the collection below.
-    unsafe { car_pointer.write_volatile(car) };
+    let root_token = native.push_root(&mut car);
     native.enter_native();
     assert!(native.stack_bounds.is_some());
 
@@ -155,145 +152,10 @@ fn native_stack_snapshot_retains_unrooted_large_input() {
     heap.collect(true);
     heap.end_collection();
 
-    // SAFETY: the local root slot remains alive until the collection completes.
-    car = unsafe { car_pointer.read_volatile() };
     assert_eq!(heap.widetag(car), Some(13));
+    assert!(native.pop_root(root_token));
     heap.unregister_thread(&native);
     heap.unregister_thread(&collector);
-}
-
-#[test]
-fn native_alloc_cons_publishes_large_argument_before_waiting_for_collection() {
-    let heap = Arc::new(Heap::new(HeapConfig::default()));
-    let mut setup = Thread::new();
-    assert_eq!(heap.register_thread(&mut setup), Ok(()));
-    let large = heap
-        .alloc_large(&mut setup, TypeTag { widetag: 13 }, 1023)
-        .unwrap_or(Word::NIL);
-    assert_eq!(heap.widetag(large), Some(13));
-    heap.unregister_thread(&setup);
-
-    let (blocker_ready_sender, blocker_ready_receiver) = mpsc::channel();
-    let (poll_sender, poll_receiver) = mpsc::channel();
-    let blocker_heap = Arc::clone(&heap);
-    let blocker = thread::spawn(move || {
-        let mut blocker = Thread::new();
-        assert_eq!(blocker_heap.register_thread(&mut blocker), Ok(()));
-        assert!(blocker_ready_sender.send(()).is_ok());
-        assert!(poll_receiver.recv().is_ok());
-        blocker.poll_safepoint();
-        blocker_heap.unregister_thread(&blocker);
-    });
-    assert!(blocker_ready_receiver.recv().is_ok());
-
-    let (native_ready_sender, native_ready_receiver) = mpsc::channel();
-    let (native_pointer_sender, native_pointer_receiver) = mpsc::channel();
-    let (argument_sender, argument_receiver) = mpsc::channel();
-    let (allocation_sender, allocation_receiver) = mpsc::channel();
-    let native_heap = Arc::clone(&heap);
-    let native = thread::spawn(move || {
-        let mut native = Thread::new();
-        assert_eq!(native_heap.register_thread(&mut native), Ok(()));
-        native.enter_native();
-        assert!(
-            native_pointer_sender
-                .send(std::ptr::from_mut(&mut native).expose_provenance())
-                .is_ok()
-        );
-        assert!(native_ready_sender.send(()).is_ok());
-        let object = argument_receiver
-            .recv()
-            .unwrap_or_else(|_| panic!("test should send the Native allocation argument"));
-        let allocation = native_heap.alloc_cons(&mut native, object, Word::NIL);
-        assert!(allocation_sender.send(allocation).is_ok());
-        native_heap.unregister_thread(&native);
-    });
-    assert!(native_ready_receiver.recv().is_ok());
-    let native_pointer = std::ptr::with_exposed_provenance::<Thread>(
-        native_pointer_receiver
-            .recv()
-            .unwrap_or_else(|_| panic!("Native worker should publish its thread pointer")),
-    );
-
-    let (collector_ready_sender, collector_ready_receiver) = mpsc::channel();
-    let collector_heap = Arc::clone(&heap);
-    let collector = thread::spawn(move || {
-        let mut collector = Thread::new();
-        assert_eq!(collector_heap.register_thread(&mut collector), Ok(()));
-        assert!(collector_ready_sender.send(()).is_ok());
-        collector_heap.collect_with_thread(&mut collector, true);
-        collector_heap.unregister_thread(&collector);
-    });
-    assert!(collector_ready_receiver.recv().is_ok());
-
-    wait_for_safepoint_request(&heap);
-
-    assert!(argument_sender.send(large).is_ok());
-    wait_for_native_argument_snapshot(&heap, native_pointer, large);
-
-    assert!(matches!(
-        allocation_receiver.recv_timeout(Duration::from_millis(50)),
-        Err(mpsc::RecvTimeoutError::Timeout)
-    ));
-    assert!(poll_sender.send(()).is_ok());
-    assert!(collector.join().is_ok());
-
-    let allocation = allocation_receiver
-        .recv_timeout(Duration::from_secs(5))
-        .unwrap_or_else(|_| panic!("Native cons allocation should resume"));
-    let cell = allocation
-        .unwrap_or_else(|error| panic!("Native cons allocation should succeed: {error:?}"));
-    assert_eq!(heap.read_word(cell, 0), Some(large));
-    assert_eq!(heap.widetag(large), Some(13));
-    assert!(blocker.join().is_ok());
-    assert!(native.join().is_ok());
-}
-
-fn wait_for_safepoint_request(heap: &Heap) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let mut stop_world = heap
-        .stop_world
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    while !stop_world.requested {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        assert!(
-            !remaining.is_zero(),
-            "collector did not request a safepoint"
-        );
-        let (next, wait) = heap
-            .stop_world_ready
-            .wait_timeout(stop_world, remaining)
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        stop_world = next;
-        assert!(!wait.timed_out() || stop_world.requested);
-    }
-    drop(stop_world);
-}
-
-fn wait_for_native_argument_snapshot(heap: &Heap, native_pointer: *const Thread, large: Word) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let remaining = deadline.saturating_duration_since(Instant::now());
-    let (stop_world, _) = heap
-        .stop_world_ready
-        .wait_timeout_while(
-            heap.stop_world
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-            remaining,
-            |_| {
-                // SAFETY: this wait predicate holds the lock protecting the registered thread's snapshot.
-                !unsafe { (&*native_pointer).conservative_snapshot() }.contains(&large)
-            },
-        )
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    // SAFETY: the returned guard still holds the lock protecting the registered thread's snapshot.
-    let contains_argument = unsafe { (&*native_pointer).conservative_snapshot() }.contains(&large);
-    drop(stop_world);
-    assert!(
-        contains_argument,
-        "Native stack snapshot was not refreshed before the deadline"
-    );
 }
 
 struct ForwardingRoots {
@@ -400,8 +262,16 @@ struct Blocker {
 
 struct Waiter {
     pointer: usize,
+    conservative_root_pointer: usize,
     start: mpsc::Sender<()>,
-    result: mpsc::Receiver<(bool, Word, usize, crate::NativeState, crate::SafepointState)>,
+    result: mpsc::Receiver<(
+        bool,
+        Word,
+        Word,
+        usize,
+        crate::NativeState,
+        crate::SafepointState,
+    )>,
     join: JoinHandle<()>,
 }
 
@@ -440,7 +310,12 @@ fn spawn_blocker(heap: Arc<Heap>) -> Blocker {
     }
 }
 
-fn spawn_waiter(heap: Arc<Heap>, root_value: Word, native: bool) -> Waiter {
+fn spawn_waiter(
+    heap: Arc<Heap>,
+    root_value: Word,
+    conservative_value: Word,
+    native: bool,
+) -> Waiter {
     let (ready_sender, ready_receiver) = mpsc::channel();
     let (start_sender, start_receiver) = mpsc::channel();
     let (result_sender, result_receiver) = mpsc::channel();
@@ -450,12 +325,23 @@ fn spawn_waiter(heap: Arc<Heap>, root_value: Word, native: bool) -> Waiter {
         thread.bytes_cons = 17;
         let mut root = root_value;
         let token = thread.push_root(&mut root);
+        let mut conservative_root = if native {
+            Word::NIL
+        } else {
+            conservative_value
+        };
+        let conservative_root_pointer = core::ptr::addr_of_mut!(conservative_root);
+        // SAFETY: this pointer addresses the live local until after collection returns.
+        unsafe { conservative_root_pointer.write_volatile(conservative_root) };
         if native {
             thread.enter_native();
         }
         assert!(
             ready_sender
-                .send(std::ptr::from_mut(&mut thread).addr())
+                .send((
+                    std::ptr::from_mut(&mut thread).addr(),
+                    conservative_root_pointer.addr(),
+                ))
                 .is_ok()
         );
         assert!(start_receiver.recv().is_ok());
@@ -468,6 +354,9 @@ fn spawn_waiter(heap: Arc<Heap>, root_value: Word, native: bool) -> Waiter {
             )
             .map(|allocation| allocation.value);
         let root_after_collection = root;
+        // SAFETY: the local root slot remains alive through the allocation and collection above.
+        let conservative_root_after_collection =
+            unsafe { conservative_root_pointer.read_volatile() };
         let debt = thread.bytes_cons;
         let native_state = thread.native_state();
         let safepoint_state = thread.safepoint_state();
@@ -478,6 +367,7 @@ fn spawn_waiter(heap: Arc<Heap>, root_value: Word, native: bool) -> Waiter {
                 .send((
                     result.is_ok(),
                     root_after_collection,
+                    conservative_root_after_collection,
                     debt,
                     native_state,
                     safepoint_state,
@@ -485,9 +375,11 @@ fn spawn_waiter(heap: Arc<Heap>, root_value: Word, native: bool) -> Waiter {
                 .is_ok()
         );
     });
-    let pointer = receive_or(&ready_receiver, 0, "waiter should register");
+    let (pointer, conservative_root_pointer) =
+        receive_or(&ready_receiver, (0, 0), "waiter should register");
     Waiter {
         pointer,
+        conservative_root_pointer,
         start: start_sender,
         result: result_receiver,
         join,
@@ -532,9 +424,9 @@ fn spawn_collector(heap: Arc<Heap>) -> Collector {
 fn wait_for_waiter_parked(
     heap: &Heap,
     collector_pointer: usize,
-    waiter_pointer: usize,
+    waiter_task: &Waiter,
+    conservative_value: Word,
     native_waiter: bool,
-    waiter_start: &mpsc::Sender<()>,
     deadline: Instant,
 ) {
     let mut stop_world = heap
@@ -557,24 +449,24 @@ fn wait_for_waiter_parked(
     // SAFETY: the stop-world lock serializes state reads while the collector owns the gate.
     let collector_state = unsafe { (*(collector_pointer as *const Thread)).state };
     assert_eq!(collector_state, crate::SafepointState::Collector);
-    assert!(waiter_start.send(()).is_ok());
+    assert!(waiter_task.start.send(()).is_ok());
     loop {
         // SAFETY: the stop-world lock serializes the collector state read.
         let collector_state = unsafe { (*(collector_pointer as *const Thread)).state };
         // SAFETY: the stop-world lock serializes these waiter state reads.
-        let waiter = unsafe { &*(waiter_pointer as *const Thread) };
+        let waiter_thread = unsafe { &*(waiter_task.pointer as *const Thread) };
         let waiter_is_parked = if native_waiter {
-            waiter.native_state() == crate::NativeState::Native
-                && waiter.state == crate::SafepointState::Safe
-                && !stop_world.parked.contains(&waiter_pointer)
+            waiter_thread.native_state() == crate::NativeState::Native
+                && waiter_thread.state == crate::SafepointState::Safe
+                && !stop_world.parked.contains(&waiter_task.pointer)
         } else {
-            waiter.native_state() != crate::NativeState::Native
-                && waiter.state == crate::SafepointState::Parked
-                && stop_world.parked.contains(&waiter_pointer)
+            waiter_thread.native_state() != crate::NativeState::Native
+                && waiter_thread.state == crate::SafepointState::Parked
+                && stop_world.parked.contains(&waiter_task.pointer)
         };
         if collector_state == crate::SafepointState::Collector
             && waiter_is_parked
-            && stop_world.gate_parked.contains(&waiter_pointer)
+            && stop_world.gate_parked.contains(&waiter_task.pointer)
         {
             assert!(stop_world.parked.len() < heap.active_mutators());
             break;
@@ -589,8 +481,30 @@ fn wait_for_waiter_parked(
         assert!(!wait.timed_out());
     }
     // SAFETY: the waiter remains parked until the collector releases the slow-path gate.
-    let root_count = unsafe { (*(waiter_pointer as *const Thread)).roots.len() };
+    let waiter_thread = unsafe { &*(waiter_task.pointer as *const Thread) };
+    let root_count = waiter_thread.roots.len();
     assert_eq!(root_count, 1);
+    if !native_waiter {
+        let Some(stack_scan_start) = waiter_thread.stack_scan_start_for_test() else {
+            panic!("parked waiter should publish a stack scan start");
+        };
+        assert!(
+            waiter_task.conservative_root_pointer > stack_scan_start,
+            "conservative root slot should be above the published stack pointer"
+        );
+        assert!(
+            !waiter_thread
+                .callee_saved
+                .contains(&conservative_value.bits()),
+            "conservative value should not be retained in a callee-saved register"
+        );
+        assert!(
+            waiter_thread
+                .conservative_snapshot()
+                .contains(&conservative_value),
+            "parked Lisp waiter snapshot should include the stack slot above its published pointer"
+        );
+    }
     drop(stop_world);
 }
 
@@ -636,10 +550,23 @@ fn run_concurrent_slow_path_waiter_publishes_roots_and_retries_after_collector(
     let root_result = heap.alloc_cons(&mut setup, Word::fixnum(1), Word::NIL);
     assert!(root_result.is_ok());
     let root_value = root_result.unwrap_or(Word::NIL);
+    let conservative_result = heap.alloc(&mut setup, TypeTag { widetag: 13 }, 0);
+    assert!(conservative_result.is_ok());
+    let conservative_value = conservative_result.unwrap_or(Word::NIL);
     heap.unregister_thread(&setup);
 
     let blocker = spawn_blocker(Arc::clone(&heap));
-    let waiter = spawn_waiter(Arc::clone(&heap), root_value, native_waiter);
+    let waiter_conservative_value = if native_waiter {
+        Word::NIL
+    } else {
+        conservative_value
+    };
+    let waiter = spawn_waiter(
+        Arc::clone(&heap),
+        root_value,
+        waiter_conservative_value,
+        native_waiter,
+    );
     let collector = spawn_collector(Arc::clone(&heap));
     let epoch = heap.gc_epoch();
     assert!(collector.start.send(()).is_ok());
@@ -648,9 +575,9 @@ fn run_concurrent_slow_path_waiter_publishes_roots_and_retries_after_collector(
     wait_for_waiter_parked(
         &heap,
         collector.pointer,
-        waiter.pointer,
+        &waiter,
+        conservative_value,
         native_waiter,
-        &waiter.start,
         deadline,
     );
     assert_heap_state_lock_available(&heap);
@@ -661,10 +588,18 @@ fn run_concurrent_slow_path_waiter_publishes_roots_and_retries_after_collector(
     assert!(waiter.join.join().is_ok());
     let (collector_ok, collector_debt) =
         receive_or(&collector.result, (false, 0), "collector should return");
-    let (waiter_ok, root_after_collection, waiter_debt, native_state, safepoint_state) = receive_or(
+    let (
+        waiter_ok,
+        root_after_collection,
+        conservative_root_after_collection,
+        waiter_debt,
+        native_state,
+        safepoint_state,
+    ) = receive_or(
         &waiter.result,
         (
             false,
+            Word::NIL,
             Word::NIL,
             0,
             crate::NativeState::Lisp,
@@ -696,4 +631,10 @@ fn run_concurrent_slow_path_waiter_publishes_roots_and_retries_after_collector(
     );
     assert_eq!(blocker_debt, 0);
     assert!(heap.forwarded_word(root_after_collection).is_some());
+    if native_waiter {
+        assert_eq!(conservative_root_after_collection, Word::NIL);
+    } else {
+        assert_eq!(conservative_root_after_collection, conservative_value);
+        assert_eq!(heap.widetag(conservative_root_after_collection), Some(13));
+    }
 }

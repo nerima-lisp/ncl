@@ -65,31 +65,20 @@ impl Heap {
     ) -> Result<Word, StorageCondition> {
         let mut car = car;
         let mut cdr = cdr;
-        let native_roots = if thread.native_state() == crate::NativeState::Native {
-            // Keep native arguments visible to stack scanning while transition waits for collection.
-            let first_slot = core::ptr::addr_of_mut!(car);
-            let tail_slot = core::ptr::addr_of_mut!(cdr);
-            // SAFETY: these pointers address the live local root slots until the reads below.
-            unsafe {
-                first_slot.write_volatile(car);
-                tail_slot.write_volatile(cdr);
-            }
-            Some((first_slot, tail_slot))
-        } else {
-            None
-        };
         let mut thread = thread.enter_lisp_state();
-        if let Some((first_slot, tail_slot)) = native_roots {
-            // SAFETY: both pointers still address the locals initialized before the transition.
-            unsafe {
-                car = first_slot.read_volatile();
-                cdr = tail_slot.read_volatile();
-            }
-        }
         self.allocate_cons_with_coordinator(&mut thread, &mut car, &mut cdr)
     }
 
     pub(super) fn allocate_cons_with_coordinator(
+        &self,
+        thread: &mut Thread,
+        car: &mut Word,
+        cdr: &mut Word,
+    ) -> Result<Word, StorageCondition> {
+        self.allocate_cons_with_coordinator_inner(thread, car, cdr)
+    }
+
+    fn allocate_cons_with_coordinator_inner(
         &self,
         thread: &mut Thread,
         car: &mut Word,
@@ -260,12 +249,6 @@ impl Heap {
     }
 
     pub(crate) fn acquire_slow_path_gate(&self, thread: &mut Thread) -> SlowPathGuard<'_> {
-        #[cfg(target_arch = "x86_64")]
-        if thread.native_state() != crate::NativeState::Native
-            && !thread.has_native_frame_snapshot()
-        {
-            thread.publish_snapshot();
-        }
         let pointer = std::ptr::from_mut(thread).expose_provenance();
         loop {
             let observed_generation = *self
@@ -274,10 +257,6 @@ impl Heap {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             match self.slow_path_gate.try_lock() {
                 Ok(guard) => {
-                    #[cfg(target_arch = "x86_64")]
-                    if thread.native_state() == crate::NativeState::Native {
-                        thread.publish_snapshot();
-                    }
                     self.unpark_gate_waiter(thread, pointer);
                     return SlowPathGuard {
                         heap: self,
@@ -285,10 +264,6 @@ impl Heap {
                     };
                 }
                 Err(TryLockError::Poisoned(error)) => {
-                    #[cfg(target_arch = "x86_64")]
-                    if thread.native_state() == crate::NativeState::Native {
-                        thread.publish_snapshot();
-                    }
                     self.unpark_gate_waiter(thread, pointer);
                     return SlowPathGuard {
                         heap: self,
@@ -319,6 +294,8 @@ impl Heap {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         stop_world.gate_parked.insert(pointer);
         if thread.native_state() != crate::NativeState::Native {
+            #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+            thread.publish_snapshot();
             thread.state = crate::SafepointState::Parked;
             stop_world.parked.insert(pointer);
         }

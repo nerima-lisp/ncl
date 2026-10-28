@@ -56,6 +56,9 @@ impl Thread {
     }
 
     /// Enter the native runtime state.
+    ///
+    /// Native code must not hold unregistered Lisp references; callers must
+    /// register roots before entering this state.
     pub fn enter_native(&mut self) {
         if self.native == NativeState::Native {
             return;

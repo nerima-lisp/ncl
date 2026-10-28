@@ -148,13 +148,16 @@ impl Thread {
     pub const fn native_state(&self) -> NativeState {
         self.native
     }
+    #[cfg(test)]
+    pub(crate) const fn stack_scan_start_for_test(&self) -> Option<usize> {
+        self.stack_scan_start
+    }
     pub(crate) fn poll_safepoint(&mut self) {
         if self.native == NativeState::Native {
             return;
         }
         if self.state == SafepointState::PollRequested || self.heap.is_some() {
             self.safepoint_request = 0;
-            self.publish_snapshot();
             if let Some(heap) = self.heap {
                 // SAFETY: the heap pointer is installed by register_thread and remains valid while registered.
                 unsafe { (*heap).poll_thread(self) };
@@ -230,28 +233,22 @@ impl Thread {
         let mut values = self.conservative_roots.clone();
         values.extend(self.callee_saved.iter().copied().map(Word::from_bits));
         if let Some((bounds_start, end)) = self.stack_bounds {
-            let start = if self.native == NativeState::Lisp {
-                // Non-x86 targets keep full bounds until their published SP is validated as a scan boundary.
-                #[cfg(target_arch = "x86_64")]
-                {
-                    self.stack_scan_start
-                        .filter(|&stack_pointer| {
-                            gc_state::valid_stack_interval((bounds_start, end), stack_pointer)
-                        })
-                        .unwrap_or(bounds_start)
+            #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+            let start = self.stack_scan_start.filter(|&stack_pointer| {
+                gc_state::valid_stack_interval((bounds_start, end), stack_pointer)
+            });
+            #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+            let start = Some(bounds_start);
+
+            if let Some(start) = start {
+                let mut address = start.next_multiple_of(8);
+                while address.checked_add(8).is_some_and(|next| next <= end) {
+                    // SAFETY: the collector reads only a published, stopped stack interval at word alignment.
+                    values.push(unsafe {
+                        Word::from_bits(std::ptr::with_exposed_provenance::<u64>(address).read())
+                    });
+                    address += 8;
                 }
-                #[cfg(not(target_arch = "x86_64"))]
-                {
-                    bounds_start
-                }
-            } else {
-                bounds_start
-            };
-            let mut address = start.next_multiple_of(8);
-            while address.checked_add(8).is_some_and(|next| next <= end) {
-                // SAFETY: the collector reads only a published, stopped stack interval at word alignment.
-                values.push(unsafe { Word::from_bits((address as *const u64).read()) });
-                address += 8;
             }
         }
         values

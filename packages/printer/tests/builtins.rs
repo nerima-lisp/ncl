@@ -212,14 +212,18 @@ fn copy_pprint_dispatch_rejects_bad_arity_and_non_tables() {
 #[test]
 fn printer_registration_propagates_heap_capacity_failure() {
     let mut found_capacity_error = false;
-    'capacities: for bytes in [64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024] {
+    'capacities: for bytes in [
+        64 * 1024,
+        128 * 1024,
+        256 * 1024,
+        512 * 1024,
+        1024 * 1024,
+        2 * 1024 * 1024,
+    ] {
         let runtime = match runtime_with_dynamic_space_size(bytes) {
             Ok(runtime) => runtime,
             Err(error) => {
-                assert!(
-                    matches!(error, ObjectError::Storage(_)),
-                    "unexpected runtime setup error: {error:?}"
-                );
+                assert_capacity_exceeded(error, "runtime setup");
                 continue 'capacities;
             }
         };
@@ -227,10 +231,7 @@ fn printer_registration_propagates_heap_capacity_failure() {
         match ctx.register(&runtime) {
             Ok(()) => {}
             Err(error) => {
-                assert!(
-                    matches!(error, ObjectError::Storage(_)),
-                    "unexpected context registration error: {error:?}"
-                );
+                assert_capacity_exceeded(error, "context registration");
                 continue 'capacities;
             }
         }
@@ -238,10 +239,7 @@ fn printer_registration_propagates_heap_capacity_failure() {
             match runtime.ensure_package(&mut ctx, name) {
                 Ok(_) => {}
                 Err(error) => {
-                    assert!(
-                        matches!(error, ObjectError::Storage(_)),
-                        "unexpected package setup error: {error:?}"
-                    );
+                    assert_capacity_exceeded(error, "package setup");
                     continue 'capacities;
                 }
             }
@@ -250,10 +248,7 @@ fn printer_registration_propagates_heap_capacity_failure() {
         match Package::from_word(common_lisp).intern(&mut ctx, &runtime, "COPY-PPRINT-DISPATCH") {
             Ok(_) => {}
             Err(error) => {
-                assert!(
-                    matches!(error, ObjectError::Storage(_)),
-                    "unexpected symbol setup error: {error:?}"
-                );
+                assert_capacity_exceeded(error, "symbol setup");
                 continue 'capacities;
             }
         }
@@ -261,7 +256,7 @@ fn printer_registration_propagates_heap_capacity_failure() {
         let mut retained = Word::NIL;
         let token = ncl_object::push_root(&mut ctx, &mut retained);
         let allocation_error = exhaust_heap(&mut ctx, &runtime, &mut retained);
-        assert!(matches!(allocation_error, ObjectError::Storage(_)));
+        assert_capacity_exceeded(allocation_error, "heap exhaustion");
         let mut saw_registration_failure = false;
         let mut copy_registered = false;
         for _ in 0..256 {
@@ -275,20 +270,32 @@ fn printer_registration_propagates_heap_capacity_failure() {
             }
             assert_eq!(registration_result, Err(allocation_error));
             saw_registration_failure = true;
-            retained = ncl_object::cdr(&ctx, retained).unwrap();
+            for _ in 0..64 {
+                if retained == Word::NIL {
+                    break;
+                }
+                retained = ncl_object::cdr(&ctx, retained).unwrap();
+            }
         }
         assert!(saw_registration_failure);
-        assert!(
-            copy_registered,
-            "capacity sweep never reached COPY registration"
-        );
         assert!(ncl_object::pop_root(&mut ctx, token));
+        if !copy_registered {
+            continue 'capacities;
+        }
         found_capacity_error = true;
         break;
     }
     assert!(
         found_capacity_error,
-        "no configured heap reached the registration path"
+        "no configured heap reached COPY-PPRINT-DISPATCH registration after CapacityExceeded"
+    );
+}
+
+fn assert_capacity_exceeded(error: ObjectError, stage: &str) {
+    assert_eq!(
+        format!("{error:?}"),
+        "Storage(CapacityExceeded)",
+        "unexpected {stage} error"
     );
 }
 

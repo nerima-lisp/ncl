@@ -1164,27 +1164,33 @@ class ClBenchSupervisorTests(unittest.TestCase):
         self.assertEqual(tuple(result["benchmarks"]), names)
         self.assertEqual(set(result["benchmarks"]), set(names))
 
-    def test_shared_output_benchmarks_are_serialized(self):
+    def test_shared_output_pairs_serialize_independently(self):
         names = ("COMPILER", "LOAD-FASL", "FPRINT/PRETTY", "FPRINT/UGLY")
         lock = threading.Lock()
-        active = 0
-        peak = 0
+        active = {"compiler-fasl": 0, "fprint-output": 0}
+        peak = {"compiler-fasl": 0, "fprint-output": 0}
+        groups_overlapped = threading.Event()
 
         def run_child(command, cwd):
-            nonlocal active, peak
+            group = driver.SERIALIZED_BENCHMARK_GROUPS[command[0].casefold()]
             with lock:
-                active += 1
-                peak = max(peak, active)
+                active[group] += 1
+                peak[group] = max(peak[group], active[group])
+                if all(active.values()):
+                    groups_overlapped.set()
             try:
+                if not groups_overlapped.wait(timeout=2):
+                    raise AssertionError("independent output groups did not overlap")
                 time.sleep(0.01)
                 return self._passed_child(command)
             finally:
                 with lock:
-                    active -= 1
+                    active[group] -= 1
 
         result = self._run_workers(names, run_child)
 
-        self.assertEqual(peak, 1)
+        self.assertEqual(peak, {"compiler-fasl": 1, "fprint-output": 1})
+        self.assertTrue(groups_overlapped.is_set())
         self.assertEqual(tuple(result["benchmarks"]), names)
 
     def test_benchmark_child_timeout_retains_id_and_stage(self):

@@ -49,11 +49,14 @@ CHECKPOINT_ENV = "NCL_CL_BENCH_CHECKPOINT"
 # seconds, leaving 240 seconds of the workflow's 1,800-second budget for setup.
 CHILD_TIMEOUT_SECONDS = 20.0
 MAX_BENCHMARK_WORKERS = 4
-# The pinned suite has two pairs that write shared files: compiler/load-fasl
-# use the same FASL, and the FPRINT benchmarks both write /tmp/fprint.tst.
-SERIALIZED_BENCHMARKS = frozenset({
-    "compiler", "load-fasl", "fprint/pretty", "fprint/ugly",
-})
+# Each pair writes a shared file, but the pairs use different files and can run
+# concurrently with each other.
+SERIALIZED_BENCHMARK_GROUPS = {
+    "compiler": "compiler-fasl",
+    "load-fasl": "compiler-fasl",
+    "fprint/pretty": "fprint-output",
+    "fprint/ugly": "fprint-output",
+}
 
 
 def _lisp_string(value: str) -> str:
@@ -583,6 +586,10 @@ def _run_benchmark_workers(
 ) -> dict[str, Any]:
     benchmarks: dict[str, dict[str, Any]] = {}
     commands: dict[str, list[str]] = {}
+    serialized_benchmark_locks = {
+        group: threading.Lock()
+        for group in set(SERIALIZED_BENCHMARK_GROUPS.values())
+    }
     for name in selected_rows:
         owner = next(
             (
@@ -613,8 +620,9 @@ def _run_benchmark_workers(
         )
 
     def run_benchmark(name: str) -> tuple[str, dict[str, Any], subprocess.CompletedProcess[str]]:
-        if name.casefold() in SERIALIZED_BENCHMARKS:
-            with serialized_benchmark_lock:
+        group = SERIALIZED_BENCHMARK_GROUPS.get(name.casefold())
+        if group is not None:
+            with serialized_benchmark_locks[group]:
                 process = _run_child(commands[name], cwd)
         else:
             process = _run_child(commands[name], cwd)
@@ -643,7 +651,6 @@ def _run_benchmark_workers(
             benchmark["condition"] = "driver reported failure without a condition"
         return name, benchmark, process
 
-    serialized_benchmark_lock = threading.Lock()
     completed_rows: dict[str, dict[str, Any]] = {}
     completed_processes: dict[str, subprocess.CompletedProcess[str]] = {}
     with ThreadPoolExecutor(max_workers=MAX_BENCHMARK_WORKERS) as executor:

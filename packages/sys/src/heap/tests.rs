@@ -12,6 +12,45 @@ fn tags_round_trip() {
 }
 
 #[test]
+fn heap_lookup_rejects_immediate_with_live_object_address() {
+    let heap = Heap::new(HeapConfig::default());
+    let mut thread = Thread::new();
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+    let cons = heap
+        .alloc_cons(&mut thread, Word::NIL, Word::NIL)
+        .unwrap_or(Word::NIL);
+    let other = heap
+        .alloc(&mut thread, TypeTag { widetag: 15 }, 0)
+        .unwrap_or(Word::NIL);
+    let fixnum = Word::fixnum(
+        i64::try_from(cons.address() / 2)
+            .unwrap_or_else(|_| panic!("heap address does not fit a fixnum")),
+    );
+    assert_eq!(fixnum.address(), cons.address());
+
+    let state = heap.lock_state();
+    assert!(Heap::find(&state, cons).is_some());
+    assert!(Heap::find(&state, other).is_some());
+    assert!(
+        Heap::find(
+            &state,
+            Word::pointer(other.address(), crate::LowTag::Function)
+        )
+        .is_none()
+    );
+    assert!(
+        Heap::find(
+            &state,
+            Word::pointer(other.address(), crate::LowTag::Instance)
+        )
+        .is_none()
+    );
+    assert!(Heap::find(&state, fixnum).is_none());
+    assert!(Heap::find(&state, Word::character(65)).is_none());
+    assert!(Heap::find(&state, Word::UNBOUND).is_none());
+}
+
+#[test]
 fn allocation_and_limit() {
     let h = Heap::new(HeapConfig {
         dynamic_space_size: 8,

@@ -7,8 +7,8 @@ use crate::{
     Runtime, ThreadContext, Word,
     layout::{
         code_offset, function_offset, instance_offset, number_offset, readtable_offset,
-        reference_words, simple_vector_offset, stream_offset, structure_offset, symbol_offset,
-        widetag,
+        reference_words, simple_vector_offset, specialized_array_offset, stream_offset,
+        structure_offset, symbol_offset, widetag,
     },
 };
 
@@ -147,6 +147,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
                 reference_words: reference_words(&slots),
                 boxed_from: match tag {
                     widetag::SIMPLE_VECTOR => Some(simple_vector_offset::DATA + 1),
+                    widetag::SPECIALIZED_ARRAY => Some(specialized_array_offset::DATA + 1),
                     widetag::NON_SIMPLE_ARRAY => Some(1),
                     widetag::STRUCTURE => Some(structure_offset::SLOTS + 1),
                     widetag::CLOSURE => Some(function_offset::CAPTURES + 1),

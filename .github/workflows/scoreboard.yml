@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  scoreboard:
-    name: Measure ansi-test and cl-bench
+  ncl-build:
+    name: Build NCL release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -23,17 +23,139 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build NCL
         run: cargo build --locked --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ncl-release
+          path: target/release/ncl
+          if-no-files-found: error
+
+  ansi-shard:
+    name: Measure ANSI shard ${{ matrix.shard }}
+    needs: ncl-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ github.sha }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+      - uses: actions/download-artifact@v4
+        with:
+          name: ncl-release
+          path: ${{ runner.temp }}/ncl-release
+      - name: Prepare shard outputs and NCL binary
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/ansi-shard"
+          chmod +x "$RUNNER_TEMP/ncl-release/ncl"
+      - name: Build SBCL 2.6.0
+        run: |
+          sbcl_store_path="$(nix build --no-link --print-out-paths nixpkgs#sbcl)"
+          sbcl_bin="$sbcl_store_path/bin/sbcl"
+          sbcl_version="$("$sbcl_bin" --version)"
+          test "$sbcl_version" = "SBCL 2.6.0"
+          printf 'SBCL_BIN=%s\n' "$sbcl_bin" >> "$GITHUB_ENV"
+      - name: Measure SBCL shard
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+        run: |
+          python3 scripts/ansi_test_inclusion.py baseline \
+            --command "$SBCL_BIN --script" \
+            --cache-dir "$RUNNER_TEMP/ncl-conformance" \
+            --timeout 900 \
+            --jobs 4 \
+            --shard-index "$SHARD_INDEX" \
+            --shard-count 32 \
+            --output-prefix "$RUNNER_TEMP/ansi-shard/sbcl" \
+            --report "$RUNNER_TEMP/ansi-shard/sbcl-report.json"
+      - name: Compare NCL shard
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+        run: |
+          set +e
+          python3 scripts/ansi_test_inclusion.py compare \
+            --command "$RUNNER_TEMP/ncl-release/ncl --load" \
+            --baseline "$RUNNER_TEMP/ansi-shard/sbcl.txt" \
+            --cache-dir "$RUNNER_TEMP/ncl-conformance" \
+            --timeout 900 \
+            --jobs 4 \
+            --shard-index "$SHARD_INDEX" \
+            --shard-count 32 \
+            --format json \
+            --output "$RUNNER_TEMP/ansi-shard/ncl-report.json"
+          compare_status=$?
+          set -e
+          if [ "$compare_status" -gt 1 ]; then
+            exit "$compare_status"
+          fi
+          test -s "$RUNNER_TEMP/ansi-shard/ncl-report.json"
+          printf '%s\n' "$compare_status" > "$RUNNER_TEMP/ansi-shard/ncl-exit-status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ansi-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/ansi-shard/
+          if-no-files-found: error
+
+  scoreboard:
+    name: Merge conformance scoreboard
+    needs: [ncl-build, ansi-shard]
+    if: ${{ always() && needs.ncl-build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ github.sha }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+      - uses: actions/download-artifact@v4
+        with:
+          name: ncl-release
+          path: ${{ runner.temp }}/ncl-release
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ansi-shard-*
+          path: ${{ runner.temp }}/ansi-shards
+          merge-multiple: false
+      - name: Make NCL binary executable
+        run: chmod +x "$RUNNER_TEMP/ncl-release/ncl"
+      - name: Merge complete ANSI shards
+        run: |
+          python3 scripts/merge_ansi_test_shards.py \
+            --artifacts-dir "$RUNNER_TEMP/ansi-shards" \
+            --shards 32 \
+            --baseline-prefix "$RUNNER_TEMP/ansi-test-sbcl-2.6.0-linux-x86_64" \
+            --baseline-report "$RUNNER_TEMP/ansi-test-sbcl-report.json" \
+            --comparison-report "$RUNNER_TEMP/ansi-test-ncl-report.json"
       - name: Run scoreboard harness
         run: |
           mkdir -p conformance/scoreboard
           python3 scripts/conformance_scoreboard.py \
-            --cache-dir "$RUNNER_TEMP/ncl-conformance" \
-            --ansi-command "python3 ${GITHUB_WORKSPACE}/scripts/ansi_test_inclusion.py unmeasured --reason 'Linux x86_64 baseline is unmeasured because this workflow has no same-day SBCL 2.6.0 baseline.'" \
-            --cl-bench-command "${GITHUB_WORKSPACE}/conformance/cl-bench/ncl-driver.sh ${GITHUB_WORKSPACE}/target/release/ncl default" \
+            --cache-dir "$RUNNER_TEMP/ncl-conformance-scoreboard" \
+            --timeout 21000 \
+            --ansi-report "$RUNNER_TEMP/ansi-test-ncl-report.json" \
+            --cl-bench-command "${GITHUB_WORKSPACE}/conformance/cl-bench/ncl-driver.sh ${RUNNER_TEMP}/ncl-release/ncl default" \
             --output "conformance/scoreboard/$(date -u +%F)-${GITHUB_SHA}.json"
+      - name: Require every shard job to succeed
+        if: ${{ needs.ansi-shard.result != 'success' }}
+        run: exit 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: conformance-scoreboard
-          path: conformance/scoreboard/
+          path: |
+            conformance/scoreboard/
+            ${{ runner.temp }}/ansi-test-sbcl-2.6.0-linux-x86_64.*
+            ${{ runner.temp }}/ansi-test-sbcl-report.json
+            ${{ runner.temp }}/ansi-test-ncl-report.json
           if-no-files-found: warn

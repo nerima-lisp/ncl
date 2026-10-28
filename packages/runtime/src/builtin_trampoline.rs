@@ -15,29 +15,25 @@
 //! reinterprets unrelated registers as `&mut ThreadContext` and friends and
 //! corrupts the native frame instead of raising a Lisp condition.
 //!
-//! This module publishes one tiny hand-assembled stub per ISA that re-presents
-//! the native call using the ordinary C calling convention (moving the two
-//! pinned registers into the two argument slots the Lisp convention leaves
-//! free) and tail-calls [`dispatch`], a plain `extern "C"` Rust function. The
-//! stub itself carries no logic beyond that register/stack shuffle; it exists
-//! only because the two pinned registers sit outside the integer argument
-//! registers an `extern "C" fn` can name directly. [`dispatch`] recovers the
-//! live `Runtime`/`ThreadContext` pair through the same native-context side
-//! channel `native_make_closure` already uses (see
+//! This module publishes one hand-assembled boundary stub per ISA. Each stub
+//! preserves the generated caller's frame pointer and continuation PC, then
+//! presents the native call using the ordinary C calling convention. The
+//! dispatcher recovers the live `Runtime`/`ThreadContext` pair through the
+//! same native-context side channel `native_make_closure` already uses (see
 //! `crate::support::NativeInvocation`) and forwards the call to
 //! `ncl_object::Runtime::call_builtin`, which already performs arity
 //! checking, `&key`/`&rest` adaptation, and pending-condition conversion.
-//! Every line in this module compiles under ordinary safe Rust; the thread
-//! pointer is only ever dereferenced inside `ncl_sys::with_native_context`,
-//! in the one crate whose lint configuration permits that.
-use ncl_asm_aarch64::{Assembler as Aarch64Assembler, Inst as Aarch64Inst, Reg as Aarch64Reg};
-use ncl_asm_x86_64::{Assembler as X86Assembler, BinOp, Imm, Inst as X86Inst, Mem, Reg as X86Reg};
 use ncl_object::{
     BuiltinIdentifier, BuiltinName, BuiltinPackage, CellError, FunctionObject, LispError, Package,
     Runtime as ObjectRuntime, ThreadContext, Word, symbol_function,
 };
 use ncl_sys::{CodePtr, Thread, alloc_code, publish_code, write_code};
 use std::ptr::NonNull;
+
+#[path = "builtin_trampoline_boundary_stub.rs"]
+mod boundary_stub;
+#[cfg(test)]
+use boundary_stub::build_x86_64_stub;
 
 use crate::RuntimeError;
 use crate::support::NativeInvocation;
@@ -286,6 +282,8 @@ extern "C" fn undefined_function_dispatch(
     _rest: u64,
     symbol: u64,
     thread_ptr: u64,
+    frame_fp: u64,
+    return_pc: u64,
 ) -> NativeCallResult {
     let Ok(address) = usize::try_from(thread_ptr) else {
         return error_result();
@@ -293,27 +291,35 @@ extern "C" fn undefined_function_dispatch(
     let Some(thread) = NonNull::new(std::ptr::without_provenance_mut::<Thread>(address)) else {
         return error_result();
     };
+    let Ok(frame_fp) = usize::try_from(frame_fp) else {
+        return error_result();
+    };
+    let Ok(return_pc) = usize::try_from(return_pc) else {
+        return error_result();
+    };
     #[allow(clippy::option_if_let_else)]
     match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
-        let error = LispError::CellError(CellError::UndefinedFunction {
-            name: Word::from_bits(symbol),
-        });
-        let condition = match ncl_conditions::condition_from_lisp_error(
-            invocation.context,
-            invocation.object,
-            error,
-        ) {
-            Ok(condition) => condition,
-            Err(error) => {
-                record_boundary_error(invocation.context, error);
-                return error_result();
-            }
-        };
-        dispatch_impl::signal_condition_error(
-            invocation.context,
-            condition,
-            ncl_object::ObjectError::UndefinedFunction,
-        )
+        boundary_stub::with_generated_frame(invocation, frame_fp, return_pc, |invocation| {
+            let error = LispError::CellError(CellError::UndefinedFunction {
+                name: Word::from_bits(symbol),
+            });
+            let condition = match ncl_conditions::condition_from_lisp_error(
+                invocation.context,
+                invocation.object,
+                error,
+            ) {
+                Ok(condition) => condition,
+                Err(error) => {
+                    record_boundary_error(invocation.context, error);
+                    return error_result();
+                }
+            };
+            dispatch_impl::signal_condition_error(
+                invocation.context,
+                condition,
+                ncl_object::ObjectError::UndefinedFunction,
+            )
+        })
     }) {
         Some(result) => result,
         None => error_result(),
@@ -324,88 +330,6 @@ fn dispatch_address() -> Result<u64, RuntimeError> {
 }
 fn undefined_function_dispatch_address() -> Result<u64, RuntimeError> {
     ncl_sys::function_address!(undefined_function_dispatch)
-        .map_err(|error| RuntimeError::Native(error.to_string()))
-}
-/// `mov x6, x16` / `mov x7, x21` followed by an absolute branch into
-/// [`dispatch`]. `x6`/`x7` are the two integer argument registers `AArch64`'s
-/// `Call`/`CallClosure` lowering never writes (it only uses `x0..x5`), so
-/// moving the pinned function-object (`x16`) and thread-context (`x21`)
-/// registers there lets `dispatch`'s eight named parameters land exactly on
-/// `x0..x7` per the standard `AArch64` C calling convention.
-fn build_aarch64_stub(address: u64) -> Result<Vec<u8>, RuntimeError> {
-    let mut assembler = Aarch64Assembler::new();
-    let emit = |assembler: &mut Aarch64Assembler, inst: Aarch64Inst| {
-        assembler
-            .emit(&inst)
-            .map_err(|error| RuntimeError::Native(error.to_string()))
-    };
-    emit(
-        &mut assembler,
-        Aarch64Inst::Mov {
-            rd: ncl_asm_aarch64::RegOrSp::Reg(Aarch64Reg(6)),
-            rn: ncl_asm_aarch64::RegOrSp::Reg(Aarch64Reg(16)),
-        },
-    )?;
-    emit(
-        &mut assembler,
-        Aarch64Inst::Mov {
-            rd: ncl_asm_aarch64::RegOrSp::Reg(Aarch64Reg(7)),
-            rn: ncl_asm_aarch64::RegOrSp::Reg(Aarch64Reg(21)),
-        },
-    )?;
-    for instruction in ncl_asm_aarch64::mov_imm64(Aarch64Reg(9), address) {
-        emit(&mut assembler, instruction)?;
-    }
-    emit(&mut assembler, Aarch64Inst::Br { rn: Aarch64Reg(9) })?;
-    assembler
-        .finish()
-        .map(|blob| blob.bytes)
-        .map_err(|error| RuntimeError::Native(error.to_string()))
-}
-/// Reserves two stack argument slots for `dispatch`'s seventh and eighth
-/// parameters (the pinned function-object/thread-context registers `r10`/
-/// `r15`, which sit outside the six `SysV` integer argument registers), stores
-/// them, calls [`dispatch`], releases the reservation, and returns. x86-64's
-/// `Call`/`CallClosure` lowering (`emit_call`) already reserves 16 bytes below
-/// `rsp` before its own indirect call, so `rsp` is `8 mod 16` on stub entry;
-/// subtracting 24 (also `8 mod 16`) restores the required `0 mod 16` alignment
-/// at the nested `call`.
-fn build_x86_64_stub(address: u64) -> Result<Vec<u8>, RuntimeError> {
-    const RESERVED: i32 = 24;
-    let address = i64::try_from(address).map_err(|_| {
-        RuntimeError::Native("generic builtin dispatcher address does not fit in i64".to_owned())
-    })?;
-    let mut assembler = X86Assembler::new();
-    let emit = |assembler: &mut X86Assembler, inst: X86Inst| {
-        assembler
-            .emit(&inst)
-            .map_err(|error| RuntimeError::Native(error.to_string()))
-    };
-    emit(
-        &mut assembler,
-        X86Inst::BinRI(BinOp::Sub, X86Reg::Rsp, RESERVED),
-    )?;
-    emit(
-        &mut assembler,
-        X86Inst::MovMR(Mem::base(X86Reg::Rsp, 0), X86Reg::R10),
-    )?;
-    emit(
-        &mut assembler,
-        X86Inst::MovMR(Mem::base(X86Reg::Rsp, 8), X86Reg::R15),
-    )?;
-    emit(
-        &mut assembler,
-        X86Inst::MovRI(X86Reg::Rax, Imm::I64(address)),
-    )?;
-    emit(&mut assembler, X86Inst::CallReg(X86Reg::Rax))?;
-    emit(
-        &mut assembler,
-        X86Inst::BinRI(BinOp::Add, X86Reg::Rsp, RESERVED),
-    )?;
-    emit(&mut assembler, X86Inst::Ret)?;
-    assembler
-        .finish()
-        .map(|blob| blob.bytes)
         .map_err(|error| RuntimeError::Native(error.to_string()))
 }
 /// Publish the generic builtin trampoline and install it on `object` as the
@@ -437,9 +361,9 @@ pub fn install(
     let undefined_address = undefined_function_dispatch_address()?;
     let build = |address| {
         if cfg!(target_arch = "aarch64") {
-            build_aarch64_stub(address)
+            boundary_stub::build_aarch64_stub(address)
         } else {
-            build_x86_64_stub(address)
+            boundary_stub::build_x86_64_stub(address)
         }
     };
     let bytes = build(builtin_address)?;

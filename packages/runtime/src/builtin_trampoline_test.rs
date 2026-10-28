@@ -2,7 +2,7 @@ use super::{build_x86_64_stub, record_boundary_error, unregister_heap_roots};
 use ncl_object::{ObjectError, ThreadContext, Word, push_heap_root, unregister_heap_root};
 
 #[test]
-fn x86_stub_places_pinned_arguments_in_sysv_stack_slots() -> Result<(), String> {
+fn x86_stub_places_pinned_and_frame_arguments_in_sysv_stack_slots() -> Result<(), String> {
     let bytes = build_x86_64_stub(0x1122_3344_5566_7788)
         .map_err(|error| format!("x86 stub assembly: {error}"))?;
     if !bytes
@@ -16,6 +16,21 @@ fn x86_stub_places_pinned_arguments_in_sysv_stack_slots() -> Result<(), String> 
         .any(|window| window == [0x4c, 0x89, 0x7c, 0x24])
     {
         return Err("thread context is not stored in the eighth argument slot".to_owned());
+    }
+    if !bytes
+        .windows(5)
+        .any(|window| window == [0x48, 0x89, 0x6c, 0x24, 0x10])
+    {
+        return Err("caller frame pointer is not stored in the ninth argument slot".to_owned());
+    }
+    if !bytes
+        .windows(5)
+        .any(|window| window == [0x48, 0x8b, 0x44, 0x24, 0x28])
+        || !bytes
+            .windows(5)
+            .any(|window| window == [0x48, 0x89, 0x44, 0x24, 0x18])
+    {
+        return Err("continuation PC is not stored in the tenth argument slot".to_owned());
     }
     Ok(())
 }

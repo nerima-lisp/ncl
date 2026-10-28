@@ -10,7 +10,9 @@ use crate::readtable::{Readtable, SyntaxKind, readtable_from_word, syntax_kind};
 use crate::token::{intern_common_lisp, read_token};
 
 mod list;
+mod options;
 pub use list::read_list;
+pub use options::{current_read_suppression, is_read_suppressed};
 
 /// The float format used when a token has no explicit float marker.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -359,7 +361,7 @@ fn apply_suppress(
     form: Option<Word>,
     opts: &ReadOptions,
 ) -> Result<Option<Word>, ReadError> {
-    if crate::token::is_read_suppressed(ctx, runtime, opts)? {
+    if is_read_suppressed(ctx, runtime, opts)? {
         Ok(Some(Word::NIL))
     } else {
         Ok(form)

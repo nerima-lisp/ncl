@@ -8,7 +8,9 @@ use ncl_object::{
 
 use crate::error::ReadError;
 use crate::number::parse_number;
-use crate::reader::{ReadBase, ReadOptions, ReadSuppression};
+use crate::reader::{
+    ReadBase, ReadOptions, ReadSuppression, current_read_suppression, is_read_suppressed,
+};
 use crate::readtable::{ReadtableCase, SyntaxKind, readtable_from_word, syntax_kind};
 
 /// One character in a token and whether it was introduced by an escape.
@@ -229,26 +231,6 @@ pub fn read_token(
     intern_symbol(ctx, runtime, runtime, &token, opts, rt).map(Some)
 }
 
-pub fn is_read_suppressed(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    opts: &ReadOptions,
-) -> Result<bool, ReadError> {
-    match opts.read_suppression() {
-        ReadSuppression::Keep => Ok(false),
-        ReadSuppression::Discard => Ok(true),
-        ReadSuppression::Dynamic => {
-            if let Some(suppressed) = opts.cached_read_suppression() {
-                Ok(suppressed)
-            } else {
-                let suppressed = current_read_suppression(ctx, runtime)?;
-                opts.cache_read_suppression(suppressed);
-                Ok(suppressed)
-            }
-        }
-    }
-}
-
 pub fn refresh_read_suppression(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -269,12 +251,6 @@ pub fn refresh_dynamic_reader_options(
         opts.cache_read_base(current_read_base(ctx, runtime)?);
     }
     refresh_read_suppression(ctx, runtime, opts)
-}
-
-fn current_read_suppression(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<bool, ReadError> {
-    let symbol = intern_common_lisp(ctx, runtime, "*READ-SUPPRESS*")?;
-    let symbol = ncl_object::HeapRootedWord::new(ctx, symbol)?;
-    Ok(symbol_value(ctx, symbol.get())? != Word::NIL)
 }
 
 fn current_read_base(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<u32, ReadError> {

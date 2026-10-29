@@ -134,7 +134,8 @@ fn strip_environment(
         *held = refreshed;
         result = held_push(held, pair);
     }
-    held[pattern] = held_get(held, result)?;
+    let replacement = held_get(held, result)?;
+    *held.get_mut(pattern).ok_or(ObjectError::Layout)? = replacement;
     Ok(Some(environment_variable))
 }
 

@@ -126,17 +126,16 @@ fn compile_builtin_accepts_function_objects_and_rejects_other_objects() {
     assert_eq!(
         eval_text(
             &mut runtime,
-            "(let ((values (multiple-value-list (compile nil #'identity))))
-                (and (= (length values) 3)
-                     (eq (first values) #'identity)
-                     (null (second values))
-                     (null (third values))
-                     (= (funcall (first values) 42) 42)))",
+            "(let ((values (multiple-value-list (compile nil #'identity))))\n                (and (= (length values) 3)\n                     (eq (first values) #'identity)\n                     (null (second values))\n                     (null (third values))\n                     (= (funcall (first values) 42) 42)))",
         ),
         "T"
     );
     assert!(matches!(
         eval_error(&mut runtime, "(compile nil '#())"),
+        ncl_runtime::RuntimeError::Object(ObjectError::TypeError)
+    ));
+    assert!(matches!(
+        eval_error(&mut runtime, "(compile nil 42)"),
         ncl_runtime::RuntimeError::Object(ObjectError::TypeError)
     ));
     assert!(matches!(

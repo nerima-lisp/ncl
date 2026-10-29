@@ -1,4 +1,3 @@
-use ncl_compiler_front::ast::{Expr, Operator};
 use ncl_compiler_front::env::{LexicalEnv, OperatorBinding, VariableOrSymbolMacro};
 use ncl_compiler_front::{MacroCaller, SymbolRef};
 use ncl_object::{
@@ -6,8 +5,8 @@ use ncl_object::{
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, HeapRootedWord, LambdaList, MultipleValues, ObjectError, ObjectRef,
     Package, Parameter, ParameterType, Runtime as ObjectRuntime, ThreadContext, Word, car,
-    classify_object, make_cons, string_length, string_ref, symbol_function, symbol_is_macro,
-    symbol_name, symbol_package, symbol_value,
+    classify_object, string_length, string_ref, symbol_function, symbol_is_macro, symbol_name,
+    symbol_package, symbol_value,
 };
 
 const FORM: Parameter = Parameter {
@@ -234,10 +233,14 @@ fn expand_lexical_form(
     let form = HeapRootedWord::new(ctx, form)?;
     if matches!(classify_object(ctx, form.get()), ObjectRef::Symbol(_)) {
         if let Some(name) = symbol_reference(ctx, form.get())?
-            && let Some(VariableOrSymbolMacro::SymbolMacro(binding)) =
-                lexical.lookup_variable_or_symbol_macro(&name)
+            && matches!(
+                lexical.lookup_variable_or_symbol_macro(&name),
+                Some(VariableOrSymbolMacro::SymbolMacro(_))
+            )
         {
-            return expression_to_word(ctx, object, &binding.expansion);
+            return lexical
+                .lookup_symbol_macro_source(&name)
+                .ok_or(ObjectError::TypeError);
         }
         return Ok(form.get());
     }
@@ -277,85 +280,4 @@ fn symbol_reference(ctx: &ThreadContext, symbol: Word) -> Result<Option<SymbolRe
         .map(|index| string_ref(ctx, name_word, index))
         .collect::<Result<String, _>>()?;
     Ok(Some(SymbolRef::interned(package_name, name)))
-}
-
-fn symbol_word(
-    ctx: &mut ThreadContext,
-    runtime: &ObjectRuntime,
-    symbol: &SymbolRef,
-) -> Result<Word, ObjectError> {
-    let package = symbol.package_name().ok_or(ObjectError::TypeError)?;
-    let package_word = runtime
-        .find_package(ctx, package)
-        .ok_or(ObjectError::Layout)?;
-    Ok(Package::from_word(package_word)
-        .intern(ctx, runtime, &symbol.name)?
-        .0)
-}
-
-fn expression_to_word(
-    ctx: &mut ThreadContext,
-    runtime: &ObjectRuntime,
-    expression: &Expr,
-) -> Result<Word, ObjectError> {
-    match expression {
-        Expr::Constant(literal) => {
-            let datum_word = crate::local_macro::macroexpand_literal(ctx, runtime, literal)
-                .map_err(|_| ObjectError::TypeError)?;
-            let datum = HeapRootedWord::new(ctx, datum_word)?;
-            if literal.is_self_evaluating() {
-                Ok(datum.get())
-            } else {
-                let quote_name = SymbolRef::interned("COMMON-LISP", "QUOTE");
-                let quote_word = symbol_word(ctx, runtime, &quote_name)?;
-                let quote = HeapRootedWord::new(ctx, quote_word)?;
-                let tail = make_cons(ctx, runtime, datum.get(), Word::NIL)?;
-                let tail = HeapRootedWord::new(ctx, tail)?;
-                make_cons(ctx, runtime, quote.get(), tail.get())
-            }
-        }
-        Expr::Variable(name) => symbol_word(ctx, runtime, name),
-        Expr::Call {
-            operator: Operator::Name(name),
-            arguments,
-        } => {
-            let operator_word = symbol_word(ctx, runtime, name)?;
-            let operator = HeapRootedWord::new(ctx, operator_word)?;
-            let mut tail = HeapRootedWord::new(ctx, Word::NIL)?;
-            for argument in arguments.iter().rev() {
-                let argument_word = expression_to_word(ctx, runtime, argument)?;
-                let argument = HeapRootedWord::new(ctx, argument_word)?;
-                let pair = make_cons(ctx, runtime, argument.get(), tail.get())?;
-                tail = HeapRootedWord::new(ctx, pair)?;
-            }
-            make_cons(ctx, runtime, operator.get(), tail.get())
-        }
-        Expr::If {
-            test,
-            then,
-            otherwise,
-        } => {
-            let test_word = expression_to_word(ctx, runtime, test)?;
-            let test = HeapRootedWord::new(ctx, test_word)?;
-            let then_word = expression_to_word(ctx, runtime, then)?;
-            let then = HeapRootedWord::new(ctx, then_word)?;
-            let mut tail = if let Some(otherwise) = otherwise {
-                let otherwise_word = expression_to_word(ctx, runtime, otherwise)?;
-                let otherwise = HeapRootedWord::new(ctx, otherwise_word)?;
-                let pair = make_cons(ctx, runtime, otherwise.get(), Word::NIL)?;
-                HeapRootedWord::new(ctx, pair)?
-            } else {
-                HeapRootedWord::new(ctx, Word::NIL)?
-            };
-            let pair = make_cons(ctx, runtime, then.get(), tail.get())?;
-            tail = HeapRootedWord::new(ctx, pair)?;
-            let pair = make_cons(ctx, runtime, test.get(), tail.get())?;
-            tail = HeapRootedWord::new(ctx, pair)?;
-            let operator_name = SymbolRef::interned("COMMON-LISP", "IF");
-            let operator_word = symbol_word(ctx, runtime, &operator_name)?;
-            let operator = HeapRootedWord::new(ctx, operator_word)?;
-            make_cons(ctx, runtime, operator.get(), tail.get())
-        }
-        _ => Err(ObjectError::TypeError),
-    }
 }

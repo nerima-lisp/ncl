@@ -12,6 +12,7 @@
 use crate::ast::{LocalMacro, SymbolMacro};
 use crate::symbols::SymbolRef;
 use crate::types::TypeSpecifier;
+use ncl_object::Word;
 
 /// How a name is bound as a variable in one frame.
 #[derive(Clone, Debug, PartialEq)]
@@ -61,6 +62,7 @@ struct Frame {
     functions: Vec<SymbolRef>,
     macros: Vec<LocalMacro>,
     symbol_macros: Vec<SymbolMacro>,
+    symbol_macro_sources: Vec<(SymbolRef, Word)>,
     blocks: Vec<SymbolRef>,
     tags: Vec<SymbolRef>,
 }
@@ -152,6 +154,35 @@ impl LexicalEnv {
     /// Bind a symbol macro in the innermost scope.
     pub fn bind_symbol_macro(&mut self, definition: SymbolMacro) {
         self.current().symbol_macros.push(definition);
+    }
+
+    /// Bind a symbol macro and retain its original source form for MACROEXPAND.
+    pub fn bind_symbol_macro_with_source(&mut self, definition: SymbolMacro, source: Word) {
+        let name = definition.name.clone();
+        let frame = self.current();
+        frame.symbol_macros.push(definition);
+        frame.symbol_macro_sources.push((name, source));
+    }
+
+    /// Original source forms for the active symbol-macro bindings.
+    #[must_use]
+    pub fn symbol_macro_source_forms(&self) -> Vec<Word> {
+        self.frames
+            .iter()
+            .flat_map(|frame| frame.symbol_macro_sources.iter().map(|(_, source)| *source))
+            .collect()
+    }
+
+    /// Refresh stored source forms after their rooted objects move during GC.
+    pub fn update_symbol_macro_source_forms(&mut self, sources: &[Word]) {
+        for ((_, source), updated) in self
+            .frames
+            .iter_mut()
+            .flat_map(|frame| frame.symbol_macro_sources.iter_mut())
+            .zip(sources.iter().copied())
+        {
+            *source = updated;
+        }
     }
 
     /// Bind a block name in the innermost scope.
@@ -280,6 +311,27 @@ impl LexicalEnv {
                 .rev()
                 .find(|entry| entry.name == *name)
         })
+    }
+
+    /// Find the original source form of the innermost symbol-macro binding.
+    #[must_use]
+    pub fn lookup_symbol_macro_source(&self, name: &SymbolRef) -> Option<Word> {
+        for frame in self.frames.iter().rev() {
+            if frame
+                .symbol_macros
+                .iter()
+                .rev()
+                .any(|entry| entry.name == *name)
+            {
+                return frame
+                    .symbol_macro_sources
+                    .iter()
+                    .rev()
+                    .find(|(bound, _)| bound == name)
+                    .map(|(_, source)| *source);
+            }
+        }
+        None
     }
 
     /// Whether `name` is an enclosing block name.

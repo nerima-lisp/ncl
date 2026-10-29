@@ -68,7 +68,6 @@ fn defmacro_dotted_tail_lambda_lists_bind_arguments() {
     );
 }
 
-
 #[test]
 fn macroexpand_repeats_expansion_and_reports_any_expansion() {
     let mut runtime = new_runtime();
@@ -200,7 +199,6 @@ fn lexical_function_and_macro_lookup_uses_the_innermost_binding() {
         "T",
     );
 }
-
 
 #[test]
 fn macroexpand_arguments_are_evaluated_once() {
@@ -348,3 +346,71 @@ fn macroexpand_variable_and_symbol_macro_lookup_respects_depth() {
     );
 }
 
+#[test]
+fn macroexpand_1_preserves_symbol_macro_source_without_expanding_it() {
+    let mut runtime = new_runtime();
+    eval_text(
+        &mut runtime,
+        "(defmacro macroexpand-source-inner (value) `(+ ,value 10))\n\
+         (defmacro macroexpand-source-probe (form &environment env)\n\
+           (multiple-value-bind (expansion expanded-p)\n\
+               (macroexpand-1 (cadr form) env)\n\
+             (list 'quote (list expansion expanded-p))))",
+    );
+
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal\n\
+               (symbol-macrolet ((macroexpand-source-x\n\
+                                   (macroexpand-source-inner 1)))\n\
+                 (macroexpand-source-probe 'macroexpand-source-x))\n\
+               '((macroexpand-source-inner 1) t))",
+        ),
+        "T",
+    );
+}
+
+#[test]
+fn macroexpand_1_preserves_arbitrary_symbol_macro_source_forms() {
+    let mut runtime = new_runtime();
+    eval_text(
+        &mut runtime,
+        "(defmacro macroexpand-arbitrary-source-probe (form &environment env)\n\
+           (multiple-value-bind (expansion expanded-p)\n\
+               (macroexpand-1 (cadr form) env)\n\
+             (list 'quote (list expansion expanded-p))))",
+    );
+
+    for (name, form, expected) in [
+        (
+            "macroexpand-let-source-x",
+            "(let ((a 1)) a)",
+            "'((let ((a 1)) a) t)",
+        ),
+        (
+            "macroexpand-progn-source-x",
+            "(progn 1 2)",
+            "'((progn 1 2) t)",
+        ),
+        (
+            "macroexpand-lambda-source-x",
+            "(lambda (a) a)",
+            "'((lambda (a) a) t)",
+        ),
+        ("macroexpand-setq-source-x", "(setq a 1)", "'((setq a 1) t)"),
+        ("macroexpand-when-source-x", "(when t 1)", "'((when t 1) t)"),
+    ] {
+        let source = format!(
+            "(equal\n\
+               (symbol-macrolet (({name} {form}))\n\
+                 (macroexpand-arbitrary-source-probe '{name}))\n\
+               {expected})"
+        );
+        assert_eq!(
+            eval_text(&mut runtime, &source),
+            "T",
+            "source form {form} must be returned unchanged",
+        );
+    }
+}

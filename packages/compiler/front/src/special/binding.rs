@@ -265,6 +265,7 @@ fn symbol_macrolet(
     };
     let definition_forms = expander.elements(definitions_word.get())?;
     let mut definitions = Vec::with_capacity(definition_forms.len());
+    let mut source_forms = Vec::with_capacity(definition_forms.len());
     for definition in definition_forms.iter() {
         let elements = expander.elements(definition.get())?;
         let [name, expansion] = elements.as_slice() else {
@@ -274,12 +275,18 @@ fn symbol_macrolet(
             });
         };
         let name = expander.symbol(name.get())?;
-        let expansion = expander.expand(expansion.get())?;
-        definitions.push(SymbolMacro { name, expansion });
+        let expanded = expander.expand(expansion.get())?;
+        source_forms.push(expansion.get());
+        definitions.push(SymbolMacro {
+            name,
+            expansion: expanded,
+        });
     }
     expander.env_mut().push_scope();
-    for definition in &definitions {
-        expander.env_mut().bind_symbol_macro(definition.clone());
+    for (definition, source) in definitions.iter().zip(source_forms) {
+        expander
+            .env_mut()
+            .bind_symbol_macro_with_source(definition.clone(), source);
     }
     let body = expander.expand_rooted_declared_body(body_forms)?;
     expander.apply_declarations(&body.declarations);

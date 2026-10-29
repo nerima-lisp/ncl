@@ -181,9 +181,24 @@ fn compile_lambda_definition(
 
 #[cfg(test)]
 mod tests {
-    use super::compile_lambda_definition;
-    use ncl_object::{ObjectError, Runtime, ThreadContext, make_cons};
+    use super::{compile_lambda_definition, eval_builtin};
+    use ncl_object::{BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, make_cons};
     use ncl_sys::Word;
+
+    #[test]
+    fn eval_builtin_requires_an_evaluator_runtime() {
+        let object = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&object)
+            .unwrap_or_else(|error| panic!("context: {error:?}"));
+        let args = BuiltinArgs::new(&[Word::NIL]);
+        let mut values = MultipleValues::new();
+
+        assert_eq!(
+            eval_builtin(&mut ctx, &object, &args, &mut values),
+            Err(ObjectError::Layout)
+        );
+    }
 
     #[test]
     fn compile_lambda_definition_requires_an_evaluator_runtime() {

@@ -235,18 +235,20 @@ fn pass(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
     Ok(args.as_slice().to_vec())
 }
 
-/// Return the implementation for the basic destructive sequence operations.
-pub fn filter_entry(name: &str) -> Option<BuiltinImplementation> {
-    let descriptor = |required: &'static [Parameter]| Builtin {
+/// Build the shared descriptor for destructive sequence operations.
+const fn descriptor(required: &'static [Parameter]) -> Builtin {
+    Builtin {
         lambda_list: LambdaList::new(required, &[], None, RANGE_KEYS, true),
         convention: BuiltinConvention::Adapted,
-    };
-    let implementation = match name {
-        "FILL" => BuiltinImplementation::adapted(descriptor(&[SEQ, ITEM]), fill_entry, pass),
-        "REPLACE" => BuiltinImplementation::adapted(descriptor(&[SEQ, SEQ]), replace_entry, pass),
-        _ => return None,
-    };
-    Some(implementation)
+    }
+}
+
+pub fn fill_implementation() -> BuiltinImplementation {
+    BuiltinImplementation::adapted(descriptor(&[SEQ, ITEM]), fill_entry, pass)
+}
+
+pub fn replace_implementation() -> BuiltinImplementation {
+    BuiltinImplementation::adapted(descriptor(&[SEQ, SEQ]), replace_entry, pass)
 }
 
 #[cfg(test)]

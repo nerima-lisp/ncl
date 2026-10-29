@@ -409,10 +409,10 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         },
         getf_builtin,
     )?;
-    for name in std::iter::once("FILL").chain(std::iter::once("REPLACE")) {
-        let Some(implementation) = domain::filter::filter_entry(name) else {
-            return Err(ObjectError::TypeError);
-        };
+    for (name, implementation) in [
+        ("FILL", domain::filter::fill_implementation()),
+        ("REPLACE", domain::filter::replace_implementation()),
+    ] {
         runtime.register_builtin(
             ctx_ref(&mut ctx),
             BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),

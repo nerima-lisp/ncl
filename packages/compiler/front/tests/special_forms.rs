@@ -10,7 +10,7 @@ mod forms;
 
 use forms::Fixture;
 
-use ncl_compiler_front::Expr;
+use ncl_compiler_front::{Expr, Literal};
 use ncl_object::Word;
 
 #[test]
@@ -310,6 +310,24 @@ fn quote_parses_a_constant() {
         }
         other => panic!("expected Constant, got {other:?}"),
     }
+}
+
+#[test]
+fn quote_folds_common_lisp_nil_and_t_into_constants() {
+    let mut f = Fixture::new();
+    let nil = f.cl("NIL");
+    let form = f.form("QUOTE", &[nil]);
+    assert!(matches!(
+        f.expand(form).unwrap(),
+        Expr::Constant(Literal::Nil)
+    ));
+
+    let truth = f.cl("T");
+    let form = f.form("QUOTE", &[truth]);
+    assert!(matches!(
+        f.expand(form).unwrap(),
+        Expr::Constant(Literal::T)
+    ));
 }
 
 #[test]

@@ -86,15 +86,8 @@ fn descriptor(lambda_list: LambdaList) -> Builtin {
     }
 }
 
-fn identity_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
-    let mut values = Vec::with_capacity(args.len());
-    for index in 0..args.len() {
-        let Some(value) = args.get(index) else {
-            return Err(ObjectError::TypeError);
-        };
-        values.push(value);
-    }
-    Ok(values)
+fn identity_adapter(args: &BuiltinArgs<'_>) -> Vec<Word> {
+    args.as_slice().to_vec()
 }
 
 /// Register the Common Lisp character and string builtins owned by this crate.
@@ -131,7 +124,9 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             let implementation = if descriptor.lambda_list.is_direct() {
                 BuiltinImplementation::direct(descriptor, $function)
             } else {
-                BuiltinImplementation::adapted(descriptor, $function, identity_adapter)
+                BuiltinImplementation::adapted(descriptor, $function, |args: &BuiltinArgs<'_>| {
+                    Ok(identity_adapter(args))
+                })
             };
             runtime.register_builtin(
                 &mut ctx,

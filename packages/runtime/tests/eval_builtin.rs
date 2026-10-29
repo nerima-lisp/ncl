@@ -145,6 +145,56 @@ fn compile_builtin_accepts_function_objects_and_rejects_other_objects() {
 }
 
 #[test]
+fn compile_builtin_installs_a_function_object_under_a_name() {
+    let mut runtime = new_runtime();
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal (multiple-value-list (compile 'compile-function-object-probe #'identity))\n                 '(compile-function-object-probe nil nil))",
+        ),
+        "T"
+    );
+    assert_eq!(
+        eval_text(&mut runtime, "(compile-function-object-probe 42)"),
+        "42"
+    );
+}
+
+#[test]
+fn compile_builtin_rejects_a_non_function_name() {
+    let mut runtime = new_runtime();
+    assert!(matches!(
+        eval_error(&mut runtime, "(compile 42 #'identity)"),
+        ncl_runtime::RuntimeError::Object(ObjectError::TypeError)
+    ));
+}
+
+#[test]
+fn compile_builtin_compiles_a_named_lambda_definition() {
+    let mut runtime = new_runtime();
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal (multiple-value-list (compile 'compile-lambda-probe '(lambda (x) (+ x 2))))\n                 '(compile-lambda-probe nil nil))",
+        ),
+        "T"
+    );
+    assert_eq!(eval_text(&mut runtime, "(compile-lambda-probe 40)"), "42");
+}
+
+#[test]
+fn compile_builtin_returns_nil_values_for_a_nil_name_without_definition() {
+    let mut runtime = new_runtime();
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal (multiple-value-list (compile nil)) '(nil nil nil))",
+        ),
+        "T"
+    );
+}
+
+#[test]
 fn specialized_array_literals_preserve_values_types_and_identity() {
     let mut runtime = new_runtime();
     let forms = [

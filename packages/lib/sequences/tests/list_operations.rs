@@ -13,15 +13,21 @@ fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {
     let functions = [
         "APPEND",
         "CAR",
+        "CONCATENATE",
         "CONS",
+        "ENDP",
         "EQUAL",
+        "GETF",
         "LIST",
         "LISTP",
         "LAST",
         "BUTLAST",
+        "MISMATCH",
         "NCONC",
         "NREVERSE",
         "REMOVE",
+        "SEARCH",
+        "SUBSEQ",
         "SUBLIS",
         "NSUBLIS",
         "SUBST",
@@ -1674,6 +1680,16 @@ fn butlast_handles_fixnum_and_bignum_counts() {
         ),
         Err(ObjectError::TypeError)
     );
+    assert_eq!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "BUTLAST",
+            &[list, Word::fixnum(-1)]
+        ),
+        Err(ObjectError::TypeError)
+    );
 
     assert!(ncl_object::pop_root(&mut ctx, list_root));
 }
@@ -1777,6 +1793,10 @@ fn last_and_butlast_handle_dotted_lists() {
         ),
         Err(ObjectError::TypeError)
     ));
+    assert_eq!(
+        call_result(&runtime, &mut ctx, &functions, "BUTLAST", &[Word::TRUE]),
+        Err(ObjectError::TypeError)
+    );
 
     assert!(ncl_object::pop_root(&mut ctx, dotted_root));
     assert!(ncl_object::pop_root(&mut ctx, list_root));
@@ -2007,4 +2027,211 @@ fn selection_rejects_non_symbol_keyword_arguments_as_program_error() {
     for token in root_tokens.into_iter().rev() {
         assert!(ncl_object::pop_root(&mut ctx, token));
     }
+}
+
+#[test]
+fn endp_accepts_nil_and_cons_and_rejects_an_atom() {
+    let (runtime, mut ctx, functions) = setup();
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "ENDP", &[Word::NIL]),
+        Word::TRUE
+    );
+
+    let cons = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[Word::fixnum(1), Word::fixnum(2)],
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "ENDP", &[cons]),
+        Word::NIL
+    );
+    assert_eq!(
+        call_result(&runtime, &mut ctx, &functions, "ENDP", &[Word::fixnum(1)]),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn concatenate_builds_list_vector_and_string_and_rejects_bad_types() {
+    let (runtime, mut ctx, functions) = setup();
+    let list_type = package_symbol(&mut ctx, &runtime, "COMMON-LISP", "LIST");
+    let vector_type = package_symbol(&mut ctx, &runtime, "COMMON-LISP", "VECTOR");
+    let string_type = package_symbol(&mut ctx, &runtime, "COMMON-LISP", "STRING");
+    let unknown_type = package_symbol(
+        &mut ctx,
+        &runtime,
+        "COMMON-LISP",
+        "CONCATENATE-UNKNOWN-TYPE",
+    );
+    let one = Word::fixnum(1);
+    let two = Word::fixnum(2);
+    let mut list = call(&runtime, &mut ctx, &functions, "LIST", &[one, two]);
+    let list_root = ncl_object::push_root(&mut ctx, &mut list);
+
+    let list_result = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONCATENATE",
+        &[list_type, list],
+    );
+    assert_list(&ctx, list_result, &[one, two]);
+
+    let vector = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONCATENATE",
+        &[vector_type, list],
+    );
+    assert!(matches!(
+        ncl_object::classify_object(&ctx, vector),
+        ObjectRef::SimpleVector(_)
+    ));
+    assert_eq!(ncl_object::simple_vector_length(&ctx, vector), Ok(2));
+    assert_eq!(ncl_object::simple_vector_ref(&ctx, vector, 0), Ok(one));
+    assert_eq!(ncl_object::simple_vector_ref(&ctx, vector, 1), Ok(two));
+
+    let mut string = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b'])
+        .unwrap_or_else(|error| panic!("string: {error:?}"));
+    let string_root = ncl_object::push_root(&mut ctx, &mut string);
+    let concatenated = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONCATENATE",
+        &[string_type, string],
+    );
+    assert!(matches!(
+        ncl_object::classify_object(&ctx, concatenated),
+        ObjectRef::String(_)
+    ));
+    assert_eq!(ncl_object::string_length(&ctx, concatenated), Ok(2));
+    assert_eq!(ncl_object::string_ref(&ctx, concatenated, 0), Ok('a'));
+    assert_eq!(ncl_object::string_ref(&ctx, concatenated, 1), Ok('b'));
+
+    let dotted = call(&runtime, &mut ctx, &functions, "CONS", &[one, two]);
+    assert_eq!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "CONCATENATE",
+            &[list_type, dotted],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "CONCATENATE",
+            &[Word::fixnum(1)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "CONCATENATE",
+            &[unknown_type],
+        ),
+        Err(ObjectError::TypeError)
+    );
+
+    assert!(ncl_object::pop_root(&mut ctx, string_root));
+    assert!(ncl_object::pop_root(&mut ctx, list_root));
+}
+
+#[test]
+fn getf_rejects_both_kinds_of_improper_property_list() {
+    let (runtime, mut ctx, functions) = setup();
+    let indicator = keyword(&mut ctx, &runtime, "GETF-TEST-INDICATOR");
+    assert_eq!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "GETF",
+            &[Word::fixnum(1), indicator],
+        ),
+        Err(ObjectError::TypeError)
+    );
+
+    let malformed_pair = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "CONS",
+        &[indicator, Word::fixnum(2)],
+    );
+    assert_eq!(
+        call_result(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "GETF",
+            &[malformed_pair, indicator],
+        ),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn search_and_mismatch_reject_non_sequence_arguments() {
+    let (runtime, mut ctx, functions) = setup();
+    for (name, args) in [
+        ("SEARCH", [Word::TRUE, Word::NIL]),
+        ("SEARCH", [Word::NIL, Word::TRUE]),
+        ("MISMATCH", [Word::TRUE, Word::NIL]),
+        ("MISMATCH", [Word::NIL, Word::TRUE]),
+    ] {
+        assert_eq!(
+            call_result(&runtime, &mut ctx, &functions, name, &args),
+            Err(ObjectError::TypeError),
+            "{name} should reject a non-sequence argument"
+        );
+    }
+}
+
+#[test]
+fn subseq_defaults_end_and_rejects_out_of_range_bounds() {
+    let (runtime, mut ctx, functions) = setup();
+    let one = Word::fixnum(1);
+    let two = Word::fixnum(2);
+    let three = Word::fixnum(3);
+    let mut list = call(&runtime, &mut ctx, &functions, "LIST", &[one, two, three]);
+    let list_root = ncl_object::push_root(&mut ctx, &mut list);
+
+    let suffix = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "SUBSEQ",
+        &[list, Word::fixnum(1)],
+    );
+    assert_list(&ctx, suffix, &[two, three]);
+    for (start, end) in [
+        (Word::fixnum(2), Word::fixnum(1)),
+        (Word::fixnum(0), Word::fixnum(4)),
+    ] {
+        assert_eq!(
+            call_result(
+                &runtime,
+                &mut ctx,
+                &functions,
+                "SUBSEQ",
+                &[list, start, end],
+            ),
+            Err(ObjectError::TypeError)
+        );
+    }
+
+    assert!(ncl_object::pop_root(&mut ctx, list_root));
 }

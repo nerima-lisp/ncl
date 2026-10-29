@@ -1,6 +1,9 @@
 use crate::general_category;
 use ncl_object::{FunctionObject, Package, Runtime, ThreadContext, Word};
 
+#[path = "character_names.rs"]
+mod character_names;
+
 fn call(runtime: &Runtime, ctx: &mut ThreadContext, name: &str, args: &[Word]) -> Word {
     let function = runtime
         .function(ctx, "COMMON-LISP", name)
@@ -199,6 +202,18 @@ fn character_and_mutating_string_builtins_cover_boundaries() {
     );
     assert_eq!(
         runtime.call_builtin(&mut ctx, setter, &[mutable, Word::fixnum(2), replacement],),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, setter, &[mutable, Word::fixnum(-1), replacement],),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            setter,
+            &[Word::TRUE, Word::fixnum(0), replacement],
+        ),
         Err(ncl_object::ObjectError::TypeError)
     );
     assert!(ncl_object::pop_root(&mut ctx, mutable_root));

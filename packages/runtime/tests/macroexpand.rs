@@ -38,6 +38,18 @@ fn macroexpand_1_expands_once_and_returns_expanded_p() {
 }
 
 #[test]
+fn macroexpand_1_leaves_uninterned_operators_unchanged() {
+    let mut runtime = new_runtime();
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(multiple-value-list (macroexpand-1 '(#:foo)))",
+        ),
+        "((#:FOO) NIL)",
+    );
+}
+
+#[test]
 fn defmacro_dotted_tail_lambda_lists_bind_arguments() {
     let mut runtime = new_runtime();
     eval_text(

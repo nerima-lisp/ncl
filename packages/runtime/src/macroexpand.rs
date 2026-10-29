@@ -1,12 +1,12 @@
 use ncl_compiler_front::env::{LexicalEnv, OperatorBinding, VariableOrSymbolMacro};
+use ncl_compiler_front::form::UninternedTable;
 use ncl_compiler_front::{MacroCaller, SymbolRef};
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
     FunctionDesignator, HeapRootedWord, LambdaList, MultipleValues, ObjectError, ObjectRef,
     Package, Parameter, ParameterType, Runtime as ObjectRuntime, ThreadContext, Word, car,
-    classify_object, string_length, string_ref, symbol_function, symbol_is_macro, symbol_name,
-    symbol_package, symbol_value,
+    classify_object, symbol_function, symbol_is_macro, symbol_value,
 };
 
 const FORM: Parameter = Parameter {
@@ -267,17 +267,10 @@ fn expand_lexical_form(
 }
 
 fn symbol_reference(ctx: &ThreadContext, symbol: Word) -> Result<Option<SymbolRef>, ObjectError> {
-    let package = symbol_package(ctx, symbol)?;
-    if package == Word::NIL {
-        return Ok(None);
-    }
-    let package_name_word = Package::from_word(package).name(ctx)?;
-    let package_name = (0..string_length(ctx, package_name_word)?)
-        .map(|index| string_ref(ctx, package_name_word, index))
-        .collect::<Result<String, _>>()?;
-    let name_word = symbol_name(ctx, symbol)?;
-    let name = (0..string_length(ctx, name_word)?)
-        .map(|index| string_ref(ctx, name_word, index))
-        .collect::<Result<String, _>>()?;
-    Ok(Some(SymbolRef::interned(package_name, name)))
+    ncl_compiler_front::form::symbol_ref(ctx, &mut UninternedTable::new(), symbol)
+        .map(Some)
+        .map_err(|error| match error {
+            ncl_compiler_front::FrontError::Object(error) => error,
+            _ => ObjectError::TypeError,
+        })
 }

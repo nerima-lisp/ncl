@@ -22,9 +22,12 @@
 //! collection triggered mid-expansion cannot leave a stale reference (the
 //! same discipline as `ncl-lib-macros::destructuring` and `::backquote`).
 
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use ncl_compiler_front::ast::{Expr, LocalMacro, Operator};
+use ncl_compiler_front::env::LexicalEnv;
 use ncl_compiler_front::lambda_list::{LambdaList, ParamName};
 use ncl_compiler_front::literal::{Literal, NumberLiteral};
 use ncl_compiler_front::{FrontError, SymbolRef};
@@ -37,6 +40,39 @@ use crate::support::call_macro_function;
 
 type Held = Vec<Word>;
 type EntryCodes = BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>; // check-added-lines: allow(word-table) entries are rooted code objects
+
+thread_local! {
+    static MACRO_ENVIRONMENTS: RefCell<HashMap<i64, LexicalEnv>> = RefCell::new(HashMap::new());
+}
+
+static NEXT_MACRO_ENVIRONMENT: AtomicI64 = AtomicI64::new(1);
+
+struct MacroEnvironmentGuard(i64);
+
+impl Drop for MacroEnvironmentGuard {
+    fn drop(&mut self) {
+        MACRO_ENVIRONMENTS.with(|environments| {
+            environments.borrow_mut().remove(&self.0);
+        });
+    }
+}
+
+pub(crate) fn with_macro_environment<R>(environment: &LexicalEnv, f: impl FnOnce(Word) -> R) -> R {
+    let id = NEXT_MACRO_ENVIRONMENT.fetch_add(1, Ordering::Relaxed);
+    MACRO_ENVIRONMENTS.with(|environments| {
+        environments.borrow_mut().insert(id, environment.clone());
+    });
+    let _guard = MacroEnvironmentGuard(id);
+    f(Word::fixnum(-id))
+}
+
+pub(crate) fn macro_environment(environment: Word) -> Option<LexicalEnv> {
+    let id = environment.as_fixnum()?;
+    if id >= 0 {
+        return None;
+    }
+    MACRO_ENVIRONMENTS.with(|environments| environments.borrow().get(&-id).cloned())
+}
 
 fn held_get(held: &Held, index: usize) -> std::result::Result<Word, ObjectError> {
     held.get(index).copied().ok_or(ObjectError::Layout)
@@ -149,6 +185,16 @@ fn materialize(
             ))
         }
     }
+}
+
+pub(crate) fn macroexpand_literal(
+    ctx: &mut ThreadContext,
+    runtime: &ObjectRuntime,
+    literal: &Literal,
+) -> Result<Word, FrontError> {
+    let mut held = Vec::new();
+    let index = materialize(ctx, runtime, &mut held, literal)?;
+    held_get(&held, index).map_err(object_error)
 }
 
 /// Call a named global function (not a special operator) with already
@@ -284,6 +330,7 @@ fn destructure(
     lambda_list: &LambdaList,
     held: &mut Held,
     env: &mut Vec<(SymbolRef, usize)>,
+    macro_environment: Word,
 ) -> Result<(), FrontError> {
     if !lambda_list.keys.is_empty() || !lambda_list.aux.is_empty() {
         return Err(unsupported(
@@ -294,7 +341,7 @@ fn destructure(
         env.push((whole.clone(), 0));
     }
     if let Some(environment) = &lambda_list.environment {
-        let index = held_push(held, Word::NIL);
+        let index = held_push(held, macro_environment);
         env.push((environment.clone(), index));
     }
     let arguments = {
@@ -361,6 +408,7 @@ pub fn call_local_macro(
     entry_codes: &EntryCodes,
     definition: &LocalMacro,
     form: Word,
+    environment: Word,
 ) -> Result<Word, FrontError> {
     let mut held: Held = vec![form];
     let mut env: Vec<(SymbolRef, usize)> = Vec::new();
@@ -371,6 +419,7 @@ pub fn call_local_macro(
         &definition.lambda_list,
         &mut held,
         &mut env,
+        environment,
     )?;
     let mut result = held_push(&mut held, Word::NIL);
     for expr in &definition.body {
@@ -445,8 +494,15 @@ mod tests {
             .unwrap_or_else(|error| panic!("cons: {error:?}"));
 
         let entry_codes: BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)> = BTreeMap::new();
-        let result = call_local_macro(&mut ctx, &runtime, &entry_codes, &definition, form)
-            .unwrap_or_else(|error| panic!("call_local_macro: {error:?}"));
+        let result = call_local_macro(
+            &mut ctx,
+            &runtime,
+            &entry_codes,
+            &definition,
+            form,
+            Word::NIL,
+        )
+        .unwrap_or_else(|error| panic!("call_local_macro: {error:?}"));
         assert_eq!(result, Word::fixnum(6));
     }
 

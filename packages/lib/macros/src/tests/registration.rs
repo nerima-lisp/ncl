@@ -39,6 +39,17 @@ fn registration_marks_owned_macros_and_installs_function_cells() {
         .expect("*MACROEXPAND-HOOK*")
         .0;
     assert!(ncl_object::symbol_is_special(&ctx, hook).expect("special flag"));
+    let funcall = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "FUNCALL")
+        .expect("FUNCALL")
+        .0;
+    assert_eq!(
+        ncl_object::symbol_value(&ctx, hook).expect("hook value"),
+        funcall
+    );
+    for name in ["MACROEXPAND-1", "MACROEXPAND"] {
+        assert!(runtime.function(&mut ctx, CL, name).is_some(), "{name}");
+    }
     assert!(
         runtime
             .function(&mut ctx, CL, "GET-SETF-EXPANSION")

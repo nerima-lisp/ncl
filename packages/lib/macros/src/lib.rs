@@ -35,7 +35,7 @@ pub use setf::{
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, LambdaList, ObjectError, Package, Parameter, ParameterType,
-    Runtime, ThreadContext, Word, set_symbol_macro, set_symbol_special,
+    Runtime, ThreadContext, Word, set_symbol_macro, set_symbol_special, set_symbol_value,
 };
 
 const CL: &str = "COMMON-LISP";
@@ -396,7 +396,10 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         .intern(&mut ctx, runtime, "*MACROEXPAND-HOOK*")?
         .0;
     set_symbol_special(&mut ctx, variable, true)?;
-    ncl_object::set_symbol_value(&mut ctx, variable, Word::NIL)?;
+    let funcall = Package::from_word(runtime.ensure_package(&mut ctx, CL)?)
+        .intern(&mut ctx, runtime, "FUNCALL")?
+        .0;
+    set_symbol_value(&mut ctx, variable, funcall)?;
     Ok(())
 }
 

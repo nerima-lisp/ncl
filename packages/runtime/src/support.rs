@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::ptr::NonNull;
 
 use ncl_codegen::{AbiError, RuntimeAbi, RuntimeFunction};
+use ncl_compiler_front::env::LexicalEnv;
 use ncl_compiler_front::{FrontError, MacroCaller, SymbolRef};
 use ncl_object::{
     BuiltinIdentifier, CodeObject, Function, FunctionObject, HeapRootedWord, ObjectError, Package,
@@ -198,6 +199,83 @@ impl MacroCaller for RuntimeMacroCaller {
         name: &ncl_compiler_front::SymbolRef,
         form: Word,
     ) -> Result<Word, ncl_compiler_front::FrontError> {
+        self.call_macro_with_environment_word(ctx, runtime, name, form, Word::NIL)
+    }
+
+    fn call_macro_in_environment(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &ObjectRuntime,
+        name: &ncl_compiler_front::SymbolRef,
+        form: Word,
+        environment: &LexicalEnv,
+    ) -> Result<Word, ncl_compiler_front::FrontError> {
+        crate::local_macro::with_macro_environment(environment, |environment| {
+            self.call_macro_with_environment_word(ctx, runtime, name, form, environment)
+        })
+    }
+
+    fn call_local_macro_in_environment(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &ObjectRuntime,
+        definition: &ncl_compiler_front::ast::LocalMacro,
+        form: Word,
+        environment: &LexicalEnv,
+    ) -> Result<Word, ncl_compiler_front::FrontError> {
+        crate::local_macro::with_macro_environment(environment, |environment| {
+            crate::local_macro::call_local_macro(
+                ctx,
+                runtime,
+                &self.entry_codes,
+                definition,
+                form,
+                environment,
+            )
+        })
+    }
+
+    fn expand_type_specifier(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &ObjectRuntime,
+        specifier: Word,
+    ) -> Result<Word, FrontError> {
+        ncl_types::expand_deftype_specifier_with(ctx, runtime, specifier, self).map_err(|error| {
+            FrontError::MacroExpansion {
+                name: SymbolRef::interned("COMMON-LISP", "DEFTYPE"),
+                detail: error.to_string(),
+            }
+        })
+    }
+
+    fn call_local_macro(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &ObjectRuntime,
+        definition: &ncl_compiler_front::ast::LocalMacro,
+        form: Word,
+    ) -> Result<Word, ncl_compiler_front::FrontError> {
+        crate::local_macro::call_local_macro(
+            ctx,
+            runtime,
+            &self.entry_codes,
+            definition,
+            form,
+            Word::NIL,
+        )
+    }
+}
+
+impl RuntimeMacroCaller {
+    fn call_macro_with_environment_word(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &ObjectRuntime,
+        name: &SymbolRef,
+        form: Word,
+        environment: Word,
+    ) -> Result<Word, ncl_compiler_front::FrontError> {
         let form_root =
             HeapRootedWord::new(ctx, form).map_err(|error| expansion(name, &error.to_string()))?;
         let package = name
@@ -235,53 +313,20 @@ impl MacroCaller for RuntimeMacroCaller {
         };
         let function = FunctionObject::try_from(function_root.get())
             .map_err(|error| expansion(name, &error.to_string()))?;
+        let arguments = [form, environment];
         if runtime.builtin_descriptor(ctx, function).is_some() {
             return runtime
-                .call_builtin(ctx, function, &[form])
+                .call_builtin(ctx, function, &arguments)
                 .map_err(|error| {
                     let detail = pending_simple_error_message(ctx, runtime, || error.to_string());
                     expansion(name, &detail)
                 });
         }
-        // A compiled macro function takes exactly one argument: the whole
-        // call form. `defmacro` (see `ncl-lib-macros::defining`) compiles
-        // the macro lambda list into a single-argument lambda that
-        // destructures `(cdr whole)` itself, so it can support `&whole`,
-        // `&environment`, `&body`, and nested patterns without help from
-        // the front end's ordinary-lambda-list lowering. Passing one
-        // argument here also avoids the register/rest-pointer marshalling
-        // in `call_macro_function` for arbitrarily wide argument lists,
-        // which is what a `&rest`/`&body` macro previously could trip
-        // non-deterministically under GC pressure.
-        let result = call_macro_function(ctx, runtime, function, &[form], &self.evaluator);
+        let result = call_macro_function(ctx, runtime, function, &arguments, &self.evaluator);
         result.map_err(|error| {
             let detail = pending_simple_error_message(ctx, runtime, || error.to_string());
             expansion(name, &detail)
         })
-    }
-
-    fn expand_type_specifier(
-        &mut self,
-        ctx: &mut ThreadContext,
-        runtime: &ObjectRuntime,
-        specifier: Word,
-    ) -> Result<Word, FrontError> {
-        ncl_types::expand_deftype_specifier_with(ctx, runtime, specifier, self).map_err(|error| {
-            FrontError::MacroExpansion {
-                name: SymbolRef::interned("COMMON-LISP", "DEFTYPE"),
-                detail: error.to_string(),
-            }
-        })
-    }
-
-    fn call_local_macro(
-        &mut self,
-        ctx: &mut ThreadContext,
-        runtime: &ObjectRuntime,
-        definition: &ncl_compiler_front::ast::LocalMacro,
-        form: Word,
-    ) -> Result<Word, ncl_compiler_front::FrontError> {
-        crate::local_macro::call_local_macro(ctx, runtime, &self.entry_codes, definition, form)
     }
 }
 

@@ -1,10 +1,11 @@
-//! Building a macro function's `(lambda (whole) ...)` body (CLHS 3.4.4).
+//! Building a macro function's `(lambda (whole &optional environment) ...)` body (CLHS 3.4.4).
 
 use ncl_object::{ObjectError, Runtime, ThreadContext, Word, car, cdr};
 
 use super::{progn_with_definition, quote};
 use crate::destructuring::{
     expand_destructuring_bind, held_call, held_fresh, held_get, held_push, held_raw_list,
+    held_symbol,
 };
 use crate::form::{list, symbol};
 
@@ -86,14 +87,48 @@ fn strip_leading_whole(
     Ok((Some(whole_variable), pattern))
 }
 
-/// Build a macro function's `(lambda (whole) body...)`, where `body` first
+fn strip_environment(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    pattern: usize,
+) -> Result<Option<usize>> {
+    let fields = crate::form::elements(ctx, held_get(held, pattern)?)?;
+    let field_indexes = fields
+        .into_iter()
+        .map(|field| held_push(held, field))
+        .collect::<Vec<_>>();
+    let environment_marker = held_symbol(ctx, runtime, held, "&ENVIRONMENT")?;
+    let mut environment_variable = None;
+    let mut kept = Vec::with_capacity(field_indexes.len());
+    let mut index = 0;
+    while index < field_indexes.len() {
+        let field = *field_indexes.get(index).ok_or(ObjectError::TypeError)?;
+        if held_get(held, field)? == held_get(held, environment_marker)? {
+            if environment_variable.is_some() {
+                return Err(ObjectError::TypeError);
+            }
+            environment_variable =
+                Some(*field_indexes.get(index + 1).ok_or(ObjectError::TypeError)?);
+            index += 2;
+        } else {
+            kept.push(field);
+            index += 1;
+        }
+    }
+    let pattern_value = held_raw_list(ctx, runtime, held, &kept)?;
+    held[pattern] = held_get(held, pattern_value)?;
+    Ok(environment_variable)
+}
+
+/// Build a macro function's `(lambda (whole &optional environment) body...)`, where `body` first
 /// destructures `(cdr whole)` against `lambda_list` (see
 /// [`crate::destructuring`]) and, if the pattern led with `&whole var`,
 /// binds `var` to the entire call form (operator included) rather than just
 /// the arguments, matching CLHS 3.4.4.
 ///
-/// Calling the compiled function with the whole call form as its single
-/// argument (see `ncl-runtime`'s `RuntimeMacroCaller::call_macro`) replaces
+/// Calling the compiled function with the whole call form and its lexical
+/// environment (see `ncl-runtime`'s `RuntimeMacroCaller`) replaces
 /// the previous convention of spreading each argument across registers,
 /// which also fixes a reported non-deterministic crash: the register/rest
 /// marshalling path in `call_macro_function` did not keep arguments beyond
@@ -131,7 +166,13 @@ pub(super) fn macro_function_lambda(
     let pattern_index = 1;
     let whole_variable_index = 2;
     let body_start = 3;
+    let environment_variable = strip_environment(ctx, runtime, &mut held, pattern_index)?;
     let whole_form = held_fresh(ctx, runtime, &mut held)?;
+    let environment_parameter = if let Some(variable) = environment_variable {
+        variable
+    } else {
+        held_fresh(ctx, runtime, &mut held)?
+    };
     let cdr_call = held_call(ctx, runtime, &mut held, "CDR", &[whole_form])?;
     let value_form = held_get(&held, cdr_call)?;
     let pattern_word = held_get(&held, pattern_index)?;
@@ -141,9 +182,19 @@ pub(super) fn macro_function_lambda(
     let destructured =
         expand_destructuring_bind(ctx, runtime, pattern_word, value_form, &body_words)?;
     let destructured_index = held_push(&mut held, destructured);
-    let inner_body = if whole_variable.is_some() {
-        let binding = held_raw_list(ctx, runtime, &mut held, &[whole_variable_index, whole_form])?;
-        let bindings = held_raw_list(ctx, runtime, &mut held, &[binding])?;
+    let mut binding_pairs = Vec::new();
+    if whole_variable.is_some() {
+        binding_pairs.push(held_raw_list(
+            ctx,
+            runtime,
+            &mut held,
+            &[whole_variable_index, whole_form],
+        )?);
+    }
+    let inner_body = if binding_pairs.is_empty() {
+        destructured_index
+    } else {
+        let bindings = held_raw_list(ctx, runtime, &mut held, &binding_pairs)?;
         held_call(
             ctx,
             runtime,
@@ -151,10 +202,14 @@ pub(super) fn macro_function_lambda(
             "LET",
             &[bindings, destructured_index],
         )?
-    } else {
-        destructured_index
     };
-    let params = held_raw_list(ctx, runtime, &mut held, &[whole_form])?;
+    let optional = held_symbol(ctx, runtime, &mut held, "&OPTIONAL")?;
+    let params = held_raw_list(
+        ctx,
+        runtime,
+        &mut held,
+        &[whole_form, optional, environment_parameter],
+    )?;
     let lambda = held_call(ctx, runtime, &mut held, "LAMBDA", &[params, inner_body])?;
     held_get(&held, lambda)
 }

@@ -1,14 +1,25 @@
 //! Small function builtins owned by the macro surface.
 
 use ncl_object::{
-    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, LambdaList, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    car, cdr, classify_object, set_symbol_special, string_length, string_ref, symbol_name,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
+    BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
+    FunctionDesignator, HeapRootedWord, LambdaList, MultipleValues, ObjectError, ObjectRef,
+    Package, Parameter, ParameterType, Runtime, ThreadContext, Word, car, cdr, classify_object,
+    set_symbol_special, string_length, string_ref, symbol_name,
 };
 
 const VALUE: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("VALUE"),
     ty: ncl_object::ParameterType::Any,
+};
+
+const FORM: Parameter = Parameter {
+    name: BuiltinName::new("FORM"),
+    ty: ParameterType::Any,
+};
+const ENVIRONMENT: Parameter = Parameter {
+    name: BuiltinName::new("ENVIRONMENT"),
+    ty: ParameterType::Any,
 };
 
 fn identity_builtin(
@@ -77,6 +88,78 @@ fn values_list_builtin(
     }
     values.set(&result);
     Ok(result.first().copied().unwrap_or(Word::NIL))
+}
+
+fn macroexpand_once(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    form: Word,
+    environment: Word,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let package = runtime
+        .find_package(ctx, "NCL-EXT")
+        .ok_or(ObjectError::Layout)?;
+    let helper = Package::from_word(package)
+        .intern(ctx, runtime, "MACROEXPAND-1-ENVIRONMENT")?
+        .0;
+    let mut caller = BuiltinFunctionCaller;
+    caller.call_function(
+        ctx,
+        runtime,
+        FunctionDesignator::try_from_word(ctx, helper)?,
+        FunctionArguments::new(&[form, environment]),
+        values,
+    )
+}
+
+fn macroexpand_1_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    macroexpand_once(
+        ctx,
+        runtime,
+        args.required(0)?,
+        args.get(1).unwrap_or(Word::NIL),
+        values,
+    )
+}
+
+fn macroexpand_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let mut form = HeapRootedWord::new(ctx, args.required(0)?)?;
+    let environment = HeapRootedWord::new(ctx, args.get(1).unwrap_or(Word::NIL))?;
+    let mut expanded_any = false;
+    loop {
+        let mut expansion_values = MultipleValues::new();
+        let expansion = macroexpand_once(
+            ctx,
+            runtime,
+            form.get(),
+            environment.get(),
+            &mut expansion_values,
+        )?;
+        let expanded = expansion_values
+            .as_slice()
+            .get(1)
+            .copied()
+            .ok_or(ObjectError::Layout)?;
+        if expanded == Word::NIL {
+            break;
+        }
+        form = HeapRootedWord::new(ctx, expansion)?;
+        expanded_any = true;
+    }
+    let expanded = if expanded_any { Word::TRUE } else { Word::NIL };
+    values.set(&[form.get(), expanded]);
+    Ok(form.get())
 }
 
 fn proclaim_builtin(
@@ -151,5 +234,25 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("VALUES-LIST")),
         direct(values_list_builtin),
     )?;
+    for (name, function) in [
+        (
+            "MACROEXPAND-1",
+            macroexpand_1_builtin as ncl_object::RustBuiltin,
+        ),
+        ("MACROEXPAND", macroexpand_builtin),
+    ] {
+        runtime.register_builtin(
+            ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+            BuiltinImplementation::adapted(
+                Builtin {
+                    lambda_list: LambdaList::with_optional(&[FORM], &[ENVIRONMENT]),
+                    convention: BuiltinConvention::Adapted,
+                },
+                function,
+                |args| Ok(args.as_slice().to_vec()),
+            ),
+        )?;
+    }
     Ok(())
 }

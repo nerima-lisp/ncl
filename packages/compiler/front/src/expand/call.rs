@@ -8,6 +8,7 @@ use ncl_object::{
 };
 
 use crate::ast::{Expr, LocalMacro, Operator};
+use crate::env::LexicalEnv;
 use crate::error::FrontError;
 use crate::expand::{FormExpander, SYMBOL_MACRO_LIMIT};
 use crate::form::classify_form;
@@ -108,6 +109,13 @@ impl<'a> FormExpander<'a> {
         if let Some(kind) = SpecialForm::from_symbol(&name) {
             return Ok(Step::Done(special::parse(self, kind, form.get())?));
         }
+        if self.env.lookup_function(&name) {
+            let arguments = self.expand_rooted_all(arguments)?;
+            return Ok(Step::Done(Expr::Call {
+                operator: Operator::Name(name),
+                arguments,
+            }));
+        }
         if let Some(definition) = self.env.lookup_macro(&name) {
             let definition = definition.clone();
             let replacement = Self::call_local_macro(
@@ -116,6 +124,7 @@ impl<'a> FormExpander<'a> {
                 self.runtime,
                 &definition,
                 form.get(),
+                &self.env,
             )?;
             return Ok(Step::Retry {
                 name,
@@ -149,6 +158,7 @@ impl<'a> FormExpander<'a> {
                 self.runtime,
                 macro_name,
                 form.get(),
+                &self.env,
             )?;
             return Ok(Step::Retry {
                 name: macro_name.clone(),
@@ -199,6 +209,7 @@ impl<'a> FormExpander<'a> {
         runtime: &Runtime,
         name: &SymbolRef,
         form: Word,
+        environment: &LexicalEnv,
     ) -> Result<Word, FrontError> {
         caller.as_mut().map_or_else(
             || {
@@ -207,7 +218,7 @@ impl<'a> FormExpander<'a> {
                     detail: "no macro caller is installed".to_owned(),
                 })
             },
-            |caller| caller.call_macro(ctx, runtime, name, form),
+            |caller| caller.call_macro_in_environment(ctx, runtime, name, form, environment),
         )
     }
 
@@ -218,6 +229,7 @@ impl<'a> FormExpander<'a> {
         runtime: &Runtime,
         definition: &LocalMacro,
         form: Word,
+        environment: &LexicalEnv,
     ) -> Result<Word, FrontError> {
         caller.as_mut().map_or_else(
             || {
@@ -226,7 +238,9 @@ impl<'a> FormExpander<'a> {
                     detail: "no macro caller is installed".to_owned(),
                 })
             },
-            |caller| caller.call_local_macro(ctx, runtime, definition, form),
+            |caller| {
+                caller.call_local_macro_in_environment(ctx, runtime, definition, form, environment)
+            },
         )
     }
 }

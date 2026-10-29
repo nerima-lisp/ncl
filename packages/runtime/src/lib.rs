@@ -15,6 +15,7 @@ mod file_environment;
 mod function_call;
 pub(crate) mod load;
 mod local_macro;
+mod macroexpand;
 #[cfg(test)]
 mod makeclosure_tests;
 mod native_error;
@@ -90,6 +91,7 @@ impl Runtime {
         file_environment::register(&mut context, &object)?;
         time::register_builtins(&mut context, &object)?;
         eval_builtins::register(&mut context, &object)?;
+        macroexpand::register(&mut context, &object)?;
         builtin_trampoline::install_arith_fast(&object)?;
         nonlocal::register_control_builtins(&mut context, &object)?;
         object.set_load_port(Box::new(load::RuntimeLoadPort));

@@ -3,6 +3,7 @@
 use ncl_object::{Runtime, ThreadContext, Word};
 
 use crate::ast::LocalMacro;
+use crate::env::LexicalEnv;
 use crate::error::FrontError;
 use crate::symbols::SymbolRef;
 
@@ -28,6 +29,22 @@ pub trait MacroCaller {
         name: &SymbolRef,
         form: Word,
     ) -> Result<Word, FrontError>;
+
+    /// Expand a global macro with the lexical environment of its call site.
+    ///
+    /// Implementations that do not expose environment objects may keep the
+    /// default behavior.
+    fn call_macro_in_environment(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        name: &SymbolRef,
+        form: Word,
+        environment: &LexicalEnv,
+    ) -> Result<Word, FrontError> {
+        let _ = environment;
+        self.call_macro(ctx, runtime, name, form)
+    }
 
     /// Expand a type specifier in a declaration when the runtime supports
     /// definition-time type expanders.
@@ -71,5 +88,18 @@ pub trait MacroCaller {
             name: definition.name.clone(),
             detail: "local macro expansion is not available".to_owned(),
         })
+    }
+
+    /// Expand a local macro with the full lexical environment at its call site.
+    fn call_local_macro_in_environment(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        definition: &LocalMacro,
+        form: Word,
+        environment: &LexicalEnv,
+    ) -> Result<Word, FrontError> {
+        let _ = environment;
+        self.call_local_macro(ctx, runtime, definition, form)
     }
 }

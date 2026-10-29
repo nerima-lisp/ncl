@@ -48,6 +48,7 @@ From the directory containing the extracted binary, evaluate an expression:
 ```
 
 The command prints `3` and exits with status 0.
+The example was verified with the v0.1.1 `aarch64-apple-darwin` asset.
 
 ## Status and limitations
 

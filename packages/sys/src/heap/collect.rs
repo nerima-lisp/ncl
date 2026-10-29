@@ -32,6 +32,8 @@ impl super::Heap {
         for thread in state.threads.iter().copied() {
             // SAFETY: registered thread pointers remain valid until unregister_thread.
             unsafe {
+                #[cfg(target_arch = "aarch64")]
+                let thread_root_start = root_slots.len();
                 root_slots.extend((*thread).roots.iter().copied());
                 // The multiple-value return area (used both for ordinary
                 // multi-value returns and, while a non-local exit is
@@ -44,7 +46,17 @@ impl super::Heap {
                 for index in 0..mv_live.min(crate::MULTIPLE_VALUE_AREA_WORDS) {
                     root_slots.push(mv_base.add(index));
                 }
-                conservative_values.extend((*thread).conservative_snapshot());
+                #[cfg(target_arch = "aarch64")]
+                let thread_root_end = root_slots.len();
+                let mut snapshot = (*thread).conservative_snapshot();
+                #[cfg(target_arch = "aarch64")]
+                Self::filter_precise_collector_roots(
+                    &state,
+                    &*thread,
+                    &root_slots[thread_root_start..thread_root_end],
+                    &mut snapshot,
+                );
+                conservative_values.extend(snapshot);
                 let mut values = Vec::new();
                 if (*thread).has_native_frame_snapshot() {
                     let _ = (*thread).scan_native_frame(&state.code_registry, |value| {
@@ -110,6 +122,38 @@ impl super::Heap {
         for hook in hooks {
             hook();
         }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn filter_precise_collector_roots(
+        state: &super::State,
+        thread: &crate::Thread,
+        root_slots: &[*mut Word],
+        snapshot: &mut Vec<Word>,
+    ) {
+        if thread.safepoint_state() != crate::SafepointState::Collecting
+            || thread.has_native_frame_snapshot()
+        {
+            return;
+        }
+
+        let explicit_roots_len = thread.conservative_roots.len();
+        let mut precise_roots = HashSet::new();
+        for root in root_slots.iter().copied().filter(|root| !root.is_null()) {
+            // SAFETY: registered root slots remain stable while the world is stopped.
+            if let Some(index) = Self::find(state, unsafe { *root }) {
+                precise_roots.insert(index);
+            }
+        }
+
+        let mut offset = 0;
+        snapshot.retain(|value| {
+            let is_precisely_rooted = offset >= explicit_roots_len
+                && Self::find_conservative(state, *value)
+                    .is_some_and(|index| precise_roots.contains(&index));
+            offset += 1;
+            !is_precisely_rooted
+        });
     }
 
     fn move_live_objects(

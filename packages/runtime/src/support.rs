@@ -21,6 +21,7 @@ use crate::{PublishedFunction, RuntimeError};
 pub use crate::evaluator::EntryCodeLookup;
 use crate::evaluator::EvaluatorService;
 pub use crate::evaluator::NativeInvocation;
+mod macroexpand;
 mod write_barrier;
 
 #[cfg(test)]
@@ -301,13 +302,14 @@ impl RuntimeMacroCaller {
             return runtime
                 .call_builtin(ctx, function, &arguments)
                 .map_err(|error| {
-                    let detail = pending_simple_error_message(ctx, runtime, || error.to_string());
+                    let detail =
+                        pending_simple_error_message(ctx, runtime, false, || error.to_string());
                     expansion(name, &detail)
                 });
         }
         let result = call_macro_function(ctx, runtime, function, &arguments, &self.evaluator);
         result.map_err(|error| {
-            let detail = pending_simple_error_message(ctx, runtime, || error.to_string());
+            let detail = pending_simple_error_message(ctx, runtime, false, || error.to_string());
             expansion(name, &detail)
         })
     }
@@ -390,9 +392,10 @@ fn expansion(name: &ncl_compiler_front::SymbolRef, detail: &str) -> ncl_compiler
     }
 }
 
-fn pending_simple_error_message(
+pub fn pending_simple_error_message(
     ctx: &mut ThreadContext,
     runtime: &ObjectRuntime,
+    preserve_condition: bool,
     fallback: impl FnOnce() -> String,
 ) -> String {
     let Some(condition) = ctx.take_pending_condition() else {
@@ -402,6 +405,9 @@ fn pending_simple_error_message(
     if ncl_conditions::condition_class_of(ctx, condition).ok() == simple_error
         && let Some(report) = ncl_conditions::condition_report(ctx, condition)
     {
+        if preserve_condition {
+            ctx.set_pending_condition(condition);
+        }
         return report;
     }
     ctx.set_pending_condition(condition);

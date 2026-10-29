@@ -1,6 +1,6 @@
+use ncl_compiler_front::SymbolRef;
 use ncl_compiler_front::env::{LexicalEnv, OperatorBinding, VariableOrSymbolMacro};
 use ncl_compiler_front::form::UninternedTable;
-use ncl_compiler_front::{MacroCaller, SymbolRef};
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
     BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
@@ -253,9 +253,15 @@ fn expand_lexical_form(
     match lexical.lookup_operator(&name) {
         Some(OperatorBinding::Function) | None => Ok(form.get()),
         Some(OperatorBinding::Macro(definition)) => {
-            let mut caller = crate::support::RuntimeMacroCaller::new(evaluator.clone());
+            let caller = crate::support::RuntimeMacroCaller::new(evaluator.clone());
             caller
-                .call_local_macro_in_environment(ctx, object, definition, form.get(), lexical)
+                .call_local_macro_in_environment_preserving_condition(
+                    ctx,
+                    object,
+                    definition,
+                    form.get(),
+                    lexical,
+                )
                 .map_err(|_| ObjectError::TypeError)
         }
     }

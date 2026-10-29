@@ -36,10 +36,19 @@ use ncl_object::{
     make_cons, make_double, make_simple_vector, make_string, symbol_function,
 };
 
-use crate::support::call_macro_function;
+use crate::support::{call_macro_function, pending_simple_error_message};
+
+mod macroexpand;
+pub use macroexpand::call_local_macro_preserving_pending_condition;
 
 type Held = Vec<Word>;
 type EntryCodes = BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>; // check-added-lines: allow(word-table) entries are rooted code objects
+
+#[derive(Clone, Copy)]
+struct LocalMacroCallContext {
+    macro_environment: Word,
+    preserve_pending_condition: bool,
+}
 
 thread_local! {
     static MACRO_ENVIRONMENTS: RefCell<HashMap<i64, LexicalEnv>> = RefCell::new(HashMap::new());
@@ -196,6 +205,7 @@ fn call_named(
     held: &mut Held,
     name: &SymbolRef,
     argument_indexes: &[usize],
+    preserve_pending_condition: bool,
 ) -> Result<usize, FrontError> {
     let package_name = name
         .package_name()
@@ -226,8 +236,19 @@ fn call_named(
         Ok((value, refreshed))
     })
     .map_err(|error| {
+        let report = ctx.take_pending_unhandled_condition_report();
+        let detail = if let Some(report) = report {
+            if preserve_pending_condition {
+                ctx.set_pending_unhandled_condition_report(report.clone());
+            }
+            report
+        } else {
+            pending_simple_error_message(ctx, runtime, preserve_pending_condition, || {
+                error.to_string()
+            })
+        };
         unsupported(&format!(
-            "macrolet: calling {package_name}:{function_name} failed: {error}"
+            "macrolet: calling {package_name}:{function_name} failed: {detail}"
         ))
     })?;
     *held = refreshed;
@@ -247,6 +268,7 @@ fn eval_expr(
     held: &mut Held,
     env: &[(SymbolRef, usize)],
     expr: &Expr,
+    preserve_pending_condition: bool,
 ) -> Result<usize, FrontError> {
     match expr {
         Expr::Constant(literal) => materialize(ctx, runtime, held, literal),
@@ -264,7 +286,15 @@ fn eval_expr(
         Expr::Progn(forms) => {
             let mut last = held_push(held, Word::NIL);
             for form in forms {
-                last = eval_expr(ctx, runtime, entry_codes, held, env, form)?;
+                last = eval_expr(
+                    ctx,
+                    runtime,
+                    entry_codes,
+                    held,
+                    env,
+                    form,
+                    preserve_pending_condition,
+                )?;
             }
             Ok(last)
         }
@@ -273,11 +303,35 @@ fn eval_expr(
             then,
             otherwise,
         } => {
-            let test_index = eval_expr(ctx, runtime, entry_codes, held, env, test)?;
+            let test_index = eval_expr(
+                ctx,
+                runtime,
+                entry_codes,
+                held,
+                env,
+                test,
+                preserve_pending_condition,
+            )?;
             if held_get(held, test_index).map_err(object_error)? != Word::NIL {
-                eval_expr(ctx, runtime, entry_codes, held, env, then)
+                eval_expr(
+                    ctx,
+                    runtime,
+                    entry_codes,
+                    held,
+                    env,
+                    then,
+                    preserve_pending_condition,
+                )
             } else if let Some(otherwise) = otherwise {
-                eval_expr(ctx, runtime, entry_codes, held, env, otherwise)
+                eval_expr(
+                    ctx,
+                    runtime,
+                    entry_codes,
+                    held,
+                    env,
+                    otherwise,
+                    preserve_pending_condition,
+                )
             } else {
                 Ok(held_push(held, Word::NIL))
             }
@@ -288,9 +342,25 @@ fn eval_expr(
         } => {
             let mut argument_indexes = Vec::with_capacity(arguments.len());
             for argument in arguments {
-                argument_indexes.push(eval_expr(ctx, runtime, entry_codes, held, env, argument)?);
+                argument_indexes.push(eval_expr(
+                    ctx,
+                    runtime,
+                    entry_codes,
+                    held,
+                    env,
+                    argument,
+                    preserve_pending_condition,
+                )?);
             }
-            call_named(ctx, runtime, entry_codes, held, name, &argument_indexes)
+            call_named(
+                ctx,
+                runtime,
+                entry_codes,
+                held,
+                name,
+                &argument_indexes,
+                preserve_pending_condition,
+            )
         }
         // check-added-lines: allow(wildcard) Expr is #[non_exhaustive]; only a documented subset is interpreted.
         _ => Err(unsupported(
@@ -320,7 +390,7 @@ fn destructure(
     lambda_list: &LambdaList,
     held: &mut Held,
     env: &mut Vec<(SymbolRef, usize)>,
-    macro_environment: Word,
+    call_context: LocalMacroCallContext,
 ) -> Result<(), FrontError> {
     if !lambda_list.keys.is_empty() || !lambda_list.aux.is_empty() {
         return Err(unsupported(
@@ -331,7 +401,7 @@ fn destructure(
         env.push((whole.clone(), 0));
     }
     if let Some(environment) = &lambda_list.environment {
-        let index = held_push(held, macro_environment);
+        let index = held_push(held, call_context.macro_environment);
         env.push((environment.clone(), index));
     }
     let arguments = {
@@ -359,7 +429,15 @@ fn destructure(
             let value = car(ctx, cursor_word).map_err(object_error)?;
             held_push(held, value)
         } else if let Some(default) = &optional.default {
-            eval_expr(ctx, runtime, entry_codes, held, env, default)?
+            eval_expr(
+                ctx,
+                runtime,
+                entry_codes,
+                held,
+                env,
+                default,
+                call_context.preserve_pending_condition,
+            )?
         } else {
             held_push(held, Word::NIL)
         };
@@ -400,22 +478,15 @@ pub fn call_local_macro(
     form: Word,
     environment: Word,
 ) -> Result<Word, FrontError> {
-    let mut held: Held = vec![form];
-    let mut env: Vec<(SymbolRef, usize)> = Vec::new();
-    destructure(
+    macroexpand::call_local_macro_with_condition_mode(
         ctx,
         runtime,
         entry_codes,
-        &definition.lambda_list,
-        &mut held,
-        &mut env,
+        definition,
+        form,
         environment,
-    )?;
-    let mut result = held_push(&mut held, Word::NIL);
-    for expr in &definition.body {
-        result = eval_expr(ctx, runtime, entry_codes, &mut held, &env, expr)?;
-    }
-    held_get(&held, result).map_err(object_error)
+        false,
+    )
 }
 
 #[cfg(test)]

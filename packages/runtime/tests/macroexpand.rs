@@ -35,6 +35,22 @@ fn macroexpand_1_expands_once_and_returns_expanded_p() {
         ),
         "((+ 20 22) NIL)",
     );
+    assert_eq!(
+        eval_text(&mut runtime, "(multiple-value-list (macroexpand-1 5))"),
+        "(5 NIL)",
+    );
+}
+
+#[test]
+fn macroexpand_1_expands_the_cl_owned_dolist_macro() {
+    let mut runtime = new_runtime();
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(cadr (multiple-value-list (macroexpand-1 '(dolist (x nil) x))))",
+        ),
+        "T",
+    );
 }
 
 #[test]
@@ -356,6 +372,62 @@ fn macroexpand_variable_and_symbol_macro_lookup_respects_depth() {
         ),
         "T",
     );
+}
+
+#[test]
+fn macroexpand_follows_chained_symbol_macros() {
+    let mut runtime = new_runtime();
+    eval_text(
+        &mut runtime,
+        "(defmacro macroexpand-chain-probe (form &environment env)\n\
+           (multiple-value-bind (expansion expanded-p)\n\
+               (macroexpand (cadr form) env)\n\
+             (list 'quote (list expansion expanded-p))))",
+    );
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal\n\
+               (symbol-macrolet ((macroexpand-chain-x macroexpand-chain-y)\n\
+                                 (macroexpand-chain-y macroexpand-chain-z))\n\
+                 (macroexpand-chain-probe 'macroexpand-chain-x))\n\
+               '(macroexpand-chain-z t))",
+        ),
+        "T",
+    );
+}
+
+#[test]
+fn macroexpand_preserves_local_expander_errors() {
+    let mut runtime = new_runtime();
+    eval_text(
+        &mut runtime,
+        "(defun macroexpand-signal-error () (error \"macroexpand sentinel\"))",
+    );
+    let Err(direct_error) = runtime.eval(
+        "(macrolet ((macroexpand-failing-local () (macroexpand-signal-error)))\n\
+           (macroexpand-failing-local))",
+    ) else {
+        panic!("expected the local expander function to signal");
+    };
+    let direct_error = format!("{direct_error:?}");
+    assert!(
+        direct_error.contains("macroexpand sentinel"),
+        "{direct_error}"
+    );
+
+    let source = "(macrolet ((macroexpand-failing-local\n\
+                    (&optional (unused (macroexpand-signal-error)))\n\
+                    nil))\n\
+          (macrolet ((macroexpand-error-probe (&environment env)\n\
+                       (list 'quote\n\
+                             (macroexpand-1 '(macroexpand-failing-local) env))))\n\
+            (macroexpand-error-probe)))";
+    let Err(error) = runtime.eval(source) else {
+        panic!("expected local macro expansion to fail");
+    };
+    let error = format!("{error:?}");
+    assert!(error.contains("macroexpand sentinel"), "{error}");
 }
 
 #[test]

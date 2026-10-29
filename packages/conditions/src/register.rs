@@ -257,6 +257,7 @@ fn error_builtin(
             // check-added-lines: allow(unsupported) report unhandled condition
             if let Some(message) = report.or_else(|| string_text(ctx, value.get())) {
                 eprintln!("{message}");
+                ctx.set_pending_unhandled_condition_report(message);
             }
             // check-added-lines: allow(unsupported) unhandled condition propagation
             Err(ObjectError::Unsupported) // check-added-lines: allow(unsupported) propagate unhandled condition

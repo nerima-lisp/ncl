@@ -159,6 +159,7 @@ impl crate::Runtime {
                 ))));
         let result = operation(self);
         self.clear_pending_undefined_function_condition();
+        drop(self.context.take_pending_unhandled_condition_report());
         self.context.restore_evaluator_runtime(previous_evaluator);
         self.context.restore_evaluator_access(previous_access);
         result

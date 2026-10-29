@@ -59,6 +59,7 @@ pub struct ThreadContext {
     pending: RuntimeErrorPayloadSlot<ObjectError>,
     pending_lisp_error: RuntimeErrorPayloadSlot<LispError>,
     pending_condition: Option<Word>,
+    pending_unhandled_condition_report: Option<String>,
     pub(crate) handler: Option<usize>,
     pub(crate) cleanup: Option<usize>,
     pub(crate) catch: Option<usize>,
@@ -86,6 +87,7 @@ impl ThreadContext {
             pending: RuntimeErrorPayloadSlot::new(),
             pending_lisp_error: RuntimeErrorPayloadSlot::new(),
             pending_condition: None,
+            pending_unhandled_condition_report: None,
             handler: None,
             cleanup: None,
             catch: None,
@@ -296,6 +298,14 @@ impl ThreadContext {
     /// Take the pending condition object, if one was produced at the builtin boundary.
     pub const fn take_pending_condition(&mut self) -> Option<Word> {
         self.pending_condition.take()
+    }
+    /// Store the report for an unhandled condition without signaling it again.
+    pub fn set_pending_unhandled_condition_report(&mut self, report: String) {
+        self.pending_unhandled_condition_report = Some(report);
+    }
+    /// Take the report for an unhandled condition, if one was recorded.
+    pub const fn take_pending_unhandled_condition_report(&mut self) -> Option<String> {
+        self.pending_unhandled_condition_report.take()
     }
     /// Run a collection for this registered context.
     ///

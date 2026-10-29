@@ -34,6 +34,10 @@ pub trait MacroCaller {
     ///
     /// Implementations that do not expose environment objects may keep the
     /// default behavior.
+    ///
+    /// # Errors
+    ///
+    /// Propagates failures returned by [`Self::call_macro`].
     fn call_macro_in_environment(
         &mut self,
         ctx: &mut ThreadContext,
@@ -91,6 +95,10 @@ pub trait MacroCaller {
     }
 
     /// Expand a local macro with the full lexical environment at its call site.
+    ///
+    /// # Errors
+    ///
+    /// Propagates failures returned by [`Self::call_local_macro`].
     fn call_local_macro_in_environment(
         &mut self,
         ctx: &mut ThreadContext,

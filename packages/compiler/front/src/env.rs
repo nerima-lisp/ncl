@@ -248,13 +248,21 @@ impl LexicalEnv {
     #[must_use]
     pub fn lookup_operator(&self, name: &SymbolRef) -> Option<OperatorBinding<'_>> {
         self.frames.iter().rev().find_map(|frame| {
-            if let Some(definition) = frame.macros.iter().rev().find(|entry| entry.name == *name) {
-                Some(OperatorBinding::Macro(definition))
-            } else if frame.functions.iter().any(|bound| bound == name) {
-                Some(OperatorBinding::Function)
-            } else {
-                None
-            }
+            frame
+                .macros
+                .iter()
+                .rev()
+                .find(|entry| entry.name == *name)
+                .map_or_else(
+                    || {
+                        frame
+                            .functions
+                            .iter()
+                            .any(|bound| bound == name)
+                            .then_some(OperatorBinding::Function)
+                    },
+                    |definition| Some(OperatorBinding::Macro(definition)),
+                )
         })
     }
 
@@ -265,21 +273,22 @@ impl LexicalEnv {
         name: &SymbolRef,
     ) -> Option<VariableOrSymbolMacro<'_>> {
         self.frames.iter().rev().find_map(|frame| {
-            if let Some(binding) = frame
+            frame
                 .variables
                 .iter()
                 .rev()
                 .find(|binding| binding.name() == name)
-            {
-                Some(VariableOrSymbolMacro::Variable(binding))
-            } else {
-                frame
-                    .symbol_macros
-                    .iter()
-                    .rev()
-                    .find(|entry| entry.name == *name)
-                    .map(VariableOrSymbolMacro::SymbolMacro)
-            }
+                .map_or_else(
+                    || {
+                        frame
+                            .symbol_macros
+                            .iter()
+                            .rev()
+                            .find(|entry| entry.name == *name)
+                            .map(VariableOrSymbolMacro::SymbolMacro)
+                    },
+                    |binding| Some(VariableOrSymbolMacro::Variable(binding)),
+                )
         })
     }
 

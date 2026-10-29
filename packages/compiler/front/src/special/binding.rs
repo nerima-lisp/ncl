@@ -275,11 +275,11 @@ fn symbol_macrolet(
             });
         };
         let name = expander.symbol(name.get())?;
-        let expanded = expander.expand(expansion.get())?;
+        let expanded_form = expander.expand(expansion.get())?;
         source_forms.push(expansion.get());
         definitions.push(SymbolMacro {
             name,
-            expansion: expanded,
+            expansion: expanded_form,
         });
     }
     expander.env_mut().push_scope();

@@ -164,6 +164,7 @@ dependencies = [
  "ncl-lib-sequences",
  "ncl-object",
  "ncl-reader",
+ "ncl-sys",
  "ncl-types",
 ]
 

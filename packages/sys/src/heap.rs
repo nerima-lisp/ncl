@@ -31,6 +31,8 @@ pub struct Heap {
     config: HeapConfig,
     state: Mutex<State>,
     strict_forwarding: AtomicBool,
+    #[cfg(feature = "test-support")]
+    registered_root_slots_live_and_forwarded_for_test: AtomicBool,
     slow_path_gate: Mutex<()>,
     slow_path_generation: Mutex<u64>,
     slow_path_ready: Condvar,
@@ -68,6 +70,8 @@ impl Heap {
                 code_registry: crate::CodeRegistry::default(),
             }),
             strict_forwarding: AtomicBool::new(false),
+            #[cfg(feature = "test-support")]
+            registered_root_slots_live_and_forwarded_for_test: AtomicBool::new(false),
             slow_path_gate: Mutex::new(()),
             slow_path_generation: Mutex::new(0),
             slow_path_ready: Condvar::new(),
@@ -100,6 +104,21 @@ impl Heap {
     #[must_use]
     pub fn gc_epoch(&self) -> u64 {
         self.lock_state().gc_epoch
+    }
+
+    #[cfg(feature = "test-support")]
+    pub(crate) fn forwarded_object_count_for_test(&self) -> usize {
+        self.lock_state()
+            .objects
+            .iter()
+            .filter(|object| object.forwarded_to.is_some())
+            .count()
+    }
+
+    #[cfg(feature = "test-support")]
+    pub(crate) fn registered_root_slots_are_live_and_forwarded_for_test(&self) -> bool {
+        self.registered_root_slots_live_and_forwarded_for_test
+            .load(Ordering::Relaxed)
     }
     /// Reject forwarded from-space words passed through mutator accessors.
     pub fn set_strict_forwarding(&self, on: bool) {

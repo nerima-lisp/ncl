@@ -131,6 +131,26 @@ impl<'a> ThreadAccess<'a> {
         crate::heap_epoch(self.thread)
     }
 
+    /// Return the heap's cumulative forwarded-object count for GC stress tests.
+    #[cfg(feature = "test-support")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn forwarded_object_count_for_test(&self) -> usize {
+        self.thread
+            .heap()
+            .map_or(0, crate::heap::Heap::forwarded_object_count_for_test)
+    }
+
+    /// Whether each registered root has its exact forwarded or unchanged live value.
+    #[cfg(feature = "test-support")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn registered_root_slots_are_live_and_forwarded_for_test(&self) -> bool {
+        self.thread
+            .heap()
+            .is_some_and(crate::heap::Heap::registered_root_slots_are_live_and_forwarded_for_test)
+    }
+
     /// Invoke published native code using the architecture entry convention.
     ///
     /// `argc` is the total argument count, and `arguments` carries the first

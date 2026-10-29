@@ -1,0 +1,10 @@
+pub(super) const HASH_TABLE_WIDETAG: u8 = 5;
+pub(super) const HASH_TABLE_WEAKNESS: usize = 2;
+pub(super) const HASH_TABLE_COUNT: usize = 3;
+pub(super) const HASH_TABLE_FREE_HEAD: usize = 6;
+pub(super) const HASH_TABLE_HIGH_WATER: usize = 7;
+pub(super) const HASH_TABLE_MARKER: usize = 11;
+pub(super) const HASH_TABLE_KV: usize = 12;
+pub(super) const HASH_TABLE_INDEX: usize = 13;
+pub(super) const VECTOR_DATA: usize = 2;
+pub(super) const TOMBSTONE: i64 = -2;

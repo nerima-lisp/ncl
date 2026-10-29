@@ -6,6 +6,10 @@ rust-version.workspace = true
 description = "Unsafe platform and heap substrate for NCL"
 license.workspace = true
 
+[features]
+default = []
+test-support = []
+
 [lints]
 [lints.rust]
 unsafe_code = "allow"

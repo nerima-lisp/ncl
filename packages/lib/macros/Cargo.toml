@@ -12,5 +12,8 @@ ncl-reader = { path = "../../reader" }
 ncl-conditions = { path = "../../conditions" }
 ncl-lib-sequences = { path = "../sequences" }
 
+[dev-dependencies]
+ncl-sys = { path = "../../sys", features = ["test-support"] }
+
 [lints]
 workspace = true

@@ -1,19 +1,16 @@
 use super::{FORWARDED_FLAG, HashMap, HashSet, Object, PageKind, Weakness, Word, scan};
-
 #[path = "collect/weak_mark.rs"]
 mod weak_mark;
 use weak_mark::WeakMarkContext;
-
-const HASH_TABLE_WIDETAG: u8 = 5;
-const HASH_TABLE_WEAKNESS: usize = 2;
-const HASH_TABLE_COUNT: usize = 3;
-const HASH_TABLE_FREE_HEAD: usize = 6;
-const HASH_TABLE_HIGH_WATER: usize = 7;
-const HASH_TABLE_MARKER: usize = 11;
-const HASH_TABLE_KV: usize = 12;
-const HASH_TABLE_INDEX: usize = 13;
-const VECTOR_DATA: usize = 2;
-const TOMBSTONE: i64 = -2;
+#[path = "collect/constants.rs"]
+mod constants;
+use constants::{
+    HASH_TABLE_COUNT, HASH_TABLE_FREE_HEAD, HASH_TABLE_HIGH_WATER, HASH_TABLE_INDEX, HASH_TABLE_KV,
+    HASH_TABLE_MARKER, HASH_TABLE_WEAKNESS, HASH_TABLE_WIDETAG, TOMBSTONE, VECTOR_DATA,
+};
+#[cfg(feature = "test-support")]
+#[path = "collect/test_support.rs"]
+mod test_support;
 
 impl super::Heap {
     pub(crate) fn collect(&self, full: bool) {
@@ -106,7 +103,18 @@ impl super::Heap {
         };
         mark.drain();
         let moved = Self::move_live_objects(&mut state, &mut live);
+        #[cfg(feature = "test-support")]
+        let registered_root_slots_before_collection =
+            test_support::snapshot_root_slots(&root_slots);
         let hooks = Self::finish_collection(&mut state, &root_slots, &moved, &live, full);
+        #[cfg(feature = "test-support")]
+        test_support::record_root_slot_status(
+            self,
+            &state,
+            &root_slots,
+            &moved,
+            &registered_root_slots_before_collection,
+        );
         drop(state);
         for hook in hooks {
             hook();
@@ -245,7 +253,6 @@ impl super::Heap {
         state.objects[index].kind != PageKind::Cons
             && state.objects[index].words.first().copied() == Some(u64::from(HASH_TABLE_WIDETAG))
     }
-
     fn hash_table_weakness(state: &super::State, index: usize) -> Option<Weakness> {
         match Word::from_bits(
             state.objects[index]
@@ -262,7 +269,6 @@ impl super::Heap {
             _ => None,
         }
     }
-
     fn weak_kv_indices(state: &super::State, live: &HashSet<usize>) -> HashMap<usize, Weakness> {
         let mut result = HashMap::new();
         for &index in live {
@@ -284,7 +290,6 @@ impl super::Heap {
         }
         result
     }
-
     fn clear_dead_hash_table_entries(
         state: &mut super::State,
         moved: &HashMap<usize, usize>,

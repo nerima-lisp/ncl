@@ -230,33 +230,58 @@ fn native_rooted_allocation_variants_keep_output_slots_live() {
     assert_eq!(heap.register_thread(&mut collector), Ok(()));
     native.enter_native();
 
-    let mut small = Word::NIL;
-    // SAFETY: `small` stays at this stack address until its token is removed,
-    // and the test does not access it while Native or a collection may rewrite it.
+    let mut small = Box::new(Word::NIL);
+    // SAFETY: the Box slot stays stable until its token is removed, and the test
+    // does not access it while Native or a collection may rewrite it.
     let small_root =
-        unsafe { heap.alloc_rooted(&mut native, TypeTag { widetag: 11 }, 0, &mut small) }
+        unsafe { heap.alloc_rooted(&mut native, TypeTag { widetag: 11 }, 0, small.as_mut()) }
             .unwrap_or_else(|error| panic!("rooted small allocation should succeed: {error:?}"));
-    let mut large = Word::NIL;
-    // SAFETY: `large` stays at this stack address until its token is removed,
-    // and the test does not access it while Native or a collection may rewrite it.
+    let mut large = Box::new(Word::NIL);
+    // SAFETY: the Box slot stays stable until its token is removed, and the test
+    // does not access it while Native or a collection may rewrite it.
     let large_root =
-        unsafe { heap.alloc_large_rooted(&mut native, TypeTag { widetag: 12 }, 0, &mut large) }
+        unsafe { heap.alloc_large_rooted(&mut native, TypeTag { widetag: 12 }, 0, large.as_mut()) }
             .unwrap_or_else(|error| panic!("rooted large allocation should succeed: {error:?}"));
-    let mut cons = Word::NIL;
+    let mut cons = Box::new(Word::NIL);
     // SAFETY: small and large are already heap-rooted, all slots are distinct
     // and stable, and the test reads them only after leaving Native and after
     // the collection completes.
-    let cons_root =
-        unsafe { heap.alloc_cons_rooted(&mut native, &mut small, &mut large, &mut cons) }
-            .unwrap_or_else(|error| panic!("rooted cons allocation should succeed: {error:?}"));
+    let cons_root = unsafe {
+        heap.alloc_cons_rooted(&mut native, small.as_mut(), large.as_mut(), cons.as_mut())
+    }
+    .unwrap_or_else(|error| panic!("rooted cons allocation should succeed: {error:?}"));
 
+    native.leave_native();
+    let mut old_small_address = Box::new(0usize);
+    let mut old_large_address = Box::new(0usize);
+    let mut old_cons_address = Box::new(0usize);
+    // SAFETY: all Box slots remain stable and are read in Lisp state before the
+    // next collection starts.
+    unsafe {
+        record_complemented_word_address(
+            std::ptr::NonNull::from(small.as_ref()),
+            old_small_address.as_mut(),
+        );
+        record_complemented_word_address(
+            std::ptr::NonNull::from(large.as_ref()),
+            old_large_address.as_mut(),
+        );
+        record_complemented_word_address(
+            std::ptr::NonNull::from(cons.as_ref()),
+            old_cons_address.as_mut(),
+        );
+    }
+    native.enter_native();
     heap.collect_with_thread(&mut collector, true);
     native.leave_native();
 
-    assert_eq!(heap.widetag(small), Some(11));
-    assert_eq!(heap.widetag(large), Some(12));
-    assert_eq!(heap.read_word(cons, 0), Some(small));
-    assert_eq!(heap.read_word(cons, 1), Some(large));
+    assert_ne!(small.address(), !*old_small_address);
+    assert_ne!(large.address(), !*old_large_address);
+    assert_ne!(cons.address(), !*old_cons_address);
+    assert_eq!(heap.widetag(*small), Some(11));
+    assert_eq!(heap.widetag(*large), Some(12));
+    assert_eq!(heap.read_word(*cons, 0), Some(*small));
+    assert_eq!(heap.read_word(*cons, 1), Some(*large));
     assert!(heap.unregister_root(cons_root).is_ok());
     assert!(heap.unregister_root(large_root).is_ok());
     assert!(heap.unregister_root(small_root).is_ok());
@@ -419,7 +444,8 @@ fn spawn_registered_full_collector(heap: &Arc<Heap>) -> JoinHandle<()> {
 #[test]
 fn native_alloc_cons_rooted_reloads_inputs_after_collection_before_registration() {
     let heap = Arc::new(Heap::new(HeapConfig::default()));
-    let (mut car, mut cdr, old_first_address, old_second_address) = setup_native_cons_inputs(&heap);
+    let (mut car, mut cdr, first_input_address, second_input_address) =
+        setup_native_cons_inputs(&heap);
 
     let mut collector = Thread::new();
     assert_eq!(heap.register_thread(&mut collector), Ok(()));
@@ -435,7 +461,6 @@ fn native_alloc_cons_rooted_reloads_inputs_after_collection_before_registration(
         let first_input_root = native.push_root(car.as_mut());
         let second_input_root = native.push_root(cdr.as_mut());
         let mut output = Box::new(Word::NIL);
-        let mut old_output_address = Box::new(0usize);
 
         native.enter_native();
         // SAFETY: the input Box slots are already registered thread roots and
@@ -462,34 +487,35 @@ fn native_alloc_cons_rooted_reloads_inputs_after_collection_before_registration(
         .unwrap_or_else(|error| panic!("rooted cons allocation failed: {error:?}"));
 
         native.leave_native();
-        assert_ne!(
-            car.address(),
-            !*old_first_address,
-            "first input root did not move"
-        );
-        assert_ne!(
-            cdr.address(),
-            !*old_second_address,
-            "second input root did not move"
-        );
-        assert_eq!(worker_heap.read_word(*car, 0), Some(Word::fixnum(101)));
-        assert_eq!(worker_heap.read_word(*cdr, 0), Some(Word::fixnum(202)));
+        assert_cons_root_matches_forwarding(&worker_heap, *car, first_input_address, "car");
+        assert_cons_root_matches_forwarding(&worker_heap, *cdr, second_input_address, "cdr");
+        assert_cons_output_preserved(&worker_heap, *output, *car, *cdr);
 
-        // SAFETY: output is a stable boxed root slot and is read in Lisp state
-        // before the second collection begins.
-        unsafe {
-            record_complemented_word_address(
-                std::ptr::NonNull::from(output.as_ref()),
-                &mut old_output_address,
-            );
-        }
+        // SAFETY: these stable slots are not being rewritten by collection here.
+        let first_follow_up_address =
+            unsafe { capture_complemented_word_address(std::ptr::NonNull::from(car.as_ref())) };
+        // SAFETY: these stable slots are not being rewritten by collection here.
+        let second_follow_up_address =
+            unsafe { capture_complemented_word_address(std::ptr::NonNull::from(cdr.as_ref())) };
+        // SAFETY: these stable slots are not being rewritten by collection here.
+        let output_follow_up_address =
+            unsafe { capture_complemented_word_address(std::ptr::NonNull::from(output.as_ref())) };
+
         wait_in_native_for_collection(
             &mut native,
             &before_follow_up_sender,
             &continue_follow_up_receiver,
         );
 
-        assert_updated_cons_output(&worker_heap, *output, !*old_output_address, *car, *cdr);
+        assert_cons_root_matches_forwarding(&worker_heap, *car, first_follow_up_address, "car");
+        assert_cons_root_matches_forwarding(&worker_heap, *cdr, second_follow_up_address, "cdr");
+        assert_cons_root_matches_forwarding(
+            &worker_heap,
+            *output,
+            output_follow_up_address,
+            "output",
+        );
+        assert_cons_output_preserved(&worker_heap, *output, *car, *cdr);
 
         assert!(worker_heap.unregister_root(output_root).is_ok());
         assert!(native.pop_root(second_input_root));
@@ -523,7 +549,7 @@ fn native_alloc_cons_rooted_reloads_inputs_after_collection_before_registration(
     heap.unregister_thread(&collector);
 }
 
-type NativeConsInputs = (Box<Word>, Box<Word>, Box<usize>, Box<usize>);
+type NativeConsInputs = (Box<Word>, Box<Word>, usize, usize);
 
 fn setup_native_cons_inputs(heap: &Arc<Heap>) -> NativeConsInputs {
     let (inputs_sender, inputs_receiver) = mpsc::channel();
@@ -543,11 +569,15 @@ fn setup_native_cons_inputs(heap: &Arc<Heap>) -> NativeConsInputs {
                 .unwrap_or_else(|error| panic!("cdr setup allocation failed: {error:?}")),
         );
         let second_root = setup_thread.push_root(cdr.as_mut());
-        let old_first_address = Box::new(!car.address());
-        let old_second_address = Box::new(!cdr.address());
+        // SAFETY: these stable slots are not being rewritten by collection here.
+        let original_first_address =
+            unsafe { capture_complemented_word_address(std::ptr::NonNull::from(car.as_ref())) };
+        // SAFETY: these stable slots are not being rewritten by collection here.
+        let original_second_address =
+            unsafe { capture_complemented_word_address(std::ptr::NonNull::from(cdr.as_ref())) };
         assert!(
             inputs_sender
-                .send((car, cdr, old_first_address, old_second_address))
+                .send((car, cdr, original_first_address, original_second_address))
                 .is_ok()
         );
         assert!(setup_thread.pop_root(second_root));
@@ -563,6 +593,32 @@ fn setup_native_cons_inputs(heap: &Arc<Heap>) -> NativeConsInputs {
     inputs.unwrap_or_else(|_| panic!("setup input channel disconnected"))
 }
 
+fn assert_cons_root_matches_forwarding(
+    heap: &Heap,
+    current: Word,
+    complemented_original_address: usize,
+    name: &str,
+) {
+    let original = Word::pointer(!complemented_original_address, crate::LowTag::List);
+    let expected = heap
+        .forwarded_word(original)
+        .unwrap_or_else(|| panic!("{name} root target is no longer live"));
+    assert_eq!(current, expected, "{name} root does not match forwarding");
+}
+
+/// # Safety
+/// No collection may rewrite `slot` during this call, and its address must be stable.
+#[inline(never)]
+unsafe fn capture_complemented_word_address(slot: std::ptr::NonNull<Word>) -> usize {
+    let mut address_slot = 0usize;
+    // SAFETY: this function's caller guarantees that `slot` remains stable and
+    // is not being rewritten by collection during the call.
+    unsafe {
+        record_complemented_word_address(slot, &mut address_slot);
+    }
+    address_slot
+}
+
 /// # Safety
 /// `slot` must point to a valid word slot that remains stable for this call.
 #[inline(never)]
@@ -574,12 +630,7 @@ unsafe fn record_complemented_word_address(
     *address_slot = !unsafe { slot.as_ref().address() };
 }
 
-fn assert_updated_cons_output(heap: &Heap, cons: Word, old_address: usize, car: Word, cdr: Word) {
-    assert_ne!(
-        cons.address(),
-        old_address,
-        "registered output root did not move during collection"
-    );
+fn assert_cons_output_preserved(heap: &Heap, cons: Word, car: Word, cdr: Word) {
     assert!(cons.is_cons());
     let first_child = heap.read_word(cons, 0).unwrap_or(Word::NIL);
     let second_child = heap.read_word(cons, 1).unwrap_or(Word::NIL);

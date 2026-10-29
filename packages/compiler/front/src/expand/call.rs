@@ -8,7 +8,7 @@ use ncl_object::{
 };
 
 use crate::ast::{Expr, LocalMacro, Operator};
-use crate::env::LexicalEnv;
+use crate::env::{LexicalEnv, OperatorBinding};
 use crate::error::FrontError;
 use crate::expand::{FormExpander, SYMBOL_MACRO_LIMIT};
 use crate::form::classify_form;
@@ -109,27 +109,30 @@ impl<'a> FormExpander<'a> {
         if let Some(kind) = SpecialForm::from_symbol(&name) {
             return Ok(Step::Done(special::parse(self, kind, form.get())?));
         }
-        if self.env.lookup_function(&name) {
-            let arguments = self.expand_rooted_all(arguments)?;
-            return Ok(Step::Done(Expr::Call {
-                operator: Operator::Name(name),
-                arguments,
-            }));
-        }
-        if let Some(definition) = self.env.lookup_macro(&name) {
-            let definition = definition.clone();
-            let replacement = Self::call_local_macro(
-                &mut self.caller,
-                self.ctx,
-                self.runtime,
-                &definition,
-                form.get(),
-                &self.env,
-            )?;
-            return Ok(Step::Retry {
-                name,
-                form: replacement,
-            });
+        match self.env.lookup_operator(&name) {
+            Some(OperatorBinding::Function) => {
+                let arguments = self.expand_rooted_all(arguments)?;
+                return Ok(Step::Done(Expr::Call {
+                    operator: Operator::Name(name),
+                    arguments,
+                }));
+            }
+            Some(OperatorBinding::Macro(definition)) => {
+                let definition = definition.clone();
+                let replacement = Self::call_local_macro(
+                    &mut self.caller,
+                    self.ctx,
+                    self.runtime,
+                    &definition,
+                    form.get(),
+                    &self.env,
+                )?;
+                return Ok(Step::Retry {
+                    name,
+                    form: replacement,
+                });
+            }
+            None => {}
         }
         let inherited_macro = if name.package_name() == Some("COMMON-LISP-USER") {
             let package = self

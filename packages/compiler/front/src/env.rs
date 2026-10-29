@@ -64,6 +64,15 @@ struct Frame {
     tags: Vec<SymbolRef>,
 }
 
+/// The nearest lexical binding of a function name.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OperatorBinding<'a> {
+    /// A local function binding.
+    Function,
+    /// A local macro binding.
+    Macro(&'a LocalMacro),
+}
+
 /// A stack of lexical scopes.
 #[derive(Clone, Debug, Default)]
 pub struct LexicalEnv {
@@ -181,6 +190,20 @@ impl LexicalEnv {
     pub fn variable_type(&self, name: &SymbolRef) -> Option<&TypeSpecifier> {
         self.lookup_variable(name)
             .and_then(VariableBinding::type_specifier)
+    }
+
+    /// Find the innermost binding for an operator name.
+    #[must_use]
+    pub fn lookup_operator(&self, name: &SymbolRef) -> Option<OperatorBinding<'_>> {
+        self.frames.iter().rev().find_map(|frame| {
+            if let Some(definition) = frame.macros.iter().rev().find(|entry| entry.name == *name) {
+                Some(OperatorBinding::Macro(definition))
+            } else if frame.functions.iter().any(|bound| bound == name) {
+                Some(OperatorBinding::Function)
+            } else {
+                None
+            }
+        })
     }
 
     /// Whether `name` is bound as a local function.

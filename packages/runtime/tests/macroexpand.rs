@@ -111,6 +111,66 @@ fn macroexpand_uses_local_macros_from_the_environment_argument() {
 }
 
 #[test]
+fn lexical_function_and_macro_lookup_uses_the_innermost_binding() {
+    let mut runtime = new_runtime();
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(flet ((macroexpand-order-a () 1))\n\
+               (macrolet ((macroexpand-order-a () 2))\n\
+                 (macroexpand-order-a)))",
+        ),
+        "2",
+    );
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(macrolet ((macroexpand-order-b () 2))\n\
+               (flet ((macroexpand-order-b () 1))\n\
+                 (macroexpand-order-b)))",
+        ),
+        "1",
+    );
+
+    eval_text(
+        &mut runtime,
+        "(defmacro macroexpand-lookup-probe-a (&environment env)\n\
+           (list 'quote\n\
+                 (multiple-value-list\n\
+                   (macroexpand-1 '(macroexpand-order-c) env))))",
+    );
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(flet ((macroexpand-order-c () 1))\n\
+               (macrolet ((macroexpand-order-c () 2))\n\
+                 (macroexpand-lookup-probe-a)))",
+        ),
+        "(2 T)",
+    );
+
+    eval_text(
+        &mut runtime,
+        "(defmacro macroexpand-lookup-probe-b (&environment env)\n\
+           (list 'quote\n\
+                 (multiple-value-list\n\
+                   (macroexpand-1 '(macroexpand-order-d) env))))",
+    );
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal\n\
+               (macrolet ((macroexpand-order-d () 2))\n\
+                 (flet ((macroexpand-order-d () 1))\n\
+                   (macroexpand-lookup-probe-b)))\n\
+               '((macroexpand-order-d) nil))",
+        ),
+        "T",
+    );
+}
+
+
+#[test]
 fn macroexpand_arguments_are_evaluated_once() {
     let mut runtime = new_runtime();
     assert_eq!(

@@ -349,7 +349,8 @@ pub fn call_macro_function(
             let slot = registers.get_mut(register).ok_or(ObjectError::Layout)?;
             *slot = argument.bits();
         }
-        let argument_count = u64::try_from(rooted.len()).map_err(|_| ObjectError::Layout)?;
+        let argument_count =
+            Word::fixnum(i64::try_from(rooted.len()).map_err(|_| ObjectError::Layout)?).bits();
         let rest = rooted
             .get_mut(4..)
             .filter(|rest| !rest.is_empty())

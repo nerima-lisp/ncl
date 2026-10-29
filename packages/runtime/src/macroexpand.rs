@@ -1,5 +1,5 @@
 use ncl_compiler_front::ast::{Expr, Operator};
-use ncl_compiler_front::env::LexicalEnv;
+use ncl_compiler_front::env::{LexicalEnv, OperatorBinding};
 use ncl_compiler_front::{MacroCaller, SymbolRef};
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
@@ -129,22 +129,25 @@ fn macroexpand_once(
     }
     let name = symbol_reference(ctx, operator.get())?.ok_or(ObjectError::TypeError)?;
     if let Some(lexical) = lexical.as_ref() {
-        if lexical.lookup_function(&name) {
-            values.set(&[form.get(), Word::NIL]);
-            return Ok(form.get());
-        }
-        if lexical.lookup_macro(&name).is_some() {
-            let expander = lexical_expander_function(ctx, object)?;
-            let expansion = invoke_macroexpand_hook(
-                ctx,
-                object,
-                expander,
-                form.get(),
-                environment.get(),
-                values,
-            )?;
-            values.set(&[expansion, Word::TRUE]);
-            return Ok(expansion);
+        match lexical.lookup_operator(&name) {
+            Some(OperatorBinding::Function) => {
+                values.set(&[form.get(), Word::NIL]);
+                return Ok(form.get());
+            }
+            Some(OperatorBinding::Macro(_)) => {
+                let expander = lexical_expander_function(ctx, object)?;
+                let expansion = invoke_macroexpand_hook(
+                    ctx,
+                    object,
+                    expander,
+                    form.get(),
+                    environment.get(),
+                    values,
+                )?;
+                values.set(&[expansion, Word::TRUE]);
+                return Ok(expansion);
+            }
+            None => {}
         }
     }
     if !symbol_is_macro(ctx, operator.get())? {
@@ -245,16 +248,16 @@ fn expand_lexical_form(
     let Some(name) = symbol_reference(ctx, operator.get())? else {
         return Ok(form.get());
     };
-    if lexical.lookup_function(&name) {
-        return Ok(form.get());
+    match lexical.lookup_operator(&name) {
+        Some(OperatorBinding::Function) => Ok(form.get()),
+        Some(OperatorBinding::Macro(definition)) => {
+            let mut caller = crate::support::RuntimeMacroCaller::new(evaluator.clone());
+            caller
+                .call_local_macro_in_environment(ctx, object, definition, form.get(), lexical)
+                .map_err(|_| ObjectError::TypeError)
+        }
+        None => Ok(form.get()),
     }
-    if let Some(definition) = lexical.lookup_macro(&name) {
-        let mut caller = crate::support::RuntimeMacroCaller::new(evaluator.clone());
-        return caller
-            .call_local_macro_in_environment(ctx, object, definition, form.get(), lexical)
-            .map_err(|_| ObjectError::TypeError);
-    }
-    Ok(form.get())
 }
 
 fn symbol_reference(ctx: &ThreadContext, symbol: Word) -> Result<Option<SymbolRef>, ObjectError> {

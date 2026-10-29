@@ -340,10 +340,9 @@ impl Heap {
             return Err(StorageCondition::CapacityExceeded);
         }
         let mut data = vec![0_u64; words].into_boxed_slice();
-        if kind != PageKind::Cons {
-            let Some(first) = data.first_mut() else {
-                return Err(StorageCondition::InvalidSize);
-            };
+        if kind != PageKind::Cons
+            && let Some(first) = data.first_mut()
+        {
             *first = u64::from(tag.widetag);
         }
         let address = data.as_ptr().addr();

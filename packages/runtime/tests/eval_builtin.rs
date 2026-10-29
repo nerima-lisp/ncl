@@ -120,6 +120,25 @@ fn compile_builtin_returns_a_function_for_a_nil_name() {
 }
 
 #[test]
+fn compile_builtin_accepts_function_objects_and_rejects_other_objects() {
+    let mut runtime = new_runtime();
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(let ((values (multiple-value-list (compile nil #'identity))))
+                (and (= (length values) 3)
+                     (eq (first values) #'identity)
+                     (null (second values))
+                     (null (third values))
+                     (= (funcall (first values) 42) 42)))",
+        ),
+        "T"
+    );
+    assert!(runtime.eval("(compile nil (make-array 1))").is_err());
+    assert!(runtime.eval("(compile nil 'compile-not-a-lambda)").is_err());
+}
+
+#[test]
 fn specialized_array_literals_preserve_values_types_and_identity() {
     let mut runtime = new_runtime();
     let forms = [

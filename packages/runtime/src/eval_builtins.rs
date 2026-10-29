@@ -104,10 +104,18 @@ fn compile_builtin(
         .transpose()?;
     let result = if let Some(definition) = definition.as_ref() {
         let definition_word = definition.get();
-        let function = if FunctionObject::try_from(definition_word).is_ok() {
-            definition_word
-        } else {
-            compile_lambda_definition(ctx, object, definition_word)?
+        let function = match FunctionObject::try_from(definition_word) {
+            Ok(function) => {
+                ncl_object::function_entry(
+                    ctx,
+                    ncl_object::Function::from_word(function.as_word()),
+                )?;
+                definition_word
+            }
+            Err(_) if definition_word.is_cons() => {
+                compile_lambda_definition(ctx, object, definition_word)?
+            }
+            Err(_) => return Err(ObjectError::TypeError),
         };
         let function = HeapRootedWord::new(ctx, function)?;
         if name.get() == Word::NIL {

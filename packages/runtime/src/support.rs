@@ -248,23 +248,6 @@ impl MacroCaller for RuntimeMacroCaller {
             }
         })
     }
-
-    fn call_local_macro(
-        &mut self,
-        ctx: &mut ThreadContext,
-        runtime: &ObjectRuntime,
-        definition: &ncl_compiler_front::ast::LocalMacro,
-        form: Word,
-    ) -> Result<Word, ncl_compiler_front::FrontError> {
-        crate::local_macro::call_local_macro(
-            ctx,
-            runtime,
-            &self.entry_codes,
-            definition,
-            form,
-            Word::NIL,
-        )
-    }
 }
 
 impl RuntimeMacroCaller {

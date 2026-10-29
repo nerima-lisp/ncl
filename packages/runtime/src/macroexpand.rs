@@ -271,6 +271,6 @@ fn symbol_reference(ctx: &ThreadContext, symbol: Word) -> Result<Option<SymbolRe
         .map(Some)
         .map_err(|error| match error {
             ncl_compiler_front::FrontError::Object(error) => error,
-            _ => ObjectError::TypeError,
+            _ => ObjectError::TypeError, // check-added-lines: allow(wildcard) FrontError is non_exhaustive.
         })
 }

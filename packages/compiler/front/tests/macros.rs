@@ -81,6 +81,53 @@ fn a_global_macro_is_expanded_through_the_caller() {
     assert_marker(expanded, "GLOBAL");
 }
 
+struct TrueMarker;
+
+impl MacroCaller for TrueMarker {
+    fn call_macro(
+        &mut self,
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _name: &SymbolRef,
+        _form: Word,
+    ) -> Result<Word, FrontError> {
+        Ok(Word::TRUE)
+    }
+
+    fn call_local_macro(
+        &mut self,
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _definition: &ncl_compiler_front::LocalMacro,
+        _form: Word,
+    ) -> Result<Word, FrontError> {
+        Ok(Word::TRUE)
+    }
+
+    fn expand_type_specifier(
+        &mut self,
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _specifier: Word,
+    ) -> Result<Word, FrontError> {
+        Ok(Word::TRUE)
+    }
+}
+
+#[test]
+fn a_macro_expansion_can_be_the_true_literal() {
+    let mut f = Fixture::new();
+    let macro_name = f.intern("COMMON-LISP-USER", "TRUE-MACRO");
+    set_symbol_macro(&mut f.ctx, macro_name, true).unwrap();
+    let form = f.list(&[macro_name]);
+    let mut caller = TrueMarker;
+
+    assert_eq!(
+        f.expand_with(form, &mut caller).unwrap(),
+        Expr::Constant(Literal::T)
+    );
+}
+
 #[test]
 fn declared_type_specifiers_are_expanded_through_the_caller() {
     let mut f = Fixture::new();

@@ -101,6 +101,7 @@ fn compile_builtin_compiles_a_named_lambda() {
 }
 
 #[test]
+
 fn compile_builtin_returns_a_function_for_a_nil_name() {
     let mut runtime = new_runtime();
     runtime.set_gc_stress(true);
@@ -108,8 +109,11 @@ fn compile_builtin_returns_a_function_for_a_nil_name() {
     assert_eq!(
         eval_text(
             &mut runtime,
-            "(let ((function (compile nil '(lambda (x) (+ x 2)))))
-                (= (funcall function 40) 42))",
+            "(let ((values (multiple-value-list (compile nil '(lambda (x) (+ x 2))))))
+                (and (= (length values) 3)
+                     (null (second values))
+                     (null (third values))
+                     (= (funcall (first values) 40) 42)))",
         ),
         "T"
     );

@@ -160,6 +160,9 @@ pub fn literal(
     if word == Word::NIL {
         return Ok(Literal::Nil);
     }
+    if word == Word::TRUE {
+        return Ok(Literal::T);
+    }
     match classify_form(ctx, word) {
         ObjectRef::Fixnum(value) => Ok(Literal::fixnum(value)),
         ObjectRef::Character(value) => Ok(Literal::Character(value)),

@@ -48,7 +48,7 @@ Sections follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and re
 ### Changed
 
 - Moved the generic dispatcher wrapper into a dedicated runtime module.
-- Isolated cl-bench rows in a worker pool of up to four, with 20-second child timeouts and a 1,800-second workflow budget with a 240-second reserve. The driver records per-row wall time and retains completed rows when a child times out.
+- Isolated cl-bench rows in a worker pool of up to four, with 20-second child timeouts and a 1,800-second workflow budget with a 240-second reserve. The driver records per-row wall time, allows independent output pairs to overlap, and retains completed rows when a child times out.
 
 [0.1.1]: https://github.com/nerima-lisp/ncl/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nerima-lisp/ncl/compare/f9574a4d49490daca08b0ffd3375938cef847166...v0.1.0

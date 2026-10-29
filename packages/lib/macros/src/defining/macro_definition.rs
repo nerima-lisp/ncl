@@ -1,6 +1,6 @@
 //! Building a macro function's `(lambda (whole &optional environment) ...)` body (CLHS 3.4.4).
 
-use ncl_object::{ObjectError, Runtime, ThreadContext, Word, car, cdr};
+use ncl_object::{ObjectError, Runtime, ThreadContext, Word, car, cdr, make_cons};
 
 use super::{progn_with_definition, quote};
 use crate::destructuring::{
@@ -93,32 +93,49 @@ fn strip_environment(
     held: &mut Vec<Word>,
     pattern: usize,
 ) -> Result<Option<usize>> {
-    let fields = crate::form::elements(ctx, held_get(held, pattern)?)?;
-    let field_indexes = fields
-        .into_iter()
-        .map(|field| held_push(held, field))
-        .collect::<Vec<_>>();
+    if !held_get(held, pattern)?.is_cons() {
+        return Ok(None);
+    }
     let environment_marker = held_symbol(ctx, runtime, held, "&ENVIRONMENT")?;
     let mut environment_variable = None;
-    let mut kept = Vec::with_capacity(field_indexes.len());
-    let mut index = 0;
-    while index < field_indexes.len() {
-        let field = *field_indexes.get(index).ok_or(ObjectError::TypeError)?;
+    let mut cursor = held_push(held, held_get(held, pattern)?);
+    let mut kept = Vec::new();
+    while held_get(held, cursor)?.is_cons() {
+        let cell = held_get(held, cursor)?;
+        let field = held_push(held, car(ctx, cell)?);
+        let rest = held_push(held, cdr(ctx, cell)?);
         if held_get(held, field)? == held_get(held, environment_marker)? {
             if environment_variable.is_some() {
                 return Err(ObjectError::TypeError);
             }
-            environment_variable =
-                Some(*field_indexes.get(index + 1).ok_or(ObjectError::TypeError)?);
-            index += 2;
+            if !held_get(held, rest)?.is_cons() {
+                return Err(ObjectError::TypeError);
+            }
+            let environment_cell = held_get(held, rest)?;
+            environment_variable = Some(held_push(held, car(ctx, environment_cell)?));
+            cursor = held_push(held, cdr(ctx, environment_cell)?);
         } else {
             kept.push(field);
-            index += 1;
+            cursor = rest;
         }
     }
-    let pattern_value = held_raw_list(ctx, runtime, held, &kept)?;
-    held[pattern] = held_get(held, pattern_value)?;
-    Ok(environment_variable)
+    let Some(environment_variable) = environment_variable else {
+        return Ok(None);
+    };
+    let mut result = held_push(held, held_get(held, cursor)?);
+    for field in kept.into_iter().rev() {
+        let (pair, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
+            let car = roots.get(field).ok_or(ObjectError::TypeError)?.get();
+            let cdr = roots.get(result).ok_or(ObjectError::TypeError)?.get();
+            let pair = make_cons(ctx, runtime, car, cdr)?;
+            let refreshed = roots.iter().map(|root| root.get()).collect::<Vec<_>>();
+            Ok((pair, refreshed))
+        })?;
+        *held = refreshed;
+        result = held_push(held, pair);
+    }
+    held[pattern] = held_get(held, result)?;
+    Ok(Some(environment_variable))
 }
 
 /// Build a macro function's `(lambda (whole &optional environment) body...)`, where `body` first

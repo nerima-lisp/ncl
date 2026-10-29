@@ -234,6 +234,34 @@ fn macro_and_setf_definitions_target_runtime_places() -> Result<(), ObjectError>
 }
 
 #[test]
+fn defmacro_accepts_dotted_tail_lambda_lists() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let defmacro = symbol(&mut ctx, &runtime, "DEFMACRO")?;
+    let argument = symbol(&mut ctx, &runtime, "A")?;
+    let rest = symbol(&mut ctx, &runtime, "REST")?;
+    let whole = symbol(&mut ctx, &runtime, "&WHOLE")?;
+    let whole_variable = symbol(&mut ctx, &runtime, "W")?;
+    let whole_tail = ncl_object::make_cons(&mut ctx, &runtime, whole_variable, rest)?;
+    let whole_dotted = ncl_object::make_cons(&mut ctx, &runtime, whole, whole_tail)?;
+
+    for (name_text, lambda_list) in [
+        (
+            "DOTTED-MACRO",
+            ncl_object::make_cons(&mut ctx, &runtime, argument, rest)?,
+        ),
+        ("WHOLE-DOTTED-MACRO", whole_dotted),
+    ] {
+        let name = symbol(&mut ctx, &runtime, name_text)?;
+        let form = list(&mut ctx, &runtime, &[defmacro, name, lambda_list])?;
+        let expanded = call(&runtime, &mut ctx, "DEFMACRO", form)?;
+        let parts = elements(&mut ctx, expanded)?;
+        assert_eq!(parts[0], symbol(&mut ctx, &runtime, "PROGN")?);
+        assert_eq!(parts.len(), 3);
+    }
+    Ok(())
+}
+
+#[test]
 fn callback_registry_covers_requested_definers() {
     for name in [
         "DEFUN",

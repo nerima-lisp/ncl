@@ -38,6 +38,38 @@ fn macroexpand_1_expands_once_and_returns_expanded_p() {
 }
 
 #[test]
+fn defmacro_dotted_tail_lambda_lists_bind_arguments() {
+    let mut runtime = new_runtime();
+    eval_text(
+        &mut runtime,
+        "(defmacro macroexpand-dotted-tail (a . rest)\n\
+           (list 'quote (list a rest)))",
+    );
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal (macroexpand-dotted-tail 1 2 3) '(1 (2 3)))",
+        ),
+        "T",
+    );
+
+    eval_text(
+        &mut runtime,
+        "(defmacro macroexpand-whole-dotted-tail (&whole w . rest)\n\
+           (list 'quote (list w rest)))",
+    );
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal (macroexpand-whole-dotted-tail 1 2 3)\n\
+                   '((macroexpand-whole-dotted-tail 1 2 3) (1 2 3)))",
+        ),
+        "T",
+    );
+}
+
+
+#[test]
 fn macroexpand_repeats_expansion_and_reports_any_expansion() {
     let mut runtime = new_runtime();
     eval_text(

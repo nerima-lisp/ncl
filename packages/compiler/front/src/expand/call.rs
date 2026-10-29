@@ -8,7 +8,7 @@ use ncl_object::{
 };
 
 use crate::ast::{Expr, LocalMacro, Operator};
-use crate::env::{LexicalEnv, OperatorBinding};
+use crate::env::{LexicalEnv, OperatorBinding, VariableOrSymbolMacro};
 use crate::error::FrontError;
 use crate::expand::{FormExpander, SYMBOL_MACRO_LIMIT};
 use crate::form::classify_form;
@@ -70,13 +70,20 @@ impl<'a> FormExpander<'a> {
     /// that form is itself a bare reference to another symbol macro, the chain
     /// is followed so `(symbol-macrolet ((x y) (y 1)) x)` resolves to `1`.
     fn symbol_macro_expansion(&self, name: &SymbolRef) -> Option<Expr> {
-        let mut expansion = self.env.lookup_symbol_macro(name)?.expansion.clone();
+        let VariableOrSymbolMacro::SymbolMacro(binding) =
+            self.env.lookup_variable_or_symbol_macro(name)?
+        else {
+            return None;
+        };
+        let mut expansion = binding.expansion.clone();
         let mut remaining = SYMBOL_MACRO_LIMIT;
         while remaining > 0 {
             let Expr::Variable(inner) = &expansion else {
                 break;
             };
-            let Some(next) = self.env.lookup_symbol_macro(inner) else {
+            let Some(VariableOrSymbolMacro::SymbolMacro(next)) =
+                self.env.lookup_variable_or_symbol_macro(inner)
+            else {
                 break;
             };
             expansion = next.expansion.clone();

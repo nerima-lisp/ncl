@@ -260,6 +260,13 @@ fn macroexpand_uses_the_hook_for_symbol_and_local_macros() {
 #[test]
 fn macroexpand_preserves_symbol_macro_shadowing_and_arbitrary_forms() {
     let mut runtime = new_runtime();
+    eval_text(
+        &mut runtime,
+        "(defmacro macroexpand-shadow-probe (form &environment env)\n\
+           (multiple-value-bind (expansion expanded-p)\n\
+               (macroexpand-1 (cadr form) env)\n\
+             (list 'quote (list expansion expanded-p))))",
+    );
     assert_eq!(
         eval_text(
             &mut runtime,
@@ -270,7 +277,10 @@ fn macroexpand_preserves_symbol_macro_shadowing_and_arbitrary_forms() {
     assert_eq!(
         eval_text(
             &mut runtime,
-            "(let ((macroexpand-shadow-x 'foo))\n         (symbol-macrolet ((macroexpand-shadow-x macroexpand-shadow-y))\n           (macrolet ((%m (&environment env)\n                       (list 'quote (macroexpand-1 'macroexpand-shadow-x env))))\n             (equal (%m) 'macroexpand-shadow-x))))",
+            "(let ((macroexpand-shadow-x 'foo))\n\
+               (symbol-macrolet ((macroexpand-shadow-x macroexpand-shadow-y))\n\
+                 (equal (macroexpand-shadow-probe 'macroexpand-shadow-x)\n\
+                        '(macroexpand-shadow-y t))))",
         ),
         "T",
     );
@@ -289,3 +299,52 @@ fn macroexpand_preserves_symbol_macro_shadowing_and_arbitrary_forms() {
         "T",
     );
 }
+
+#[test]
+fn macroexpand_variable_and_symbol_macro_lookup_respects_depth() {
+    let mut runtime = new_runtime();
+    eval_text(
+        &mut runtime,
+        "(defmacro macroexpand-depth-probe (form &environment env)\n\
+           (multiple-value-bind (one one-p) (macroexpand-1 (cadr form) env)\n\
+             (multiple-value-bind (all all-p) (macroexpand (cadr form) env)\n\
+               (list 'quote (list (list one one-p) (list all all-p))))))",
+    );
+
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal\n\
+               (let ((macroexpand-depth-x 'outer-value))\n\
+               (symbol-macrolet ((macroexpand-depth-x macroexpand-depth-y))\n\
+                 (macroexpand-depth-probe 'macroexpand-depth-x)))\n\
+               '((macroexpand-depth-y t) (macroexpand-depth-y t)))",
+        ),
+        "T",
+    );
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal\n\
+               (locally\n\
+                 (declare (type t macroexpand-declared-outer-x))\n\
+               (symbol-macrolet ((macroexpand-declared-outer-x macroexpand-declared-y))\n\
+                 (macroexpand-depth-probe 'macroexpand-declared-outer-x)))\n\
+               '((macroexpand-declared-y t) (macroexpand-declared-y t)))",
+        ),
+        "T",
+    );
+    assert_eq!(
+        eval_text(
+            &mut runtime,
+            "(equal\n\
+               (symbol-macrolet ((macroexpand-declared-inner-x macroexpand-declared-y))\n\
+               (locally\n\
+                 (declare (type t macroexpand-declared-inner-x))\n\
+                 (macroexpand-depth-probe 'macroexpand-declared-inner-x)))\n\
+               '((macroexpand-declared-y t) (macroexpand-declared-y t)))",
+        ),
+        "T",
+    );
+}
+

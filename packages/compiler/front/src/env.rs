@@ -57,6 +57,7 @@ impl VariableBinding {
 #[derive(Clone, Debug, Default)]
 struct Frame {
     variables: Vec<VariableBinding>,
+    declared_types: Vec<(SymbolRef, TypeSpecifier)>,
     functions: Vec<SymbolRef>,
     macros: Vec<LocalMacro>,
     symbol_macros: Vec<SymbolMacro>,
@@ -71,6 +72,15 @@ pub enum OperatorBinding<'a> {
     Function,
     /// A local macro binding.
     Macro(&'a LocalMacro),
+}
+
+/// The nearest lexical binding of a variable name.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VariableOrSymbolMacro<'a> {
+    /// A lexical or special variable binding.
+    Variable(&'a VariableBinding),
+    /// A symbol-macro binding.
+    SymbolMacro(&'a SymbolMacro),
 }
 
 /// A stack of lexical scopes.
@@ -124,15 +134,9 @@ impl LexicalEnv {
             .push(VariableBinding::Special(name));
     }
 
-    /// Record a type declaration for a variable in the innermost scope.
-    ///
-    /// The new binding shadows an earlier one, so a lookup finds the declared
-    /// type.
+    /// Record type declaration metadata in the innermost scope.
     pub fn declare_type(&mut self, name: SymbolRef, type_specifier: TypeSpecifier) {
-        self.current().variables.push(VariableBinding::Lexical {
-            name,
-            type_specifier: Some(type_specifier),
-        });
+        self.current().declared_types.push((name, type_specifier));
     }
 
     /// Bind a function name in the innermost scope.
@@ -185,11 +189,28 @@ impl LexicalEnv {
             .is_some_and(VariableBinding::is_special)
     }
 
-    /// The declared type of `name`, if a binding carries one.
+    /// The declared type of `name`, if a declaration or binding provides one.
     #[must_use]
     pub fn variable_type(&self, name: &SymbolRef) -> Option<&TypeSpecifier> {
-        self.lookup_variable(name)
-            .and_then(VariableBinding::type_specifier)
+        for frame in self.frames.iter().rev() {
+            if let Some((_, type_specifier)) = frame
+                .declared_types
+                .iter()
+                .rev()
+                .find(|(declared, _)| declared == name)
+            {
+                return Some(type_specifier);
+            }
+            if let Some(binding) = frame
+                .variables
+                .iter()
+                .rev()
+                .find(|binding| binding.name() == name)
+            {
+                return binding.type_specifier();
+            }
+        }
+        None
     }
 
     /// Find the innermost binding for an operator name.
@@ -202,6 +223,31 @@ impl LexicalEnv {
                 Some(OperatorBinding::Function)
             } else {
                 None
+            }
+        })
+    }
+
+    /// Find the innermost variable or symbol-macro binding for `name`.
+    #[must_use]
+    pub fn lookup_variable_or_symbol_macro(
+        &self,
+        name: &SymbolRef,
+    ) -> Option<VariableOrSymbolMacro<'_>> {
+        self.frames.iter().rev().find_map(|frame| {
+            if let Some(binding) = frame
+                .variables
+                .iter()
+                .rev()
+                .find(|binding| binding.name() == name)
+            {
+                Some(VariableOrSymbolMacro::Variable(binding))
+            } else {
+                frame
+                    .symbol_macros
+                    .iter()
+                    .rev()
+                    .find(|entry| entry.name == *name)
+                    .map(VariableOrSymbolMacro::SymbolMacro)
             }
         })
     }

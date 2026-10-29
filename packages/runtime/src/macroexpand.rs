@@ -1,5 +1,5 @@
 use ncl_compiler_front::ast::{Expr, Operator};
-use ncl_compiler_front::env::{LexicalEnv, OperatorBinding};
+use ncl_compiler_front::env::{LexicalEnv, OperatorBinding, VariableOrSymbolMacro};
 use ncl_compiler_front::{MacroCaller, SymbolRef};
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
@@ -100,20 +100,23 @@ fn macroexpand_once(
     let lexical = crate::local_macro::macro_environment(environment.get());
     if matches!(classify_object(ctx, form.get()), ObjectRef::Symbol(_)) {
         if let (Some(lexical), Some(name)) = (lexical.as_ref(), symbol_reference(ctx, form.get())?)
-            && lexical.lookup_variable(&name).is_none()
-            && lexical.lookup_symbol_macro(&name).is_some()
         {
-            let expander = lexical_expander_function(ctx, object)?;
-            let expansion = invoke_macroexpand_hook(
-                ctx,
-                object,
-                expander,
-                form.get(),
-                environment.get(),
-                values,
-            )?;
-            values.set(&[expansion, Word::TRUE]);
-            return Ok(expansion);
+            if matches!(
+                lexical.lookup_variable_or_symbol_macro(&name),
+                Some(VariableOrSymbolMacro::SymbolMacro(_))
+            ) {
+                let expander = lexical_expander_function(ctx, object)?;
+                let expansion = invoke_macroexpand_hook(
+                    ctx,
+                    object,
+                    expander,
+                    form.get(),
+                    environment.get(),
+                    values,
+                )?;
+                values.set(&[expansion, Word::TRUE]);
+                return Ok(expansion);
+            }
         }
         values.set(&[form.get(), Word::NIL]);
         return Ok(form.get());
@@ -231,8 +234,8 @@ fn expand_lexical_form(
     let form = HeapRootedWord::new(ctx, form)?;
     if matches!(classify_object(ctx, form.get()), ObjectRef::Symbol(_)) {
         if let Some(name) = symbol_reference(ctx, form.get())?
-            && lexical.lookup_variable(&name).is_none()
-            && let Some(binding) = lexical.lookup_symbol_macro(&name)
+            && let Some(VariableOrSymbolMacro::SymbolMacro(binding)) =
+                lexical.lookup_variable_or_symbol_macro(&name)
         {
             return expression_to_word(ctx, object, &binding.expansion);
         }

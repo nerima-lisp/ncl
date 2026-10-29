@@ -244,6 +244,33 @@ fn a_symbol_macro_shadows_a_let_binding() {
 }
 
 #[test]
+fn an_inner_let_binding_shadows_a_symbol_macro() {
+    let mut f = Fixture::new();
+    let name = f.user("X");
+    let expansion = Word::fixnum(1);
+    let definition = f.list(&[name, expansion]);
+    let definitions = f.list(&[definition]);
+    let binding = f.list(&[name, Word::fixnum(2)]);
+    let bindings = f.list(&[binding]);
+    let body = f.user("X");
+    let inner = f.form("LET", &[bindings, body]);
+    let form = f.form("SYMBOL-MACROLET", &[definitions, inner]);
+
+    match f.expand(form).unwrap() {
+        Expr::SymbolMacrolet { body, .. } => match &body[0] {
+            Expr::Let { body, .. } => {
+                assert_eq!(
+                    body,
+                    &vec![Expr::Variable(SymbolRef::interned("COMMON-LISP-USER", "X"))]
+                );
+            }
+            other => panic!("expected Let, got {other:?}"),
+        },
+        other => panic!("expected SymbolMacrolet, got {other:?}"),
+    }
+}
+
+#[test]
 fn a_chain_of_symbol_macros_resolves() {
     let mut f = Fixture::new();
     let x = f.user("X");

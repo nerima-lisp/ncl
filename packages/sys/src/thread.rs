@@ -232,6 +232,19 @@ impl Thread {
     pub(crate) fn conservative_snapshot(&self) -> Vec<Word> {
         let mut values = self.conservative_roots.clone();
         values.extend(self.callee_saved.iter().copied().map(Word::from_bits));
+        let mut precise_root_addresses = std::collections::HashSet::new();
+        if self.safepoint_state() == SafepointState::Collecting && !self.has_native_frame_snapshot()
+        {
+            for root in self.roots.iter().copied().filter(|root| !root.is_null()) {
+                precise_root_addresses.insert(root.addr());
+            }
+            precise_root_addresses.extend(
+                self.mv
+                    .iter()
+                    .take(self.mv_count().min(MULTIPLE_VALUE_AREA_WORDS))
+                    .map(|slot| std::ptr::from_ref(slot).addr()),
+            );
+        }
         if let Some((bounds_start, end)) = self.stack_bounds {
             #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
             let start = self.stack_scan_start.filter(|&stack_pointer| {
@@ -243,10 +256,14 @@ impl Thread {
             if let Some(start) = start {
                 let mut address = start.next_multiple_of(8);
                 while address.checked_add(8).is_some_and(|next| next <= end) {
-                    // SAFETY: the collector reads only a published, stopped stack interval at word alignment.
-                    values.push(unsafe {
-                        Word::from_bits(std::ptr::with_exposed_provenance::<u64>(address).read())
-                    });
+                    if !precise_root_addresses.contains(&address) {
+                        // SAFETY: the collector reads only a published, stopped stack interval at word alignment.
+                        values.push(unsafe {
+                            Word::from_bits(
+                                std::ptr::with_exposed_provenance::<u64>(address).read(),
+                            )
+                        });
+                    }
                     address += 8;
                 }
             }

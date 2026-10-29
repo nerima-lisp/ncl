@@ -74,6 +74,46 @@ fn conservative_snapshot_uses_only_a_valid_stack_start_for_lisp_threads() {
     assert!(!values.contains(&second_word));
 }
 
+#[test]
+fn conservative_snapshot_excludes_only_the_precise_stack_slot() {
+    let stack_value = Word::fixnum(17);
+    let explicit_root = Word::fixnum(29);
+    let mut stack_words = [stack_value, stack_value];
+    let stack_start = std::ptr::from_ref(&stack_words[0]).addr();
+    let stack_end = stack_start + std::mem::size_of_val(&stack_words);
+    let mut thread = Thread::new();
+    thread.state = SafepointState::Collecting;
+    thread.stack_bounds = Some((stack_start, stack_end));
+    thread.stack_scan_start = Some(stack_start);
+    thread.publish_conservative_root(explicit_root);
+    thread.callee_saved[0] = stack_value.bits();
+    let precise_root = thread.push_root(&mut stack_words[0]);
+
+    let values = thread.conservative_snapshot();
+
+    assert_eq!(
+        values.iter().filter(|value| **value == stack_value).count(),
+        2
+    );
+    assert!(values.contains(&explicit_root));
+
+    let mv_root = Word::fixnum(31);
+    let mv_alias = Word::fixnum(37);
+    thread.mv[0] = mv_root;
+    thread.mv[1] = mv_alias;
+    thread.mv_count = 1;
+    let mv_start = std::ptr::from_ref(&thread.mv[0]).addr();
+    let mv_end = mv_start + std::mem::size_of_val(&thread.mv);
+    thread.stack_bounds = Some((mv_start, mv_end));
+    thread.stack_scan_start = Some(mv_start);
+
+    let values = thread.conservative_snapshot();
+
+    assert!(!values.contains(&mv_root));
+    assert!(values.contains(&mv_alias));
+    assert!(thread.pop_root(precise_root));
+}
+
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 #[test]
 fn conservative_snapshot_uses_valid_stack_start_for_native_threads() {

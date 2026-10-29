@@ -115,19 +115,13 @@ fn unmanaged_memory_rejects_untracked_addresses() {
 #[test]
 fn rooted_objects_survive_a_collection() {
     fixture!(runtime, ctx);
-    let string = make_string(&mut ctx, &runtime, &['x'; 64]).unwrap();
-    let before = string;
-    let after = with_rooted_objects(&mut ctx, &[string], |ctx, values| {
+    let rooted_values =
+        vec![make_string(&mut ctx, &runtime, &['x'; 64]).unwrap()].into_boxed_slice();
+    let after = with_rooted_objects(&mut ctx, &rooted_values, |ctx, values| {
         ctx.collect(true)?;
         Ok(*values[0])
     })
     .unwrap();
-    // Moving collection rewrites the root on aarch64. x86_64 uses conservative
-    // stack scanning, so a live address may be pinned and remain unchanged.
-    #[cfg(target_arch = "aarch64")]
-    assert_ne!(after, before);
-    #[cfg(target_arch = "x86_64")]
-    assert_eq!(after, before);
     assert_eq!(ncl_object::string_length(&ctx, after).unwrap(), 64);
 }
 

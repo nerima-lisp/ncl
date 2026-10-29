@@ -2,6 +2,21 @@
 
 Sections follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and release versions follow Semantic Versioning.
 
+## [0.1.1] - 2026-10-29
+
+### Fixed
+
+- Fixed a macOS arm64 crash during `LOAD` when garbage collection ran while a closure was live in a Lisp parent frame. The program no longer terminates with `SIGSEGV`.
+- Fixed garbage collection of specialized array elements by tracing their values.
+
+### Added
+
+- Added specialized and general array literal support, lowered through constants.
+
+### Changed
+
+- Split Nix checks into a separate CI job so documentation checks stay within their timeout.
+
 ## [0.1.0] - 2026-10-29
 
 ### Added
@@ -33,6 +48,7 @@ Sections follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and re
 ### Changed
 
 - Moved the generic dispatcher wrapper into a dedicated runtime module.
-- Isolated cl-bench rows in a worker pool of up to four, with 20-second child timeouts and a 1,800-second workflow budget with a 240-second reserve. The driver records per-row wall time, allows independent output pairs to overlap, and retains completed rows when a child times out.
+- Isolated cl-bench rows in a worker pool of up to four, with 20-second child timeouts and a 1,800-second workflow budget with a 240-second reserve. The driver records per-row wall time and retains completed rows when a child times out.
 
+[0.1.1]: https://github.com/nerima-lisp/ncl/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nerima-lisp/ncl/compare/f9574a4d49490daca08b0ffd3375938cef847166...v0.1.0

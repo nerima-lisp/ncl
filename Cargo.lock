@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ncl"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-lib-streams",
  "ncl-runtime",
@@ -12,7 +12,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-asdf"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-clos",
  "ncl-conditions",
@@ -22,15 +22,15 @@ dependencies = [
 
 [[package]]
 name = "ncl-asm-aarch64"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "ncl-asm-x86-64"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "ncl-clos"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-lib-numbers",
@@ -41,7 +41,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-codegen"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-asm-aarch64",
  "ncl-asm-x86-64",
@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-compiler-front"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-clos",
  "ncl-conditions",
@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-conditions"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-object",
  "ncl-ownership",
@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-conformance"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-ownership",
  "ncl-runtime",
@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-coverage"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-compiler-front",
  "ncl-object",
@@ -92,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-debug"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-codegen",
  "ncl-conditions",
@@ -103,7 +103,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-disasm"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-asm-aarch64",
  "ncl-asm-x86-64",
@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-ffi"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
@@ -122,7 +122,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-image"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-object",
  "ncl-objfile",
@@ -132,11 +132,11 @@ dependencies = [
 
 [[package]]
 name = "ncl-ir"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "ncl-lib-format"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-lib-streams",
@@ -148,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-lib-hash-arrays"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-clos",
  "ncl-conditions",
@@ -158,7 +158,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-lib-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-lib-sequences",
@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-lib-numbers"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
@@ -180,7 +180,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-lib-packages"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
@@ -189,7 +189,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-lib-pathnames"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-clos",
  "ncl-conditions",
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-lib-sequences"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-lib-numbers",
@@ -211,7 +211,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-lib-streams"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
@@ -221,7 +221,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-lib-strings"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-object"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-ownership",
  "ncl-sys",
@@ -238,18 +238,18 @@ dependencies = [
 
 [[package]]
 name = "ncl-objfile"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "ncl-opt"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-ir",
 ]
 
 [[package]]
 name = "ncl-os"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-lib-streams",
@@ -259,14 +259,14 @@ dependencies = [
 
 [[package]]
 name = "ncl-ownership"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-object",
 ]
 
 [[package]]
 name = "ncl-printer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-lib-streams",
@@ -276,7 +276,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-profiler"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
@@ -286,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-reader"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-lib-packages",
  "ncl-lib-pathnames",
@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-asm-aarch64",
  "ncl-asm-x86-64",
@@ -320,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-stdlib"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-asdf",
  "ncl-clos",
@@ -353,11 +353,11 @@ dependencies = [
 
 [[package]]
 name = "ncl-sys"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "ncl-threads"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-types"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-object",
  "ncl-ownership",
@@ -375,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "ncl-uiop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-lib-pathnames",

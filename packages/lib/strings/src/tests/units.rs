@@ -172,6 +172,37 @@ fn character_and_mutating_string_builtins_cover_boundaries() {
         Err(ncl_object::ObjectError::TypeError)
     );
 
+    let setter = runtime
+        .function(&mut ctx, "NCL-EXT", "CHAR-SET")
+        .and_then(|word| FunctionObject::try_from(word).ok())
+        .unwrap_or_else(|| panic!("missing CHAR-SET builtin"));
+    let mut mutable = ncl_object::make_string(&mut ctx, &runtime, &['a', 'b'])
+        .unwrap_or_else(|error| panic!("mutable string: {error:?}"));
+    let mutable_root = ncl_object::push_root(&mut ctx, &mut mutable);
+    let replacement = Word::character(u32::from(b'Z'));
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, setter, &[mutable, Word::fixnum(1), replacement],),
+        Ok(replacement)
+    );
+    assert_eq!(ncl_object::string_ref(&ctx, mutable, 1), Ok('Z'));
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            setter,
+            &[mutable, Word::fixnum(1), Word::fixnum(90)],
+        ),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, setter, &[mutable, Word::TRUE, replacement],),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, setter, &[mutable, Word::fixnum(2), replacement],),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert!(ncl_object::pop_root(&mut ctx, mutable_root));
+
     let char_name = call(
         &runtime,
         &mut ctx,

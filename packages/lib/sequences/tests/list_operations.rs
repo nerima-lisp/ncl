@@ -1528,6 +1528,68 @@ fn last_and_butlast_handle_counts_and_dotted_lists() {
     );
     assert_list(&ctx, last_too_many, &[one, two, three]);
 
+    let bignum_count = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, 1_i128 << 62)
+        .unwrap_or_else(|error| panic!("bignum count: {error:?}"))
+        .into();
+    let last_bignum_count = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "LAST",
+        &[list, bignum_count],
+    );
+    assert_list(&ctx, last_bignum_count, &[one, two, three]);
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "BUTLAST",
+            &[list, bignum_count],
+        ),
+        Word::NIL
+    );
+
+    let saturated_count =
+        ncl_object::make_bignum_from_limbs(&mut ctx, &runtime, false, &[0, 0, 0, 0, 1])
+            .unwrap_or_else(|error| panic!("saturated bignum count: {error:?}"))
+            .into();
+    let last_saturated_count = call(
+        &runtime,
+        &mut ctx,
+        &functions,
+        "LAST",
+        &[list, saturated_count],
+    );
+    assert_list(&ctx, last_saturated_count, &[one, two, three]);
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "BUTLAST",
+            &[list, saturated_count],
+        ),
+        Word::NIL
+    );
+
+    let negative_count = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, -1)
+        .unwrap_or_else(|error| panic!("negative bignum count: {error:?}"))
+        .into();
+    for name in ["LAST", "BUTLAST"] {
+        assert_eq!(
+            call_result(
+                &runtime,
+                &mut ctx,
+                &functions,
+                name,
+                &[list, negative_count]
+            ),
+            Err(ObjectError::TypeError),
+            "{name} must reject a negative bignum count"
+        );
+    }
+
     let butlast = call(&runtime, &mut ctx, &functions, "BUTLAST", &[list]);
     assert_list(&ctx, butlast, &[one, two]);
     assert_list(&ctx, list, &[one, two, three]);

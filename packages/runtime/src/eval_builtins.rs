@@ -178,3 +178,25 @@ fn compile_lambda_definition(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::compile_lambda_definition;
+    use ncl_object::{ObjectError, Runtime, ThreadContext, make_cons};
+    use ncl_sys::Word;
+
+    #[test]
+    fn compile_lambda_definition_requires_an_evaluator_runtime() {
+        let object = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&object)
+            .unwrap_or_else(|error| panic!("context: {error:?}"));
+        let definition = make_cons(&mut ctx, &object, Word::NIL, Word::NIL)
+            .unwrap_or_else(|error| panic!("definition: {error:?}"));
+
+        assert_eq!(
+            compile_lambda_definition(&mut ctx, &object, definition),
+            Err(ObjectError::Layout)
+        );
+    }
+}

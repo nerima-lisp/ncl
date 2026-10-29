@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+use ncl_object::ObjectError;
 use ncl_runtime::Runtime;
 use ncl_sys::Word;
 
@@ -134,8 +135,14 @@ fn compile_builtin_accepts_function_objects_and_rejects_other_objects() {
         ),
         "T"
     );
-    assert!(runtime.eval("(compile nil (make-array 1))").is_err());
-    assert!(runtime.eval("(compile nil 'compile-not-a-lambda)").is_err());
+    assert!(matches!(
+        eval_error(&mut runtime, "(compile nil '#())"),
+        ncl_runtime::RuntimeError::Object(ObjectError::TypeError)
+    ));
+    assert!(matches!(
+        eval_error(&mut runtime, "(compile nil '(lambda (x . y) x))"),
+        ncl_runtime::RuntimeError::Object(ObjectError::Layout)
+    ));
 }
 
 #[test]

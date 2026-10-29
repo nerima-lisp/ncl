@@ -433,33 +433,9 @@ fn aref_place(
     setter_place(ctx, runtime, args, "AREF", "NCL-EXT::AREF-SET")
 }
 
-fn string_char_place(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &[Word],
-    accessor: &str,
-) -> Result<SetfExpansion, ObjectError> {
-    if args.len() != 2 {
-        return Err(ObjectError::TypeError);
-    }
-    setter_place(ctx, runtime, args, accessor, "NCL-EXT::CHAR-SET")
-}
-
-fn char_place(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &[Word],
-) -> Result<SetfExpansion, ObjectError> {
-    string_char_place(ctx, runtime, args, "CHAR")
-}
-
-fn schar_place(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &[Word],
-) -> Result<SetfExpansion, ObjectError> {
-    string_char_place(ctx, runtime, args, "SCHAR")
-}
+#[path = "setf_places_char.rs"]
+mod char_places;
+use char_places::{char_place, schar_place};
 
 fn svref_place(
     ctx: &mut ThreadContext,

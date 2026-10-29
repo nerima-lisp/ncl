@@ -57,7 +57,7 @@ impl Drop for MacroEnvironmentGuard {
     }
 }
 
-pub(crate) fn with_macro_environment<R>(environment: &LexicalEnv, f: impl FnOnce(Word) -> R) -> R {
+pub fn with_macro_environment<R>(environment: &LexicalEnv, f: impl FnOnce(Word) -> R) -> R {
     let id = NEXT_MACRO_ENVIRONMENT.fetch_add(1, Ordering::Relaxed);
     MACRO_ENVIRONMENTS.with(|environments| {
         environments.borrow_mut().insert(id, environment.clone());
@@ -66,7 +66,7 @@ pub(crate) fn with_macro_environment<R>(environment: &LexicalEnv, f: impl FnOnce
     f(Word::fixnum(-id))
 }
 
-pub(crate) fn macro_environment(environment: Word) -> Option<LexicalEnv> {
+pub fn macro_environment(environment: Word) -> Option<LexicalEnv> {
     let id = environment.as_fixnum()?;
     if id >= 0 {
         return None;

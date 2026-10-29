@@ -252,7 +252,7 @@ impl MacroCaller for RuntimeMacroCaller {
 
 impl RuntimeMacroCaller {
     fn call_macro_with_environment_word(
-        &mut self,
+        &self,
         ctx: &mut ThreadContext,
         runtime: &ObjectRuntime,
         name: &SymbolRef,

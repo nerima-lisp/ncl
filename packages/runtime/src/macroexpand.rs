@@ -18,10 +18,7 @@ const ENVIRONMENT: Parameter = Parameter {
     ty: ParameterType::Any,
 };
 
-pub(crate) fn register(
-    ctx: &mut ThreadContext,
-    runtime: &ObjectRuntime,
-) -> Result<(), ObjectError> {
+pub fn register(ctx: &mut ThreadContext, runtime: &ObjectRuntime) -> Result<(), ObjectError> {
     runtime.register_builtin(
         ctx,
         BuiltinIdentifier::new(
@@ -99,23 +96,22 @@ fn macroexpand_once(
     let lexical = crate::local_macro::macro_environment(environment.get());
     if matches!(classify_object(ctx, form.get()), ObjectRef::Symbol(_)) {
         if let (Some(lexical), Some(name)) = (lexical.as_ref(), symbol_reference(ctx, form.get())?)
-        {
-            if matches!(
+            && matches!(
                 lexical.lookup_variable_or_symbol_macro(&name),
                 Some(VariableOrSymbolMacro::SymbolMacro(_))
-            ) {
-                let expander = lexical_expander_function(ctx, object)?;
-                let expansion = invoke_macroexpand_hook(
-                    ctx,
-                    object,
-                    expander,
-                    form.get(),
-                    environment.get(),
-                    values,
-                )?;
-                values.set(&[expansion, Word::TRUE]);
-                return Ok(expansion);
-            }
+            )
+        {
+            let expander = lexical_expander_function(ctx, object)?;
+            let expansion = invoke_macroexpand_hook(
+                ctx,
+                object,
+                expander,
+                form.get(),
+                environment.get(),
+                values,
+            )?;
+            values.set(&[expansion, Word::TRUE]);
+            return Ok(expansion);
         }
         values.set(&[form.get(), Word::NIL]);
         return Ok(form.get());
@@ -255,14 +251,13 @@ fn expand_lexical_form(
         return Ok(form.get());
     };
     match lexical.lookup_operator(&name) {
-        Some(OperatorBinding::Function) => Ok(form.get()),
+        Some(OperatorBinding::Function) | None => Ok(form.get()),
         Some(OperatorBinding::Macro(definition)) => {
             let mut caller = crate::support::RuntimeMacroCaller::new(evaluator.clone());
             caller
                 .call_local_macro_in_environment(ctx, object, definition, form.get(), lexical)
                 .map_err(|_| ObjectError::TypeError)
         }
-        None => Ok(form.get()),
     }
 }
 

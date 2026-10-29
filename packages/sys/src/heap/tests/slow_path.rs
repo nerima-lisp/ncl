@@ -230,33 +230,58 @@ fn native_rooted_allocation_variants_keep_output_slots_live() {
     assert_eq!(heap.register_thread(&mut collector), Ok(()));
     native.enter_native();
 
-    let mut small = Word::NIL;
-    // SAFETY: `small` stays at this stack address until its token is removed,
-    // and the test does not access it while Native or a collection may rewrite it.
+    let mut small = Box::new(Word::NIL);
+    // SAFETY: the Box slot stays stable until its token is removed, and the test
+    // does not access it while Native or a collection may rewrite it.
     let small_root =
-        unsafe { heap.alloc_rooted(&mut native, TypeTag { widetag: 11 }, 0, &mut small) }
+        unsafe { heap.alloc_rooted(&mut native, TypeTag { widetag: 11 }, 0, small.as_mut()) }
             .unwrap_or_else(|error| panic!("rooted small allocation should succeed: {error:?}"));
-    let mut large = Word::NIL;
-    // SAFETY: `large` stays at this stack address until its token is removed,
-    // and the test does not access it while Native or a collection may rewrite it.
+    let mut large = Box::new(Word::NIL);
+    // SAFETY: the Box slot stays stable until its token is removed, and the test
+    // does not access it while Native or a collection may rewrite it.
     let large_root =
-        unsafe { heap.alloc_large_rooted(&mut native, TypeTag { widetag: 12 }, 0, &mut large) }
+        unsafe { heap.alloc_large_rooted(&mut native, TypeTag { widetag: 12 }, 0, large.as_mut()) }
             .unwrap_or_else(|error| panic!("rooted large allocation should succeed: {error:?}"));
-    let mut cons = Word::NIL;
+    let mut cons = Box::new(Word::NIL);
     // SAFETY: small and large are already heap-rooted, all slots are distinct
     // and stable, and the test reads them only after leaving Native and after
     // the collection completes.
-    let cons_root =
-        unsafe { heap.alloc_cons_rooted(&mut native, &mut small, &mut large, &mut cons) }
-            .unwrap_or_else(|error| panic!("rooted cons allocation should succeed: {error:?}"));
+    let cons_root = unsafe {
+        heap.alloc_cons_rooted(&mut native, small.as_mut(), large.as_mut(), cons.as_mut())
+    }
+    .unwrap_or_else(|error| panic!("rooted cons allocation should succeed: {error:?}"));
 
+    native.leave_native();
+    let mut old_small_address = Box::new(0usize);
+    let mut old_large_address = Box::new(0usize);
+    let mut old_cons_address = Box::new(0usize);
+    // SAFETY: all Box slots remain stable and are read in Lisp state before the
+    // next collection starts.
+    unsafe {
+        record_complemented_word_address(
+            std::ptr::NonNull::from(small.as_ref()),
+            old_small_address.as_mut(),
+        );
+        record_complemented_word_address(
+            std::ptr::NonNull::from(large.as_ref()),
+            old_large_address.as_mut(),
+        );
+        record_complemented_word_address(
+            std::ptr::NonNull::from(cons.as_ref()),
+            old_cons_address.as_mut(),
+        );
+    }
+    native.enter_native();
     heap.collect_with_thread(&mut collector, true);
     native.leave_native();
 
-    assert_eq!(heap.widetag(small), Some(11));
-    assert_eq!(heap.widetag(large), Some(12));
-    assert_eq!(heap.read_word(cons, 0), Some(small));
-    assert_eq!(heap.read_word(cons, 1), Some(large));
+    assert_ne!(small.address(), !*old_small_address);
+    assert_ne!(large.address(), !*old_large_address);
+    assert_ne!(cons.address(), !*old_cons_address);
+    assert_eq!(heap.widetag(*small), Some(11));
+    assert_eq!(heap.widetag(*large), Some(12));
+    assert_eq!(heap.read_word(*cons, 0), Some(*small));
+    assert_eq!(heap.read_word(*cons, 1), Some(*large));
     assert!(heap.unregister_root(cons_root).is_ok());
     assert!(heap.unregister_root(large_root).is_ok());
     assert!(heap.unregister_root(small_root).is_ok());

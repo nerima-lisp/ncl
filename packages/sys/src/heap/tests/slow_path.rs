@@ -233,21 +233,41 @@ fn native_rooted_allocation_variants_keep_output_slots_live() {
     let mut small = Box::new(Word::NIL);
     // SAFETY: the Box slot stays stable until its token is removed, and the test
     // does not access it while Native or a collection may rewrite it.
-    let small_root =
-        unsafe { heap.alloc_rooted(&mut native, TypeTag { widetag: 11 }, 0, small.as_mut()) }
-            .unwrap_or_else(|error| panic!("rooted small allocation should succeed: {error:?}"));
+    let small_root = unsafe {
+        crate::alloc_rooted(
+            &mut native,
+            &heap,
+            TypeTag { widetag: 11 },
+            0,
+            small.as_mut(),
+        )
+    }
+    .unwrap_or_else(|error| panic!("rooted small allocation should succeed: {error:?}"));
     let mut large = Box::new(Word::NIL);
     // SAFETY: the Box slot stays stable until its token is removed, and the test
     // does not access it while Native or a collection may rewrite it.
-    let large_root =
-        unsafe { heap.alloc_large_rooted(&mut native, TypeTag { widetag: 12 }, 0, large.as_mut()) }
-            .unwrap_or_else(|error| panic!("rooted large allocation should succeed: {error:?}"));
+    let large_root = unsafe {
+        crate::alloc_large_rooted(
+            &mut native,
+            &heap,
+            TypeTag { widetag: 12 },
+            0,
+            large.as_mut(),
+        )
+    }
+    .unwrap_or_else(|error| panic!("rooted large allocation should succeed: {error:?}"));
     let mut cons = Box::new(Word::NIL);
     // SAFETY: small and large are already heap-rooted, all slots are distinct
     // and stable, and the test reads them only after leaving Native and after
     // the collection completes.
     let cons_root = unsafe {
-        heap.alloc_cons_rooted(&mut native, small.as_mut(), large.as_mut(), cons.as_mut())
+        crate::alloc_cons_rooted(
+            &mut native,
+            &heap,
+            small.as_mut(),
+            large.as_mut(),
+            cons.as_mut(),
+        )
     }
     .unwrap_or_else(|error| panic!("rooted cons allocation should succeed: {error:?}"));
 
@@ -287,6 +307,66 @@ fn native_rooted_allocation_variants_keep_output_slots_live() {
     assert!(heap.unregister_root(small_root).is_ok());
     heap.unregister_thread(&collector);
     heap.unregister_thread(&native);
+}
+
+#[test]
+fn native_rooted_allocation_failures_unregister_output_roots() {
+    let heap = Heap::new(HeapConfig::default());
+    let mut thread = Thread::new();
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+
+    let mut small = Box::new(Word::NIL);
+    // SAFETY: the Box slot stays stable for the call, which cannot start a
+    // collection because the oversized request is rejected before allocation.
+    let small_result = unsafe {
+        crate::alloc_rooted(
+            &mut thread,
+            &heap,
+            TypeTag { widetag: 11 },
+            usize::MAX - 1,
+            small.as_mut(),
+        )
+    };
+    assert!(matches!(small_result, Err(StorageCondition::InvalidSize)));
+    assert!(heap.lock_state().roots.is_empty());
+
+    let mut large = Box::new(Word::NIL);
+    // SAFETY: the Box slot stays stable for the call, which cannot start a
+    // collection because the oversized request is rejected before allocation.
+    let large_result = unsafe {
+        crate::alloc_large_rooted(
+            &mut thread,
+            &heap,
+            TypeTag { widetag: 12 },
+            usize::MAX - 1,
+            large.as_mut(),
+        )
+    };
+    assert!(matches!(large_result, Err(StorageCondition::InvalidSize)));
+    assert!(heap.lock_state().roots.is_empty());
+    heap.unregister_thread(&thread);
+
+    let mut unregistered = Thread::new();
+    let mut car = Box::new(Word::NIL);
+    let mut cdr = Box::new(Word::NIL);
+    let mut output = Box::new(Word::NIL);
+    // SAFETY: the stable, distinct input slots contain immediate NIL values, and
+    // the output is a separate stable slot. No collection can run here.
+    let cons_result = unsafe {
+        crate::alloc_cons_rooted(
+            &mut unregistered,
+            &heap,
+            car.as_mut(),
+            cdr.as_mut(),
+            output.as_mut(),
+        )
+    };
+    assert!(matches!(
+        cons_result,
+        Err(StorageCondition::ThreadNotRegistered)
+    ));
+    assert!(unregistered.roots.is_empty());
+    assert!(heap.lock_state().roots.is_empty());
 }
 
 #[test]

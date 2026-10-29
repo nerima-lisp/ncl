@@ -19,6 +19,19 @@ fn schar_builtin(
     char_builtin(ctx, runtime, args, values)
 }
 
+fn char_set_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let string = args.required(0)?;
+    let index = string_index(args)?;
+    let value = args.required(2)?;
+    string_set(ctx, string, index, character(value)?)?;
+    Ok(value)
+}
+
 fn named_character(name: &str) -> Option<char> {
     match name {
         "NULL" | "NUL" => Some('\0'),

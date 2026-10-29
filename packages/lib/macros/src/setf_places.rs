@@ -433,6 +433,34 @@ fn aref_place(
     setter_place(ctx, runtime, args, "AREF", "NCL-EXT::AREF-SET")
 }
 
+fn string_char_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+    accessor: &str,
+) -> Result<SetfExpansion, ObjectError> {
+    if args.len() != 2 {
+        return Err(ObjectError::TypeError);
+    }
+    setter_place(ctx, runtime, args, accessor, "NCL-EXT::CHAR-SET")
+}
+
+fn char_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    string_char_place(ctx, runtime, args, "CHAR")
+}
+
+fn schar_place(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+) -> Result<SetfExpansion, ObjectError> {
+    string_char_place(ctx, runtime, args, "SCHAR")
+}
+
 fn svref_place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -475,6 +503,8 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("SYMBOL-VALUE", symbol_value_place as PlaceExpander),
         ("DOCUMENTATION", documentation_place as PlaceExpander),
         ("AREF", aref_place as PlaceExpander),
+        ("CHAR", char_place as PlaceExpander),
+        ("SCHAR", schar_place as PlaceExpander),
         ("SVREF", svref_place as PlaceExpander),
         ("GETHASH", gethash_place as PlaceExpander),
         ("SBIT", sbit_place as PlaceExpander),

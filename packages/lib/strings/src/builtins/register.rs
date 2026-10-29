@@ -148,6 +148,14 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     register!("CHARACTER", LambdaList::fixed(&[OBJECT]), character_builtin);
     register!("CHAR", LambdaList::fixed(&[STRING, INDEX]), char_builtin);
     register!("SCHAR", LambdaList::fixed(&[STRING, INDEX]), schar_builtin);
+    runtime.register_builtin(
+        &mut ctx,
+        BuiltinIdentifier::new(BuiltinPackage::NclExt, BuiltinName::new("CHAR-SET")),
+        BuiltinImplementation::direct(
+            descriptor(LambdaList::fixed(&[STRING, INDEX, CHARACTER])),
+            char_set_builtin,
+        ),
+    )?;
     register!(
         "CHAR-CODE",
         LambdaList::fixed(&[CHARACTER]),

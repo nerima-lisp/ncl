@@ -118,6 +118,23 @@ fn package_documentation_place_round_trips() {
 }
 
 #[test]
+fn char_places_store_and_return_the_character() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
+    assert_form(
+        &mut runtime,
+        r"(let ((s (make-string 3 :initial-element #\a))) (list (char-code (setf (char s 1) #\Z)) s))",
+        r#"(90 "aZa")"#,
+        "CHAR",
+    );
+    assert_form(
+        &mut runtime,
+        r"(let ((s (make-string 3 :initial-element #\a))) (list (char-code (setf (schar s 1) #\Z)) s))",
+        r#"(90 "aZa")"#,
+        "SCHAR",
+    );
+}
+
+#[test]
 fn remf_splices_matching_property_pairs() {
     let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
     assert_form(

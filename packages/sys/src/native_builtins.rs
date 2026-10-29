@@ -296,3 +296,58 @@ pub unsafe extern "C" fn native_safepoint(mut thread: NonNull<Thread>, frame: *m
     thread.leave_native();
     thread.clear_safepoint_request();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unregistered_thread_arithmetic_builtins_report_typed_errors() {
+        let mut thread = Thread::new();
+        let thread_ptr = NonNull::from(&mut thread);
+
+        assert_eq!(
+            native_add(thread_ptr, Word::fixnum(1), Word::fixnum(2)),
+            Word::NIL
+        );
+        assert_eq!(
+            thread.take_native_error(),
+            Some(NativeError::ThreadNotRegistered {
+                operation: NativeOperation::Add,
+            })
+        );
+
+        assert_eq!(
+            native_sub(thread_ptr, Word::fixnum(3), Word::fixnum(1)),
+            Word::NIL
+        );
+        assert_eq!(
+            thread.take_native_error(),
+            Some(NativeError::ThreadNotRegistered {
+                operation: NativeOperation::Sub,
+            })
+        );
+
+        assert_eq!(
+            native_less(thread_ptr, Word::fixnum(1), Word::fixnum(2)),
+            Word::NIL
+        );
+        assert_eq!(
+            thread.take_native_error(),
+            Some(NativeError::ThreadNotRegistered {
+                operation: NativeOperation::Less,
+            })
+        );
+
+        assert_eq!(
+            native_mul(thread_ptr, Word::fixnum(2), Word::fixnum(3)),
+            Word::NIL
+        );
+        assert_eq!(
+            thread.take_native_error(),
+            Some(NativeError::ThreadNotRegistered {
+                operation: NativeOperation::Mul,
+            })
+        );
+    }
+}

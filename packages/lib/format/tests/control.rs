@@ -163,6 +163,35 @@ fn recursive_format_uses_a_list_or_the_current_arguments() {
 }
 
 #[test]
+fn recursive_format_accepts_function_controls_only_in_list_mode() {
+    let (runtime, mut ctx) = context();
+    ncl_lib_streams::register(&runtime).expect("streams");
+    ncl_lib_format::register(&runtime).expect("format");
+    let formatter = runtime
+        .function(&mut ctx, "COMMON-LISP", "FORMAT")
+        .expect("FORMAT function");
+    let nested_control = string(&runtime, &mut ctx, "<~A>");
+    let value = string(&runtime, &mut ctx, "item");
+    let arguments = list(&runtime, &mut ctx, &[nested_control, value]);
+    assert_eq!(
+        run("~?", &[formatter, arguments], &mut ctx, &runtime),
+        ("<item>".to_owned(), 2),
+    );
+
+    for (control, arguments) in [
+        ("~@?", vec![formatter]),
+        ("~?", vec![Word::NIL, Word::NIL]),
+        ("~@?", vec![Word::character(u32::from('x'))]),
+    ] {
+        let parsed = parse(control).expect("control");
+        let mut sink = StringSink::new();
+        let error = execute(&parsed, &arguments, &mut ctx, &runtime, &mut sink)
+            .expect_err("non-string recursive control");
+        assert_eq!(error.kind, FormatErrorKind::WrongArgumentType);
+    }
+}
+
+#[test]
 fn case_conversion_applies_to_captured_body_output() {
     let (runtime, mut ctx) = context();
     let value = string(&runtime, &mut ctx, "hELLO wOrLD");
@@ -212,6 +241,14 @@ fn up_arrow_escapes_at_top_level_iteration_and_conditional() {
     assert_eq!(
         run("~{~A~^x~}z", &[values], &mut ctx, &runtime),
         ("az".to_owned(), 1),
+    );
+    let b = string(&runtime, &mut ctx, "b");
+    let left = list(&runtime, &mut ctx, &[a]);
+    let right = list(&runtime, &mut ctx, &[b]);
+    let rows = list(&runtime, &mut ctx, &[left, right]);
+    assert_eq!(
+        run("~:{~A~^x~}z", &[rows], &mut ctx, &runtime),
+        ("abz".to_owned(), 1),
     );
     assert_eq!(
         run(

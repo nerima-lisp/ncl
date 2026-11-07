@@ -236,6 +236,15 @@ mod tests {
         result.unwrap_or_else(|_| panic!("test fixture must be valid"))
     }
 
+    fn symbol(id: u32, binding_kind: SymbolBindingKind, package: &str, name: &str) -> FaslSymbol {
+        FaslSymbol {
+            id,
+            binding_kind,
+            package: package.to_owned(),
+            name: name.to_owned(),
+        }
+    }
+
     #[test]
     fn symbol_section_matches_canonical_bytes_and_round_trips() {
         let symbols = [FaslSymbol {
@@ -307,6 +316,132 @@ mod tests {
                 name: "A".into(),
             }]),
             Err(FaslError::new(FaslRejectReason::InvalidReference))
+        );
+    }
+
+    #[test]
+    fn symbol_encoder_orders_binding_kinds_and_rejects_duplicate_or_sparse_ids() {
+        let symbols = [
+            symbol(0, SymbolBindingKind::Lisp, "P", "A"),
+            symbol(1, SymbolBindingKind::NativeFunction, "NATIVE", "f"),
+        ];
+        assert_eq!(
+            decode(&must_succeed(encode(&symbols)), 320),
+            Ok(symbols.to_vec())
+        );
+
+        let lexical = [
+            symbol(0, SymbolBindingKind::Lisp, "P", "A"),
+            symbol(1, SymbolBindingKind::Lisp, "P", "B"),
+        ];
+        assert_eq!(
+            decode(&must_succeed(encode(&lexical)), 320),
+            Ok(lexical.to_vec())
+        );
+        let descending = [lexical[1].clone(), lexical[0].clone()];
+        assert_eq!(
+            encode(&descending),
+            Err(FaslError::new(FaslRejectReason::InvalidReference))
+        );
+
+        let duplicate = [
+            symbol(0, SymbolBindingKind::Lisp, "P", "A"),
+            symbol(1, SymbolBindingKind::Lisp, "P", "A"),
+        ];
+        assert_eq!(
+            encode(&duplicate),
+            Err(FaslError::new(FaslRejectReason::InvalidReference))
+        );
+
+        let sparse = [symbol(1, SymbolBindingKind::Lisp, "P", "A")];
+        assert_eq!(
+            encode(&sparse),
+            Err(FaslError::new(FaslRejectReason::InvalidReference))
+        );
+
+        let oversized = "x".repeat(MAX_STRING_BYTES + 1);
+        assert_eq!(
+            encode(&[symbol(0, SymbolBindingKind::Lisp, &oversized, "")]),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+        );
+
+        let too_many = vec![symbol(0, SymbolBindingKind::Lisp, "", ""); MAX_RECORDS + 1];
+        assert_eq!(
+            encode(&too_many),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+        );
+    }
+
+    #[test]
+    fn symbol_decoder_rejects_unknown_tags_invalid_text_counts_and_trailing_bytes() {
+        let valid = must_succeed(encode(&[symbol(0, SymbolBindingKind::Lisp, "P", "A")]));
+
+        let mut unknown_kind = valid.clone();
+        unknown_kind[8..12].copy_from_slice(&3_u32.to_le_bytes());
+        assert_eq!(
+            decode(&unknown_kind, 320),
+            Err(FaslError::at(FaslRejectReason::InvalidReference, 328))
+        );
+
+        let mut bad_id = valid.clone();
+        bad_id[4..8].copy_from_slice(&1_u32.to_le_bytes());
+        assert_eq!(
+            decode(&bad_id, 320),
+            Err(FaslError::at(FaslRejectReason::InvalidReference, 324))
+        );
+
+        let mut invalid_utf8 = valid.clone();
+        invalid_utf8[25] = 0xff;
+        assert_eq!(
+            decode(&invalid_utf8, 320),
+            Err(FaslError::at(FaslRejectReason::InvalidReference, 345))
+        );
+
+        let mut nul_text = valid.clone();
+        nul_text[25] = 0;
+        assert_eq!(
+            decode(&nul_text, 320),
+            Err(FaslError::at(FaslRejectReason::InvalidReference, 345))
+        );
+
+        let mut oversized_text = valid.clone();
+        oversized_text[16..20].copy_from_slice(&0x0010_0001_u32.to_le_bytes());
+        assert_eq!(
+            decode(&oversized_text, 320),
+            Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 336))
+        );
+
+        assert_eq!(
+            decode(&0x0010_0001_u32.to_le_bytes(), 320),
+            Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 320))
+        );
+        assert_eq!(
+            decode(&[1, 0, 0, 0], 320),
+            Err(FaslError::at(FaslRejectReason::InvalidReference, 320))
+        );
+
+        let mut trailing = valid;
+        trailing.push(0);
+        assert_eq!(
+            decode(&trailing, 320),
+            Err(FaslError::at(
+                FaslRejectReason::InvalidReference,
+                trailing.len() - 1 + 320
+            ))
+        );
+    }
+
+    #[test]
+    fn symbol_decoder_rejects_duplicate_names_with_dense_wire_ids() {
+        let one = must_succeed(encode(&[symbol(0, SymbolBindingKind::Lisp, "P", "A")]));
+        let mut duplicate = vec![2, 0, 0, 0];
+        duplicate.extend_from_slice(&one[4..]);
+        let mut second = one[4..].to_vec();
+        second[..4].copy_from_slice(&1_u32.to_le_bytes());
+        duplicate.extend_from_slice(&second);
+        assert_eq!(
+            decode(&duplicate, 320),
+            Err(FaslError::at(FaslRejectReason::InvalidReference, 348))
         );
     }
 }

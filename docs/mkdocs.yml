@@ -61,6 +61,8 @@ nav:
       - Native backend: design/native-backend.md
       - Coding standards: design/coding-standards.md
       - Threads: design/threads.md
+      - Conditions: design/conditions.md
+      - Signals: design/signals.md
       - Compiler pipeline: design/compiler-pipeline.md
       - Crates: design/crates.md
       - Extension API: design/extension-api.md

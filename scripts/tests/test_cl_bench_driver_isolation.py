@@ -292,6 +292,14 @@ class DriverIsolationTests(unittest.TestCase):
 
 
 class DriverCheckpointEnvironmentTests(unittest.TestCase):
+    def test_comparison_benchmarks_are_read_from_the_constants_module(self) -> None:
+        benchmarks = driver_supervisor._comparison_benchmarks()
+
+        self.assertEqual(len(benchmarks), 65)
+        self.assertEqual(benchmarks[0], "1D-ARRAYS")
+        self.assertIn("TRTAK", benchmarks)
+        self.assertEqual(len(set(benchmarks)), len(benchmarks))
+
     def test_checkpoint_path_is_created_exclusively(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             checkpoint = Path(temporary) / "checkpoint.jsonl"

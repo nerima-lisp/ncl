@@ -16,6 +16,17 @@ pub enum Architecture {
     Aarch64 = 2,
 }
 
+impl Architecture {
+    /// Returns the stable architecture tag used by FASL headers.
+    #[must_use]
+    pub const fn wire_tag(self) -> u8 {
+        match self {
+            Self::X86_64 => 1,
+            Self::Aarch64 => 2,
+        }
+    }
+}
+
 /// The fixed FASL header values.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FaslHeader {
@@ -63,19 +74,20 @@ impl FaslWriter {
     /// Returns an error when a section or relocation exceeds the wire limits.
     pub fn write(fasl: &Fasl) -> Result<Vec<u8>, ObjectError> {
         let mut out = vec![0; 64];
-        out[0..8].copy_from_slice(b"NCLFASL\0");
-        out.get_mut(8..10)
-            .ok_or(ObjectError::OutOfBounds {
-                section: "FASL header",
-                offset: 8,
-                size: 2,
-            })?
-            .copy_from_slice(&2u16.to_le_bytes());
-        out[10] = fasl.header.architecture as u8;
-        out[11] = 8;
-        out[12] = 1;
-        out[13] = 64;
-        out[16..24].copy_from_slice(&fasl.header.features.to_le_bytes());
+        write_at(&mut out, 0, b"NCLFASL\0", "FASL header")?;
+        write_at(&mut out, 8, &2u16.to_le_bytes(), "FASL header")?;
+        write_at(
+            &mut out,
+            10,
+            &[fasl.header.architecture.wire_tag(), 8, 1, 64],
+            "FASL header",
+        )?;
+        write_at(
+            &mut out,
+            16,
+            &fasl.header.features.to_le_bytes(),
+            "FASL header",
+        )?;
         let mut append = |bytes: &[u8]| -> Result<(u32, u32), ObjectError> {
             let offset = u32::try_from(out.len()).map_err(|_| ObjectError::InvalidField {
                 field: "file size",
@@ -106,9 +118,11 @@ impl FaslWriter {
             (56, stack_offset),
             (60, stack_size),
         ] {
-            out[at..at + 4].copy_from_slice(&value.to_le_bytes());
+            write_at(&mut out, at, &value.to_le_bytes(), "FASL header")?;
         }
-        out[36..40].copy_from_slice(
+        write_at(
+            &mut out,
+            36,
             &(u32::try_from(fasl.sections.relocations.len()).map_err(|_| {
                 ObjectError::InvalidField {
                     field: "relocation count",
@@ -116,7 +130,8 @@ impl FaslWriter {
                 }
             })?)
             .to_le_bytes(),
-        );
+            "FASL header",
+        )?;
         Ok(out)
     }
 }
@@ -213,7 +228,7 @@ fn validate_fasl_header(
             needed: 64,
         });
     }
-    if &bytes[0..8] != b"NCLFASL\0" {
+    if bytes.get(..8) != Some(b"NCLFASL\0".as_slice()) {
         return Err(ObjectError::InvalidField {
             field: "magic",
             value: 0,
@@ -226,22 +241,26 @@ fn validate_fasl_header(
             value: u64::from(version),
         });
     }
-    if bytes[10] != architecture as u8 {
+    let actual_architecture = byte_at(bytes, 10)?;
+    if actual_architecture != architecture.wire_tag() {
         return Err(ObjectError::InvalidField {
             field: "architecture",
-            value: u64::from(bytes[10]),
+            value: u64::from(actual_architecture),
         });
     }
-    if bytes[11] != 8 {
+    let pointer_width = byte_at(bytes, 11)?;
+    if pointer_width != 8 {
         return Err(ObjectError::InvalidField {
             field: "pointer width",
-            value: u64::from(bytes[11]),
+            value: u64::from(pointer_width),
         });
     }
-    if bytes[12] != 1 || bytes[13] != 64 {
+    let endianness = byte_at(bytes, 12)?;
+    let header_size = byte_at(bytes, 13)?;
+    if endianness != 1 || header_size != 64 {
         return Err(ObjectError::InvalidField {
             field: "header",
-            value: u64::from(bytes[13]),
+            value: u64::from(header_size),
         });
     }
     if u16_at(bytes, 14)? != 0 {
@@ -320,29 +339,51 @@ fn read_fasl_ranges(bytes: &[u8], version: u16) -> Result<FaslRanges<'_>, Object
     })
 }
 
+fn fixed_array<const N: usize>(bytes: &[u8], offset: usize) -> Result<[u8; N], ObjectError> {
+    let end = offset
+        .checked_add(N)
+        .ok_or(ObjectError::Truncated { offset, needed: N })?;
+    let source = bytes
+        .get(offset..end)
+        .ok_or(ObjectError::Truncated { offset, needed: N })?;
+    let mut value = [0; N];
+    value.copy_from_slice(source);
+    Ok(value)
+}
+
+fn byte_at(bytes: &[u8], offset: usize) -> Result<u8, ObjectError> {
+    bytes
+        .get(offset)
+        .copied()
+        .ok_or(ObjectError::Truncated { offset, needed: 1 })
+}
+
+fn write_at(
+    bytes: &mut [u8],
+    offset: usize,
+    value: &[u8],
+    section: &'static str,
+) -> Result<(), ObjectError> {
+    let size = u64::try_from(value.len()).unwrap_or(u64::MAX);
+    let error = || ObjectError::OutOfBounds {
+        section,
+        offset: u64::try_from(offset).unwrap_or(u64::MAX),
+        size,
+    };
+    let end = offset.checked_add(value.len()).ok_or_else(error)?;
+    let destination = bytes.get_mut(offset..end).ok_or_else(error)?;
+    destination.copy_from_slice(value);
+    Ok(())
+}
+
 fn u16_at(b: &[u8], p: usize) -> Result<u16, ObjectError> {
-    b.get(p..p + 2)
-        .ok_or(ObjectError::Truncated {
-            offset: p,
-            needed: 2,
-        })
-        .map(|x| u16::from_le_bytes([x[0], x[1]]))
+    Ok(u16::from_le_bytes(fixed_array(b, p)?))
 }
 fn u32_at(b: &[u8], p: usize) -> Result<u32, ObjectError> {
-    b.get(p..p + 4)
-        .ok_or(ObjectError::Truncated {
-            offset: p,
-            needed: 4,
-        })
-        .map(|x| u32::from_le_bytes([x[0], x[1], x[2], x[3]]))
+    Ok(u32::from_le_bytes(fixed_array(b, p)?))
 }
 fn u64_at(b: &[u8], p: usize) -> Result<u64, ObjectError> {
-    b.get(p..p + 8)
-        .ok_or(ObjectError::Truncated {
-            offset: p,
-            needed: 8,
-        })
-        .map(|x| u64::from_le_bytes([x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7]]))
+    Ok(u64::from_le_bytes(fixed_array(b, p)?))
 }
 fn range<'a>(
     bytes: &'a [u8],

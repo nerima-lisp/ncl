@@ -1,4 +1,9 @@
+use crate::error::{FaslError, FaslRejectReason};
+use crate::fasl_records::{SectionReader, SectionWriter};
 use crate::{ObjectError, RelocKind, Relocation, SectionId, SymbolRef};
+
+const MAX_FASL_RECORDS: usize = 1_048_576;
+const FASL_RELOCATION_RECORD_SIZE: usize = 32;
 
 pub(super) fn encode(items: &[Relocation]) -> Result<Vec<u8>, ObjectError> {
     let mut out = Vec::new();
@@ -190,4 +195,219 @@ pub(super) const fn width(kind: RelocKind) -> u32 {
         | RelocKind::Add12
         | RelocKind::CondBranch19 => 4,
     }
+}
+
+/// Relocation operations in the native FASL v1 format.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FaslRelocationKind {
+    /// Absolute 64-bit code-object or native-function address.
+    Abs64,
+    /// Signed 32-bit PC-relative displacement to code.
+    PcRel32,
+    /// Signed 32-bit PLT displacement to an imported function.
+    Plt32,
+    /// AArch64 scaled unconditional-branch displacement.
+    Branch26,
+    /// First half of an AArch64 page-address pair.
+    Adrp21,
+    /// Second half of an AArch64 page-address pair.
+    Add12,
+    /// AArch64 scaled conditional-branch displacement.
+    CondBranch19,
+    /// Absolute code-object entry address.
+    CodeEntry,
+    /// Absolute imported-function address.
+    ExternalSymbol,
+    /// Non-pointer constant-vector index.
+    ConstantIndex32,
+}
+
+impl FaslRelocationKind {
+    const fn tag(self) -> u32 {
+        match self {
+            Self::Abs64 => 0,
+            Self::PcRel32 => 1,
+            Self::Plt32 => 2,
+            Self::Branch26 => 3,
+            Self::Adrp21 => 4,
+            Self::Add12 => 5,
+            Self::CondBranch19 => 6,
+            Self::CodeEntry => 7,
+            Self::ExternalSymbol => 8,
+            Self::ConstantIndex32 => 9,
+        }
+    }
+
+    fn from_tag(tag: u32, offset: usize) -> Result<Self, FaslError> {
+        match tag {
+            0 => Ok(Self::Abs64),
+            1 => Ok(Self::PcRel32),
+            2 => Ok(Self::Plt32),
+            3 => Ok(Self::Branch26),
+            4 => Ok(Self::Adrp21),
+            5 => Ok(Self::Add12),
+            6 => Ok(Self::CondBranch19),
+            7 => Ok(Self::CodeEntry),
+            8 => Ok(Self::ExternalSymbol),
+            9 => Ok(Self::ConstantIndex32),
+            _ => Err(FaslError::at(FaslRejectReason::InvalidRelocation, offset)),
+        }
+    }
+
+    pub(super) const fn width(self) -> u32 {
+        match self {
+            Self::Abs64 | Self::CodeEntry | Self::ExternalSymbol => 8,
+            Self::PcRel32
+            | Self::Plt32
+            | Self::Branch26
+            | Self::Adrp21
+            | Self::Add12
+            | Self::CondBranch19
+            | Self::ConstantIndex32 => 4,
+        }
+    }
+}
+
+/// Relocation target category in native FASL v1.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FaslRelocationTarget {
+    /// A dense ID in the code-object section.
+    CodeObject,
+    /// A symbol ID bound to an imported native function.
+    NativeFunction,
+    /// A constant-vector index in the owning code object.
+    ConstantVector,
+}
+
+impl FaslRelocationTarget {
+    const fn tag(self) -> u32 {
+        match self {
+            Self::CodeObject => 1,
+            Self::NativeFunction => 2,
+            Self::ConstantVector => 3,
+        }
+    }
+
+    fn from_tag(tag: u32, offset: usize) -> Result<Self, FaslError> {
+        match tag {
+            1 => Ok(Self::CodeObject),
+            2 => Ok(Self::NativeFunction),
+            3 => Ok(Self::ConstantVector),
+            _ => Err(FaslError::at(FaslRejectReason::InvalidRelocation, offset)),
+        }
+    }
+}
+
+/// One FASL v1 relocation record.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FaslRelocation {
+    /// Code object containing the patch site.
+    pub code_object_id: u32,
+    /// Byte offset of the patch site within its code object.
+    pub write_offset: u32,
+    /// Relocation operation.
+    pub kind: FaslRelocationKind,
+    /// Category of the referenced target.
+    pub target_kind: FaslRelocationTarget,
+    /// Code-object ID, symbol ID, or constant index selected by `target_kind`.
+    pub target_index: u32,
+    /// Signed adjustment applied to the selected target.
+    pub addend: i64,
+    /// AArch64 address-pair identifier, or zero for an unpaired relocation.
+    pub pair_id: u32,
+}
+
+/// Decodes the count-prefixed fixed-width FASL v1 relocation section.
+pub(super) fn decode_v1_section(
+    bytes: &[u8],
+    base_offset: usize,
+) -> Result<Vec<FaslRelocation>, FaslError> {
+    let mut reader = SectionReader::new(bytes, base_offset, FaslRejectReason::InvalidRelocation);
+    let count_offset = reader.absolute_position();
+    let count = bounded_count(reader.u32()?, count_offset)?;
+    let expected_length = count
+        .checked_mul(FASL_RELOCATION_RECORD_SIZE)
+        .and_then(|size| size.checked_add(4))
+        .ok_or_else(|| FaslError::at(FaslRejectReason::ResourceLimitExceeded, count_offset))?;
+    if expected_length != bytes.len() {
+        return Err(FaslError::at(
+            FaslRejectReason::InvalidRelocation,
+            count_offset,
+        ));
+    }
+    let mut items = Vec::with_capacity(count);
+    for _ in 0..count {
+        let record_offset = reader.absolute_position();
+        let code_object_id = reader.u32()?;
+        let write_offset = reader.u32()?;
+        let kind_offset = reader.absolute_position();
+        let kind = FaslRelocationKind::from_tag(reader.u32()?, kind_offset)?;
+        let target_kind_offset = reader.absolute_position();
+        let target_kind = FaslRelocationTarget::from_tag(reader.u32()?, target_kind_offset)?;
+        let target_index = reader.u32()?;
+        let addend = reader.i64()?;
+        let pair_id = reader.u32()?;
+        let relocation = FaslRelocation {
+            code_object_id,
+            write_offset,
+            kind,
+            target_kind,
+            target_index,
+            addend,
+            pair_id,
+        };
+        if items.last().is_some_and(|previous: &FaslRelocation| {
+            (previous.code_object_id, previous.write_offset)
+                >= (relocation.code_object_id, relocation.write_offset)
+        }) {
+            return Err(FaslError::at(
+                FaslRejectReason::InvalidRelocation,
+                record_offset,
+            ));
+        }
+        items.push(relocation);
+    }
+    reader.finish()?;
+    Ok(items)
+}
+
+/// Encodes FASL v1 relocation records in canonical code-object/site order.
+pub(super) fn encode_v1_section(items: &[FaslRelocation]) -> Result<Vec<u8>, FaslError> {
+    if items.len() > MAX_FASL_RECORDS {
+        return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
+    }
+    let count = u32::try_from(items.len())
+        .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
+    let mut ordered = items.to_vec();
+    ordered.sort_by_key(|item| (item.code_object_id, item.write_offset));
+    if ordered.windows(2).any(|pair| {
+        pair[0].code_object_id == pair[1].code_object_id
+            && pair[0].write_offset == pair[1].write_offset
+    }) {
+        return Err(FaslError::new(FaslRejectReason::InvalidRelocation));
+    }
+    let mut writer = SectionWriter::new();
+    writer.put_u32(count);
+    for item in ordered {
+        writer.put_u32(item.code_object_id);
+        writer.put_u32(item.write_offset);
+        writer.put_u32(item.kind.tag());
+        writer.put_u32(item.target_kind.tag());
+        writer.put_u32(item.target_index);
+        writer.put_i64(item.addend);
+        writer.put_u32(item.pair_id);
+    }
+    Ok(writer.into_bytes())
+}
+
+fn bounded_count(count: u32, offset: usize) -> Result<usize, FaslError> {
+    let count = usize::try_from(count)
+        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, offset))?;
+    if count > MAX_FASL_RECORDS {
+        return Err(FaslError::at(
+            FaslRejectReason::ResourceLimitExceeded,
+            offset,
+        ));
+    }
+    Ok(count)
 }

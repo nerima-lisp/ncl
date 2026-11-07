@@ -68,7 +68,7 @@ impl FaslRejectReason {
 pub struct FaslError {
     /// Stable category for runtime condition mapping.
     pub reason: FaslRejectReason,
-    /// Byte offset of the rejected field, when it came from serialized input.
+    /// Byte offset of the rejected input field when it can be identified.
     pub offset: Option<usize>,
 }
 

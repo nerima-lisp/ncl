@@ -25,6 +25,11 @@ from conformance_scoreboard import SOURCES, checkout_source
 
 RESULT_STATUSES = {"passed", "failed", "error", "timeout", "harness_error", "unexecuted"}
 PROTOCOL = "ANSI-TEST-SCOREBOARD"
+SBCL_VERSION = "2.6.10"
+POLICIES = {
+    "safety-3": "(declaim (optimize (safety 3)))",
+    "speed-3-safety-1": "(declaim (optimize (speed 3) (safety 1)))",
+}
 REMOVED_TEST_NAMES = ("LOAD-PATHNAME.1", "LOAD-TRUENAME.1")
 REMOVED_TEST_FORMS = "(cl-test::load-pathname.1 cl-test::load-truename.1)"
 
@@ -69,10 +74,27 @@ def _lisp_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _test_runner(test_name: str) -> str:
+def _policy_declaim(policy: str) -> str:
+    try:
+        return POLICIES[policy]
+    except KeyError as error:
+        raise ValueError(f"unsupported optimization policy: {policy}") from error
+
+
+def _protocol_record(record_type: str, *forms: str) -> str:
+    fields = [f'(write-string "{PROTOCOL}")', '(write-char #\\Tab)', f'(write-string "{record_type}")']
+    for form in forms:
+        fields.extend(("(write-char #\\Tab)", form))
+    fields.extend(("(terpri *standard-output*)", "(finish-output *standard-output*)"))
+    return "(progn " + " ".join(fields) + ")"
+
+
+def _test_runner(test_name: str, policy: str = "safety-3") -> str:
     test_symbol = _lisp_string(test_name)
+    policy_form = _policy_declaim(policy)
     return f'''(defvar *root-path*
   (make-pathname :name nil :type nil :version nil :defaults (truename "init.lsp")))
+{policy_form}
 (let ((*default-pathname-defaults* *root-path*))
   (load "gclload1.lsp"))
 (let ((*default-pathname-defaults* *root-path*))
@@ -82,26 +104,28 @@ def _test_runner(test_name: str) -> str:
 (let ((name (find-symbol {test_symbol} "CL-TEST")))
   (unless (and name (gethash name regression-test::*entries-table*))
     (error "No registered ANSI test named ~A" {test_symbol}))
-  (format *standard-output* "{PROTOCOL}~CBEGIN~C~A~%" #\\Tab #\\Tab (symbol-name name))
-  (finish-output *standard-output*)
+  {_protocol_record("BEGIN", "(princ (symbol-name name))")}
   (handler-case
       (let ((passed
               (let ((*default-pathname-defaults* regression-test::*sandbox-path*))
                 (regression-test:do-test name :catch-errors nil))))
-        (format *standard-output* "{PROTOCOL}~C~A~C~A~%"
-                #\\Tab (if passed "PASS" "FAIL") #\\Tab (symbol-name name)))
+        (if passed
+            {_protocol_record("PASS", "(princ (symbol-name name))")}
+            {_protocol_record("FAIL", "(princ (symbol-name name))")}))
     (error (condition)
-      (handler-case (format *error-output* "~A~%" condition) (error () nil))
-      (format *standard-output* "{PROTOCOL}~CERROR~C~A~%"
-              #\\Tab #\\Tab (symbol-name name))))
-  (format *standard-output* "{PROTOCOL}~CDONE~C~A~%" #\\Tab #\\Tab (symbol-name name))
-  (finish-output *standard-output*))
+      {_protocol_record("ERROR", "(princ (symbol-name name))", "(princ (type-of condition))")}
+      (handler-case
+          {_protocol_record("MESSAGE", "(princ (princ-to-string condition))")}
+        (error () {_protocol_record("MESSAGE", '(write-string "condition report unavailable")')}))))
+  {_protocol_record("DONE", "(princ (symbol-name name))")})
 '''
 
 
-def _baseline_runner() -> str:
+def _baseline_runner(policy: str = "safety-3") -> str:
+    policy_form = _policy_declaim(policy)
     return f'''(defvar *root-path*
   (make-pathname :name nil :type nil :version nil :defaults (truename "init.lsp")))
+{policy_form}
 (let ((*default-pathname-defaults* *root-path*))
   (load "gclload1.lsp"))
 (let ((original (symbol-function 'regression-test::add-entry))
@@ -117,17 +141,14 @@ def _baseline_runner() -> str:
       (load "gclload2.lsp"))
   (when *load-pathname*
     (mapc #'regression-test:rem-test '{REMOVED_TEST_FORMS}))
-  (format *standard-output* "{PROTOCOL}~CBEGIN~Cinventoried~%" #\\Tab #\\Tab)
-  (finish-output *standard-output*)
+  {_protocol_record("BEGIN", '(write-string "inventoried")')}
   (dolist (entry (cdr regression-test::*entries*))
     (let ((name (regression-test::name entry))
           (source (gethash (regression-test::name entry) sources)))
       (if (regression-test::has-disabled-note entry)
-          (format *standard-output* "{PROTOCOL}~CDISABLED~C~A~%" #\\Tab #\\Tab (symbol-name name))
-          (format *standard-output* "{PROTOCOL}~CENTRY~C~A~C~A~%"
-                  #\\Tab #\\Tab (symbol-name name) #\\Tab (namestring (truename source))))))
-  (format *standard-output* "{PROTOCOL}~CDONE~Cinventoried~%" #\\Tab #\\Tab)
-  (finish-output *standard-output*)
+          {_protocol_record("DISABLED", "(princ (symbol-name name))")}
+          {_protocol_record("ENTRY", "(princ (symbol-name name))", "(princ (namestring (truename source)))")})))
+  {_protocol_record("DONE", '(write-string "inventoried")')}
   (sb-ext:exit :code 0))
 '''
 
@@ -154,14 +175,29 @@ def _diagnostic(stderr: str, stdout: str) -> str | None:
 
 def _parse_records(stdout: str) -> dict[str, Any]:
     results: dict[str, str] = {}
+    conditions: dict[str, dict[str, str]] = {}
     sources: dict[str, str] = {}
     disabled: set[str] = set()
     begun: set[str] = set()
     done: set[str] = set()
+    last_error_name: str | None = None
+    message_name: str | None = None
+    message_lines: list[str] = []
+
+    def finish_message() -> None:
+        nonlocal message_name, message_lines
+        if message_name is not None:
+            conditions.setdefault(message_name, {})["message"] = "\n".join(message_lines).strip()
+        message_name = None
+        message_lines = []
+
     for line in stdout.splitlines():
         if not line.startswith(PROTOCOL + "\t"):
+            if message_name is not None:
+                message_lines.append(line)
             continue
-        parts = line.split("\t")
+        finish_message()
+        parts = line.split("\t", 3)
         if len(parts) == 3 and parts[1] == "DONE":
             if parts[2] in done:
                 raise ValueError(f"duplicate completion marker: {parts[2]}")
@@ -175,6 +211,18 @@ def _parse_records(stdout: str) -> dict[str, Any]:
             if name in results:
                 raise ValueError(f"duplicate test result: {name}")
             results[name] = {"PASS": "passed", "FAIL": "failed", "ERROR": "error"}[parts[1]]
+        elif len(parts) == 4 and parts[1] == "ERROR":
+            name = parts[2]
+            if name in results:
+                raise ValueError(f"duplicate test result: {name}")
+            results[name] = "error"
+            conditions[name] = {"condition_type": parts[3]}
+            last_error_name = name
+        elif len(parts) >= 3 and parts[1] == "MESSAGE":
+            message_name = last_error_name
+            if message_name is None or message_name not in conditions:
+                raise ValueError("condition message has no preceding error record")
+            message_lines = ["\t".join(parts[2:])]
         elif len(parts) == 4 and parts[1] == "ENTRY":
             if parts[2] in sources:
                 raise ValueError(f"duplicate test source: {parts[2]}")
@@ -185,7 +233,15 @@ def _parse_records(stdout: str) -> dict[str, Any]:
             disabled.add(parts[2])
         else:
             raise ValueError(f"invalid ANSI test protocol record: {line[:160]}")
-    return {"results": results, "sources": sources, "disabled": disabled, "begun": begun, "done": done}
+    finish_message()
+    return {
+        "results": results,
+        "conditions": conditions,
+        "sources": sources,
+        "disabled": disabled,
+        "begun": begun,
+        "done": done,
+    }
 
 
 def _run_process(
@@ -255,9 +311,10 @@ def _run_test_batch(
     source: Path,
     tests: Sequence[tuple[str, str]],
     timeout: float,
+    policy: str,
 ) -> list[dict[str, Any]]:
     return [
-        _run_test(command, source, name, chapter, timeout)
+        _run_test(command, source, name, chapter, timeout, policy)
         for name, chapter in tests
     ]
 
@@ -268,7 +325,9 @@ def _run_test_rows(
     tests: Sequence[tuple[str, str]],
     timeout: float,
     jobs: int,
+    policy: str = "safety-3",
 ) -> list[dict[str, Any]]:
+    _policy_declaim(policy)
     if jobs < 1:
         raise ValueError("jobs must be a positive integer")
     if not tests:
@@ -284,7 +343,7 @@ def _run_test_rows(
             batches.append(tests[index::worker_count])
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = [
-                executor.submit(_run_test_batch, command, worker_source, batch, timeout)
+                executor.submit(_run_test_batch, command, worker_source, batch, timeout, policy)
                 for worker_source, batch in zip(worker_sources, batches)
             ]
             rows = [row for future in futures for row in future.result()]
@@ -295,13 +354,15 @@ def _run_test_rows(
 def measure_baseline(
     command: Sequence[str], source: Path, timeout: float, jobs: int = 1,
     shard_index: int | None = None, shard_count: int | None = None,
+    policy: str = "safety-3",
 ) -> dict[str, Any]:
+    _policy_declaim(policy)
     _validate_shard(shard_index, shard_count)
     with tempfile.TemporaryDirectory(prefix="ansi-test-inventory-") as directory:
         inventory_source = Path(directory) / "ansi-test"
         _copy_suite_tree(source, inventory_source)
         process_status, stdout, stderr, returncode = _run_process(
-            command, inventory_source, _baseline_runner(), timeout=timeout,
+            command, inventory_source, _baseline_runner(policy), timeout=timeout,
         )
         if process_status != "process" or returncode != 0:
             raise RuntimeError(_diagnostic(stderr, stdout) or process_status)
@@ -322,11 +383,11 @@ def measure_baseline(
             for name, filename in sources.items()
             if _in_shard(name, shard_index, shard_count)
         ]
-    tests = _run_test_rows(command, source, test_chapters, timeout, jobs)
+    tests = _run_test_rows(command, source, test_chapters, timeout, jobs, policy)
     tests.sort(key=lambda row: (row["chapter"], row["name"]))
     report = _measurement(
         "sbcl", command, source, tests,
-        len(sources) + len(disabled) + len(REMOVED_TEST_NAMES), stdout, stderr,
+        len(sources) + len(disabled) + len(REMOVED_TEST_NAMES), stdout, stderr, policy,
     )
     report["active"] = len(tests)
     report["active_total"] = len(sources)
@@ -345,6 +406,44 @@ def measure_baseline(
     return report
 
 
+def _ncl_error_kind(diagnostic: str | None) -> str | None:
+    if not diagnostic:
+        return None
+    match = re.search(r"ncl:\s*object error:\s*([A-Za-z][A-Za-z0-9_-]*)", diagnostic, re.IGNORECASE)
+    return match.group(1) if match else None
+
+
+def failure_summary(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    default_classes = {
+        "failed": "assertion",
+        "error": "error",
+        "timeout": "timeout",
+        "harness_error": "harness",
+        "unexecuted": "incomplete",
+    }
+    for row in rows:
+        if row.get("status") == "passed":
+            continue
+        failure_class = str(row.get("failure_class") or default_classes.get(str(row.get("status")), "incomplete"))
+        subtype = str(row.get("condition_type") or row.get("error_kind") or "")
+        groups.setdefault((failure_class, subtype), []).append(row)
+    summary = []
+    for (failure_class, subtype), members in sorted(
+        groups.items(), key=lambda item: (-len(item[1]), item[0][0], item[0][1]),
+    ):
+        ordered = sorted(members, key=lambda row: (str(row.get("chapter", "")), str(row.get("name", ""))))
+        summary.append({
+            "failure_class": failure_class,
+            "condition_type": subtype or None,
+            "count": len(ordered),
+            "representative_tests": [str(row.get("name", "")) for row in ordered[:3]],
+            "chapters": sorted({str(row.get("chapter", "")) for row in ordered}),
+            "message": str(ordered[0].get("message") or ordered[0].get("reason") or ""),
+        })
+    return summary
+
+
 def _measurement(
     implementation: str,
     command: Sequence[str],
@@ -353,12 +452,14 @@ def _measurement(
     registered: int,
     stdout: str,
     stderr: str,
+    policy: str = "safety-3",
 ) -> dict[str, Any]:
     counts = Counter(test["status"] for test in tests)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "suite": "ansi-test",
         "implementation": implementation,
+        "policy": policy,
         "runtime_version": _runtime_version(command),
         "platform": _platform_name(),
         "measured_on": date.today().isoformat(),
@@ -374,6 +475,7 @@ def _measurement(
         "unexecuted": max(0, registered - len(tests)),
         "status": "complete",
         "tests": tests,
+        "failure_summary": failure_summary(tests),
         "first_error": next(
             (test.get("reason") for test in tests if test.get("reason")),
             _diagnostic(stderr, stdout),
@@ -399,13 +501,15 @@ def _run_test(
     name: str,
     chapter: str,
     timeout: float,
+    policy: str = "safety-3",
 ) -> dict[str, Any]:
     process_status, stdout, stderr, returncode = _run_process(
-        command, source, _test_runner(name), timeout=timeout,
+        command, source, _test_runner(name, policy), timeout=timeout,
     )
     diagnostic = _diagnostic(stderr, stdout)
     status: str
     reason: str | None = None
+    condition: Mapping[str, str] = {}
     if process_status == "timeout":
         status, reason = "timeout", diagnostic or f"test exceeded {timeout:g} seconds"
     elif process_status == "harness_error":
@@ -414,11 +518,12 @@ def _run_test(
         try:
             records = _parse_records(stdout)
         except ValueError as error:
-            records = {"results": {}, "begun": set(), "done": set()}
+            records = {"results": {}, "conditions": {}, "begun": set(), "done": set()}
             parse_error = str(error)
         else:
             parse_error = None
         result = records["results"].get(name)
+        condition = records.get("conditions", {}).get(name, {})
         began = name in records["begun"]
         completed = name in records["done"]
         if not began:
@@ -442,11 +547,52 @@ def _run_test(
                 reason = diagnostic or "ansi-test signaled an error"
             elif status == "failed":
                 reason = diagnostic or "ansi-test reported a test failure"
-    row: dict[str, Any] = {"name": name, "chapter": chapter, "status": status}
+    signal_number = -returncode if returncode is not None and returncode < 0 else None
+    error_kind = _ncl_error_kind(diagnostic)
+    if process_status == "timeout":
+        failure_class, termination = "timeout", "timeout"
+    elif process_status == "harness_error":
+        failure_class, termination = "harness", "spawn_error"
+    elif signal_number is not None:
+        failure_class, termination = "crash", "signal"
+    elif status == "failed":
+        failure_class, termination = "assertion", "exit"
+    elif condition.get("condition_type"):
+        failure_class, termination = "condition", "exit"
+    elif error_kind:
+        failure_class, termination = "ncl-error", "exit"
+    elif status == "error" and returncode not in (None, 0):
+        failure_class, termination = "exit", "exit"
+    elif status == "error":
+        failure_class, termination = "runner", "incomplete"
+    else:
+        failure_class, termination = None, "exit"
+    row: dict[str, Any] = {
+        "name": name,
+        "chapter": chapter,
+        "status": status,
+        "termination": termination,
+    }
+    if failure_class:
+        row["failure_class"] = failure_class
     if reason:
         row["reason"] = reason
+    if diagnostic:
+        row["diagnostic"] = diagnostic
     if returncode is not None:
         row["process_exit_status"] = returncode
+        if returncode >= 0:
+            row["exit_code"] = returncode
+    if signal_number is not None:
+        row["signal_number"] = signal_number
+    if condition.get("condition_type"):
+        row["condition_type"] = condition["condition_type"]
+    if condition.get("message"):
+        row["message"] = condition["message"]
+    elif reason:
+        row["message"] = reason
+    if error_kind:
+        row["error_kind"] = error_kind
     return row
 
 
@@ -460,7 +606,9 @@ def measure_tests(
     jobs: int = 1,
     shard_index: int | None = None,
     shard_count: int | None = None,
+    policy: str = "safety-3",
 ) -> dict[str, Any]:
+    _policy_declaim(policy)
     _validate_shard(shard_index, shard_count)
     if selected_test is not None and shard_index is not None:
         raise ValueError("a named test cannot be combined with shard selection")
@@ -470,9 +618,9 @@ def measure_tests(
         name: chapter for name, chapter in expected_tests.items()
         if _in_shard(name, shard_index, shard_count)
     }
-    tests = _run_test_rows(command, source, list(selected.items()), timeout, jobs)
+    tests = _run_test_rows(command, source, list(selected.items()), timeout, jobs, policy)
     result = _measurement(
-        implementation, command, source, tests, len(selected), "", "",
+        implementation, command, source, tests, len(selected), "", "", policy,
     )
     result["registered"] = len(selected)
     result["active"] = len(selected)
@@ -523,6 +671,15 @@ def compare_results(
         row = {"name": name, "chapter": chapter, "status": status}
         if reason:
             row["reason"] = str(reason)
+        if isinstance(result, Mapping):
+            for key in (
+                "failure_class", "condition_type", "message", "diagnostic", "error_kind",
+                "exit_code", "signal_number", "termination", "process_exit_status",
+            ):
+                if key in result:
+                    row[key] = result[key]
+            if not row.get("reason") and result.get("message"):
+                row["reason"] = str(result["message"])
         rows.append(row)
     t_ansi = [row for row in rows if row["status"] != "passed"]
     by_chapter: dict[str, Counter[str]] = {}
@@ -537,6 +694,7 @@ def compare_results(
             chapter: dict(sorted(counts.items()))
             for chapter, counts in sorted(by_chapter.items())
         },
+        "failure_summary": failure_summary(rows),
     }
 
 
@@ -571,8 +729,10 @@ def validate_same_day_baseline(baseline_path: Path, measurement: Mapping[str, An
         raise ValueError("SBCL baseline and NCL measurement must be from the same day")
     if metadata.get("platform") != measurement["platform"]:
         raise ValueError("SBCL baseline and NCL measurement must use the same platform")
-    if metadata.get("sbcl_version") != "2.6.0":
-        raise ValueError("SBCL baseline metadata must pin version 2.6.0")
+    if metadata.get("sbcl_version") != SBCL_VERSION:
+        raise ValueError(f"SBCL baseline metadata must pin version {SBCL_VERSION}")
+    if metadata.get("policy") != measurement.get("policy"):
+        raise ValueError("SBCL baseline and NCL measurement must use the same optimization policy")
     if metadata.get("source_commit") != SOURCES["ansi-test"]["commit"]:
         raise ValueError("SBCL baseline uses a different ansi-test commit")
 
@@ -584,11 +744,12 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"- Measured on: {report['measured_on']}",
         f"- Platform: {report['platform']}",
         f"- Implementation: {report['implementation']} ({report['runtime_version']})",
+        f"- Policy: {report.get('policy', 'unknown')}",
         f"- ansi-test commit: `{report['source_commit']}`",
         f"- Measurement status: {report['status']}",
     ])
     if comparison is None:
-        lines.extend(["", "ANSI inclusion comparison: unmeasured because no same-day SBCL 2.6.0 baseline was supplied."])
+        lines.extend(["", f"ANSI inclusion comparison: unmeasured because no same-day SBCL {SBCL_VERSION} baseline was supplied."])
         return "\n".join(lines) + "\n"
     lines.extend([
         "",
@@ -617,6 +778,17 @@ def render_markdown(report: Mapping[str, Any]) -> str:
             lines.append(f"| `{row['name']}` | {row['chapter']} | {row['status']} | {reason} |")
     else:
         lines.append("| none | - | - | - |")
+    if comparison.get("failure_summary"):
+        lines.extend(["", "## Failure reasons", "", "| Reason | Count | Representative tests | ANSI chapters | Message |", "| --- | ---: | --- | --- | --- |"])
+        for item in comparison["failure_summary"]:
+            reason = item["failure_class"]
+            if item.get("condition_type"):
+                reason += f" ({item['condition_type']})"
+            message = str(item.get("message", "")).replace("|", "\\|").replace("\n", " ")
+            lines.append(
+                f"| {reason} | {item['count']} | {', '.join(item['representative_tests'])} | "
+                f"{', '.join(item['chapters'])} | {message} |"
+            )
     if report.get("first_error"):
         lines.extend(["", f"First recorded error: {report['first_error']}"])
     return "\n".join(lines) + "\n"
@@ -646,8 +818,10 @@ def _parse_command(value: str) -> list[str]:
 def _write_baseline_files(report: Mapping[str, Any], output_prefix: Path) -> None:
     if report["status"] != "complete" or report["unexecuted"]:
         raise ValueError("cannot write a baseline from an incomplete measurement")
-    if report["runtime_version"] != "SBCL 2.6.0":
-        raise ValueError("baseline generation requires SBCL 2.6.0")
+    if report["runtime_version"] != f"SBCL {SBCL_VERSION}":
+        raise ValueError(f"baseline generation requires SBCL {SBCL_VERSION}")
+    policy = str(report.get("policy", ""))
+    _policy_declaim(policy)
     if report["active"] != len(report["tests"]):
         raise ValueError("baseline active test results do not match registration")
     passed = sorted(
@@ -672,7 +846,8 @@ def _write_baseline_files(report: Mapping[str, Any], output_prefix: Path) -> Non
         "",
         f"- Measured: {report['measured_on']}",
         f"- Platform: {report['platform']}",
-        f"- SBCL: 2.6.0",
+        f"- SBCL: {SBCL_VERSION}",
+        f"- Policy: {policy}",
         f"- ansi-test commit: `{report['source_commit']}`",
         f"- Registered tests: {report['registered']}",
         f"- Removed by the runner: {report['removed']} ({', '.join(REMOVED_TEST_NAMES)})",
@@ -713,6 +888,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="action", required=True)
     for action in ("baseline", "compare"):
         sub = subparsers.add_parser(action)
+        sub.add_argument("--policy", choices=tuple(POLICIES), required=True)
         sub.add_argument("--command", required=True, help="interpreter command prefix, for example 'sbcl --script'")
         sub.add_argument("--cache-dir", type=Path, default=Path(".cache/conformance"))
         sub.add_argument("--timeout", type=float, default=900.0, help="process timeout in seconds")
@@ -754,14 +930,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         source = _load_source(args.cache_dir, args.timeout)
         if args.action == "baseline":
             version = _runtime_version(command)
-            if version != "SBCL 2.6.0":
-                raise ValueError(f"baseline generation requires SBCL 2.6.0, got {version}")
+            if version != f"SBCL {SBCL_VERSION}":
+                raise ValueError(f"baseline generation requires SBCL {SBCL_VERSION}, got {version}")
             report = measure_baseline(
                 command, source, args.timeout, args.jobs,
-                args.shard_index, args.shard_count,
+                args.shard_index, args.shard_count, args.policy,
             )
             prefix = args.output_prefix or Path(
-                f"conformance/baselines/ansi-test-sbcl-2.6.0-{_platform_slug(report['platform'])}"
+                f"conformance/baselines/ansi-test-sbcl-{SBCL_VERSION}-{args.policy}-{_platform_slug(report['platform'])}"
             )
             _write_baseline_files(report, prefix)
             if args.report:
@@ -777,10 +953,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         validate_same_day_baseline(args.baseline, {
             "measured_on": date.today().isoformat(),
             "platform": _platform_name(),
+            "policy": args.policy,
         })
         report = measure_tests(
             command, source, expected, args.timeout, "ncl", getattr(args, "test", None), args.jobs,
-            args.shard_index, args.shard_count,
+            args.shard_index, args.shard_count, args.policy,
         )
         observed = {test["name"]: test for test in report["tests"]}
         comparison_baseline = {name: expected[name] for name in observed}

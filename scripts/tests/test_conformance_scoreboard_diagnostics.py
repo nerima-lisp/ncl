@@ -59,6 +59,7 @@ class ConformanceScoreboardDiagnosticsTests(unittest.TestCase):
                         "stage": "load",
                         "times": [],
                         "condition": "TypeError: class-0-0 is not a type specifier",
+                        "wall_time_seconds": 0.25,
                     },
                 },
             }) + "\n"

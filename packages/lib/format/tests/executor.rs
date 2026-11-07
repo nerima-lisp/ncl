@@ -2,7 +2,22 @@
 
 use ncl_lib_format::{FormatErrorKind, execute, parse};
 use ncl_object::{Runtime, ThreadContext, Word, make_string};
-use ncl_printer::StringSink;
+use ncl_printer::{CharSink, PrintError, StringSink};
+
+struct FailingSink {
+    remaining: usize,
+}
+
+impl CharSink for FailingSink {
+    fn write_char(&mut self, _character: char) -> Result<(), PrintError> {
+        if self.remaining == 0 {
+            Err(PrintError::Sink("closed".to_owned()))
+        } else {
+            self.remaining -= 1;
+            Ok(())
+        }
+    }
+}
 
 fn context() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().expect("runtime");
@@ -71,4 +86,20 @@ fn ampersand_does_not_add_a_second_newline_at_line_start() {
     let mut sink = StringSink::new();
     execute(&control, &[], &mut ctx, &runtime, &mut sink).expect("execute");
     assert_eq!(sink.into_string(), "a\nb");
+}
+
+#[test]
+fn directive_sink_errors_keep_the_directive_location() {
+    let (runtime, mut ctx) = context();
+    let control = parse("pre~A").expect("control");
+    let value = string(&runtime, &mut ctx, "value");
+    let mut sink = FailingSink { remaining: 3 };
+    let error =
+        execute(&control, &[value], &mut ctx, &runtime, &mut sink).expect_err("sink failure");
+    assert_eq!(error.position, 3);
+    assert_eq!(error.directive, Some('A'));
+    assert_eq!(
+        error.kind,
+        FormatErrorKind::Print(PrintError::Sink("closed".to_owned()))
+    );
 }

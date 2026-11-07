@@ -288,7 +288,8 @@ pub(crate) fn execute_control(
         match part {
             ControlPart::Literal(text) => output.write_str(text)?,
             ControlPart::Directive(directive) => {
-                let flow = execute_directive(state, directive, output)?;
+                let flow = execute_directive(state, directive, output)
+                    .map_err(|error| locate_output_error(error, directive))?;
                 if flow != Flow::Continue {
                     return Ok(flow);
                 }
@@ -296,6 +297,14 @@ pub(crate) fn execute_control(
         }
     }
     Ok(Flow::Continue)
+}
+
+fn locate_output_error(error: FormatError, directive: &Directive) -> FormatError {
+    if error.directive.is_none() && matches!(&error.kind, FormatErrorKind::Print(_)) {
+        FormatError::at(directive, error.kind)
+    } else {
+        error
+    }
 }
 
 fn execute_directive(

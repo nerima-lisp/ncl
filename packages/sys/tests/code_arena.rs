@@ -33,15 +33,21 @@ fn code_extents_are_page_rounded_in_order_and_reused() {
     assert_eq!(third_address, second_address + page);
     assert!(first_address + page <= second_address);
     assert!(second_address + page <= third_address);
+    #[cfg(target_os = "linux")]
+    assert!(proc_map_contains(first_address));
 
     drop(third);
     drop(second);
     drop(first);
+    #[cfg(target_os = "linux")]
+    assert!(!proc_map_contains(first_address));
 
     let reused = test_value(alloc_code(1), "allocation after arena retirement failed");
     assert_eq!(reused.address() % page, 0);
     #[cfg(target_os = "macos")]
     assert_eq!(reused.address(), first_address);
+    #[cfg(target_os = "linux")]
+    assert!(proc_map_contains(reused.address()));
 
     #[cfg(target_os = "macos")]
     assert!(matches!(
@@ -116,7 +122,7 @@ fn run_linux_stress_child() {
     let rss_increase_kib = peak_rss_kib.saturating_sub(baseline_rss_kib);
     let mapped_code_bytes = CODE_COUNT
         .checked_mul(page)
-        .expect("stress code size overflowed");
+        .unwrap_or_else(|| panic!("stress code size overflowed"));
     let arena_count = mapped_code_bytes.div_ceil(ARENA_SIZE);
     let maximum_map_increase = arena_count * 3 + 32;
     let map_increase = maps_after.saturating_sub(maps_before);
@@ -166,6 +172,27 @@ fn proc_map_count() -> usize {
         .unwrap_or_else(|error| panic!("could not read process VM maps: {error}"))
         .lines()
         .count()
+}
+
+#[cfg(target_os = "linux")]
+fn proc_map_contains(address: usize) -> bool {
+    let maps = std::fs::read_to_string("/proc/self/maps")
+        .unwrap_or_else(|error| panic!("could not read process VM maps: {error}"));
+    maps.lines().any(|line| {
+        let Some(range) = line.split_whitespace().next() else {
+            return false;
+        };
+        let Some((start, end)) = range.split_once('-') else {
+            return false;
+        };
+        let (Ok(start), Ok(end)) = (
+            usize::from_str_radix(start, 16),
+            usize::from_str_radix(end, 16),
+        ) else {
+            return false;
+        };
+        (start..end).contains(&address)
+    })
 }
 
 fn test_value<T>(result: Result<T, CodeError>, message: &str) -> T {

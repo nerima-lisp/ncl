@@ -1,68 +1,264 @@
-//! Minimal execution of the typed FORMAT control representation.
+//! Shared execution state and top-level directive dispatch.
 
-use ncl_object::{ObjectRef, Runtime, ThreadContext, Word, classify_object};
-use ncl_printer::{CharSink, PrintError, PrintOptions, write};
+use ncl_object::{
+    ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, classify_object,
+};
+use ncl_printer::{CharSink, PrintError, PrintOptions, StringSink, write};
 
-use crate::{ControlPart, Directive, DirectiveKind, FormatControl, Parameter};
+use crate::model::{ControlPart, Directive, DirectiveKind, FormatControl, Parameter};
+use crate::parser::ParseErrorKind;
 
-/// A failure while executing a FORMAT control.
+/// A FORMAT failure retains its location and typed cause.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FormatError {
+    pub position: usize,
+    pub directive: Option<char>,
+    pub kind: FormatErrorKind,
+}
+
+/// The reason a FORMAT directive could not be executed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum FormatError {
-    /// A value-consuming directive had no corresponding argument.
-    MissingArgument { directive: DirectiveKind },
-    /// A numeric parameter was not valid for the requested operation.
-    InvalidParameter { directive: DirectiveKind },
-    /// An integer directive received a non-integer object.
-    NonInteger { directive: DirectiveKind },
-    /// The underlying printer or sink failed.
+pub enum FormatErrorKind {
+    Parse(ParseErrorKind),
+    MissingArgument,
+    WrongArgumentType,
+    InvalidParameter,
+    InvalidDirectiveUse,
+    ImproperList,
     Print(PrintError),
+}
+
+impl FormatError {
+    pub(crate) const fn at(directive: &Directive, kind: FormatErrorKind) -> Self {
+        Self {
+            position: directive.position,
+            directive: Some(directive.kind.character()),
+            kind,
+        }
+    }
+
+    pub(crate) const fn new(
+        position: usize,
+        directive: Option<char>,
+        kind: FormatErrorKind,
+    ) -> Self {
+        Self {
+            position,
+            directive,
+            kind,
+        }
+    }
 }
 
 impl std::fmt::Display for FormatError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::MissingArgument { directive } => {
-                write!(formatter, "format: missing argument for ~{directive:?}")
-            }
-            Self::InvalidParameter { directive } => {
-                write!(formatter, "format: invalid parameter for ~{directive:?}")
-            }
-            Self::NonInteger { directive } => {
-                write!(formatter, "format: expected integer for ~{directive:?}")
-            }
-            Self::Print(error) => write!(formatter, "format: {error}"),
+        write!(formatter, "format error at offset {}", self.position)?;
+        if let Some(directive) = self.directive {
+            write!(formatter, " (~{directive})")?;
         }
+        write!(formatter, ": {:?}", self.kind)
     }
 }
 
 impl std::error::Error for FormatError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Print(error) => Some(error),
-            Self::MissingArgument { .. }
-            | Self::InvalidParameter { .. }
-            | Self::NonInteger { .. } => None,
+        match &self.kind {
+            FormatErrorKind::Print(error) => Some(error),
+            FormatErrorKind::Parse(_)
+            | FormatErrorKind::MissingArgument
+            | FormatErrorKind::WrongArgumentType
+            | FormatErrorKind::InvalidParameter
+            | FormatErrorKind::InvalidDirectiveUse
+            | FormatErrorKind::ImproperList => None,
         }
     }
 }
 
-impl From<PrintError> for FormatError {
-    fn from(value: PrintError) -> Self {
-        Self::Print(value)
+/// Execution may escape the current enclosing control construct.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Flow {
+    Continue,
+    Escape,
+    EscapeIterations,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ControlFrame {
+    Iteration {
+        colon: bool,
+        at_sign: bool,
+        last_sublist: bool,
+    },
+    LogicalBlock,
+    Justification,
+}
+
+pub(crate) struct ExecutionState<'a> {
+    pub(crate) arguments: &'a [Word],
+    pub(crate) index: usize,
+    pub(crate) previous_is_one: Option<bool>,
+    pub(crate) frames: Vec<ControlFrame>,
+    pub(crate) ctx: &'a mut ThreadContext,
+    pub(crate) runtime: &'a Runtime,
+}
+
+impl ExecutionState<'_> {
+    pub(crate) fn remaining(&self) -> usize {
+        self.arguments.len().saturating_sub(self.index)
+    }
+
+    pub(crate) fn take_argument(&mut self, directive: &Directive) -> Result<Word, FormatError> {
+        let value = self
+            .arguments
+            .get(self.index)
+            .copied()
+            .ok_or_else(|| FormatError::at(directive, FormatErrorKind::MissingArgument))?;
+        self.index += 1;
+        self.previous_is_one = Some(value == Word::fixnum(1));
+        Ok(value)
+    }
+
+    pub(crate) fn parameters(
+        &mut self,
+        directive: &Directive,
+    ) -> Result<Vec<Parameter>, FormatError> {
+        let mut parameters = Vec::with_capacity(directive.parameters.len());
+        for parameter in &directive.parameters {
+            parameters.push(match parameter {
+                Parameter::Relative => {
+                    let value = self.take_argument(directive)?;
+                    if value == Word::NIL {
+                        Parameter::Unsupplied
+                    } else {
+                        match classify_object(self.ctx, value) {
+                            ObjectRef::Character(codepoint) => {
+                                let character = char::from_u32(codepoint).ok_or_else(|| {
+                                    FormatError::at(directive, FormatErrorKind::WrongArgumentType)
+                                })?;
+                                Parameter::Character(character)
+                            }
+                            ObjectRef::Fixnum(integer) => Parameter::Integer(integer),
+                            ObjectRef::Bignum(_) => Parameter::Integer(
+                                integer_value(self.ctx, value).ok_or_else(|| {
+                                    FormatError::at(directive, FormatErrorKind::InvalidParameter)
+                                })?,
+                            ),
+                            _ => {
+                                return Err(FormatError::at(
+                                    directive,
+                                    FormatErrorKind::WrongArgumentType,
+                                ));
+                            }
+                        }
+                    }
+                }
+                Parameter::Remaining => {
+                    let remaining = i64::try_from(self.remaining()).map_err(|_| {
+                        FormatError::at(directive, FormatErrorKind::InvalidParameter)
+                    })?;
+                    Parameter::Integer(remaining)
+                }
+                other => other.clone(),
+            });
+        }
+        Ok(parameters)
     }
 }
 
-/// Execute a parsed FORMAT control against `arguments` and `sink`.
-///
-/// This deliberately implements only the value and control directives needed
-/// by the first execution layer. Arguments are borrowed, so execution does not
-/// create replacement Lisp values or alter their GC ownership.
+pub(crate) struct FormatOutput<'a> {
+    sink: &'a mut dyn CharSink,
+    pub(crate) column: usize,
+    pub(crate) line_start: bool,
+    pub(crate) margin: usize,
+    pub(crate) indentation: usize,
+    pub(crate) block_start: usize,
+    pub(crate) pretty: bool,
+}
+
+impl FormatOutput<'_> {
+    pub(crate) fn new(sink: &mut dyn CharSink) -> FormatOutput<'_> {
+        FormatOutput {
+            sink,
+            column: 0,
+            line_start: true,
+            margin: 80,
+            indentation: 0,
+            block_start: 0,
+            pretty: false,
+        }
+    }
+
+    pub(crate) fn write_char(&mut self, character: char) -> Result<(), FormatError> {
+        if self.line_start && character != '\n' {
+            for _ in 0..self.indentation {
+                self.sink
+                    .write_char(' ')
+                    .map_err(|error| FormatError::new(0, None, FormatErrorKind::Print(error)))?;
+                self.column = self.column.saturating_add(1);
+            }
+            self.line_start = false;
+        }
+        self.sink
+            .write_char(character)
+            .map_err(|error| FormatError::new(0, None, FormatErrorKind::Print(error)))?;
+        self.track(character);
+        Ok(())
+    }
+
+    pub(crate) fn write_str(&mut self, text: &str) -> Result<(), FormatError> {
+        for character in text.chars() {
+            self.write_char(character)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn print(
+        &mut self,
+        state: &mut ExecutionState<'_>,
+        value: Word,
+        options: &PrintOptions,
+        directive: &Directive,
+    ) -> Result<(), FormatError> {
+        let rendered = self.render(state, value, options, directive)?;
+        self.write_str(&rendered).map_err(|error| match error.kind {
+            FormatErrorKind::Print(print) => {
+                FormatError::at(directive, FormatErrorKind::Print(print))
+            }
+            _ => error,
+        })
+    }
+
+    pub(crate) fn render(
+        &mut self,
+        state: &mut ExecutionState<'_>,
+        value: Word,
+        options: &PrintOptions,
+        directive: &Directive,
+    ) -> Result<String, FormatError> {
+        let mut sink = StringSink::new();
+        write(state.ctx, state.runtime, value, &mut sink, options)
+            .map_err(|error| FormatError::at(directive, FormatErrorKind::Print(error)))?;
+        Ok(sink.into_string())
+    }
+
+    fn track(&mut self, character: char) {
+        if character == '\n' {
+            self.column = 0;
+            self.line_start = true;
+        } else {
+            self.column = self.column.saturating_add(1);
+            self.line_start = false;
+        }
+    }
+}
+
+/// Execute a parsed control string and return the number of consumed arguments.
 ///
 /// # Errors
 ///
-/// Returns [`FormatError`] when an argument is missing or has the wrong type,
-/// a directive parameter is invalid, or the printer cannot write to the sink.
+/// Returns a located, typed error when a directive cannot consume or print its
+/// arguments.
 pub fn execute(
     control: &FormatControl,
     arguments: &[Word],
@@ -70,147 +266,112 @@ pub fn execute(
     runtime: &Runtime,
     sink: &mut dyn CharSink,
 ) -> Result<usize, FormatError> {
-    let mut argument_index = 0;
-    let mut line_start = true;
+    let mut state = ExecutionState {
+        arguments,
+        index: 0,
+        previous_is_one: None,
+        frames: Vec::new(),
+        ctx,
+        runtime,
+    };
+    let mut output = FormatOutput::new(sink);
+    let _ = execute_control(&mut state, control, &mut output)?;
+    Ok(state.index)
+}
+
+pub(crate) fn execute_control(
+    state: &mut ExecutionState<'_>,
+    control: &FormatControl,
+    output: &mut FormatOutput<'_>,
+) -> Result<Flow, FormatError> {
     for part in &control.parts {
         match part {
-            ControlPart::Literal(text) => {
-                sink.write_str(text).map_err(FormatError::from)?;
-                line_start = text.ends_with('\n') || (line_start && text.is_empty());
-            }
+            ControlPart::Literal(text) => output.write_str(text)?,
             ControlPart::Directive(directive) => {
-                execute_directive(
-                    directive,
-                    arguments,
-                    &mut argument_index,
-                    ctx,
-                    runtime,
-                    sink,
-                    &mut line_start,
-                )?;
+                let flow = execute_directive(state, directive, output)?;
+                if flow != Flow::Continue {
+                    return Ok(flow);
+                }
             }
         }
     }
-    Ok(argument_index)
+    Ok(Flow::Continue)
 }
 
 fn execute_directive(
-    directive: &Directive,
-    arguments: &[Word],
-    argument_index: &mut usize,
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    sink: &mut dyn CharSink,
-    line_start: &mut bool,
-) -> Result<(), FormatError> {
-    let mut state = ExecutionState {
-        arguments,
-        argument_index,
-        ctx,
-        runtime,
-        sink,
-        line_start,
-    };
-    match directive.kind {
-        DirectiveKind::A => execute_value_directive(
-            directive,
-            &mut state,
-            PrintOptions::new().with_escape(false),
-        )?,
-        DirectiveKind::S => execute_value_directive(
-            directive,
-            &mut state,
-            PrintOptions::new().with_escape(true).with_readably(true),
-        )?,
-        DirectiveKind::D => {
-            execute_value_directive(directive, &mut state, PrintOptions::new().with_base(10))?;
-        }
-        DirectiveKind::B => {
-            execute_value_directive(directive, &mut state, PrintOptions::new().with_base(2))?;
-        }
-        DirectiveKind::O => {
-            execute_value_directive(directive, &mut state, PrintOptions::new().with_base(8))?;
-        }
-        DirectiveKind::X => {
-            execute_value_directive(directive, &mut state, PrintOptions::new().with_base(16))?;
-        }
-        DirectiveKind::Percent => {
-            let count = repeat_count(directive)?;
-            for _ in 0..count {
-                state.sink.write_char('\n').map_err(FormatError::from)?;
-            }
-            *state.line_start = count > 0;
-        }
-        DirectiveKind::Ampersand => {
-            if !*state.line_start {
-                state.sink.write_char('\n').map_err(FormatError::from)?;
-            }
-            *state.line_start = true;
-        }
-        DirectiveKind::Tilde => {
-            let count = repeat_count(directive)?;
-            for _ in 0..count {
-                state.sink.write_char('~').map_err(FormatError::from)?;
-            }
-            *state.line_start = false;
-        }
-    }
-    Ok(())
-}
-
-struct ExecutionState<'a> {
-    arguments: &'a [Word],
-    argument_index: &'a mut usize,
-    ctx: &'a mut ThreadContext,
-    runtime: &'a Runtime,
-    sink: &'a mut dyn CharSink,
-    line_start: &'a mut bool,
-}
-
-fn execute_value_directive(
-    directive: &Directive,
     state: &mut ExecutionState<'_>,
-    options: PrintOptions,
-) -> Result<(), FormatError> {
-    let value = state.arguments.get(*state.argument_index).copied().ok_or(
-        FormatError::MissingArgument {
-            directive: directive.kind,
-        },
-    )?;
-    *state.argument_index += 1;
-    if matches!(
-        directive.kind,
-        DirectiveKind::D | DirectiveKind::B | DirectiveKind::O | DirectiveKind::X
-    ) && !is_integer(state.ctx, value)
-    {
-        return Err(FormatError::NonInteger {
-            directive: directive.kind,
-        });
+    directive: &Directive,
+    output: &mut FormatOutput<'_>,
+) -> Result<Flow, FormatError> {
+    match directive.kind {
+        DirectiveKind::A
+        | DirectiveKind::S
+        | DirectiveKind::W
+        | DirectiveKind::C
+        | DirectiveKind::Plural
+        | DirectiveKind::Percent
+        | DirectiveKind::Ampersand
+        | DirectiveKind::Bar
+        | DirectiveKind::Tilde
+        | DirectiveKind::Newline => {
+            crate::text::execute(directive, state, output)?;
+            Ok(Flow::Continue)
+        }
+        DirectiveKind::D
+        | DirectiveKind::B
+        | DirectiveKind::O
+        | DirectiveKind::X
+        | DirectiveKind::R
+        | DirectiveKind::F
+        | DirectiveKind::E
+        | DirectiveKind::G
+        | DirectiveKind::Dollar => {
+            crate::numeric::execute(directive, state, output)?;
+            Ok(Flow::Continue)
+        }
+        DirectiveKind::Star
+        | DirectiveKind::Conditional
+        | DirectiveKind::Iteration
+        | DirectiveKind::Recursive
+        | DirectiveKind::CaseConversion
+        | DirectiveKind::UpArrow => crate::control::execute(directive, state, output),
+        DirectiveKind::Underscore
+        | DirectiveKind::LogicalBlock
+        | DirectiveKind::Indent
+        | DirectiveKind::Slash
+        | DirectiveKind::Tab
+        | DirectiveKind::Justification => {
+            crate::pretty::execute(directive, state, output)?;
+            Ok(Flow::Continue)
+        }
     }
-    write(state.ctx, state.runtime, value, state.sink, &options)?;
-    *state.line_start = false;
-    Ok(())
 }
 
-fn repeat_count(directive: &Directive) -> Result<usize, FormatError> {
-    match directive.parameters.first() {
-        None | Some(Parameter::Unsupplied) => Ok(1),
-        Some(Parameter::Integer(value)) if *value >= 0 => {
-            usize::try_from(*value).map_err(|_| FormatError::InvalidParameter {
-                directive: directive.kind,
-            })
+pub(crate) fn integer_value(ctx: &ThreadContext, value: Word) -> Option<i64> {
+    match classify_object(ctx, value) {
+        ObjectRef::Fixnum(integer) => Some(integer),
+        ObjectRef::Bignum(word) => {
+            let bignum = ncl_object::Bignum::from_word(word);
+            let limbs = bignum_limbs(ctx, bignum).ok()?;
+            let mut magnitude = 0_u64;
+            for (index, limb) in limbs.into_iter().enumerate() {
+                match index {
+                    0 => magnitude = u64::from(limb),
+                    1 => magnitude |= u64::from(limb) << 32,
+                    _ if limb == 0 => {}
+                    _ => return None,
+                }
+            }
+            if bignum_sign(ctx, bignum).ok()? {
+                if magnitude == 1_u64 << 63 {
+                    Some(i64::MIN)
+                } else {
+                    i64::try_from(magnitude).ok()?.checked_neg()
+                }
+            } else {
+                i64::try_from(magnitude).ok()
+            }
         }
-        Some(Parameter::Integer(_) | Parameter::Character(_) | Parameter::Relative) => {
-            Err(FormatError::InvalidParameter {
-                directive: directive.kind,
-            })
-        }
+        _ => None,
     }
-}
-
-fn is_integer(ctx: &ThreadContext, value: Word) -> bool {
-    matches!(
-        classify_object(ctx, value),
-        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)
-    )
 }

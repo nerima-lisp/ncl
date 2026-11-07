@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -30,7 +31,7 @@ jobs:
           if-no-files-found: error
 
   ansi-shard:
-    name: Measure ANSI shard ${{ matrix.shard }}
+    name: Measure ANSI shard ${{ matrix.shard }} (${{ matrix.policy }})
     needs: ncl-build
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -39,6 +40,7 @@ jobs:
       max-parallel: 8
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+        policy: [safety-3, speed-3-safety-1]
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
@@ -53,50 +55,55 @@ jobs:
       - name: Prepare shard outputs and NCL binary
         env:
           SHARD_INDEX: ${{ matrix.shard }}
+          POLICY: ${{ matrix.policy }}
         run: |
           mkdir -p "$RUNNER_TEMP/ansi-shard"
           chmod +x "$RUNNER_TEMP/ncl-release/ncl"
-      - name: Build SBCL 2.6.0
+      - name: Build SBCL 2.6.10
         run: |
-          archive="$RUNNER_TEMP/sbcl-2.6.0-x86-64-linux-binary.tar.bz2"
+          archive="$RUNNER_TEMP/sbcl-2.6.10-x86-64-linux-binary.tar.bz2"
           curl --fail --location --retry 3 \
             --output "$archive" \
-            https://sourceforge.net/projects/sbcl/files/sbcl/2.6.0/sbcl-2.6.0-x86-64-linux-binary.tar.bz2/download
+            https://sourceforge.net/projects/sbcl/files/sbcl/2.6.10/sbcl-2.6.10-x86-64-linux-binary.tar.bz2/download
           printf '%s  %s\n' \
-            3fbfe948f5da020ed1dc153dd10cdfeb1480b46d35c2bb16605bb5c27292a59d \
+            96e26b0be3aa6ca2a3f03dfd5fc117647fffb96790a9c235e8dcf27df2eba726 \
             "$archive" | sha256sum --check --strict
           tar -xjf "$archive" -C "$RUNNER_TEMP"
-          sbcl_dir="$RUNNER_TEMP/sbcl-2.6.0-x86-64-linux"
-          sbcl_prefix="$RUNNER_TEMP/sbcl-2.6.0"
+          sbcl_dir="$RUNNER_TEMP/sbcl-2.6.10-x86-64-linux"
+          sbcl_prefix="$RUNNER_TEMP/sbcl-2.6.10"
           (
             cd "$sbcl_dir"
             sh ./install.sh --prefix="$sbcl_prefix"
           )
           sbcl_bin="$sbcl_prefix/bin/sbcl"
           sbcl_version="$("$sbcl_bin" --version)"
-          test "$sbcl_version" = "SBCL 2.6.0"
+          test "$sbcl_version" = "SBCL 2.6.10"
           printf 'SBCL_BIN=%s\n' "$sbcl_bin" >> "$GITHUB_ENV"
       - name: Measure SBCL shard
         env:
           SHARD_INDEX: ${{ matrix.shard }}
+          POLICY: ${{ matrix.policy }}
         run: |
           python3 scripts/ansi_test_inclusion.py baseline \
+            --policy "$POLICY" \
             --command "$SBCL_BIN --script" \
             --cache-dir "$RUNNER_TEMP/ncl-conformance" \
             --timeout 900 \
             --jobs 4 \
             --shard-index "$SHARD_INDEX" \
             --shard-count 32 \
-            --output-prefix "$RUNNER_TEMP/ansi-shard/sbcl" \
+            --output-prefix "$RUNNER_TEMP/ansi-shard/sbcl-$POLICY" \
             --report "$RUNNER_TEMP/ansi-shard/sbcl-report.json"
       - name: Compare NCL shard
         env:
           SHARD_INDEX: ${{ matrix.shard }}
+          POLICY: ${{ matrix.policy }}
         run: |
           set +e
           python3 scripts/ansi_test_inclusion.py compare \
+            --policy "$POLICY" \
             --command "$RUNNER_TEMP/ncl-release/ncl --load" \
-            --baseline "$RUNNER_TEMP/ansi-shard/sbcl.txt" \
+            --baseline "$RUNNER_TEMP/ansi-shard/sbcl-$POLICY.txt" \
             --cache-dir "$RUNNER_TEMP/ncl-conformance" \
             --timeout 900 \
             --jobs 4 \
@@ -114,7 +121,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ansi-shard-${{ matrix.shard }}
+          name: ansi-shard-${{ matrix.shard }}-${{ matrix.policy }}
           path: ${{ runner.temp }}/ansi-shard/
           if-no-files-found: error
 
@@ -144,19 +151,79 @@ jobs:
         run: chmod +x "$RUNNER_TEMP/ncl-release/ncl"
       - name: Merge complete ANSI shards
         run: |
-          python3 scripts/merge_ansi_test_shards.py \
-            --artifacts-dir "$RUNNER_TEMP/ansi-shards" \
-            --shards 32 \
-            --baseline-prefix "$RUNNER_TEMP/ansi-test-sbcl-2.6.0-linux-x86_64" \
-            --baseline-report "$RUNNER_TEMP/ansi-test-sbcl-report.json" \
-            --comparison-report "$RUNNER_TEMP/ansi-test-ncl-report.json"
+          for policy in safety-3 speed-3-safety-1; do
+            python3 scripts/merge_ansi_test_shards.py \
+              --policy "$policy" \
+              --artifacts-dir "$RUNNER_TEMP/ansi-shards" \
+              --shards 32 \
+              --baseline-prefix "$RUNNER_TEMP/ansi-test-sbcl-2.6.10-$policy-linux-x86_64" \
+              --baseline-report "$RUNNER_TEMP/ansi-test-sbcl-report-$policy.json" \
+              --comparison-report "$RUNNER_TEMP/ansi-test-ncl-report-$policy.json"
+          done
+      - name: Find latest successful scoreboard run on the default branch
+        id: previous_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          run_data="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/scoreboard.yml/runs?branch=$DEFAULT_BRANCH&status=success&per_page=1" \
+            --jq '.workflow_runs[0] | if . == null then empty else "\(.id)\t\(.head_sha)" end')"
+          run_id=""
+          head_sha=""
+          if [[ -n "$run_data" ]]; then
+            IFS=$'\t' read -r run_id head_sha <<< "$run_data"
+          fi
+          artifact_id=""
+          if [[ -n "$run_id" ]]; then
+            artifact_id="$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" \
+              --jq '.artifacts[] | select(.name == "conformance-scoreboard" and (.expired | not)) | .id' \
+              | head -n 1)"
+          fi
+          if [[ -n "$artifact_id" ]]; then
+            printf 'run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+            printf 'head_sha=%s\n' "$head_sha" >> "$GITHUB_OUTPUT"
+          else
+            printf 'run_id=\n' >> "$GITHUB_OUTPUT"
+            printf 'head_sha=\n' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v4
+        if: steps.previous_run.outputs.run_id != ''
+        with:
+          name: conformance-scoreboard
+          run-id: ${{ steps.previous_run.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/previous-scoreboard
+      - name: Select previous scoreboard report
+        id: previous_report
+        env:
+          PREVIOUS_RUN_SHA: ${{ steps.previous_run.outputs.head_sha }}
+        run: |
+          report=""
+          if [[ -d "$RUNNER_TEMP/previous-scoreboard" && -n "$PREVIOUS_RUN_SHA" ]]; then
+            report="$(find "$RUNNER_TEMP/previous-scoreboard" -type f -name "*-$PREVIOUS_RUN_SHA.json" -print -quit)"
+          fi
+          printf 'path=%s\n' "$report" >> "$GITHUB_OUTPUT"
       - name: Run scoreboard harness
+        env:
+          PREVIOUS_REPORT: ${{ steps.previous_report.outputs.path }}
         run: |
           mkdir -p conformance/scoreboard
+          previous_args=()
+          if [[ -n "$PREVIOUS_REPORT" ]]; then
+            previous_args+=(--previous-report "$PREVIOUS_REPORT")
+          fi
+          commit_date="$(git log -1 --format=%cs "$GITHUB_SHA")"
           python3 scripts/conformance_scoreboard.py \
             --cache-dir "$RUNNER_TEMP/ncl-conformance-scoreboard" \
             --timeout 21000 \
-            --ansi-report "$RUNNER_TEMP/ansi-test-ncl-report.json" \
+            --ansi-report "safety-3=$RUNNER_TEMP/ansi-test-ncl-report-safety-3.json" \
+            --ansi-report "speed-3-safety-1=$RUNNER_TEMP/ansi-test-ncl-report-speed-3-safety-1.json" \
+            --commit-sha "$GITHUB_SHA" \
+            --commit-date "$commit_date" \
+            "${previous_args[@]}" \
             --cl-bench-command "${GITHUB_WORKSPACE}/conformance/cl-bench/ncl-driver.sh ${RUNNER_TEMP}/ncl-release/ncl default" \
             --output "conformance/scoreboard/$(date -u +%F)-${GITHUB_SHA}.json"
       - name: Require every shard job to succeed
@@ -168,7 +235,7 @@ jobs:
           name: conformance-scoreboard
           path: |
             conformance/scoreboard/
-            ${{ runner.temp }}/ansi-test-sbcl-2.6.0-linux-x86_64.*
-            ${{ runner.temp }}/ansi-test-sbcl-report.json
-            ${{ runner.temp }}/ansi-test-ncl-report.json
+            ${{ runner.temp }}/ansi-test-sbcl-2.6.10-*-linux-x86_64.*
+            ${{ runner.temp }}/ansi-test-sbcl-report-*.json
+            ${{ runner.temp }}/ansi-test-ncl-report-*.json
           if-no-files-found: warn

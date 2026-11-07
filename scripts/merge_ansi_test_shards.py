@@ -29,8 +29,9 @@ def _check_identity(
     implementation: str,
     shard_index: int,
     shard_count: int,
+    policy: str,
 ) -> None:
-    if report.get("schema_version") != 1 or report.get("suite") != "ansi-test":
+    if report.get("schema_version") != 2 or report.get("suite") != "ansi-test":
         raise ValueError("shard report has an unsupported schema or suite")
     if report.get("implementation") != implementation:
         raise ValueError(f"expected {implementation} shard report")
@@ -38,6 +39,8 @@ def _check_identity(
         raise ValueError("shard report is incomplete")
     if report.get("shard_index") != shard_index or report.get("shard_count") != shard_count:
         raise ValueError("shard report identity does not match its artifact")
+    if report.get("policy") != policy:
+        raise ValueError("shard report optimization policy does not match its artifact")
     if report.get("source_commit") != inclusion.SOURCES["ansi-test"]["commit"]:
         raise ValueError("shard report uses a different ansi-test source commit")
     if not report.get("platform") or not report.get("measured_on"):
@@ -182,13 +185,15 @@ def merge_shards(
     baseline_prefix: Path,
     baseline_report_path: Path,
     comparison_report_path: Path,
+    policy: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    inclusion._policy_declaim(policy)
     if shard_count < 1:
         raise ValueError("shard count must be positive")
     baseline_reports: list[dict[str, Any]] = []
     compare_reports: list[dict[str, Any]] = []
     for index in range(shard_count):
-        artifact = artifacts_dir / f"ansi-shard-{index}"
+        artifact = artifacts_dir / f"ansi-shard-{index}-{policy}"
         baseline_reports.append(_read_report(artifact / "sbcl-report.json"))
         compare_reports.append(_read_report(artifact / "ncl-report.json"))
 
@@ -199,9 +204,10 @@ def merge_shards(
     for index, report in enumerate(baseline_reports):
         _check_identity(
             report, implementation="sbcl", shard_index=index, shard_count=shard_count,
+            policy=policy,
         )
-        if report.get("runtime_version") != "SBCL 2.6.0":
-            raise ValueError("SBCL shard does not use SBCL 2.6.0")
+        if report.get("runtime_version") != f"SBCL {inclusion.SBCL_VERSION}":
+            raise ValueError(f"SBCL shard does not use SBCL {inclusion.SBCL_VERSION}")
         current_identity = (str(report["measured_on"]), str(report["platform"]))
         if identity is None:
             identity = current_identity
@@ -232,10 +238,11 @@ def merge_shards(
     baseline_counts = Counter(row["status"] for row in baseline_tests)
     first_baseline = baseline_reports[0]
     merged_baseline: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "suite": "ansi-test",
         "implementation": "sbcl",
-        "runtime_version": "SBCL 2.6.0",
+        "runtime_version": f"SBCL {inclusion.SBCL_VERSION}",
+        "policy": policy,
         "platform": identity[1],
         "measured_on": identity[0],
         "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
@@ -253,6 +260,7 @@ def merge_shards(
         "unexecuted": baseline_counts["unexecuted"],
         "status": "complete",
         "tests": baseline_tests,
+        "failure_summary": inclusion.failure_summary(baseline_tests),
         "manifest": [
             {"name": name, "chapter": chapter}
             for name, chapter in sorted(baseline_manifest.items(), key=lambda item: (item[1], item[0]))
@@ -271,6 +279,7 @@ def merge_shards(
     for index, report in enumerate(compare_reports):
         _check_identity(
             report, implementation="ncl", shard_index=index, shard_count=shard_count,
+            policy=policy,
         )
         current_identity = (
             str(report["measured_on"]), str(report["platform"]), str(report.get("runtime_version", "")),
@@ -289,7 +298,7 @@ def merge_shards(
         }
         current_rows = _validate_compare_rows(
             report, expected_for_shard, index, shard_count,
-            artifacts_dir / f"ansi-shard-{index}",
+            artifacts_dir / f"ansi-shard-{index}-{policy}",
         )
         overlap = observed_rows.keys() & current_rows.keys()
         if overlap:
@@ -303,10 +312,12 @@ def merge_shards(
     observed_counts = Counter(row["status"] for row in observed_tests)
     comparison = inclusion.compare_results(passing_baseline, observed_rows)
     merged_comparison: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "suite": "ansi-test",
         "implementation": "ncl",
         "runtime_version": compare_identity[2],
+        "baseline_runtime_version": f"SBCL {inclusion.SBCL_VERSION}",
+        "policy": policy,
         "platform": compare_identity[1],
         "measured_on": compare_identity[0],
         "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
@@ -322,6 +333,7 @@ def merge_shards(
         "status": "complete",
         "tests": observed_tests,
         "comparison": comparison,
+        "failure_summary": comparison["failure_summary"],
         "first_error": next(
             (row.get("reason") for row in observed_tests if row.get("reason")), None,
         ),
@@ -346,11 +358,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--baseline-prefix", type=Path, required=True)
     parser.add_argument("--baseline-report", type=Path, required=True)
     parser.add_argument("--comparison-report", type=Path, required=True)
+    parser.add_argument("--policy", choices=tuple(inclusion.POLICIES), required=True)
     args = parser.parse_args(argv)
     try:
         merge_shards(
             args.artifacts_dir, args.shards, args.baseline_prefix,
-            args.baseline_report, args.comparison_report,
+            args.baseline_report, args.comparison_report, args.policy,
         )
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
         parser.exit(1, f"ansi-test shard merge: {error}\n")

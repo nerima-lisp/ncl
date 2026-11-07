@@ -35,6 +35,8 @@ MAX_STDERR_TAIL_CHARS = 4000
 CL_BENCH_STAGES = frozenset({"load", "register", "execute", "finish"})
 CL_BENCH_STATUSES = frozenset({"passed", "failed", "disabled", "timeout"})
 CL_BENCH_CHECKPOINT_ENV = "NCL_CL_BENCH_CHECKPOINT"
+ANSI_POLICIES = ("safety-3", "speed-3-safety-1")
+SBCL_BASELINE_VERSION = "SBCL 2.6.10"
 
 _QUOTED_PATH_PATTERNS = tuple(
     re.compile(
@@ -521,36 +523,181 @@ def _stderr_tail(stderr: str) -> tuple[str, bool]:
     return stderr[-MAX_STDERR_TAIL_CHARS:], truncated
 
 
+def _test_map(rows: Any) -> dict[str, Mapping[str, Any]]:
+    if not isinstance(rows, list):
+        return {}
+    tests: dict[str, Mapping[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("name"), str):
+            raise ValueError("ANSI report contains an invalid test row")
+        name = row["name"]
+        if name in tests:
+            raise ValueError(f"ANSI report contains a duplicate test: {name}")
+        tests[name] = row
+    return tests
+
+
+def _policy_deltas(
+    policy: str,
+    current: Mapping[str, Any],
+    previous: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    unavailable = {"available": False, "reason": "previous scoreboard report was not available"}
+    if previous is None:
+        return unavailable
+    previous_ansi = previous.get("ansi-test")
+    if not isinstance(previous_ansi, dict) or not isinstance(previous_ansi.get("policies"), dict):
+        return {
+            "available": False,
+            "reason": "previous scoreboard has no policy-specific ANSI reports (legacy artifact)",
+        }
+    previous_policy = previous_ansi["policies"].get(policy)
+    if not isinstance(previous_policy, dict):
+        return {"available": False, "reason": f"previous scoreboard has no {policy} result"}
+    current_identity = current["identity"]
+    previous_identity = previous_policy.get("identity")
+    if not isinstance(previous_identity, dict):
+        return {"available": False, "reason": "previous policy result is missing its run identity"}
+    if previous_identity.get("policy") != policy:
+        return {"available": False, "reason": "previous policy identity is incompatible"}
+    for field, label in (
+        ("platform", "platform"),
+        ("source_commit", "ansi-test source"),
+        ("baseline_runtime_version", "SBCL baseline runtime"),
+    ):
+        if previous_identity.get(field) != current_identity.get(field):
+            return {"available": False, "reason": f"previous {label} is incompatible"}
+    old_tests = _test_map(previous_policy.get("tests"))
+    new_tests = _test_map(current.get("tests"))
+    if not old_tests or not new_tests:
+        return {"available": False, "reason": "previous or current report has no test-level results"}
+    if old_tests.keys() != new_tests.keys():
+        return {"available": False, "reason": "previous and current ANSI test sets differ"}
+    new_pass = []
+    new_fail = []
+    for name in sorted(new_tests):
+        old_row, new_row = old_tests[name], new_tests[name]
+        old_status, new_status = old_row.get("status"), new_row.get("status")
+        if old_status != "passed" and new_status == "passed":
+            delta = {"name": name, "chapter": new_row.get("chapter"), "previous_status": old_status}
+            new_pass.append(delta)
+        elif old_status == "passed" and new_status != "passed":
+            delta = {
+                "name": name,
+                "chapter": new_row.get("chapter"),
+                "previous_status": old_status,
+                "status": new_status,
+            }
+            for field in ("failure_class", "condition_type", "error_kind", "message", "reason"):
+                if field in new_row:
+                    delta[field] = new_row[field]
+            new_fail.append(delta)
+    return {
+        "available": True,
+        "previous_commit_sha": previous.get("run", {}).get("commit_sha"),
+        "new_pass_count": len(new_pass),
+        "new_pass": new_pass,
+        "new_fail_count": len(new_fail),
+        "new_fail": new_fail,
+    }
+
+
+def _ansi_scoreboard(
+    reports: Mapping[str, Mapping[str, Any]],
+    previous: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if set(reports) != set(ANSI_POLICIES):
+        raise ValueError(f"ANSI reports must include exactly: {', '.join(ANSI_POLICIES)}")
+    shared_fields = ("measured_on", "platform", "source_commit", "runtime_version", "baseline_runtime_version")
+    shared_identity: dict[str, Any] | None = None
+    policies: dict[str, Any] = {}
+    for policy in ANSI_POLICIES:
+        report = reports[policy]
+        if report.get("status") != "complete" or report.get("implementation") != "ncl":
+            raise ValueError(f"{policy} ANSI report is incomplete or is not an NCL report")
+        if report.get("policy") != policy:
+            raise ValueError(f"{policy} ANSI report has a different policy identity")
+        comparison = report.get("comparison")
+        if not isinstance(comparison, dict) or not isinstance(comparison.get("t_ansi"), list):
+            raise ValueError(f"{policy} ANSI report has no test comparison")
+        if int(comparison.get("t_ansi_count", -1)) != len(comparison["t_ansi"]):
+            raise ValueError(f"{policy} ANSI report missing-test count does not match its test rows")
+        if report.get("baseline_runtime_version") != SBCL_BASELINE_VERSION:
+            raise ValueError(f"{policy} ANSI report does not use {SBCL_BASELINE_VERSION}")
+        identity = {field: report.get(field) for field in shared_fields}
+        if not all(identity.get(field) for field in shared_fields):
+            raise ValueError(f"{policy} ANSI report is missing run identity metadata")
+        if shared_identity is None:
+            shared_identity = identity
+        elif identity != shared_identity:
+            raise ValueError("policy reports differ in date, platform, source, or runtime version")
+        tests = report.get("tests")
+        if not isinstance(tests, list):
+            raise ValueError(f"{policy} ANSI report has no per-test results")
+        test_by_name = _test_map(tests)
+        if len(test_by_name) != int(comparison.get("expected", -1)):
+            raise ValueError(f"{policy} ANSI report test count does not match its comparison")
+        sbcl_pass_ncl_fail = [dict(row) for row in comparison["t_ansi"]]
+        policy_result: dict[str, Any] = {
+            "status": "failed" if comparison.get("t_ansi_count", len(sbcl_pass_ncl_fail)) else "passed",
+            "passed": int(report.get("passed", comparison.get("passed", 0))),
+            "failed": int(report.get("failed", 0)),
+            "error": int(report.get("error", 0)),
+            "timeout": int(report.get("timeout", 0)),
+            "harness_error": int(report.get("harness_error", 0)),
+            "unexecuted": int(report.get("unexecuted", 0)),
+            "failure_reasons": report.get("failure_summary", comparison.get("failure_summary", [])),
+            "sbcl_pass_ncl_fail": sbcl_pass_ncl_fail,
+            "tests": tests,
+            "comparison": comparison,
+            "identity": {**identity, "policy": policy},
+        }
+        policy_result["delta"] = _policy_deltas(policy, policy_result, previous)
+        policies[policy] = policy_result
+    if shared_identity is None:
+        raise ValueError("no ANSI policy reports were supplied")
+    return {
+        "status": "failed" if any(item["status"] == "failed" for item in policies.values()) else "passed",
+        "platform": shared_identity["platform"],
+        "source_commit": shared_identity["source_commit"],
+        "sbcl_version": shared_identity["baseline_runtime_version"],
+        "policies": policies,
+    }
+
+
 def make_scoreboard(
     ansi: ProcessResult,
     ansi_counts: Mapping[str, int] | None,
     bench: ProcessResult,
     bench_times: Sequence[float] | None,
-    ansi_report: Mapping[str, Any] | None = None,
+    ansi_reports: Mapping[str, Mapping[str, Any]] | None = None,
     bench_report: Mapping[str, Any] | None = None,
     bench_driver_error: str | None = None,
     bench_progress: Mapping[str, Any] | None = None,
+    legacy_ansi_report: Mapping[str, Any] | None = None,
+    previous_report: Mapping[str, Any] | None = None,
+    commit_sha: str = "unknown",
+    commit_date: str | None = None,
 ) -> dict[str, Any]:
-    """Build a JSON-serializable scoreboard from two process results."""
+    """Build a JSON-serializable scoreboard from ANSI policies and cl-bench."""
     ansi_data: dict[str, Any] = {"status": ansi.status}
-    if (
-        ansi.status == "passed"
-        and ansi_report is not None
-        and ansi_report.get("status") == "unmeasured"
-    ):
-        ansi_data["status"] = "unmeasured"
-        if ansi_report.get("reason"):
-            ansi_data["reason"] = str(ansi_report["reason"])
-    if ansi_counts is not None:
-        ansi_data.update({key: int(ansi_counts[key]) for key in ("passed", "failed", "unexecuted")})
-    if ansi_report is not None:
-        for key in ("error", "timeout", "harness_error"):
-            if key in ansi_report:
-                ansi_data[key] = int(ansi_report[key])
-        if isinstance(ansi_report.get("tests"), list):
-            ansi_data["tests"] = ansi_report["tests"]
-        if isinstance(ansi_report.get("comparison"), dict):
-            ansi_data["comparison"] = ansi_report["comparison"]
+    if ansi_reports is not None:
+        ansi_data = _ansi_scoreboard(ansi_reports, previous_report)
+    else:
+        if legacy_ansi_report is not None and ansi.status == "passed" and legacy_ansi_report.get("status") == "unmeasured":
+            ansi_data["status"] = "unmeasured"
+            if legacy_ansi_report.get("reason"):
+                ansi_data["reason"] = str(legacy_ansi_report["reason"])
+        if ansi_counts is not None:
+            ansi_data.update({key: int(ansi_counts[key]) for key in ("passed", "failed", "unexecuted")})
+        if legacy_ansi_report is not None:
+            for key in ("error", "timeout", "harness_error"):
+                if key in legacy_ansi_report:
+                    ansi_data[key] = int(legacy_ansi_report[key])
+            if isinstance(legacy_ansi_report.get("tests"), list):
+                ansi_data["tests"] = legacy_ansi_report["tests"]
+            if isinstance(legacy_ansi_report.get("comparison"), dict):
+                ansi_data["comparison"] = legacy_ansi_report["comparison"]
     bench_status = bench.status
     if bench_status == "passed" and (
         bench_driver_error is not None
@@ -594,13 +741,15 @@ def make_scoreboard(
     if signal_number is not None:
         bench_data["signal_number"] = signal_number
     bench_data["stderr_tail"], bench_data["stderr_truncated"] = _stderr_tail(bench.stderr)
+    measured_on = date.today().isoformat()
     return {
-        "schema_version": 2,
-        "measured_on": (
-            str(ansi_report.get("measured_on"))
-            if ansi_report is not None and ansi_report.get("measured_on")
-            else date.today().isoformat()
-        ),
+        "schema_version": 3,
+        "run": {
+            "commit_sha": commit_sha,
+            "commit_date": commit_date or measured_on,
+            "measured_on": measured_on,
+        },
+        "measured_on": measured_on,
         "sources": SOURCES,
         "ansi-test": ansi_data,
         "cl-bench": bench_data,
@@ -611,8 +760,12 @@ def render_markdown(scoreboard: Mapping[str, Any]) -> str:
     ansi = scoreboard["ansi-test"]
     bench = scoreboard["cl-bench"]
     lines = ["# Conformance scoreboard", "", "| suite | status | result |", "| --- | --- | --- |"]
-    counts = ""
-    if ansi["status"] == "unmeasured":
+    if isinstance(ansi.get("policies"), dict):
+        counts = "; ".join(
+            f"{policy}: {result['passed']} passed, {len(result['sbcl_pass_ncl_fail'])} failed"
+            for policy, result in ansi["policies"].items()
+        )
+    elif ansi["status"] == "unmeasured":
         counts = str(ansi.get("reason", "no reason supplied"))
     elif "passed" in ansi:
         counts = f"{ansi['passed']} passed, {ansi['failed']} failed, {ansi['unexecuted']} unexecuted"
@@ -629,12 +782,30 @@ def render_markdown(scoreboard: Mapping[str, Any]) -> str:
     lines.extend(["", "| suite | commit |", "| --- | --- |"])
     for name in ("ansi-test", "cl-bench"):
         lines.append(f"| {name} | `{scoreboard['sources'][name]['commit']}` |")
-    test_rows = [row for row in ansi.get("tests", []) if row["status"] != "passed"]
-    if test_rows:
-        lines.extend(["", "## ANSI test outcomes", "", "| Test | Status | Reason |", "| --- | --- | --- |"])
-        for row in test_rows:
-            reason = str(row.get("reason", "")).replace("|", "\\|").replace("\n", " ")
-            lines.append(f"| `{row['name']}` | {row['status']} | {reason} |")
+    for policy, policy_result in ansi.get("policies", {}).items():
+        lines.extend(["", f"## ANSI tests: {policy}", "", "| Test | Chapter | Status | Reason |", "| --- | --- | --- | --- |"])
+        test_rows = policy_result["sbcl_pass_ncl_fail"]
+        if test_rows:
+            for row in test_rows:
+                reason = str(row.get("reason", row.get("message", ""))).replace("|", "\\|").replace("\n", " ")
+                lines.append(f"| `{row['name']}` | {row.get('chapter', '')} | {row['status']} | {reason} |")
+        else:
+            lines.append("| none | - | passed | - |")
+        delta = policy_result["delta"]
+        if delta["available"]:
+            lines.extend([
+                "",
+                f"Previous-run delta: {delta['new_pass_count']} new passes, {delta['new_fail_count']} new failures.",
+            ])
+        else:
+            lines.extend(["", f"Previous-run delta unavailable: {delta['reason']}."])
+    if not ansi.get("policies"):
+        test_rows = [row for row in ansi.get("tests", []) if row["status"] != "passed"]
+        if test_rows:
+            lines.extend(["", "## ANSI test outcomes", "", "| Test | Status | Reason |", "| --- | --- | --- |"])
+            for row in test_rows:
+                reason = str(row.get("reason", "")).replace("|", "\\|").replace("\n", " ")
+                lines.append(f"| `{row['name']}` | {row['status']} | {reason} |")
     return "\n".join(lines) + "\n"
 
 
@@ -642,11 +813,34 @@ def _command(value: str | None) -> list[str] | None:
     return shlex.split(value) if value else None
 
 
+def _read_ansi_reports(specs: Sequence[str]) -> dict[str, Mapping[str, Any]]:
+    reports: dict[str, Mapping[str, Any]] = {}
+    for spec in specs:
+        policy, separator, path_text = spec.partition("=")
+        if not separator or policy not in ANSI_POLICIES or not path_text:
+            raise ValueError("--ansi-report must use POLICY=PATH for a supported policy")
+        if policy in reports:
+            raise ValueError(f"duplicate ANSI report for policy {policy}")
+        value = json.loads(Path(path_text).read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError(f"ANSI report for {policy} must be a JSON object")
+        reports[policy] = value
+    if set(reports) != set(ANSI_POLICIES):
+        raise ValueError(f"supply one --ansi-report for each policy: {', '.join(ANSI_POLICIES)}")
+    return reports
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache-dir", type=Path, default=Path(".cache/conformance"))
     parser.add_argument("--ansi-command", help="command emitting {passed,failed,unexecuted} JSON")
-    parser.add_argument("--ansi-report", type=Path, help="read a completed ANSI report JSON directly")
+    parser.add_argument(
+        "--ansi-report", action="append", default=[], metavar="POLICY=PATH",
+        help="read a completed NCL report for one optimization policy (repeat once per policy)",
+    )
+    parser.add_argument("--previous-report", type=Path, help="previous successful scoreboard JSON for per-test deltas")
+    parser.add_argument("--commit-sha", default=os.environ.get("GITHUB_SHA", "unknown"))
+    parser.add_argument("--commit-date", help="date of the measured commit in YYYY-MM-DD form")
     parser.add_argument(
         "--cl-bench-command",
         help="command emitting {status, times, benchmarks} JSON",
@@ -660,10 +854,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     ansi_command = _command(args.ansi_command)
     bench_command = _command(args.cl_bench_command)
-    if (ansi_command is None) == (args.ansi_report is None) or bench_command is None:
-        parser.error("supply exactly one of --ansi-command and --ansi-report, plus --cl-bench-command")
+    if (ansi_command is None) == (not args.ansi_report) or bench_command is None:
+        parser.error("supply exactly one of --ansi-command and policy-specific --ansi-report values, plus --cl-bench-command")
+    if not args.commit_sha.strip():
+        parser.error("--commit-sha cannot be empty")
     try:
-        if args.ansi_report is None:
+        commit_date = date.fromisoformat(args.commit_date).isoformat() if args.commit_date else date.today().isoformat()
+    except ValueError:
+        parser.error("--commit-date must be an ISO date")
+    ansi_reports = None
+    if args.ansi_report:
+        try:
+            ansi_reports = _read_ansi_reports(args.ansi_report)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+            parser.exit(1, f"scoreboard: ANSI reports are invalid: {error}\n")
+    previous_report = None
+    if args.previous_report is not None:
+        try:
+            previous_report = json.loads(args.previous_report.read_text(encoding="utf-8"))
+            if not isinstance(previous_report, dict):
+                raise ValueError("previous scoreboard must be a JSON object")
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            parser.exit(1, f"scoreboard: previous report is invalid: {error}\n")
+    try:
+        if ansi_reports is None:
             ansi_source = checkout_source(
                 "ansi-test",
                 args.cache_dir,
@@ -682,31 +896,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as error:
         parser.exit(1, f"scoreboard: source acquisition failed: {error}\n")
-    ansi_report = None
-    if args.ansi_report is None:
+    legacy_ansi_report = None
+    if ansi_reports is not None:
+        ansi = ProcessResult("passed", 0)
+        ansi_counts = None
+    else:
         assert ansi_command is not None and ansi_source is not None
         ansi = run_command(ansi_command, cwd=ansi_source, timeout=args.timeout)
-    else:
-        try:
-            ansi_report = _json_output(ProcessResult(
-                "passed", 0, args.ansi_report.read_text(encoding="utf-8"),
-            ))
-            comparison = ansi_report.get("comparison")
-            if ansi_report.get("status") != "complete" or not isinstance(comparison, dict):
-                raise ValueError("ANSI report must contain a completed comparison")
-            missing_count = int(comparison.get("t_ansi_count", -1))
-            if missing_count < 0:
-                raise ValueError("ANSI report comparison has an invalid missing-test count")
-            ansi_status = "failed" if missing_count else "passed"
-            ansi_returncode = 1 if ansi_status == "failed" else 0
-            ansi = ProcessResult(
-                ansi_status, ansi_returncode, json.dumps(ansi_report), "",
-            )
-        except (OSError, ValueError, TypeError) as error:
-            parser.exit(1, f"scoreboard: ANSI report is invalid: {error}\n")
-    ansi_counts = None
-    if args.ansi_report is not None:
-        ansi_counts = {key: int(ansi_report[key]) for key in ("passed", "failed", "unexecuted")}
+        ansi_counts = None
+        if ansi.stdout:
+            legacy_ansi_report = _json_output(ansi)
+            ansi_counts = {key: int(legacy_ansi_report[key]) for key in ("passed", "failed", "unexecuted")}
     bench_times = None
     bench_report = None
     bench_driver_error = None
@@ -735,9 +935,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 bench_driver_error = str(error)
             else:
                 bench_times = bench_report["times"]
-    if ansi.stdout and args.ansi_report is None:
-        ansi_report = _json_output(ansi)
-        ansi_counts = {key: int(ansi_report[key]) for key in ("passed", "failed", "unexecuted")}
     if bench.status != "timeout" and not bench.stdout:
         bench_driver_error = "cl-bench runner stdout was empty"
     scoreboard = make_scoreboard(
@@ -745,10 +942,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         ansi_counts,
         bench,
         bench_times,
-        ansi_report,
-        bench_report,
-        bench_driver_error,
-        bench_progress,
+        ansi_reports=ansi_reports,
+        bench_report=bench_report,
+        bench_driver_error=bench_driver_error,
+        bench_progress=bench_progress,
+        legacy_ansi_report=legacy_ansi_report,
+        previous_report=previous_report,
+        commit_sha=args.commit_sha,
+        commit_date=commit_date,
     )
     output = render_markdown(scoreboard) if args.format == "markdown" else json.dumps(scoreboard, indent=2, sort_keys=True)
     output = output if output.endswith("\n") else output + "\n"

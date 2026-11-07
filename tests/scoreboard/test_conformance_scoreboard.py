@@ -66,6 +66,35 @@ class ScoreboardTests(unittest.TestCase):
         report_text = "".join(call.args[0] for call in stdout.write.call_args_list)
         return exit_status, json.loads(report_text)
 
+    def _ansi_policy_report(self, policy, rows, measured_on="2026-10-17"):
+        expected = {row["name"]: row["chapter"] for row in rows}
+        observed = {row["name"]: row for row in rows}
+        comparison = inclusion.compare_results(expected, observed)
+        counts = Counter(row["status"] for row in rows)
+        return {
+            "schema_version": 2,
+            "suite": "ansi-test",
+            "implementation": "ncl",
+            "policy": policy,
+            "status": "complete",
+            "runtime_version": "NCL 0.1.1",
+            "baseline_runtime_version": scoreboard.SBCL_BASELINE_VERSION,
+            "platform": "Linux x86_64",
+            "measured_on": measured_on,
+            "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+            "registered": len(rows),
+            "active": len(rows),
+            "passed": counts["passed"],
+            "failed": counts["failed"],
+            "error": counts["error"],
+            "timeout": counts["timeout"],
+            "harness_error": counts["harness_error"],
+            "unexecuted": counts["unexecuted"],
+            "tests": rows,
+            "comparison": comparison,
+            "failure_summary": comparison["failure_summary"],
+        }
+
     def test_classifies_success_failure_timeout_and_signal_crash(self):
         self.assertEqual(scoreboard.classify_process(0), "passed")
         self.assertEqual(scoreboard.classify_process(1), "failed")
@@ -99,7 +128,7 @@ class ScoreboardTests(unittest.TestCase):
 
         bench = report["cl-bench"]
         self.assertEqual(exit_status, 1)
-        self.assertEqual(report["schema_version"], 2)
+        self.assertEqual(report["schema_version"], 3)
         self.assertEqual(bench["status"], "timeout")
         self.assertEqual(bench["driver_status"], "partial")
         self.assertEqual(
@@ -295,7 +324,8 @@ class ScoreboardTests(unittest.TestCase):
             "comparison": {"t_ansi": [{"name": "A.1", "status": "error"}]},
         }
         result = scoreboard.make_scoreboard(
-            ansi, {"passed": 3, "failed": 1, "unexecuted": 2}, bench, [1, 4], ansi_report,
+            ansi, {"passed": 3, "failed": 1, "unexecuted": 2}, bench, [1, 4],
+            legacy_ansi_report=ansi_report,
         )
         self.assertEqual(result["ansi-test"]["failed"], 1)
         self.assertEqual(result["ansi-test"]["error"], 1)
@@ -308,28 +338,21 @@ class ScoreboardTests(unittest.TestCase):
         self.assertIn(scoreboard.SOURCES["cl-bench"]["commit"], markdown)
 
     def test_scoreboard_accepts_merged_ansi_report_directly(self):
-        ansi_report = {
-            "status": "complete",
-            "measured_on": "2026-10-17",
-            "passed": 0,
-            "failed": 0,
-            "error": 1,
-            "timeout": 0,
-            "harness_error": 0,
-            "unexecuted": 0,
-            "tests": [{
-                "name": "A.1", "chapter": "arrays", "status": "error",
-                "reason": "ReadEvalUnavailable", "process_exit_status": 1,
-            }],
-            "comparison": {
-                "expected": 1, "passed": 0, "t_ansi_count": 1,
-                "t_ansi": [{"name": "A.1", "chapter": "arrays", "status": "error", "reason": "ReadEvalUnavailable"}],
-                "by_chapter": {"arrays": {"error": 1}},
-            },
+        rows = [{
+            "name": "A.1", "chapter": "arrays", "status": "error",
+            "reason": "ReadEvalUnavailable", "failure_class": "ncl-error",
+            "termination": "exit", "exit_code": 1, "process_exit_status": 1,
+        }]
+        ansi_reports = {
+            policy: self._ansi_policy_report(policy, rows)
+            for policy in scoreboard.ANSI_POLICIES
         }
         with TemporaryDirectory() as directory:
-            report_path = Path(directory) / "ansi.json"
-            report_path.write_text(json.dumps(ansi_report), encoding="utf-8")
+            report_paths = {}
+            for policy, report in ansi_reports.items():
+                report_path = Path(directory) / f"{policy}.json"
+                report_path.write_text(json.dumps(report), encoding="utf-8")
+                report_paths[policy] = report_path
             with patch.object(scoreboard, "checkout_source", return_value=Path(directory)) as checkout:
                 with patch.object(
                     scoreboard, "run_command",
@@ -351,16 +374,95 @@ class ScoreboardTests(unittest.TestCase):
                 ):
                     with patch.object(sys, "stdout") as stdout:
                         status = scoreboard.main([
-                            "--ansi-report", str(report_path), "--cl-bench-command", "bench",
+                            "--ansi-report", f"safety-3={report_paths['safety-3']}",
+                            "--ansi-report", f"speed-3-safety-1={report_paths['speed-3-safety-1']}",
+                            "--commit-sha", "0123456789abcdef",
+                            "--commit-date", "2026-10-17",
+                            "--cl-bench-command", "bench",
                         ])
 
         result = json.loads("".join(call.args[0] for call in stdout.write.call_args_list))
         self.assertEqual(status, 0)
         self.assertEqual(checkout.call_args.args[0], "cl-bench")
-        self.assertEqual(result["measured_on"], "2026-10-17")
+        self.assertEqual(result["run"]["commit_sha"], "0123456789abcdef")
+        self.assertEqual(result["run"]["commit_date"], "2026-10-17")
         self.assertEqual(result["ansi-test"]["status"], "failed")
-        self.assertEqual(result["ansi-test"]["tests"][0]["process_exit_status"], 1)
-        self.assertEqual(result["ansi-test"]["comparison"]["t_ansi_count"], 1)
+        self.assertEqual(set(result["ansi-test"]["policies"]), set(scoreboard.ANSI_POLICIES))
+        safety = result["ansi-test"]["policies"]["safety-3"]
+        self.assertEqual(safety["sbcl_pass_ncl_fail"][0]["process_exit_status"], 1)
+        self.assertEqual(safety["comparison"]["t_ansi_count"], 1)
+        self.assertFalse(safety["delta"]["available"])
+        self.assertIn("not available", safety["delta"]["reason"])
+
+    def test_policy_deltas_compare_test_statuses_and_reject_incompatible_history(self):
+        previous_reports = {
+            "safety-3": self._ansi_policy_report("safety-3", [
+                {"name": "A.1", "chapter": "arrays", "status": "error"},
+                {"name": "A.2", "chapter": "arrays", "status": "passed"},
+            ]),
+            "speed-3-safety-1": self._ansi_policy_report("speed-3-safety-1", [
+                {"name": "A.1", "chapter": "arrays", "status": "passed"},
+                {"name": "A.2", "chapter": "arrays", "status": "error"},
+            ]),
+        }
+        previous = scoreboard.make_scoreboard(
+            scoreboard.ProcessResult("passed", 0), None,
+            scoreboard.ProcessResult("passed", 0), [1],
+            ansi_reports=previous_reports, commit_sha="previous-sha",
+        )
+        current_reports = {
+            "safety-3": self._ansi_policy_report("safety-3", [
+                {"name": "A.1", "chapter": "arrays", "status": "passed"},
+                {"name": "A.2", "chapter": "arrays", "status": "error", "failure_class": "condition"},
+            ]),
+            "speed-3-safety-1": self._ansi_policy_report("speed-3-safety-1", [
+                {"name": "A.1", "chapter": "arrays", "status": "passed"},
+                {"name": "A.2", "chapter": "arrays", "status": "passed"},
+            ]),
+        }
+        current = scoreboard.make_scoreboard(
+            scoreboard.ProcessResult("passed", 0), None,
+            scoreboard.ProcessResult("passed", 0), [1],
+            ansi_reports=current_reports, previous_report=previous, commit_sha="current-sha",
+        )
+        safety_delta = current["ansi-test"]["policies"]["safety-3"]["delta"]
+        speed_delta = current["ansi-test"]["policies"]["speed-3-safety-1"]["delta"]
+        self.assertEqual(safety_delta["new_pass"][0]["name"], "A.1")
+        self.assertEqual(safety_delta["new_fail"][0]["name"], "A.2")
+        self.assertEqual(speed_delta["new_pass"][0]["name"], "A.2")
+        self.assertEqual(safety_delta["previous_commit_sha"], "previous-sha")
+
+        legacy = scoreboard.make_scoreboard(
+            scoreboard.ProcessResult("passed", 0), None,
+            scoreboard.ProcessResult("passed", 0), [1],
+            ansi_reports=current_reports, previous_report={"ansi-test": {"passed": 1}},
+        )
+        self.assertFalse(legacy["ansi-test"]["policies"]["safety-3"]["delta"]["available"])
+        self.assertIn("legacy", legacy["ansi-test"]["policies"]["safety-3"]["delta"]["reason"])
+
+        current_safety = current["ansi-test"]["policies"]["safety-3"]
+        for field, value, reason in (
+            ("policy", "speed-3-safety-1", "policy"),
+            ("platform", "macOS arm64", "platform"),
+            ("source_commit", "different-source", "source"),
+            ("baseline_runtime_version", "SBCL 2.6.0", "SBCL baseline runtime"),
+        ):
+            incompatible = json.loads(json.dumps(previous))
+            incompatible["ansi-test"]["policies"]["safety-3"]["identity"][field] = value
+            delta = scoreboard._policy_deltas("safety-3", current_safety, incompatible)
+            self.assertFalse(delta["available"])
+            self.assertIn(reason, delta["reason"])
+
+    def test_policy_reports_reject_mixed_policy_identity(self):
+        reports = {
+            policy: self._ansi_policy_report(policy, [
+                {"name": "A.1", "chapter": "arrays", "status": "passed"},
+            ])
+            for policy in scoreboard.ANSI_POLICIES
+        }
+        reports["speed-3-safety-1"]["policy"] = "safety-3"
+        with self.assertRaisesRegex(ValueError, "different policy"):
+            scoreboard._ansi_scoreboard(reports, None)
 
     def test_empty_benchmark_samples_are_reported_without_a_mean(self):
         ansi = scoreboard.ProcessResult("passed", 0)
@@ -390,7 +492,7 @@ class ScoreboardTests(unittest.TestCase):
                     inclusion, "_run_test",
                     return_value={"name": "A.1", "chapter": "printer/format", "status": "passed", "process_exit_status": 0},
                 ):
-                    with patch.object(inclusion, "_runtime_version", return_value="SBCL 2.6.0"):
+                    with patch.object(inclusion, "_runtime_version", return_value="SBCL 2.6.10"):
                         report = inclusion.measure_baseline(["sbcl", "--script"], source, 1)
 
         self.assertEqual(
@@ -425,7 +527,7 @@ class ScoreboardTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             with patch.object(
                 inclusion, "_run_test",
-                side_effect=lambda command, source, name, chapter, timeout: {
+                side_effect=lambda command, source, name, chapter, timeout, policy="safety-3": {
                     "name": name, "chapter": chapter, "status": "passed",
                     "process_exit_status": 0,
                 },
@@ -441,7 +543,7 @@ class ScoreboardTests(unittest.TestCase):
         self.assertEqual(report["shard_index"], shard_index)
         self.assertEqual(report["shard_count"], shard_count)
 
-    def _write_shard_fixtures(self, root: Path, shard_count: int = 2):
+    def _write_shard_fixtures(self, root: Path, shard_count: int = 2, policy="safety-3"):
         names = [f"T.{index}" for index in range(20)]
         manifest = [
             {"name": name, "chapter": "arrays" if index % 2 else "symbols"}
@@ -467,13 +569,14 @@ class ScoreboardTests(unittest.TestCase):
             if name != "T.19"
         }
         for index in range(shard_count):
-            artifact = root / f"ansi-shard-{index}"
+            artifact = root / f"ansi-shard-{index}-{policy}"
             artifact.mkdir(parents=True)
             sbcl_rows = baseline_rows[index]
             sbcl_counts = Counter(row["status"] for row in sbcl_rows)
             sbcl_report = {
-                "schema_version": 1, "suite": "ansi-test", "implementation": "sbcl",
-                "runtime_version": "SBCL 2.6.0", "platform": inclusion._platform_name(),
+                "schema_version": 2, "suite": "ansi-test", "implementation": "sbcl",
+                "runtime_version": "SBCL 2.6.10", "policy": policy,
+                "platform": inclusion._platform_name(),
                 "measured_on": date.today().isoformat(),
                 "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
                 "registered": len(manifest) + len(inclusion.REMOVED_TEST_NAMES),
@@ -500,8 +603,9 @@ class ScoreboardTests(unittest.TestCase):
             ]
             ncl_counts = Counter(row["status"] for row in ncl_rows)
             ncl_report = {
-                "schema_version": 1, "suite": "ansi-test", "implementation": "ncl",
-                "runtime_version": "NCL", "platform": inclusion._platform_name(),
+                "schema_version": 2, "suite": "ansi-test", "implementation": "ncl",
+                "runtime_version": "NCL", "baseline_runtime_version": "SBCL 2.6.10",
+                "policy": policy, "platform": inclusion._platform_name(),
                 "measured_on": date.today().isoformat(),
                 "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
                 "registered": len(ncl_rows), "active": len(ncl_rows),
@@ -522,12 +626,12 @@ class ScoreboardTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             expected = self._write_shard_fixtures(root)
-            baseline_prefix = root / "baseline" / "ansi-test-sbcl-2.6.0-linux-x86_64"
+            baseline_prefix = root / "baseline" / "ansi-test-sbcl-2.6.10-safety-3-linux-x86_64"
             baseline_json = root / "baseline-report.json"
             comparison_json = root / "ncl-report.json"
 
             baseline, comparison = merge.merge_shards(
-                root, 2, baseline_prefix, baseline_json, comparison_json,
+                root, 2, baseline_prefix, baseline_json, comparison_json, "safety-3",
             )
             self.assertEqual(inclusion.load_baseline(Path(str(baseline_prefix) + ".txt")), expected)
             self.assertEqual(baseline["active_total"], 20)
@@ -550,20 +654,37 @@ class ScoreboardTests(unittest.TestCase):
             with self.subTest(expected_message=expected_message), TemporaryDirectory() as directory:
                 root = Path(directory)
                 self._write_shard_fixtures(root)
-                report_path = root / "ansi-shard-1" / "sbcl-report.json"
+                report_path = root / "ansi-shard-1-safety-3" / "sbcl-report.json"
                 report = json.loads(report_path.read_text(encoding="utf-8"))
                 mutate(report)
                 report_path.write_text(json.dumps(report), encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, expected_message):
                     merge.merge_shards(
-                        root, 2, root / "baseline", root / "baseline.json", root / "comparison.json",
+                        root, 2, root / "baseline", root / "baseline.json", root / "comparison.json", "safety-3",
+                    )
+
+    def test_merge_shards_rejects_mixed_policy_and_historical_sbcl_version(self):
+        for field, value, expected_message in (
+            ("policy", "speed-3-safety-1", "policy"),
+            ("runtime_version", "SBCL 2.6.0", "SBCL 2.6.10"),
+        ):
+            with self.subTest(field=field), TemporaryDirectory() as directory:
+                root = Path(directory)
+                self._write_shard_fixtures(root)
+                report_path = root / "ansi-shard-0-safety-3" / "sbcl-report.json"
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+                report[field] = value
+                report_path.write_text(json.dumps(report), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, expected_message):
+                    merge.merge_shards(
+                        root, 2, root / "baseline", root / "baseline.json", root / "comparison.json", "safety-3",
                     )
 
     def test_merge_shards_rejects_baseline_shard_without_passes(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self._write_shard_fixtures(root)
-            report_path = root / "ansi-shard-0" / "sbcl-report.json"
+            report_path = root / "ansi-shard-0-safety-3" / "sbcl-report.json"
             report = json.loads(report_path.read_text(encoding="utf-8"))
             for index, row in enumerate(report["tests"]):
                 row["status"] = "timeout" if index % 2 == 0 else "error"
@@ -574,7 +695,7 @@ class ScoreboardTests(unittest.TestCase):
             baseline_prefix = root / "baseline"
             with self.assertRaisesRegex(ValueError, "no passed tests"):
                 merge.merge_shards(
-                    root, 2, baseline_prefix, root / "baseline.json", root / "comparison.json",
+                    root, 2, baseline_prefix, root / "baseline.json", root / "comparison.json", "safety-3",
                 )
             self.assertFalse(Path(str(baseline_prefix) + ".txt").exists())
             self.assertFalse((root / "baseline.json").exists())
@@ -584,23 +705,23 @@ class ScoreboardTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self._write_shard_fixtures(root)
-            (root / "ansi-shard-1" / "ncl-report.json").unlink()
+            (root / "ansi-shard-1-safety-3" / "ncl-report.json").unlink()
             with self.assertRaises(FileNotFoundError):
                 merge.merge_shards(
-                    root, 2, root / "baseline", root / "baseline.json", root / "comparison.json",
+                    root, 2, root / "baseline", root / "baseline.json", root / "comparison.json", "safety-3",
                 )
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self._write_shard_fixtures(root)
-            report_path = root / "ansi-shard-0" / "sbcl-report.json"
+            report_path = root / "ansi-shard-0-safety-3" / "sbcl-report.json"
             report = json.loads(report_path.read_text(encoding="utf-8"))
             report["tests"].append(report["tests"][0])
             report["active"] += 1
             report_path.write_text(json.dumps(report), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "duplicate"):
                 merge.merge_shards(
-                    root, 2, root / "baseline", root / "baseline.json", root / "comparison.json",
+                    root, 2, root / "baseline", root / "baseline.json", root / "comparison.json", "safety-3",
                 )
 
     def test_merge_shards_checks_comparison_exit_status_before_writing_baseline(self):
@@ -608,11 +729,11 @@ class ScoreboardTests(unittest.TestCase):
             root = Path(directory)
             self._write_shard_fixtures(root)
             error_shard = inclusion.shard_for_test("T.0", 2)
-            (root / f"ansi-shard-{error_shard}" / "ncl-exit-status").write_text("0\n", encoding="utf-8")
+            (root / f"ansi-shard-{error_shard}-safety-3" / "ncl-exit-status").write_text("0\n", encoding="utf-8")
             baseline_prefix = root / "baseline"
             with self.assertRaisesRegex(ValueError, "process exit status"):
                 merge.merge_shards(
-                    root, 2, baseline_prefix, root / "baseline.json", root / "comparison.json",
+                    root, 2, baseline_prefix, root / "baseline.json", root / "comparison.json", "safety-3",
                 )
             self.assertFalse(Path(str(baseline_prefix) + ".txt").exists())
 
@@ -635,8 +756,8 @@ class ScoreboardTests(unittest.TestCase):
             seen = []
             seen_lock = threading.Lock()
 
-            def run_test(command, worker_source, name, chapter, timeout):
-                del command, timeout
+            def run_test(command, worker_source, name, chapter, timeout, policy):
+                del command, timeout, policy
                 clean_copy = (
                     worker_source.resolve() != source_root
                     and (worker_source / "init.lsp").is_file()
@@ -677,11 +798,12 @@ class ScoreboardTests(unittest.TestCase):
 
     def test_baseline_writer_preserves_dotted_platform_prefix(self):
         with TemporaryDirectory() as directory:
-            prefix = Path(directory) / "ansi-test-sbcl-2.6.0-macos-arm64"
+            prefix = Path(directory) / "ansi-test-sbcl-2.6.10-safety-3-macos-arm64"
             report = {
                 "status": "complete",
                 "unexecuted": 0,
-                "runtime_version": "SBCL 2.6.0",
+                "runtime_version": "SBCL 2.6.10",
+                "policy": "safety-3",
                 "active": 1,
                 "tests": [{"name": "A.1", "chapter": "arrays", "status": "passed"}],
                 "measured_on": "2026-10-17",
@@ -705,6 +827,8 @@ class ScoreboardTests(unittest.TestCase):
             self.assertEqual(names_path.read_text(encoding="utf-8"), "A.1\n")
             self.assertEqual(inclusion.load_baseline(names_path), {"A.1": "arrays"})
             metadata = Path(str(prefix) + ".md").read_text(encoding="utf-8")
+            self.assertIn("- SBCL: 2.6.10", metadata)
+            self.assertIn("- Policy: safety-3", metadata)
             self.assertIn("upstream `doit.lsp` says they misbehave", metadata)
             self.assertFalse(prefix.with_suffix(".txt").exists())
 
@@ -714,7 +838,8 @@ class ScoreboardTests(unittest.TestCase):
             report = {
                 "status": "complete",
                 "unexecuted": 0,
-                "runtime_version": "SBCL 2.6.0",
+                "runtime_version": "SBCL 2.6.10",
+                "policy": "safety-3",
                 "active": 1,
                 "tests": [{"name": "OPEN.IO.21", "chapter": "streams", "status": "passed"}],
                 "measured_on": "2026-10-17",
@@ -773,6 +898,15 @@ class ScoreboardTests(unittest.TestCase):
                 "arrays": {"failed": 1},
                 "cons": {"timeout": 1, "unexecuted": 1},
                 "symbols": {"harness_error": 1},
+            },
+        )
+        self.assertEqual(
+            {item["failure_class"]: (item["count"], item["chapters"]) for item in result["failure_summary"]},
+            {
+                "assertion": (1, ["arrays"]),
+                "timeout": (1, ["cons"]),
+                "incomplete": (1, ["cons"]),
+                "harness": (1, ["symbols"]),
             },
         )
         markdown = inclusion.render_markdown({
@@ -834,7 +968,18 @@ class ScoreboardTests(unittest.TestCase):
             runner,
         )
         self.assertIn("regression-test:do-test name :catch-errors nil", runner)
-        self.assertIn(f"{inclusion.PROTOCOL}~CDONE~C~A", runner)
+        self.assertNotIn("(format ", runner.lower())
+        self.assertIn("write-char #\\Tab", runner)
+        self.assertLess(
+            runner.index("(declaim (optimize (safety 3)))"),
+            runner.index('(load "gclload1.lsp")'),
+        )
+        faster_runner = inclusion._test_runner("A.1", "speed-3-safety-1")
+        self.assertLess(
+            faster_runner.index("(declaim (optimize (speed 3) (safety 1)))"),
+            faster_runner.index('(load "gclload1.lsp")'),
+        )
+        self.assertNotIn("(format ", inclusion._baseline_runner().lower())
 
     def test_one_test_error_does_not_stop_later_tests_and_keeps_reasons(self):
         first = "\n".join((
@@ -900,7 +1045,8 @@ class ScoreboardTests(unittest.TestCase):
             baseline.with_suffix(".md").write_text(
                 f"- Measured: {inclusion.date.today().isoformat()}\n"
                 f"- Platform: {inclusion._platform_name()}\n"
-                "- SBCL: 2.6.0\n"
+                "- SBCL: 2.6.10\n"
+                "- Policy: safety-3\n"
                 f"- ansi-test commit: `{inclusion.SOURCES['ansi-test']['commit']}`\n",
                 encoding="utf-8",
             )
@@ -917,7 +1063,7 @@ class ScoreboardTests(unittest.TestCase):
                     ) as run_process:
                         with patch.object(sys, "stdout") as stdout:
                             status = inclusion.main([
-                                "compare", "--command", "ncl --load", "--baseline", str(baseline),
+                                "compare", "--policy", "safety-3", "--command", "ncl --load", "--baseline", str(baseline),
                                 "--test", "A.1", "--jobs", "2", "--cache-dir", directory,
                             ])
 
@@ -939,7 +1085,8 @@ class ScoreboardTests(unittest.TestCase):
                 "# ANSI-Test baseline\n"
                 "- Measured: 2026-10-17\n"
                 "- Platform: macOS arm64\n"
-                "- SBCL: 2.6.0\n"
+                "- SBCL: 2.6.10\n"
+                "- Policy: safety-3\n"
                 "- ansi-test commit: `ca06bd919661af162c67407c9d994e881870bdb3`\n",
                 encoding="utf-8",
             )
@@ -951,11 +1098,13 @@ class ScoreboardTests(unittest.TestCase):
             inclusion.validate_same_day_baseline(baseline, {
                 "measured_on": "2026-10-17",
                 "platform": "macOS arm64",
+                "policy": "safety-3",
             })
             with self.assertRaisesRegex(ValueError, "same day"):
                 inclusion.validate_same_day_baseline(baseline, {
                     "measured_on": "2026-10-18",
                     "platform": "macOS arm64",
+                    "policy": "safety-3",
                 })
 
     def test_unmeasured_ansi_status_is_preserved_as_successful_measurement(self):

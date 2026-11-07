@@ -1,236 +1,304 @@
 # Compiler pipeline
 
-## 決定
+This page records the current NCL path and the contract for replacing direct
+front-end lowering with HIR. HIR retains Common Lisp meaning and type facts;
+MIR is the existing low-level SSA form consumed by code generation. HIR's data
+model and verifier are specified in [HIR](hir.md).
 
-front end は reader output を macroexpand、parse、declaration/type propagation、compiler-macro expansion、`ncl-ir` lowering の順に処理する。back end は `ncl-ir` を `ncl-codegen` の `MachineFunction`、target encoder、`CodeBlob`、`SafepointMap`、FASL sections へ lower する。front/back 境界は `ncl-ir` のみで、reader Form を越境させない。
+## Current implementation
 
-`ncl-ir` の型一覧は維持する。Function は id、name、params、return types、basic blocks、locals、handler regions、debug locations、BasicBlock は id、block parameters、Ops、Terminator を持つ。OpKind は Const、Move、TypeHint、Load、Store、LoadField、StoreField、Alloc、LoadArg、LoadCapture、LoadFunctionObject、Call、CallIndirect、MakeClosure、MakeValueCell、CallClosure、Builtin、Prim、Compare、Convert、SetMultipleValues、Safepoint、EnterHandler、LeaveHandler、Terminator は Jump、Branch、Switch、CallReturn、TailCall、Return、Throw、Unreachable とする。
-
-段階は 1a 固定テンプレート展開、1b 線形走査レジスタ割当と spill、1c self tail call と一般 tail transfer および `&rest`/`&key` 専用プロローグ、2 fixnum/double の unbox、型推論接続、inline cache の順である。1a は値をスタックスロットに置き、scratch 2 本を使い、プロローグ、定数、return、呼び出し、分岐、割当、safepoint map、unwind を含む動く系とする。FASL の 64-byte header と section 構成は native backend の仕様を使い、対象不一致は load 前に拒否する。interpret evaluator は実装しない。
-
-- Phase 3: `ncl-ir` 上の pass 群(inlining、escape analysis + stack allocation、GVN、SCCP、
-  LICM)と、`ncl-codegen` の SSA ベースレジスタ割当。IR 型と ABI は不変。受入は cl-bench
-  幾何平均が Phase 2 着地時の同機測定以下。
-
-`ncl-opt` の既定 pipeline は SCCP、type/effect analysis、DCE の順である。SCCP は
-Unknown/Constant/Overdefined 格子で到達辺を絞る。type/effect analysis は各値の scalar type、
-各操作の effect、VALUES arity を保守的に記録し、直接 lowering された算術 builtin に checked
-fixnum specialization metadata を付ける。型宣言由来の fact は `Declared` として保持し、宣言
-だけでは operand tag guard を省略しない。IR から fixnum と証明できた operand に限り guard を
-省略する。specialization を無効にした scope の builtin は specialization metadata を持たない。
-GVN と direct-call inlining は既定 pipeline に含まれない。GVN は支配木の順に純粋な式だけを
-共通化する。`ncl-ir::Prim` の公開属性は primitive の純粋性とメモリ効果を分類する。fixnum 演算は
-checked 計算だけを畳み込み、overflow は bignum 昇格のため保持する。`eq`/`eql` は同一 SSA 値の
-場合だけ畳み込む。GVN の car/cdr、slot、配列読み出しは store、破壊的 primitive、call、
-builtin、closure 作成の後で無効化する。各 pass は変換後に `verify()` を実行し、pass manager
-も各 invocation 後にモジュール全体を検証する。
-- Phase 4: `ncl-sys` collector の parallel marking / evacuation。STW は維持。frame header、
-  SafepointMap、ABI は不変。remembered set と forwarding の並行安全化を伴う。受入は同一
-  ヒープ負荷で停止時間中央値が直列版未満。
-- Phase 5: tier-1 投機的最適化。deopt 着地先は tier-0(Phase 1a テンプレート層、全 SSA 値が
-  スタックスロットにある)。frame-state map は最適化フレームの各値から tier-0 スロットへの
-  写像で、FASL header version 2 の新 section に置く。OSR は tier-0 → tier-1 のループ入口
-  のみ。受入は全投機に対応する deopt テストがあり、deopt 後の結果が tier-0 と一致すること。
-- Phase 6: 特殊化配列ループの SIMD 命令選択。ベクトルレジスタを第一級値にするため
-  `RegisterId` と SafepointMap `register_mask` にレジスタクラスを加える契約変更を、Phase 3
-  着地後に別途凍結する。受入は対象カーネルの実行時間が非 SIMD 版以下。
-
-Phase 1a execution coverage is recorded by the AArch64 integration fixture: constant/fixnum arithmetic, cons allocation on fast and slow TLAB paths, both branch paths, builtin and rest-argument calls, safepoint polling, and recursive `fib(25)` all have named tests. The fixture invokes `fib(25)` ten times and reports a wall-clock median; the recorded release measurement is an execution result, not a new performance contract. (`packages/codegen/README.md`, `Phase 1a execution status`; `packages/codegen/tests/exec_aarch64.rs`, `executes_recursive_fib_twenty_five_with_four_word_frames`.)
-
-## front end の lowering 規則
-
-- 可変キャプチャ変数: 2 つ以上のクロージャから代入される変数は 1 語 cell object に
-  box し、クロージャは cell への参照を inline capture する。読み取り専用キャプチャは
-  値を直接 inline する。
-- IR v2 の closure object: `ncl-object` の header object payload は
-  `entry, name, lambda-list, code, captures...` の順とする。`entry` は
-  code space の entry offset を fixnum 化した値であり、moving heap address を保持しない。
-  `code` は code object への参照、`captures` は front end が決めた順序の `Word` 列である。
-  mutable capture は cell object への参照、read-only capture は値そのものを格納する。
-  closure widetag の GC layout は固定 fields と全 captures を boxed として登録するため、
-  capture 数を別 metadata に重複して持たない。
-- クロージャ越えの `return-from`/`go`: 脱出しないと証明できない block/tagbody は catch
-  record(HandlerRegion + `Throw`)で実装する。同一関数内で完結するものは `Jump`。
-
-`HandlerRegion` は通常の CFG の edge では表せない動的な脱出範囲を表す。各 region は kind に応じて
-`Catch` なら `catch_tag`、`UnwindProtect` なら cleanup block、`Progv` なら
-`binding_targets` (束縛対象の Word 値) を必須とする。protected block
-から handler または cleanup へ遷移する record を runtime unwinder が dynamic depth と
-catch tag で選ぶため、クロージャ越しの `return-from`/`go` を単なる `Jump` にしない。
-この分離により、通常の branch は SSA CFG のまま保ち、非局所脱出だけが handler record を
-作る。handler record の live `Word` は safepoint/root 契約で保持し、closure capture は
-heap object layout の boxed suffix として collector が追跡する。
-- `multiple-value-call`/`multiple-value-prog1`: variadic adapter ABI(`(ctx, argc, args,
-  mv) -> NclStatus`)経由。固定 arity の `Call` には使わない。
-- `progv` と special 変数の bind/unbind: `Builtin`。binding depth は record chain が持ち、
-  非局所脱出時の復元は runtime unwinder の責務。
-- `&optional`: front end が `LoadArg` + argc 比較 + default block を IR で生成する。codegen
-  プロローグの責務は `&rest`/`&key` のみ(calling-convention と一致)。
-- `Terminator::Throw` の operand は任意の `Word`。`(throw tag value)` の value も condition
-  object も同じ経路で、catch_tag が区別する。
-- `dynamic-extent` 宣言: Phase 3 の escape analysis が入るまで無視する(Common Lisp HyperSpec (CLHS) が許容)。
-  実スタック割当は Phase 3 で `Alloc` のスタック版と SafepointMap の拡張を伴う契約変更として
-  扱う。
-- コンパイル時マクロ展開: 標準マクロは Rust expander を Runtime registry に登録する。
-  ユーザー `defmacro` は native compile 後に `ncl-compiler-front` が定義する
-  `MacroCaller` trait(`ncl-runtime` が実装)経由で呼ぶ。front end は runtime に逆依存しない。
-
-## 根拠
-
-独立 IR に handler、GC metadata、debug location を含めると front と backend の並行実装が可能になる。`MachineFunction -> encoder -> CodeBlob` を一本化すると JIT、FASL、image が同じ machine contract を共有できる。
-
-## 却下した代替案
-
-- front end 内部 IR を backend の共有境界にする案は依存を増やすため却下する。
-- stack bytecode を実行経路として残す案は native image 契約を二重化するため却下する。
-- target ごとに別 IR を作る案は lane 間の意味を分岐させるため却下する。
-
-## Phase 1 レーンが前提にしてよいこと / してはいけないこと
-
-- listed IR types、OpKind、Terminator、handler、debug location を変更しない。
-- backend は `MachineFunction` と `CodeBlob` を通じて encoder を呼び、stack map を省略しない。
-- 1a で unboxed representation、inline cache、独自 ABI を追加しない。Phase 1 は性能を主張しない。
-
-## Complete IR contract
-
-`ncl-ir` depends on no crate.
-
-`TypeHint` carries a source declaration as metadata while preserving its `Word` value. A `Builtin` can carry checked fixnum specialization metadata and a flag that disables specialization.
-
-Types are `Word`, `I64`, `F64`, `Address`, `Bool`, and `Unit`. Constants are fixnum, character, single-float, double-float, string bytes, and descriptors for symbol or object references. A symbol descriptor is package name plus symbol name; an object descriptor is a constant-table index. Codegen resolves descriptors, so they are not raw Word constants in the IR. Handler regions contain protected, handler, and cleanup blocks, catch tag, and dynamic depth. Debug locations contain source file id, line, column, and form id.
-
-Direct expansion includes `car`, `cdr`, `rplaca`, `rplacd`, `svref`, `aref`, `aset`, fixnum arithmetic and comparison, `eq`, `eql`, `typep`, character predicates, and structure slot accessors. The compiler-macro registry stores symbol descriptor, arity pattern, expansion callback, and feature bit.
-
-Phase 1a expands fixed templates with values in stack slots and two scratch registers, including prologue, constants, return, calls, branches, allocation, safepoint maps, and unwind. Its native entry must execute `(+ 1 2)`, cons, a branch, a builtin call, a safepoint, and `fib(25)`; performance is not an acceptance criterion. Phase 1b adds linear-scan register allocation and spill, with representative benchmarks no slower than the template version. Phase 1c adds self tail call, general tail transfer, and specialized `&rest`/`&key` prologues; self recursion at depth 1,000,000 must not add frames. Phase 2 adds fixnum/double unboxing, type-inference connection, and inline caches; the first gate is `fib(25)` within 2x SBCL on the same machine, recording commit hash and conditions. Each stage is complete only when its tests execute. FASL stores native code, relocations, descriptors/constants, symbol bindings, maps, and debug records; incompatible architecture or feature bits signal a condition.
-
-Inline-cache keys are the triple `(call-site, generic-function identity, class-layout generation)`. Each site has at most four entries; a miss falls back to runtime dispatch. A failed type guard is a condition edge in the IR, not an unchecked branch.
-
-## `ncl-ir` テキスト形式の補足
-
-### 公開される IR 型
-
-`ncl-ir` は依存 crate を持たず、`lib.rs` から次の型と関数を公開する。ID 型 (`FunctionId`、`BlockId`、`ValueId`、`LocalId`、`ConstantIndex`、`FileId`、`FormId`、`DebugLocationId`) は `u32` の newtype で、`Display` は `%<decimal-value>` 形式である。構造体は次のフィールドを持つ。
-
-- `Function`: `id: FunctionId`、`name: String`、`params: Vec<Param>`、`return_types: Vec<Ty>`、`blocks: Vec<BasicBlock>`、`locals: Vec<Local>`、`constants: Vec<Constant>`、`handler_regions: Vec<HandlerRegion>`、`debug: Vec<DebugLocation>`。
-- `Param`: `name: String`、`ty: Ty`。
-- `Local`: `id: LocalId`、`name: String`、`ty: Ty`。
-- `BlockParam`: `value: ValueId`、`ty: Ty`。SSA の phi 値に相当する。
-- `BasicBlock`: `id: BlockId`、`params: Vec<BlockParam>`、`ops: Vec<Op>`、`terminator: Terminator`。
-- `Op`: `results: Vec<(ValueId, Ty)>`、`kind: OpKind`、`loc: Option<DebugLocationId>`。
-- `HandlerRegion`: `kind: HandlerKind`、`protected: Vec<BlockId>`、`handler: BlockId`、`cleanup: Option<BlockId>`、`catch_tag: Option<ValueId>`、`binding_targets: Vec<ValueId>`、`depth: u32`。
-- `DebugLocation`: `file: FileId`、`line: u32`、`column: u32`、`form: FormId`。
-
-`Op.loc` は `Function.debug` の index であり、`DebugLocation` 自体には ID field がない。
-
-`Ty` の variant は `Word` (処理系の汎用値)、`I64`、`F64`、`Address`、`Bool`、`Unit` である。
-
-`ScalarTypeHint` の variant は `Fixnum`、`Integer`、`Number`、`Boolean`、`NonNumber` である。
-
-`Constant` の variant は `Fixnum(i64)`、`Character(u32)`、`SingleFloat(f32)`、`DoubleFloat(f64)`、`Symbol { package: String, name: String }`、`UninternedSymbol { identity: u32, name: String }`、`Object(ConstantIndex)`、`FunctionEntry(FunctionId)`、`StringBytes(Vec<u8>)`、`Structure { kind: StructureKind, elements: Vec<ConstantIndex> }`、`Bignum { negative: bool, limbs: Vec<u32> }`、`Ratio { numerator: ConstantIndex, denominator: ConstantIndex }`、`Complex { real: ConstantIndex, imaginary: ConstantIndex }`、`Nil`、`T`、`Unbound` である。`Symbol`、`UninternedSymbol`、`Object`、`FunctionEntry` は descriptor であり、codegen/runtime が解決する。`Object` は同じ `Function` の constant table index を参照し、raw `Word` を表さない。
-
-### OpKind と Terminator
-
-`OpKind` の全 variant と役割は次の通りである。
-
-- `Const { result }`: constant table の `ConstantIndex` を指定する。SSA の出力値は `Op.results` に記録する。
-- `Move { value }`: SSA 値を移送する。
-- `TypeHint { value, ty }`: source type declaration を metadata として付け、同じ `Word` 値を返す。
-- `Load { address }` / `Store { address, value }`: メモリを読み書きする。
-- `LoadField { object, field }` / `StoreField { object, field, value }`: オブジェクトの数値フィールドを読み書きする。
-- `Alloc { words }`: 指定ワード数のオブジェクト領域を確保する。
-- `LoadArg { index }`: 引数を読み込む。
-- `LoadCapture { index }`: 現在の closure から指定 index の capture を読み込む。
-- `LoadFunctionObject`: 現在の function object を取得する。
-- `Call { function, args }`: 関数値を直接呼び出す。
-- `CallIndirect { callee, args }`: callee 値を間接呼び出しする。
-- `MakeClosure { entry, captures }`: entry と capture 値を持つ closure を作る。
-- `MakeValueCell { value }`: 値を格納する value cell を作る。
-- `CallClosure { closure, args, named_symbol }`: closure を呼び出し、必要に応じて named symbol を渡す。
-- `Builtin { name, args }`: runtime builtin を名前で呼び出す。
-- `Prim { op, args, condition }`: `Prim` の組み込みプリミティブを実行する。`condition` は型ガード等が失敗した場合の condition edge である。
-- `Compare { op, left, right }`: `Compare` (`Eq`、`Ne`、`Lt`、`Le`、`Gt`、`Ge`) で比較する。
-- `Convert { op, value }`: `Convert` (`WordToI64`、`I64ToWord`、`WordToF64`、`F64ToWord`、`AddressToWord`、`WordToAddress`) で表現を変換する。
-- `SetMultipleValues { values }`: 複数戻り値の集合を設定する。
-- `Safepoint`: GC safepoint を置く。
-- `EnterHandler { region }` / `LeaveHandler { region }`: handler region の有効化と解除を表す。
-
-`Prim` の variant は `Car`、`Cdr`、`Rplaca`、`Rplacd`、`Svref`、`Aref`、`Aset`、`FixnumAdd`、`FixnumSub`、`FixnumMul`、`FixnumDiv`、`FixnumLt`、`FixnumLe`、`FixnumEq`、`Eq`、`Eql`、`Typep`、`CharacterPredicate(String)`、`StructureSlot(String)` である。
-
-`Terminator` は各 basic block の末尾に一つ置く。
-
-- `Jump { target, args }`: `target` へ block 引数を渡す。
-- `Branch { condition, then_target, then_args, else_target, else_args }`: condition により二つの successor を選ぶ。
-- `Switch { value, cases, default, default_args }`: signed integer case と default successor を選ぶ。
-- `CallReturn { function, args }`: 呼び出し後に通常復帰する。
-- `TailCall { function, args }`: 現在の frame を継続せず末尾呼び出しする。
-- `Return { values }`: 関数から値を返す。
-- `Throw { condition }`: condition を送出する。
-- `Unreachable`: 実行時の trap ではなく、未完了 block の内部初期値である。検証時には `MissingTerminator` になる。
-
-### テキスト形式の文法
-
-以下は `Function` の `Display` 出力と `parse` が扱う payload の field 順を示す EBNF 相当表記である。空白は header の固定位置にのみ現れ、payload の atom はカンマで区切られる。`hex` は小文字 hexadecimal、`signed` は `i` の後に負数なら `-` と絶対値の hexadecimal 表現を続けた atom、`id` は unsigned atom、`text` は escaped string atom である。`tag` と `type` は enum 値を識別する unsigned hexadecimal atom であり、数値と variant の対応は parser/printer が定義する。`flag` は `0` または `1` で、`0` は absent/false、`1` は present/true を表す。`n * X` は X を n 回繰り返す。
+The current path is:
 
 ```text
-function       = legacy-function | version-2-function | version-3-function ;
-legacy-function = "fn @", escaped-name, " { ", function-payload, " }", newline ;
-version-2-function = "fn @", escaped-name, " ir2 { ", function-payload, " }", newline ;
-version-3-function = "fn @", escaped-name, " ir3 { ", function-payload, " }", newline ;
-function-payload = id, text, params, types, constants, blocks, locals,
-                   handlers, debug ;
-params         = count, count * (text, type) ;
-types          = count, count * type ;
-constants     = count, count * constant ;
-blocks         = count, count * block ;
-locals         = count, count * (id, text, type) ;
-handlers       = count, count * handler ;
-debug          = count, count * (id, id, id, id) ;
-block          = id, count, count * (id, type), count, count * op, terminator ;
-op             = count, count * (id, type), optional-location, op-kind ;
-optional-location = absent-location | id ;
-handler        = id, handler-kind, count, count * id, id, optional-block,
-                 optional-value, count, count * id, id, optional-value ;
-handler-kind   = id ;
-optional-block = flag | flag, id ;
-optional-value = flag | flag, id ;
-constant      = fixnum | character | single-float | double-float
-               | symbol | uninterned-symbol | object | function-entry
-               | string-bytes | structure | bignum | ratio | complex
-               | nil | true | unbound ;
-fixnum        = tag, signed ;
-character     = tag, id ;
-single-float  = tag, id ;
-double-float  = tag, id ;
-symbol        = tag, text, text ;
-uninterned-symbol = tag, id, text ;
-object        = tag, id ;
-function-entry = tag, id ;
-string-bytes  = tag, count, count * id ;
-structure     = tag, structure-kind, count, count * id ;
-bignum        = tag, flag, count, count * id ;
-ratio         = tag, id, id ;
-complex       = tag, id, id ;
-nil           = tag ; true = tag ; unbound = tag ;
+reader forms
+  -> front-end macro expansion and AST
+  -> direct lowering to ncl-ir SSA
+  -> ncl-opt pass manager
+  -> ncl-codegen MachineFunction and target encoder
+  -> native code, safepoint metadata, and runtime publication
 ```
 
-`structure-kind` は `0` が `Cons`、`1` が `SimpleVector` を表し、bignum limbs は little-endian の `u32` である。
+`read_forms` reads source into forms (`packages/runtime/src/compile.rs:407-414`).
+The front-end module describes the AST and lowering boundary
+(`packages/compiler/front/src/lib.rs:1-6`). `Runtime::compile_form_with_values`
+creates a fresh compiler-macro registry, expands the form, lowers it to
+`ncl-ir`, runs optimization, then compiles each function
+(`packages/runtime/src/lib.rs:189-209`). The current IR has low-level value
+types `Word`, `I64`, `F64`, `Address`, `Bool`, and `Unit`
+(`packages/ir/src/types.rs:55-64`). Its `Builtin` operation carries a string
+name, while calls are represented by `Call`, `CallIndirect`, or `CallClosure`
+(`packages/ir/src/types.rs:307-337`). Type declarations are reduced to scalar
+hints during lowering (`packages/compiler/front/src/lower/v2.rs:304-320`).
+`compile_native` selects a target compiler, publishes machine code, encodes
+safepoint maps, and registers code metadata
+(`packages/runtime/src/lib.rs:252-294`). Code generation exposes a
+`MachineFunction` (`packages/codegen/src/machine.rs:81`) and target-specific
+compile functions (`packages/codegen/src/target_x86_64.rs:101`,
+`packages/codegen/src/target_aarch64.rs:31`).
 
-`handler-kind` は `0` が `Catch`、`1` が `UnwindProtect`、`2` が `Progv` を表す。
+The default optimizer order is SCCP, TypeEffect, InlineDirectCalls, global
+value numbering, and dead-code elimination
+(`packages/compiler/opt/src/manager.rs:37-44`). The manager repeats the pass
+sequence until unchanged or until its configured iteration limit, and verifies
+after each pass by default (`packages/compiler/opt/src/manager.rs:55-127`,
+`packages/compiler/opt/src/lib.rs:216-222`). This is the current pass list.
 
-`op-kind` は variant tag に続けて payload を記録する。`Const` は constant index の `id`、`Move`/`Load`/`MakeValueCell` は値の `id`、`Convert` は変換名と値の `id`、`Store` は2つの `id`、`Compare` は比較名と2つの `id` である。`LoadField` は object と field の `id`、`StoreField` は object、field、value の `id` を記録する。`Alloc`/`LoadArg`/`LoadCapture` は数値、`LoadFunctionObject`/`Safepoint` は追加 payload なし、`MakeClosure` は entry と `count, count * id`、`CallClosure` は closure、named-symbol ID、引数の `count, count * id` を記録する。`TypeHint` は値の `id` と scalar type hint tag、`Call`/`CallIndirect` は callee と `count, count * id`、`Prim` は primitive 名、`count, count * id`、condition block ID、`SetMultipleValues` は `count, count * id`、`EnterHandler`/`LeaveHandler` は region ID を記録する。`CallClosure` の named-symbol と `Prim` の condition block に値がない場合は `ffffffffffffffff` を使う。version 1 の `Builtin` は `text, count, count * id` を記録し、version 2 はその後に specialization flag を付ける。flag が `1` の場合は演算タグと guard mask も続く。version 3 はこの specialization metadata の後に specialization-disabled flag を記録する。
+The current inliner resolves only `OpKind::Call` whose callee is a constant
+`FunctionEntry` (`packages/compiler/opt/src/inline.rs:167-193`). Ordinary
+named calls lower to `CallClosure` (`packages/compiler/front/src/lower/expr.rs:255-299`),
+and direct builtins lower to `Builtin`
+(`packages/compiler/front/src/lower/expr.rs:235-253`). The inliner therefore
+runs but does not match the ordinary named-call shape.
+Presence in the pass list is not evidence that a call was inlined.
 
-`optional-location` がない場合も `ffffffffffffffff` を使う。`optional-block` と `optional-value` は flag が `0` なら値なし、`1` なら後続 `id` が値を表す。
+The compiler-macro registry contains Rust callback entries
+(`packages/compiler/front/src/compiler_macro.rs:61-85`). The runtime path
+passes a newly empty registry to the form expander
+(`packages/runtime/src/lib.rs:189-194`). The ordinary-function probe ran under
+the project development environment:
 
-terminator の tag と payload は `Jump` が target と values、`Branch` が condition・then successor・else successor、`Switch` が value・case 数・各 signed case と successor・default successor、`CallReturn`/`TailCall` が callee と values、`Return` が values、`Throw` が condition、`Unreachable` が追加 payload なしである。全 successor の形式は `id, count, count * id` である。
+```sh
+cargo run --quiet -- --eval '(progn (defun ncl-compiler-macro-probe (x) 99) (ncl-compiler-macro-probe 1))'
+```
 
-文字列 atom は ASCII の英数字と `-` をそのまま使い、それ以外の byte を `_hh` として escape する。`_` は `_5f` として出力する。payload の各数値は hexadecimal atom である。header に version marker がない場合は version 1 として読み、`Display` は `ir3` header を出力する。parser は version 1、2、3 を読み、version 1 の Builtin specialization metadata と version 1/2 の specialization-disabled flag はそれぞれ `None`、`false` として扱う。`TypeHint` は version 3 で導入された。未知の version marker、余分な atom、未知の tag、壊れた escape は拒否する。front と codegen は `Function` を直接構築するか `parse` で読み、`verify(&function)` で構造・SSA 可視性・型・戻り値契約を検査してから利用する。現実装の parser は `Prim::CharacterPredicate` と `Prim::StructureSlot` の文字列表現を読み戻さないため、これらを含む関数では無条件の往復保証を置かない。
+It exited 0 and printed `99`. The compiler-macro probe was:
 
-検証器は block id と SSA value id の重複、未定義値、CFG の successor 契約、各 `OpKind` と terminator の operand/result 型、関数の戻り値型を検査する。SSA の使用可能性はブロック走査順ではなく、CFG の支配関係で判定し、同一ブロックでは定義が使用より前にあることも要求する。`Call`、`CallIndirect`、`Builtin` の直前、`Alloc` の直後、後方エッジを持つブロックの terminator 直前には `Safepoint` が必要である。safepoint 不足は warning として `VerifyError::SafepointWarning` を `Err` ベクタに返す。
+```sh
+cargo run --quiet -- --eval '(progn (defun ncl-compiler-macro-probe (x) 99) (define-compiler-macro ncl-compiler-macro-probe (x) 7) (ncl-compiler-macro-probe 1))'
+```
 
-### front/codegen が利用してよい API
+It exited 1 with a `MacroExpansion` `TypeError` while expanding
+`DEFINE-COMPILER-MACRO`, before reaching the call.
+This runtime compilation path has no working user-defined compiler-macro
+application: its registry starts empty, and the definition probe fails first.
 
-- 構築: `FunctionBuilder::new(FunctionId, name, params, return_types)`、`add_local`、`add_constant`、`create_block`、`position_at`、`fresh_value`、`push_op`、`terminate`、`add_handler_region`、`finish`。
-- 入出力: `Function` の `Display` 実装、`parse(&str) -> Result<Function, ParseError>`。
-- 検証: `verify(&Function) -> Result<(), Vec<VerifyError>>`。エラー分類は `DuplicateBlock`、`MissingBlock`、`MissingTerminator`、`SuccessorArity`、`SuccessorType`、`UndefinedValue`、`DuplicateValue`、`ConstantOutOfBounds`、`ReturnArity`、`TypeMismatch`、`HandlerTarget`、`SafepointWarning` である。
+## HIR and MIR boundary
 
-builder は ID を単調増加で割り当て、生成直後に空の entry block を選択する。`push_op` は指定した result type ごとに SSA 値を割り当て、`finish` が所有権を持つ `Function` を返す。backend は descriptor constant を解決し、`Op` の `results` と `loc`、handler region、safepoint を保持したまま machine IR へ lower する。
+HIR is the semantic optimization layer required by decision D-02 between macro
+expansion and the existing low-level `ncl-ir` MIR. HIR keeps package-qualified
+identities for functions and variables, lexical and dynamic scope, and full CL
+type facts, declarations, source origins, and explicit condition behavior.
+HIR operations
+must not be reduced to name-only builtins before known-function transforms,
+type inference, call analysis, and policy checks have run.
+
+MIR carries control flow, machine-oriented value classes, explicit call and
+condition edges, and the GC facts needed by code generation. The final crate
+assignment for HIR and MIR follows the [crate map](crates.md); the names in
+this contract describe compiler stages, not a competing crate map.
+
+The HIR-to-MIR boundary must:
+
+- retain the source form and debug origin for each emitted operation;
+- lower explicit HIR checks to MIR branches with the required Lisp condition
+  behavior;
+- select internal specialized entries only when the call target and argument
+  facts are proven, while public/global calls preserve redefinition and error
+  semantics;
+- keep proven fixnum, signed/unsigned integer, single/double float, complex,
+  SAP, and character values unboxed where the target ABI permits, and box at
+  generic calls, escaping storage, and public boundaries that require a
+  general Lisp value;
+- mark unboxed values as non-pointers in stack maps and GC maps, and retain
+  roots for tagged values live at calls, allocations, and backedges;
+- preserve multiple values, dynamic bindings, cleanup behavior, and
+  non-local exits.
+
+Representation selection uses HIR type facts but chooses physical register,
+stack, and boxed/unboxed forms during MIR lowering and code generation. A type
+fact is not itself a register assignment.
+
+## Ordered pipeline contract
+
+| Stage | Representation | Work and dependency |
+|---|---|---|
+| 1. Read and expand | Forms, then front-end AST | Read source, macroexpand ordinary macros, apply compiler macros and source transforms in the correct environment, and retain source expansion origins. A compiler macro obeys `NOTINLINE`. |
+| 2. Build HIR | Per-form HIR arenas plus a compilation-unit index | Resolve lexical bindings and package-qualified symbols; attach declarations, policy, source locations, and known-function facts. Verify the completed form. |
+| 3. Normalize local functions | HIR | Perform local-call analysis, assignment conversion, contification, capture analysis, and tail-position marking. Preserve `FLET` and `LABELS` scope rules. |
+| 4. Infer and optimize | HIR | Run type/effect/constraint propagation, known-function and sequence transforms, inlining, SCCP, GVN/CSE, copy propagation, jump threading, and loop transforms. Re-run dependent analyses after a rewrite changes calls or control flow. |
+| 5. Generate required checks | HIR | After inference and source transforms, insert policy-required type, argument-count, keyword, and array-bound checks as explicit condition edges. Re-run HIR simplification to remove only checks proved redundant. |
+| 6. Select allocation lifetime | HIR facts | Run escape and dynamic-extent analysis after HIR transforms and required checks have exposed all relevant control flow. Decide which values may use stack lifetime; defer layout, barriers, TLAB code, and physical representation to MIR/codegen. |
+| 7. Lower and optimize | MIR | Lower semantic operations and selected representations; run MIR cleanup, instruction selection, address/immediate folding, compare/branch fusion, and peephole optimization. Preserve explicit GC maps and debug origins. |
+| 8. Allocate and emit | Machine IR and code | Run register allocation and its checker, emit target code and relocation data, and publish specialized/public entries with the runtime metadata. |
+
+The HIR verifier runs after construction and after every HIR pass. The MIR
+verifier runs after each MIR pass. The machine verifier and register allocator
+checker run before encoding. A pass that changes a fact invalidates dependent
+type, effect, escape, dominance, and liveness information before the next
+consumer uses it.
+
+### Fixed points and opt-bisect
+
+Constraint propagation processes strongly connected control-flow regions to
+a fixed point. The HIR optimizer repeats dependent passes until no pass changes
+the module. Every loop is bounded by explicit optimizer fuel and an iteration
+limit. If fuel expires, the compiler reports that optimization stopped; it
+must not report convergence or use unverified facts. The last verified HIR is
+the rollback point for a failed pass.
+
+Passes have stable identifiers and deterministic ordering. `opt-bisect` accepts
+a pass-prefix limit: compile once with the first N passes enabled, then binary
+search the smallest prefix that reproduces a failure. The report records the
+pass identifiers, iteration, source form, and policy. Pass dumps are available
+at each boundary. A verifier failure or fuel exhaustion cannot be hidden by
+bisect mode.
+
+Per decision D-10, CI and tests always verify HIR. Release builds keep the
+verifier enabled by default until V2 and V3 pass; afterward, release builds
+may disable it by default but retain an explicit enable option.
+
+V2 is the fixed-seed ANSI test suite's random tester (`RTP.*`), including
+`loop-random-int-forms`; V3 compares generated UB-free programs with SBCL under
+optimization-off, default, and `(SPEED 3)` policies. Both require zero
+mismatches.
+
+## FR-C optimization placement
+
+| Requirement | Primary layer | Required order or boundary |
+|---|---|---|
+| C01 local calls and assignment conversion | HIR | Before closure layout and type-driven rewrites. Preserve lexical scope and assignment semantics. |
+| C02 tail calls | HIR analysis, then MIR/codegen | Mark all tail positions after control-flow normalization; lower self, mutual, and general tail transfers without adding a frame when policy permits. |
+| C03 closure representation | HIR escape/capture analysis, then MIR/codegen | Determine captures and escape before selecting flat/shared layout or lambda lifting. |
+| C04 known-function database | HIR | Load facts before source transforms and calls are specialized. Failed constant folds keep the original call and emit a note. |
+| C05 compiler macros | Expansion before HIR call lowering | Consult the lexical/global compiler-macro environment; obey `NOTINLINE`; preserve compile-time ordering. |
+| C06 inlining | HIR | Require eligible function body, policy/cost approval, and non-`NOTINLINE`; rerun type/effect and CFG analyses after expansion. |
+| C07 type inference | HIR | Run before checks and representation selection. Propagate typep, equality, comparison, ftype, range, and loop facts to a fixed point. |
+| C08 safety and checks | HIR checks, then MIR lowering | Insert checks after inference, then rerun HIR simplification; omit only when proven redundant or explicitly trusted under the selected policy. SBCL's `checkgen` flow also reoptimizes after check insertion (`src/compiler/main.lisp:546-564`). |
+| C09 representation selection | HIR facts, MIR physical form | Use HIR type facts to select unboxed candidates; make actual machine representations and boxing conversions at lowering. |
+| C10 arithmetic | HIR transforms, then MIR | Specialize generic arithmetic by proven types and arity; preserve overflow and bignum fallback. Resolve operators by symbol identity, not printed name. |
+| C11 sequences and arrays | HIR transforms, then MIR | Specialize only with proven sequence/element types; resolve constant keyword arguments; let safety policy control bounds checks. |
+| C12 control and multiple values | HIR control, then MIR/codegen | Preserve multiple-value and NLX semantics; select jump tables only when type range, density, policy, and target favor them. |
+| C13 allocation | HIR escape/lifetime analysis, then MIR/codegen | Honor `DYNAMIC-EXTENT`; stack-allocate only proven non-escaping values; lower TLAB allocation and barrier elision with GC invariants. |
+| C14 loops | HIR analysis and transforms, then MIR | Recognize loops and induction variables before LICM, strength reduction, and bounds-check removal. Unswitching and unrolling remain optional. |
+| C15 global SSA optimization | HIR and MIR | HIR owns semantic SCCP/GVN/copy propagation/jump threading; MIR owns target-aware cleanup and peepholes. Preserve effects and error paths. |
+| C16 CLOS and structures | HIR transforms plus runtime | Specialize proven slots, accessors, constructors, and dispatch sites. Runtime owns mutable generic-function and effective-method caches. |
+| C17 calling convention | HIR call analysis, then MIR/codegen | Separate public/fdefn entry from statically known internal entry; avoid rest-list construction for supported optional/key calls. |
+| C18 block compilation | Compilation-unit HIR | Index definitions across the `WITH-COMPILATION-UNIT` or `:BLOCK-COMPILE` extent while retaining per-form arenas and source origins. |
+| C19 SIMD API (optional) | HIR API nodes, then target MIR/codegen | Preserve target-independent operation semantics; select x86-64 AVX2 or AArch64 NEON only when supported. |
+| C20 PGO (optional) | Runtime profile data and HIR/MIR | Collect versioned profile data separately from compilation; use it only when source, compiler, policy, and target keys match. |
+
+MIR may refine a machine operation only from facts that HIR proved. When HIR inserts a check, later MIR passes may
+remove or fold its machine sequence only when they preserve the same condition
+and control-flow behavior.
+
+## Backend requirements FR-D01 through FR-D03
+
+| Requirement | Contract |
+|---|---|
+| FR-D01 register allocation | Use linear scan with live-range splitting as the default. At `(SPEED 3)`, use graph coloring. Reuse spill slots, coalesce moves, and assign call-crossing values to callee-saved registers only when the GC map remains correct. The register-allocation checker is the test oracle. |
+| FR-D02 instruction selection | Fold legal addresses and immediates, fuse comparisons with branches where the ISA permits, then run a target-aware peephole pass. These are MIR/backend transformations and cannot change HIR error behavior. |
+| FR-D03 GC maps | Every safepoint map distinguishes tagged pointers from unboxed scalars. An unboxed value is never marked as a heap pointer. A potentially live tagged value remains visible to the collector across allocation and calls. |
+
+Decision D-14 keeps linear scan with splitting as the default and graph
+coloring at `(SPEED 3)`. This is an NCL decision, not a description of SBCL's
+exact allocator. SBCL 2.6.10 uses adaptive allocation: its default is greedy,
+and a `(SPEED 3)` block selects iterative Chaitin-Briggs allocation
+(`src/compiler/pack.lisp:1729-1779`,
+`src/compiler/pack-iterative.lisp:1-45`). Before changing D-14, compare the
+backtracking allocator such as regalloc2 and measure:
+
+- compile time and allocator memory on the fixed compile corpus;
+- spills, spill-slot reuse, move count, and generated code size;
+- runtime of the same micro suites on x86-64 and AArch64;
+- the distribution of live-range lengths and call-crossing values.
+
+Record the CPU, OS, compiler revision, and corpus with the measurements. Run
+both allocators on the same host and interleave at least five A/B runs. Treat a
+regression as confirmed only when both the candidate median and minimum are at
+least 10% slower, as required by the lane measurement rules.
+
+## SBCL 2.6.10 source comparison
+
+The comparison below comes from the `sbcl-2.6.10` release tag source under
+`src/compiler/` and related compiler files. SBCL was not executed. The source
+shows concrete implementation choices; it does not require NCL to copy their
+algorithms or file organization.
+
+| FR-C | SBCL source read | NCL contract |
+|---|---|---|
+| C00 | `src/compiler/node.lisp`, `src/compiler/ir1tran.lisp`, `src/compiler/ir2tran.lisp` | Separate semantic HIR and machine-oriented MIR. |
+| C01 | `src/compiler/locall.lisp`, `src/compiler/ir1tran.lisp` | HIR local-call, assignment-conversion, and contification analyses. |
+| C02 | `src/compiler/ir1opt.lisp`, `src/compiler/ir2tran.lisp` | Mark tail positions in HIR; select tail transfers in MIR/codegen. |
+| C03 | `src/compiler/locall.lisp`, `src/compiler/ir1tran.lisp`, `src/compiler/envanal.lisp` | Analyze captures and escape before choosing closure representation. |
+| C04 | `src/compiler/knownfun.lisp:124-188,196-245`, `src/compiler/fndb.lisp:225-249`, `src/compiler/macros.lisp:260-370` | Keep function facts and guarded transforms in HIR; preserve calls when folding is invalid. |
+| C05 | `src/compiler/ir1tran.lisp:760-831`, `src/compiler/main.lisp:1070-1089` | Apply compiler macros at expansion with lexical environment and NOTINLINE handling. |
+| C06 | `src/compiler/ir1tran.lisp:1115-1150`, `src/compiler/ir1opt.lisp:1681-1735`, `src/compiler/ir1util.lisp:3310-3326` | HIR inlining with policy, cost, and expansion limits. |
+| C07 | `src/compiler/ctype.lisp`, `src/compiler/constraint.lisp:48-60,804,1744,1877`, `src/compiler/constraint-back.lisp`, `src/compiler/equality-constraints.lisp` | Use a CL type lattice with uncertain subtype answers and fixed-point branch propagation. |
+| C08 | `src/compiler/checkgen.lisp:656-705`, `src/compiler/policies.lisp:20-122`, `src/compiler/main.lisp:546-564` | Generate HIR checks after inference, then re-optimize; keep type-check and array-bound policy decisions explicit. |
+| C09 | `src/compiler/represent.lisp:231-311,1022-1086`, `src/compiler/ir2tran.lisp`, `src/compiler/ir2opt.lisp` | Keep CL type reasoning in HIR; select physical forms at lowering. |
+| C10 | `src/compiler/srctran.lisp`, `src/compiler/integer-tran.lisp`, `src/compiler/modarith.lisp:399-429` | HIR arithmetic transforms plus MIR target selection and overflow fallback. |
+| C11 | `src/compiler/seqtran.lisp:140-168,325-419,935-1060,2118-2229,2624-2647,3399-3435,4403-4420`, `src/compiler/array-tran.lisp:2582-2629` | Split sequence-level transforms from array layout and element access lowering. |
+| C12 | `src/compiler/srctran.lisp:10516-10670`, `src/compiler/ir2tran.lisp:711-761` | Select jump tables using type interval, density, policy, and target. |
+| C13 | `src/compiler/envanal.lisp:352-475`, `src/compiler/ltn.lisp:608-619`, `src/compiler/stack.lisp:121-188`, `src/compiler/ir2opt.lisp:1677-1709`, `NEWS:153-155` | Stack-allocate only when escape analysis proves the lifetime. SBCL 2.6.9 NEWS records automatic stack allocation for nonescaping self- or mutually-recursive closures. |
+| C14 | `src/compiler/loop.lisp:63-106`, `src/compiler/main.lisp:732-744`, `src/compiler/control.lisp:66-122`, `src/compiler/constraint.lisp:1377-1414` | Treat requested LICM, induction-variable, strength-reduction, and bounds-check passes as NCL requirements; the inspected files do not establish all as standalone SBCL passes. |
+| C15 | `src/compiler/ir1opt.lisp`, `src/compiler/copyprop.lisp`, `src/compiler/constraint.lisp`, `src/compiler/ir2opt.lisp` | Use HIR semantic optimizations and separate MIR target cleanup. |
+| C16 | `src/pcl/dfun.lisp`, `src/pcl/cache.lisp`, `src/pcl/ctor.lisp`, `src/pcl/compiler-support.lisp` | Specialize proven slot and constructor sites in HIR; keep mutable dispatch caches in the CLOS runtime. |
+| C17 | `src/compiler/callable-args.lisp`, `src/compiler/ir1tran.lisp`, `src/compiler/ir2tran.lisp` | Separate checked public entries from known internal calling paths. |
+| C18 | `src/compiler/main.lisp:73-90`, `src/compiler/ir1tran.lisp` | Add a compilation-unit HIR index over per-form arenas. |
+| C19 | `src/compiler/x86-64/simd-pack*.lisp`, `src/compiler/arm64/simd-pack.lisp` | Keep SIMD optional and target-specific below the semantic API. |
+| C20 | No `PGO`, profile-guided, or profile-feedback match was found in the inspected SBCL `src/compiler/` tree (`rg` exit 1). | Treat NCL PGO as an optional profile collection and feedback workflow, not a verified SBCL compiler subsystem. |
+
+## Verification contract
+
+Every candidate runs V4: HIR/MIR verifier checks, the register-allocation
+checker, and an opt-bisect test that can isolate a deliberately introduced
+bad pass. Every optimization lane also supplies V7 evidence: the relevant
+micro suite plus generated-code inspection for instructions and allocation
+byte counts. V7 satisfies AC-3: cl-bench's geometric mean is no slower than
+SBCL, no individual benchmark exceeds 1.5x SBCL, and the optimization-specific
+micro suites and generated-code assertions pass. The micro suites cover float
+and fixnum loops, CLOS dispatch, structures, arrays, consing, tail recursion,
+closures, and `&KEY` calls.
+
+| Evidence | Required result |
+|---|---|
+| HIR/MIR verifier | Zero invariant violations after each pass. |
+| Register-allocation checker | Zero invalid assignments or GC-map mismatches; it is the oracle for FR-D01. |
+| Opt-bisect | A controlled bad pass is isolated by pass-prefix search. |
+| Generated code | The expected specialization, check, branch, allocation, or unboxed instruction is present or absent as asserted by the requirement. |
+| Allocation measurement | Allocation-byte assertions cover zero-allocation requirements and stack/TLAB allocation requirements. |
+| Runtime comparison | Compare V7 micro suites and cl-bench with the same-day SBCL baseline under AC-3. |
+| Compiler performance | V8 measures fixed-corpus compile time, per-pass time, peak RSS, startup time, and binary size. |
+
+## L3 implementation slices
+
+L3 names the Wave 3 optimization lanes in the
+[wave plan](../project/wave-plan.md). Lane IDs such as L0-3, L1-4, and L2-ch7
+refer to dependencies in that plan. L3-1 lands first and freezes the HIR
+contract before the other optimization lanes start. The commit sequence below
+keeps the HIR foundation reviewable. Paths name bounded contexts; final crate
+names follow the [crate map](crates.md).
+
+| Order | Owned paths | Completion condition and focused evidence |
+|---|---|---|
+| L3-1a: arena and IDs | `packages/compiler/hir/src/lib.rs`, `packages/compiler/hir/src/arena.rs`, `packages/compiler/hir/src/ids.rs`, `packages/compiler/hir/tests/arena.rs` | One arena per top-level form; typed indices reject invalid bounds. Test arena ownership, index reuse rules, and overflow handling. |
+| L3-1b: semantic nodes and bindings | `packages/compiler/hir/src/node.rs`, `packages/compiler/hir/src/binding.rs`, `packages/compiler/hir/src/control.rs`, `packages/compiler/hir/tests/bindings.rs` | Node kinds preserve calls, assignments, local function scope, multiple values, cleanup, and non-local exits. Test `FLET`/`LABELS` visibility and binding identity. |
+| L3-1c: CL type model | `packages/compiler/hir/src/cl_type.rs`, `packages/compiler/hir/tests/cl_type.rs` | Range endpoints, `MEMBER`, union/intersection, and yes/no/unknown subtype results preserve CL meaning. Test known and unknown subtype cases. |
+| L3-1d: policy, locations, and verifier | `packages/compiler/hir/src/policy.rs`, `packages/compiler/hir/src/source.rs`, `packages/compiler/hir/src/verify.rs`, `packages/compiler/hir/tests/verifier.rs` | Verifier catches invalid indices, scope, CFG, source origins, and unsound facts after every pass. Release behavior matches D-10. |
+| L3-1e: front-end builder and MIR bridge | `packages/compiler/front/src/hir_builder.rs`, `packages/compiler/hir/src/lower.rs`, `packages/compiler/front/tests/hir_builder.rs` | Front end builds verified HIR and lowers representative forms to current MIR without changing behavior. Run V4 verifier and compare execution results for the covered forms. |
+
+The remaining L3 lanes own non-overlapping modules. Integration tests use
+lane-prefixed paths such as `packages/compiler/opt/tests/l3_2_*.rs`; private
+invariant tests stay beside their module. Prefixes are unique within each
+crate. All rows use V4 as a candidate requirement. Each optimization row also
+uses V7 generated-code inspection and its requirement-specific suite.
+
+| Lane | Requirement | Owned paths | Depends on | Additional V4/V7 evidence |
+|---|---|---|---|---|
+| L3-2 | C01-C03 | `packages/compiler/opt/src/hir/local_calls.rs`, `packages/compiler/opt/src/hir/tail_calls.rs`, `packages/compiler/opt/src/hir/closures.rs`, `packages/codegen/src/tail_call.rs` | L3-1 | Ten-million-step tail recursion, mutual-tail calls, nonescaping `FLET` allocation, closure micro suite. |
+| L3-3 | C04, C05, C10, C11 | `packages/compiler/opt/src/hir/known_functions.rs`, `packages/compiler/opt/src/hir/source_transforms.rs`, `packages/compiler/opt/src/hir/arithmetic.rs`, `packages/compiler/opt/src/hir/sequences.rs`, `packages/compiler/front/src/compiler_macro_lisp.rs` | L3-1 | `(+ 1 2)` folds; failing folds retain calls and notes; compiler-macro expansion and `NOTINLINE`; arithmetic/sequence code inspection. |
+| L3-4 | C07-C08 | `packages/compiler/opt/src/hir/type_inference.rs`, `packages/compiler/opt/src/hir/constraints.rs`, `packages/compiler/opt/tests/l3_4_type_inference.rs` | L3-1 | Type soundness cases plus V2 RTP before merge to the next dependent optimizer. Check safety policies and generated guard counts. |
+| L3-5 | C06, C18 | `packages/compiler/opt/src/hir/inlining.rs`, `packages/runtime/src/compilation_unit.rs` | L3-3 | Same-unit cross-form inline test; declared inline call disappears from generated code; `NOTINLINE` remains a call. |
+| L3-6 | C09, FR-D03 | `packages/compiler/opt/src/hir/representation.rs`, `packages/codegen/src/lowering.rs`, `packages/codegen/src/safepoint.rs` | L3-4 | Double loop allocates zero bytes; generated scalar operations are unboxed; GC maps classify scalar values as non-pointers. |
+| L3-7 | C13 | `packages/compiler/opt/src/hir/escape.rs`, `packages/codegen/src/allocation.rs` | L3-2, L1-4 | Stack/TLAB allocation byte counts, escape cases that remain heap allocated, and GC stress. |
+| L3-8 | C14-C15 | `packages/compiler/opt/src/hir/loops.rs`, `packages/compiler/opt/src/hir/global_value_numbering.rs`, `packages/codegen/src/mir_opt.rs` | L3-4 | Loop and SSA micro suites; inspect eliminated bounds checks, repeated loads, and dead branches. |
+| L3-9 | C16 | `packages/clos/**`, `packages/compiler/opt/src/hir/clos.rs` | L2-ch7, L3-3 | Dispatch microbench is within 1.5x SBCL; inspect specialized slot, accessor, and constructor code. |
+| L3-10 | C12, C17 | `packages/compiler/front/src/hir_calls.rs`, `packages/codegen/src/call_abi.rs`, `packages/codegen/src/control.rs` | L3-1 | `&KEY` calls allocate zero bytes; inspect fixed-arity entries, multiple values, jump tables, and NLX paths. |
+| L3-11 | FR-D01, FR-D02 | `packages/codegen/src/regalloc.rs`, `packages/codegen/src/instruction_select.rs`, `packages/codegen/tests/regalloc.rs` | L3-6 | Register checker is the oracle; inspect folded addresses/immediates, compare-branch fusion, and peephole output. |
+| L3-12 | E01-E04 | `packages/compiler/front/src/compiler_diagnostics.rs`, `packages/runtime/src/compile_diagnostics.rs` | L3-4 | Warning and failure flags match the diagnostic tests; inspect file, form, and line locations. |
+| L3-13 | D05-D08 | `packages/objfile/src/**`, `packages/image/src/**`, `packages/runtime/src/image.rs`, `packages/disasm/src/**` | L1-3 | FASL/image round trip, disassembly, relocation, and target fingerprint tests. |
+| L3-14 | I01-I03 | `scripts/compiler-metrics/**`, `packages/compiler/performance.rs`, `packages/runtime/src/compile_cache.rs` | L0-3 | V8 fixed-corpus time, pass time, peak RSS, and cache-key invalidation evidence. |
+| L3-15 | C19-C20 (optional) | `packages/compiler/opt/src/hir/profile_guided.rs`, `packages/runtime/src/profile.rs`, `packages/codegen/src/simd.rs`, `packages/codegen/src/simd_x86_64.rs`, `packages/codegen/src/simd_aarch64.rs` | L3-6 | Compare optional SIMD/PGO output with an unoptimized baseline; inspect target instruction selection and profile-key rejection. |
+
+The paths in this table are ownership boundaries for the parallel lanes. A
+lane must coordinate a contract change before editing another lane's path.

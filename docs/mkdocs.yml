@@ -62,6 +62,7 @@ nav:
       - Coding standards: design/coding-standards.md
       - Threads: design/threads.md
       - Compiler pipeline: design/compiler-pipeline.md
+      - HIR: design/hir.md
       - Crates: design/crates.md
       - Extension API: design/extension-api.md
   - Project:

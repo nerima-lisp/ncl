@@ -47,10 +47,13 @@ fn node_id(owner: FormId, index: usize) -> Result<NodeId, IdError> {
 }
 
 fn function_node(owner: FormId, nodes: &mut NodeArena) -> Result<NodeId, IdError> {
+    let scope = BindingEnvironment::new(owner).root_scope();
     nodes.allocate(Node {
+        scope,
         origin: SourceOriginId::try_from_index(owner, 0)?,
         kind: NodeKind::Lambda {
             parameters: Vec::new(),
+            body_scope: scope,
             body: Vec::new(),
         },
     })
@@ -237,7 +240,9 @@ fn nodes_keep_global_intrinsic_and_multiple_value_operations_distinct() -> Resul
     let owner = form(3);
     let symbol = symbol(5)?;
     let origin = SourceOriginId::try_from_index(owner, 0)?;
+    let scope = BindingEnvironment::new(owner).root_scope();
     let global = Node {
+        scope,
         origin,
         kind: NodeKind::Call {
             target: CallTarget::Global(symbol),
@@ -245,6 +250,7 @@ fn nodes_keep_global_intrinsic_and_multiple_value_operations_distinct() -> Resul
         },
     };
     let intrinsic = Node {
+        scope,
         origin,
         kind: NodeKind::Call {
             target: CallTarget::Intrinsic(symbol),
@@ -291,9 +297,12 @@ fn nodes_retain_assignments_local_functions_and_cleanup_regions() -> Result<(), 
     if let Some(definition) = definition {
         let local_functions = NodeKind::LocalFunctions {
             kind: LocalFunctionKind::Labels,
+            body_scope: group.body_scope,
             definitions: vec![node::LocalFunctionDefinition {
                 binding: definition.binding,
+                definition_scope: definition.definition_scope,
                 parameters: vec![variable],
+                body_scope: bindings.push_scope(definition.definition_scope)?,
                 body: vec![node_id(owner, 1)?],
             }],
             body: vec![node_id(owner, 2)?],

@@ -91,6 +91,13 @@ def _select_benchmarks(names: Sequence[str] | None) -> tuple[str, ...]:
     return tuple(selected)
 
 
+def _cl_bench_working_directory(source_root: Path) -> Path:
+    for candidate in (source_root, source_root / "cl-bench"):
+        if (candidate / "tests.lisp").is_file() and (candidate / "files").is_dir():
+            return candidate
+    raise RuntimeError("pinned cl-bench checkout has no tests.lisp and files/ directory")
+
+
 def _process_record(
     result: scoreboard.ProcessResult,
     wall_seconds: float,
@@ -240,7 +247,8 @@ def run_baseline(
     if ncl_runtime["process"]["status"] != "passed":
         raise RuntimeError("NCL version probe failed")
 
-    source = scoreboard.checkout_source("cl-bench", cache_dir)
+    source_root = scoreboard.checkout_source("cl-bench", cache_dir).resolve()
+    source = _cl_bench_working_directory(source_root)
     runs: list[dict[str, Any]] = []
     sbcl_command = _sbcl_command(sbcl, benchmark_names, cwd=source)
     warmup_rounds = _round_schedule(warmups, warmups)

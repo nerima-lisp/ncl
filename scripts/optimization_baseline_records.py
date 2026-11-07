@@ -118,9 +118,20 @@ def _benchmark_record(value: Any, *, name: str) -> dict[str, Any]:
     stage = raw_stage if isinstance(raw_stage, str) and raw_stage in scoreboard.CL_BENCH_STAGES else None
     raw_condition = value.get("condition")
     condition = _safe_error(raw_condition) if isinstance(raw_condition, str) else None
-    if set(value) != {"status", "stage", "times", "condition"}:
+    expected_keys = {"status", "stage", "times", "condition"}
+    keys_with_wall_time = expected_keys | {"wall_time_seconds"}
+    if set(value) not in (expected_keys, keys_with_wall_time):
         return _failed_benchmark(
             "benchmark record has an unexpected shape",
+            stage=stage,
+            condition=condition,
+        )
+    if "wall_time_seconds" in value and (
+        not _finite_number(value["wall_time_seconds"])
+        or value["wall_time_seconds"] < 0
+    ):
+        return _failed_benchmark(
+            "benchmark wall time must be a finite nonnegative number",
             stage=stage,
             condition=condition,
         )

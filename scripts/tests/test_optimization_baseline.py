@@ -18,6 +18,9 @@ class FakeRunner:
     def __init__(self, root, *, fail_one_benchmark=False, benchmark_names=None):
         self.source = root / "pinned-source"
         self.source.mkdir()
+        cl_bench = self.source / "cl-bench"
+        (cl_bench / "files").mkdir(parents=True)
+        (cl_bench / "tests.lisp").write_text("", encoding="utf-8")
         self.fail_one_benchmark = fail_one_benchmark
         self.benchmark_names = benchmark_names or baseline.BENCHMARKS
         self.calls = []
@@ -84,6 +87,7 @@ class FakeRunner:
                 "stage": stage,
                 "times": times,
                 "condition": condition,
+                "wall_time_seconds": 0.125,
             }
         payload = {
             "status": "failed" if any(row["status"] == "failed" for row in benchmarks.values()) else "passed",
@@ -164,6 +168,8 @@ class OptimizationBaselineTests(unittest.TestCase):
         ]])
         self.assertEqual(report["build_revision"]["commit"], "a" * 40)
         self.assertEqual(report["build_revision"]["source"], "committed source at @-")
+        expected_cwd = (runner.source / "cl-bench").resolve()
+        self.assertTrue(all(call[4] == expected_cwd for call in runner.calls))
         self.assertEqual(
             [(runtime, mode, call) for runtime, mode, call, *_ in runner.calls],
             [

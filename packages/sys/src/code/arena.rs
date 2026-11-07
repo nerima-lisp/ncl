@@ -122,7 +122,7 @@ impl Drop for CodeArena {
         #[cfg(target_os = "linux")]
         {
             // SAFETY: this arena owns the complete mmap reservation.
-            let base = core::ptr::with_exposed_provenance_mut(self.base).cast::<c_void>();
+            let base = core::ptr::with_exposed_provenance_mut::<u8>(self.base).cast::<c_void>();
             let _ = unsafe { declarations::munmap(base, self.len) };
         }
         #[cfg(target_os = "macos")]

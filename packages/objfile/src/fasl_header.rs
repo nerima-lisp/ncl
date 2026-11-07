@@ -1,7 +1,7 @@
 use crate::error::{FaslError, FaslRejectReason};
 use crate::fasl::Architecture;
 
-pub(super) const HEADER_SIZE: usize = 128;
+pub const HEADER_SIZE: usize = 128;
 const MAGIC: &[u8; 8] = b"NCLFASL\0";
 const CONTAINER_VERSION: u16 = 3;
 const SEMANTIC_VERSION: u32 = 1;
@@ -9,33 +9,31 @@ const SECTION_COUNT: u32 = 8;
 const DIRECTORY_OFFSET: u32 = 128;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct FaslV1Header {
-    pub(super) architecture: Architecture,
-    pub(super) runtime_abi_version: u32,
-    pub(super) compiler_identity: [u8; 32],
-    pub(super) policy_fingerprint: [u8; 32],
-    pub(super) feature_fingerprint: [u8; 32],
+pub struct FaslV1Header {
+    pub architecture: Architecture,
+    pub runtime_abi_version: u32,
+    pub compiler_identity: [u8; 32],
+    pub policy_fingerprint: [u8; 32],
+    pub feature_fingerprint: [u8; 32],
 }
 
-pub(super) fn encode(header: &FaslV1Header) -> [u8; HEADER_SIZE] {
+pub fn encode(header: &FaslV1Header) -> Result<[u8; HEADER_SIZE], FaslError> {
     let mut bytes = [0; HEADER_SIZE];
-    bytes[..8].copy_from_slice(MAGIC);
-    bytes[8..10].copy_from_slice(&CONTAINER_VERSION.to_le_bytes());
-    bytes[10] = header.architecture as u8;
-    bytes[11] = 8;
-    bytes[12] = 1;
-    bytes[13] = 128;
-    bytes[16..20].copy_from_slice(&SEMANTIC_VERSION.to_le_bytes());
-    bytes[20..24].copy_from_slice(&header.runtime_abi_version.to_le_bytes());
-    bytes[24..56].copy_from_slice(&header.compiler_identity);
-    bytes[56..88].copy_from_slice(&header.policy_fingerprint);
-    bytes[88..120].copy_from_slice(&header.feature_fingerprint);
-    bytes[120..124].copy_from_slice(&SECTION_COUNT.to_le_bytes());
-    bytes[124..128].copy_from_slice(&DIRECTORY_OFFSET.to_le_bytes());
-    bytes
+    write_range(&mut bytes, 0, MAGIC)?;
+    write_range(&mut bytes, 8, &CONTAINER_VERSION.to_le_bytes())?;
+    write_range(&mut bytes, 10, &[header.architecture.wire_tag()])?;
+    write_range(&mut bytes, 11, &[8, 1, 128])?;
+    write_range(&mut bytes, 16, &SEMANTIC_VERSION.to_le_bytes())?;
+    write_range(&mut bytes, 20, &header.runtime_abi_version.to_le_bytes())?;
+    write_range(&mut bytes, 24, &header.compiler_identity)?;
+    write_range(&mut bytes, 56, &header.policy_fingerprint)?;
+    write_range(&mut bytes, 88, &header.feature_fingerprint)?;
+    write_range(&mut bytes, 120, &SECTION_COUNT.to_le_bytes())?;
+    write_range(&mut bytes, 124, &DIRECTORY_OFFSET.to_le_bytes())?;
+    Ok(bytes)
 }
 
-pub(super) fn decode(bytes: &[u8]) -> Result<FaslV1Header, FaslError> {
+pub fn decode(bytes: &[u8]) -> Result<FaslV1Header, FaslError> {
     if bytes.len() < HEADER_SIZE {
         return Err(FaslError::at(
             FaslRejectReason::MalformedDirectory,
@@ -55,7 +53,9 @@ pub(super) fn decode(bytes: &[u8]) -> Result<FaslV1Header, FaslError> {
     let architecture = match bytes.get(10).copied() {
         Some(1) => Architecture::X86_64,
         Some(2) => Architecture::Aarch64,
-        _ => return Err(FaslError::at(FaslRejectReason::TargetMismatch, 10)),
+        Some(0 | 3..=u8::MAX) | None => {
+            return Err(FaslError::at(FaslRejectReason::TargetMismatch, 10));
+        }
     };
     if bytes.get(11) != Some(&8) {
         return Err(FaslError::at(FaslRejectReason::TargetMismatch, 11));
@@ -107,9 +107,24 @@ fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, FaslError> {
     Ok(u32::from_le_bytes(value))
 }
 
+fn write_range(bytes: &mut [u8], offset: usize, value: &[u8]) -> Result<(), FaslError> {
+    let end = offset
+        .checked_add(value.len())
+        .ok_or_else(|| FaslError::at(FaslRejectReason::MalformedDirectory, offset))?;
+    let destination = bytes
+        .get_mut(offset..end)
+        .ok_or_else(|| FaslError::at(FaslRejectReason::MalformedDirectory, offset))?;
+    destination.copy_from_slice(value);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn must_succeed<T, E>(result: Result<T, E>) -> T {
+        result.unwrap_or_else(|_| panic!("test fixture must be valid"))
+    }
 
     fn header() -> FaslV1Header {
         FaslV1Header {
@@ -123,28 +138,28 @@ mod tests {
 
     #[test]
     fn v1_header_matches_all_fixed_offsets_and_round_trips() {
-        let encoded = encode(&header());
+        let encoded = must_succeed(encode(&header()));
         assert_eq!(&encoded[..8], b"NCLFASL\0");
         assert_eq!(u16::from_le_bytes([encoded[8], encoded[9]]), 3);
         assert_eq!(encoded[10..14], [2, 8, 1, 128]);
         assert_eq!(u16::from_le_bytes([encoded[14], encoded[15]]), 0);
         assert_eq!(
-            u32::from_le_bytes(encoded[16..20].try_into().unwrap_or([0; 4])),
+            u32::from_le_bytes(must_succeed(read_array::<4>(&encoded, 16))),
             1
         );
         assert_eq!(
-            u32::from_le_bytes(encoded[20..24].try_into().unwrap_or([0; 4])),
+            u32::from_le_bytes(must_succeed(read_array::<4>(&encoded, 20))),
             7
         );
         assert_eq!(&encoded[24..56], &[1; 32]);
         assert_eq!(&encoded[56..88], &[2; 32]);
         assert_eq!(&encoded[88..120], &[3; 32]);
         assert_eq!(
-            u32::from_le_bytes(encoded[120..124].try_into().unwrap_or([0; 4])),
+            u32::from_le_bytes(must_succeed(read_array::<4>(&encoded, 120))),
             8
         );
         assert_eq!(
-            u32::from_le_bytes(encoded[124..128].try_into().unwrap_or([0; 4])),
+            u32::from_le_bytes(must_succeed(read_array::<4>(&encoded, 124))),
             128
         );
         assert_eq!(decode(&encoded), Ok(header()));
@@ -152,7 +167,7 @@ mod tests {
 
     #[test]
     fn v1_header_rejects_magic_version_and_target_fields_by_reason() {
-        let valid = encode(&header());
+        let valid = must_succeed(encode(&header()));
         let mut bad_magic = valid;
         bad_magic[0] = b'X';
         assert_eq!(

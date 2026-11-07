@@ -1,6 +1,5 @@
 use crate::error::{FaslError, FaslRejectReason};
 use crate::fasl_records::{SectionReader, SectionWriter};
-use crate::fasl_symbols::{FaslSymbol, SymbolBindingKind};
 
 const MAX_RECORDS: usize = 1_048_576;
 const MAX_STRING_BYTES: usize = 1_048_576;
@@ -90,7 +89,7 @@ pub struct FaslConstantGroup {
     pub constants: Vec<FaslConstant>,
 }
 
-pub(super) fn encode(groups: &[FaslConstantGroup]) -> Result<Vec<u8>, FaslError> {
+pub fn encode(groups: &[FaslConstantGroup]) -> Result<Vec<u8>, FaslError> {
     check_record_count(groups.len())?;
     let mut total_constants = 0_usize;
     let mut section_size = 4_usize;
@@ -137,10 +136,7 @@ pub(super) fn encode(groups: &[FaslConstantGroup]) -> Result<Vec<u8>, FaslError>
     Ok(output.into_bytes())
 }
 
-pub(super) fn decode(
-    bytes: &[u8],
-    base_offset: usize,
-) -> Result<Vec<FaslConstantGroup>, FaslError> {
+pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslConstantGroup>, FaslError> {
     if bytes.len() > MAX_SECTION_BYTES {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
@@ -186,49 +182,6 @@ pub(super) fn decode(
     Ok(groups)
 }
 
-/// Checks symbol and intra-object constant references after all sections are parsed.
-pub(super) fn validate_references(
-    groups: &[FaslConstantGroup],
-    symbols: &[FaslSymbol],
-) -> Result<(), FaslError> {
-    for group in groups {
-        let count = u32::try_from(group.constants.len())
-            .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
-        for constant in &group.constants {
-            match constant {
-                FaslConstant::SymbolReference(symbol_id) => {
-                    let symbol = usize::try_from(*symbol_id)
-                        .ok()
-                        .and_then(|id| symbols.get(id));
-                    if symbol.is_none_or(|symbol| {
-                        symbol.id != *symbol_id || symbol.binding_kind != SymbolBindingKind::Lisp
-                    }) {
-                        return Err(FaslError::new(FaslRejectReason::InvalidReference));
-                    }
-                }
-                FaslConstant::Cons { car, cdr }
-                | FaslConstant::Ratio {
-                    numerator: car,
-                    denominator: cdr,
-                }
-                | FaslConstant::Complex {
-                    real: car,
-                    imaginary: cdr,
-                } if *car >= count || *cdr >= count => {
-                    return Err(FaslError::new(FaslRejectReason::InvalidReference));
-                }
-                FaslConstant::SimpleVector(indices)
-                    if indices.iter().any(|index| *index >= count) =>
-                {
-                    return Err(FaslError::new(FaslRejectReason::InvalidReference));
-                }
-                _ => {}
-            }
-        }
-    }
-    Ok(())
-}
-
 fn checked_section_growth(current: usize, added: usize) -> Result<usize, FaslError> {
     let size = current
         .checked_add(added)
@@ -239,11 +192,19 @@ fn checked_section_growth(current: usize, added: usize) -> Result<usize, FaslErr
     Ok(size)
 }
 
-fn check_record_count(count: usize) -> Result<(), FaslError> {
+const fn check_record_count(count: usize) -> Result<(), FaslError> {
     if count > MAX_RECORDS {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
     Ok(())
+}
+
+struct ConstantPayload<'a> {
+    tag: u16,
+    bytes: &'a [u8],
+    record_offset: usize,
+    length_offset: usize,
+    payload_offset: usize,
 }
 
 fn validate_constant(constant: &FaslConstant) -> Result<(), FaslError> {
@@ -263,7 +224,19 @@ fn validate_constant(constant: &FaslConstant) -> Result<(), FaslError> {
         FaslConstant::SimpleVector(indices) if indices.len() > MAX_RECORDS => {
             Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
         }
-        _ => Ok(()),
+        FaslConstant::Nil
+        | FaslConstant::Truth
+        | FaslConstant::Fixnum(_)
+        | FaslConstant::Character(_)
+        | FaslConstant::SingleFloat(_)
+        | FaslConstant::DoubleFloat(_)
+        | FaslConstant::String(_)
+        | FaslConstant::SymbolReference(_)
+        | FaslConstant::Cons { .. }
+        | FaslConstant::SimpleVector(_)
+        | FaslConstant::Bignum { .. }
+        | FaslConstant::Ratio { .. }
+        | FaslConstant::Complex { .. } => Ok(()),
     }
 }
 
@@ -369,7 +342,22 @@ fn decode_constant(reader: &mut SectionReader<'_>) -> Result<FaslConstant, FaslE
         .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, length_offset))?;
     let payload_offset = reader.absolute_position();
     let payload = reader.take(payload_length)?;
-    let mut data = SectionReader::new(payload, payload_offset, FaslRejectReason::InvalidCodeObject);
+    decode_constant_payload(&ConstantPayload {
+        tag,
+        bytes: payload,
+        record_offset,
+        length_offset,
+        payload_offset,
+    })
+}
+
+fn decode_constant_payload(record: &ConstantPayload<'_>) -> Result<FaslConstant, FaslError> {
+    let tag = record.tag;
+    let bytes = record.bytes;
+    let record_offset = record.record_offset;
+    let length_offset = record.length_offset;
+    let payload_offset = record.payload_offset;
+    let mut data = SectionReader::new(bytes, payload_offset, FaslRejectReason::InvalidCodeObject);
     let constant = match tag {
         0 => FaslConstant::Nil,
         1 => FaslConstant::Truth,
@@ -393,7 +381,7 @@ fn decode_constant(reader: &mut SectionReader<'_>) -> Result<FaslConstant, FaslE
         4 => FaslConstant::SingleFloat(data.u32()?),
         5 => FaslConstant::DoubleFloat(data.u64()?),
         6 => {
-            if payload_length > MAX_STRING_BYTES {
+            if bytes.len() > MAX_STRING_BYTES {
                 return Err(FaslError::at(
                     FaslRejectReason::ResourceLimitExceeded,
                     length_offset,
@@ -421,45 +409,7 @@ fn decode_constant(reader: &mut SectionReader<'_>) -> Result<FaslConstant, FaslE
             }
             FaslConstant::SimpleVector(indices)
         }
-        10 => {
-            let sign_offset = data.absolute_position();
-            let sign = data.u8()?;
-            if sign > 1 {
-                return Err(FaslError::at(
-                    FaslRejectReason::InvalidCodeObject,
-                    sign_offset,
-                ));
-            }
-            let reserved_offset = data.absolute_position();
-            if data.take(3)?.iter().any(|byte| *byte != 0) {
-                return Err(FaslError::at(
-                    FaslRejectReason::InvalidCodeObject,
-                    reserved_offset,
-                ));
-            }
-            let count_offset = data.absolute_position();
-            let count = data.count(MAX_RECORDS, 4)?;
-            if count == 0 {
-                return Err(FaslError::at(
-                    FaslRejectReason::InvalidCodeObject,
-                    count_offset,
-                ));
-            }
-            let mut limbs = Vec::with_capacity(count);
-            for _ in 0..count {
-                limbs.push(data.u32()?);
-            }
-            if limbs.last() == Some(&0) {
-                return Err(FaslError::at(
-                    FaslRejectReason::InvalidCodeObject,
-                    count_offset,
-                ));
-            }
-            FaslConstant::Bignum {
-                negative: sign == 1,
-                limbs,
-            }
-        }
+        10 => decode_bignum(&mut data)?,
         11 => FaslConstant::Ratio {
             numerator: data.u32()?,
             denominator: data.u32()?,
@@ -468,7 +418,7 @@ fn decode_constant(reader: &mut SectionReader<'_>) -> Result<FaslConstant, FaslE
             real: data.u32()?,
             imaginary: data.u32()?,
         },
-        _ => {
+        13..=u16::MAX => {
             return Err(FaslError::at(
                 FaslRejectReason::InvalidCodeObject,
                 record_offset,
@@ -477,6 +427,46 @@ fn decode_constant(reader: &mut SectionReader<'_>) -> Result<FaslConstant, FaslE
     };
     data.finish()?;
     Ok(constant)
+}
+
+fn decode_bignum(data: &mut SectionReader<'_>) -> Result<FaslConstant, FaslError> {
+    let sign_offset = data.absolute_position();
+    let sign = data.u8()?;
+    if sign > 1 {
+        return Err(FaslError::at(
+            FaslRejectReason::InvalidCodeObject,
+            sign_offset,
+        ));
+    }
+    let reserved_offset = data.absolute_position();
+    if data.take(3)?.iter().any(|byte| *byte != 0) {
+        return Err(FaslError::at(
+            FaslRejectReason::InvalidCodeObject,
+            reserved_offset,
+        ));
+    }
+    let count_offset = data.absolute_position();
+    let count = data.count(MAX_RECORDS, 4)?;
+    if count == 0 {
+        return Err(FaslError::at(
+            FaslRejectReason::InvalidCodeObject,
+            count_offset,
+        ));
+    }
+    let mut limbs = Vec::with_capacity(count);
+    for _ in 0..count {
+        limbs.push(data.u32()?);
+    }
+    if limbs.last() == Some(&0) {
+        return Err(FaslError::at(
+            FaslRejectReason::InvalidCodeObject,
+            count_offset,
+        ));
+    }
+    Ok(FaslConstant::Bignum {
+        negative: sign == 1,
+        limbs,
+    })
 }
 
 #[cfg(test)]

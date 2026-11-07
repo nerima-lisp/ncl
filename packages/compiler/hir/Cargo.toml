@@ -14,5 +14,9 @@ path = "tests/arena.rs"
 name = "bindings"
 path = "tests/bindings.rs"
 
+[[test]]
+name = "cl_type"
+path = "tests/cl_type.rs"
+
 [lints]
 workspace = true

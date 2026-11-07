@@ -1,5 +1,7 @@
 use crate::os::declarations;
-use core::ffi::{c_int, c_long, c_void};
+#[cfg(target_os = "linux")]
+use core::ffi::c_void;
+use core::ffi::{c_int, c_long};
 use core::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};

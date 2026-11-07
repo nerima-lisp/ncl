@@ -140,6 +140,7 @@ class OptimizationBaselineTests(unittest.TestCase):
 
         self.assertEqual(baseline.SBCL_VERSION, "2.6.10")
         self.assertEqual(arguments.sbcl, "sbcl")
+        self.assertIsNone(arguments.ncl_revision)
         self.assertEqual(arguments.pairs, 5)
         self.assertEqual(arguments.sbcl_samples, 5)
         with self.assertRaises(SystemExit):
@@ -473,6 +474,21 @@ class OptimizationBaselineTests(unittest.TestCase):
                     cwd=baseline.REPO_ROOT,
                     timeout=baseline.INFO_TIMEOUT,
                 )
+
+    def test_explicit_ncl_revision_is_used_for_external_binary(self):
+        revision = "a" * 40
+        with patch.object(baseline, "_timed_command") as timed_command:
+            record = baseline._revision_record(revision)
+
+        timed_command.assert_not_called()
+        self.assertEqual(record, {
+            "commit": revision,
+            "status": "passed",
+            "source": "explicit NCL executable build revision",
+            "wall_seconds": 0.0,
+        })
+        with self.assertRaisesRegex(ValueError, "commit SHA"):
+            baseline._revision_record("not-a-commit")
 
 
 if __name__ == "__main__":

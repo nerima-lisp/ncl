@@ -1,14 +1,33 @@
 # SBCL surface tables
 
-Regenerate the tables from the repository root with:
+Regenerate the six-column SBCL surface tables from the repository root with:
 
 ```sh
 nix develop --command sbcl --script conformance/sbcl/extract-surface.lisp
 ```
 
-The extractor requires SBCL 2.6.0. The flat tables are the macOS arm64 baseline. Linux x86-64 tables that differ from that baseline, plus tables present only on Linux, are stored in `linux-x86_64/`; byte-identical tables use the flat baseline. The ownership checker selects a Linux override when one exists and otherwise uses the baseline.
+The extractor requires SBCL 2.6.0. The flat tables are the macOS arm64 baseline. Linux x86-64 tables that differ from that baseline, plus tables present only on Linux, are stored in `linux-x86_64/`; byte-identical tables use the flat baseline. `conformance/ownership/check.py` selects a Linux override when one exists and otherwise uses the baseline.
 
-The symbol tables begin with `package`, `symbol`, `present`, `external`, `kind`, and `lambda-list`. Boolean fields use `yes` or `no`. Compound kinds use `+` in this order: `special-operator`, `macro`, `function`, `variable`, `constant`, `class`, `condition`, `type`, `other`. Function and macro lambda lists use lowercase Common Lisp printer output; `()` denotes an empty list, `unknown` denotes unavailable introspection, and `-` is used for other symbols. The internal reference table retains its three provenance columns after these fields.
+The symbol tables begin with `package`, `symbol`, `present`, `external`, `kind`, and `lambda-list`. `present` means the symbol is interned in the package; `external` means the package exports it. Boolean fields use `yes` or `no`. Compound kinds use `+` in this order: `special-operator`, `macro`, `function`, `variable`, `constant`, `class`, `condition`, `type`, `other`. Function and macro lambda lists use lowercase Common Lisp printer output; `()` denotes an empty list, `unknown` denotes unavailable introspection, and `-` is used for other symbols. The internal reference table retains its three provenance columns after these fields.
+
+## COMMON-LISP implementation matrix
+
+`common-lisp.tsv` is the 978-symbol COMMON-LISP matrix as well as the SBCL surface table. The SBCL extractor writes its six base columns. Run the matrix generator after extraction to append `clhs_kinds`, `clhs_chapters`, `implementation_status`, `status_notes`, `test_refs`, and `ncl_kinds`; running the extractor again replaces the enriched table with the six-column surface data.
+
+Build the release binary, generate the matrix, then check it against a fresh runtime probe:
+
+```sh
+cargo build --release --bin ncl
+ncl=${CARGO_TARGET_DIR:-target}/release/ncl
+python3 scripts/check_cl_matrix.py --ncl "$ncl" --write
+python3 scripts/check_cl_matrix.py --ncl "$ncl"
+```
+
+The generator joins the six-column surface table to `conformance/sbcl/common-lisp-metadata.tsv` by package and symbol. Metadata kinds use `+` separators, CLHS chapter numbers and test references use `;` separators, and `-` means no reference. `ANSI:<name>` references must exist in `conformance/baselines/ansi-test-sbcl-2.6.0-macos-arm64.tsv`; these names were matched by exact symbol/test-name stems, and the baseline contains no test bodies to verify the match. Other references name repository test files.
+
+`implementation_status` reports runtime binding availability for the metadata kinds. `implemented` requires the observable kind bindings and at least one test reference. `partial` records a missing or unavailable binding, a kind the probe cannot inspect, or a missing test reference. `missing` records a non-external symbol or a row with no available expected binding. `status_notes` identifies the reason, and `ncl_kinds` records the kinds observed in NCL. These checks establish symbol and namespace availability; they do not establish full ANSI behavior or prove that every referenced test exercises every listed kind.
+
+The checker prints interned COMMON-LISP function and macro names whose `fboundp` is false. A generic call sweep is unsafe because calls can have side effects, stop, or terminate NCL. Quote `--probe-call 'SYMBOL=(...)'` to pass a direct call expression for an explicitly selected symbol; run it only when the supplied arguments are safe. The checker reports that other fbound functions were not call-probed, so a callback that fails with an unimplemented error may remain undetected.
 
 All counts below exclude the header row.
 
@@ -24,10 +43,6 @@ All counts below exclude the header row.
 | SB-UNICODE | 47 | 47 |
 | SB-DEBUG | 24 | 25 |
 | **Public SB package total** | **698** | **731** |
-
-The Linux public-package increase is 32 symbols in SB-EXT and one in SB-DEBUG; the other six SB package counts match macOS arm64. At revision `57cc06ab`, this README reported 236, 82, 61, 110, 101, 31, 46, and 23 rows for the eight SB public packages (690 total). The current macOS TSVs and the TSVs under `conformance/sbcl/symbols/` at that revision each contain 237, 83, 62, 111, 102, 32, 47, and 24 rows (698 total), one more row per package. Their symbol-name sets are identical, and the repository contains no 690-symbol membership list. The 690 figure is a stale README count; the evidence identifies no eight missing symbols.
-
-The 20 SBCL contrib entries are separate from ASDF and UIOP. D-13 states 20 contribs for macOS arm64; 18 loaded there, while `sb-simd` and `sb-perf` were out of scope. The extractor's 20-entry `*sbcl-contribs*` list in `conformance/sbcl/extract-surface.lisp` contains no additional contrib entries to account for the difference. On x86-64 Linux, all 20 contribs loaded, including `sb-simd` and `sb-perf`. No in-scope contrib failed. The platform-specific `external-count` in `contribs.tsv` matches the resolved table's data row count.
 
 | SBCL contrib | macOS arm64 status | macOS rows | Linux x86-64 status | Linux rows |
 | --- | --- | ---: | --- | ---: |
@@ -59,4 +74,4 @@ The 20 SBCL contrib entries are separate from ASDF and UIOP. D-13 states 20 cont
 | ASDF | loaded | 230 | loaded | 230 |
 | UIOP | loaded | 427 | loaded | 427 |
 
-`internal-referenced.tsv` contains 58 references collected from CFFI, Alexandria, Babel, UIOP, and usocket sources. The source summary is CFFI 7, Alexandria 2, Babel 1, UIOP 36, and usocket 12; the other 10 scanned library sources contributed none. Its provenance columns identify the library, example source location, and whether the symbol was exported in SBCL 2.6.0. Of 58 references, 57 were present: 29 external and 28 internal. `SB-C::SIMPLE-COMPILER-NOTE` was absent.
+`internal-referenced.tsv` contains 58 references collected from CFFI, Alexandria, Babel, UIOP, and usocket sources. The source summary is CFFI 7, Alexandria 2, Babel 1, UIOP 36, and usocket 12. Its provenance columns identify the library, example source location, and whether the symbol was exported in SBCL 2.6.0. Of 58 referenced names, 57 occur in the SBCL 2.6.0 surface table: 29 are external and 28 are internal. `SB-C::SIMPLE-COMPILER-NOTE` does not occur in that table.

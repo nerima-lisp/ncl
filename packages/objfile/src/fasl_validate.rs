@@ -485,3 +485,11 @@ fn rejection(reason: FaslRejectReason, offset: Option<usize>) -> FaslError {
         |offset| FaslError::at(reason, offset),
     )
 }
+
+#[cfg(test)]
+#[path = "fasl_validate_tests.rs"]
+mod private_tests;
+
+#[cfg(test)]
+#[path = "fasl_validate_relocation_tests.rs"]
+mod relocation_tests;

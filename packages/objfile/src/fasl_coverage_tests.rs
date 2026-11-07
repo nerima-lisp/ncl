@@ -7,7 +7,10 @@ fn fasl_rejection_reasons_map_to_stable_keywords() {
         (FaslRejectReason::BadMagic, ":BAD-MAGIC"),
         (FaslRejectReason::UnsupportedVersion, ":UNSUPPORTED-VERSION"),
         (FaslRejectReason::TargetMismatch, ":TARGET-MISMATCH"),
-        (FaslRejectReason::RuntimeAbiMismatch, ":RUNTIME-ABI-MISMATCH"),
+        (
+            FaslRejectReason::RuntimeAbiMismatch,
+            ":RUNTIME-ABI-MISMATCH",
+        ),
         (
             FaslRejectReason::CompilerIdentityMismatch,
             ":COMPILER-MISMATCH",
@@ -21,24 +24,12 @@ fn fasl_rejection_reasons_map_to_stable_keywords() {
             ":FEATURE-MISMATCH",
         ),
         (FaslRejectReason::MalformedDirectory, ":INVALID-SECTION"),
-        (
-            FaslRejectReason::ResourceLimitExceeded,
-            ":RESOURCE-LIMIT",
-        ),
+        (FaslRejectReason::ResourceLimitExceeded, ":RESOURCE-LIMIT"),
         (FaslRejectReason::MalformedMetadata, ":INVALID-METADATA"),
         (FaslRejectReason::InvalidReference, ":INVALID-REFERENCE"),
-        (
-            FaslRejectReason::InvalidCodeObject,
-            ":INVALID-CODE-OBJECT",
-        ),
-        (
-            FaslRejectReason::InvalidRelocation,
-            ":INVALID-RELOCATION",
-        ),
-        (
-            FaslRejectReason::InvalidSafepointMap,
-            ":INVALID-STACK-MAP",
-        ),
+        (FaslRejectReason::InvalidCodeObject, ":INVALID-CODE-OBJECT"),
+        (FaslRejectReason::InvalidRelocation, ":INVALID-RELOCATION"),
+        (FaslRejectReason::InvalidSafepointMap, ":INVALID-STACK-MAP"),
         (
             FaslRejectReason::InvalidDebugRecord,
             ":INVALID-DEBUG-RECORD",

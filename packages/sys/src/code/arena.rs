@@ -121,8 +121,8 @@ impl Drop for CodeArena {
     fn drop(&mut self) {
         #[cfg(target_os = "linux")]
         {
-            // SAFETY: this arena owns the complete mmap reservation.
             let base = core::ptr::with_exposed_provenance_mut::<u8>(self.base).cast::<c_void>();
+            // SAFETY: `base` starts this arena's mapping, and `self.len` is its complete size.
             let _ = unsafe { declarations::munmap(base, self.len) };
         }
         #[cfg(target_os = "macos")]

@@ -21,7 +21,7 @@ fn blocked_control_signal_is_consumed_by_sigwait() -> Result<(), Box<dyn std::er
         if unsafe { raise(SIG_INT) } != 0 {
             return Err(std::io::Error::last_os_error());
         }
-        Thread::wait_signal_control_set()
+        wait_control_signal()
     })
     .join()
     {
@@ -30,6 +30,16 @@ fn blocked_control_signal_is_consumed_by_sigwait() -> Result<(), Box<dyn std::er
     };
     assert_eq!(signal, SIG_INT);
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn wait_control_signal() -> std::io::Result<c_int> {
+    Thread::wait_signal_control_set()
+}
+
+#[cfg(target_os = "macos")]
+fn wait_control_signal() -> std::io::Result<c_int> {
+    Thread::wait_process_signal()
 }
 
 #[test]

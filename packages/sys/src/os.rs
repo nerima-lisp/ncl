@@ -270,21 +270,36 @@ mod signal_control {
         io::Error::from_raw_os_error(code)
     }
 
-    fn control_signal_set() -> io::Result<SigSet> {
+    fn signal_set(signals: &[c_int]) -> io::Result<SigSet> {
         // SAFETY: zero is a valid initial representation before sigemptyset fills it.
         let mut set: SigSet = unsafe { core::mem::zeroed() };
         // SAFETY: set points to correctly sized storage for this target's sigset_t.
         if unsafe { sigemptyset(&raw mut set) } != 0 {
             return Err(last_os_error());
         }
-        let signals = [SIG_INT, SIG_TERM, SIG_CHLD];
-        for signal in signals {
+        for &signal in signals {
             // SAFETY: set is initialized and signal is a valid target signal number.
             if unsafe { sigaddset(&raw mut set, signal) } != 0 {
                 return Err(last_os_error());
             }
         }
         Ok(set)
+    }
+
+    fn wait_signal_set(signals: &[c_int]) -> io::Result<c_int> {
+        let set = signal_set(signals)?;
+        loop {
+            let mut signal = 0;
+            // SAFETY: set is initialized and signal points to writable integer storage.
+            let result = unsafe { sigwait(&raw const set, &raw mut signal) };
+            if result == 0 {
+                return Ok(signal);
+            }
+            let error = io::Error::from_raw_os_error(result);
+            if error.kind() != io::ErrorKind::Interrupted {
+                return Err(error);
+            }
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -429,7 +444,6 @@ mod signal_control {
         pub fn ignore_sigpipe() -> io::Result<()> {
             set_signal_disposition(SIG_PIPE, SIG_IGN)
         }
-
         /// Install a no-op disposition so `SIGCHLD` can be consumed with `sigwait`.
         ///
         /// # Errors
@@ -438,13 +452,12 @@ mod signal_control {
             // check-added-lines: allow(as-cast) `sa_handler` is a function pointer in the POSIX ABI.
             set_signal_disposition(SIG_CHLD, sigchld_wait_handler as *const () as usize)
         }
-
         /// Block `SIGINT`, `SIGTERM`, and `SIGCHLD` on the calling OS thread.
         ///
         /// # Errors
         /// Returns an OS error if the signal mask cannot be updated.
         pub fn block_signal_control_set() -> io::Result<()> {
-            let set = control_signal_set()?;
+            let set = signal_set(&[SIG_INT, SIG_TERM, SIG_CHLD])?;
             // SAFETY: set is initialized and old_set is null because its prior value is unused.
             let result =
                 unsafe { pthread_sigmask(SIG_BLOCK, &raw const set, core::ptr::null_mut()) };
@@ -453,25 +466,26 @@ mod signal_control {
             }
             Ok(())
         }
-
-        /// Wait for one blocked control signal and return its target signal number.
-        ///
+        /// Wait for one blocked control signal.
         /// # Errors
         /// Returns an OS error if `sigwait` fails.
+        #[cfg(target_os = "linux")]
         pub fn wait_signal_control_set() -> io::Result<c_int> {
-            let set = control_signal_set()?;
-            loop {
-                let mut signal = 0;
-                // SAFETY: set is initialized and signal points to writable integer storage.
-                let result = unsafe { sigwait(&raw const set, &raw mut signal) };
-                if result == 0 {
-                    return Ok(signal);
-                }
-                let error = io::Error::from_raw_os_error(result);
-                if error.kind() != io::ErrorKind::Interrupted {
-                    return Err(error);
-                }
-            }
+            wait_signal_set(&[SIG_INT, SIG_TERM, SIG_CHLD])
+        }
+        /// Wait for `SIGINT` or `SIGTERM`.
+        /// # Errors
+        /// Returns an OS error if `sigwait` fails.
+        #[cfg(target_os = "macos")]
+        pub fn wait_process_signal() -> io::Result<c_int> {
+            wait_signal_set(&[SIG_INT, SIG_TERM])
+        }
+        /// Wait for `SIGCHLD`.
+        /// # Errors
+        /// Returns an OS error if `sigwait` fails.
+        #[cfg(target_os = "macos")]
+        pub fn wait_child_signal() -> io::Result<c_int> {
+            wait_signal_set(&[SIG_CHLD])
         }
 
         /// Reuse or register a per-thread alternate signal stack of the contract size.

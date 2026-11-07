@@ -80,8 +80,8 @@ impl std::fmt::Debug for SignalControl {
 impl SignalControl {
     /// Install the SIGPIPE disposition, prepare the calling thread, and start sigwait.
     ///
-    /// Call this on the main thread before creating runtime threads. The new sigwait
-    /// thread inherits its blocked signal mask from the caller.
+    /// Call this on the main thread before creating runtime threads. The sigwait
+    /// workers inherit their blocked signal mask from the caller.
     ///
     /// # Errors
     /// Returns an OS, startup-state, or thread-creation error. On failure, the control signals
@@ -100,11 +100,33 @@ impl SignalControl {
         ncl_sys::Thread::ignore_sigpipe().map_err(SignalControlError::OperatingSystem)?;
         ncl_sys::Thread::ensure_alt_signal_stack().map_err(SignalControlError::OperatingSystem)?;
         let (sender, receiver) = mpsc::channel();
-        let worker = std::thread::Builder::new()
-            .name("ncl-sigwait".to_owned())
-            .spawn(move || sigwait_loop(&sender));
-        worker.map_err(SignalControlError::ThreadSpawn)?;
-        *started = true;
+        #[cfg(target_os = "linux")]
+        spawn_signal_worker(
+            "ncl-sigwait",
+            sender,
+            ncl_sys::Thread::wait_signal_control_set,
+        )
+        .map_err(SignalControlError::ThreadSpawn)?;
+        #[cfg(target_os = "macos")]
+        {
+            spawn_signal_worker(
+                "ncl-sigwait-process",
+                sender.clone(),
+                ncl_sys::Thread::wait_process_signal,
+            )
+            .map_err(SignalControlError::ThreadSpawn)?;
+            *started = true;
+            spawn_signal_worker(
+                "ncl-sigwait-children",
+                sender,
+                ncl_sys::Thread::wait_child_signal,
+            )
+            .map_err(SignalControlError::ThreadSpawn)?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            *started = true;
+        }
         drop(started);
         Ok(Self { receiver })
     }
@@ -165,9 +187,23 @@ fn prepare_current_thread() -> Result<(), SignalControlError> {
     Ok(())
 }
 
-fn sigwait_loop(sender: &mpsc::Sender<Result<SignalEvent, SignalControlError>>) {
+fn spawn_signal_worker(
+    name: &'static str,
+    sender: mpsc::Sender<Result<SignalEvent, SignalControlError>>,
+    wait: fn() -> io::Result<i32>,
+) -> io::Result<()> {
+    std::thread::Builder::new()
+        .name(name.to_owned())
+        .spawn(move || sigwait_loop(&sender, wait))
+        .map(|_| ())
+}
+
+fn sigwait_loop(
+    sender: &mpsc::Sender<Result<SignalEvent, SignalControlError>>,
+    wait: fn() -> io::Result<i32>,
+) {
     loop {
-        let signal = match ncl_sys::Thread::wait_signal_control_set() {
+        let signal = match wait() {
             Ok(signal) => signal,
             Err(error) => {
                 let _ = sender.send(Err(SignalControlError::SignalWait(error)));

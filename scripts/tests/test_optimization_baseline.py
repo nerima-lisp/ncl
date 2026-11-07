@@ -35,7 +35,7 @@ class FakeRunner:
             return scoreboard.ProcessResult("passed", 0, "a" * 40 + "\n")
         if command[-1:] == ["--version"]:
             if command[0] == "sbcl":
-                return scoreboard.ProcessResult("passed", 0, "SBCL 2.6.0\n")
+                return scoreboard.ProcessResult("passed", 0, "SBCL 2.6.10\n")
             return scoreboard.ProcessResult("passed", 0, "ncl 0.1.0\n")
 
         if command[0] == str(baseline.NCL_DRIVER):
@@ -45,12 +45,15 @@ class FakeRunner:
             if call == 0:
                 value = 100.0
             else:
-                value = {"off": [2.0, 4.0, 8.0], "default": [1.0, 2.0, 3.0]}[mode][call - 1]
+                value = {
+                    "off": [2.0, 4.0, 8.0, 4.0, 2.0],
+                    "default": [1.0, 2.0, 3.0, 2.0, 1.0],
+                }[mode][call - 1]
             runtime = "ncl"
         elif command[:2] == [sys.executable, str(baseline.DRIVER_SUPERVISOR)]:
             call = self.sbcl_count
             self.sbcl_count += 1
-            value = [100.0, 0.5, 1.0, 1.5][call]
+            value = [100.0, 0.5, 1.0, 1.5, 1.0, 0.5][call]
             mode = None
             runtime = "sbcl"
         else:
@@ -121,12 +124,35 @@ class OptimizationBaselineTests(unittest.TestCase):
                 ncl=str(root / "ncl"),
                 sbcl="sbcl",
                 cache_dir=root / "cache",
+                pairs=5,
+                sbcl_samples=5,
                 benchmarks=benchmarks,
             )
         checkout.assert_called_once_with("cl-bench", root / "cache")
         return report, fake_runner
 
-    def test_warmup_pair_order_65_statuses_and_geometric_means(self):
+    def test_default_sbcl_and_sample_counts_match_the_run_contract(self):
+        arguments = baseline._parser().parse_args(["--ncl", "ncl"])
+
+        self.assertEqual(baseline.SBCL_VERSION, "2.6.10")
+        self.assertEqual(arguments.sbcl, "sbcl")
+        self.assertEqual(arguments.pairs, 5)
+        self.assertEqual(arguments.sbcl_samples, 5)
+        with self.assertRaises(SystemExit):
+            baseline._parser().parse_args(["--ncl", "ncl", "--pairs", "4"])
+        with self.assertRaises(SystemExit):
+            baseline._parser().parse_args(["--ncl", "ncl", "--sbcl-samples", "4"])
+
+    def test_round_schedule_omits_only_the_exhausted_runtime(self):
+        ncl_exhausted = baseline._round_schedule(5, 6)
+        self.assertEqual(ncl_exhausted[-1], [{"engine": "sbcl", "sample": 6}])
+        sbcl_exhausted = baseline._round_schedule(6, 5)
+        self.assertEqual(sbcl_exhausted[-1], [
+            {"engine": "ncl", "mode": "default", "pair": 6},
+            {"engine": "ncl", "mode": "off", "pair": 6},
+        ])
+
+    def test_interleaved_round_order_65_statuses_and_geometric_means(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             report, runner = self._run(root)
@@ -142,17 +168,23 @@ class OptimizationBaselineTests(unittest.TestCase):
             [(runtime, mode, call) for runtime, mode, call, *_ in runner.calls],
             [
                 ("ncl", "off", 0),
+                ("sbcl", None, 0),
                 ("ncl", "default", 0),
                 ("ncl", "off", 1),
+                ("sbcl", None, 1),
                 ("ncl", "default", 1),
+                ("sbcl", None, 2),
                 ("ncl", "default", 2),
                 ("ncl", "off", 2),
-                ("ncl", "off", 3),
                 ("ncl", "default", 3),
-                ("sbcl", None, 0),
-                ("sbcl", None, 1),
-                ("sbcl", None, 2),
+                ("ncl", "off", 3),
                 ("sbcl", None, 3),
+                ("ncl", "off", 4),
+                ("sbcl", None, 4),
+                ("ncl", "default", 4),
+                ("sbcl", None, 5),
+                ("ncl", "default", 5),
+                ("ncl", "off", 5),
             ],
         )
         measured_ncl_order = [
@@ -161,13 +193,39 @@ class OptimizationBaselineTests(unittest.TestCase):
         ]
         self.assertEqual(
             measured_ncl_order,
-            ["off", "default", "default", "off", "off", "default"],
+            ["off", "default", "default", "off", "default", "off", "off", "default", "default", "off"],
         )
         self.assertEqual(report["protocol"]["ncl_pair_order"], [
             ["off", "default"],
             ["default", "off"],
+            ["default", "off"],
             ["off", "default"],
+            ["default", "off"],
         ])
+        observed_round_order = [
+            [
+                (
+                    "sbcl" if run.get("mode") is None else "ncl",
+                    run.get("mode"),
+                    run.get("pair", run.get("sample")),
+                )
+                for run in report["runs"]
+                if run["phase"] == "measurement"
+                and run.get("pair", run.get("sample")) == round_number
+            ]
+            for round_number in range(1, 6)
+        ]
+        self.assertEqual(observed_round_order, [
+            [("ncl", "off", 1), ("sbcl", None, 1), ("ncl", "default", 1)],
+            [("sbcl", None, 2), ("ncl", "default", 2), ("ncl", "off", 2)],
+            [("ncl", "default", 3), ("ncl", "off", 3), ("sbcl", None, 3)],
+            [("ncl", "off", 4), ("sbcl", None, 4), ("ncl", "default", 4)],
+            [("sbcl", None, 5), ("ncl", "default", 5), ("ncl", "off", 5)],
+        ])
+        self.assertEqual(
+            report["protocol"]["measurement_round_order"],
+            baseline._round_schedule(5, 5),
+        )
         self.assertEqual(report["scores"]["common_benchmark_count"], 64)
         self.assertNotIn(baseline.DISABLED_BENCHMARK, report["scores"]["common_benchmarks"])
         self.assertNotIn(baseline.DISABLED_BENCHMARK, report["scores"]["missing_benchmarks"])

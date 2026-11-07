@@ -1,7 +1,9 @@
 //! Process signal setup and the sigwait event queue.
 
+use std::cell::Cell;
 use std::io;
-use std::sync::{Mutex, mpsc};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 static CONTROL_THREAD_STARTED: Mutex<bool> = Mutex::new(false);
@@ -30,7 +32,7 @@ pub enum SignalControlError {
     SignalWait(io::Error),
     /// The OS returned a signal outside the configured control set.
     UnexpectedSignal(i32),
-    /// The control event receiver was disconnected.
+    /// A signal worker failed or the control event receiver was disconnected.
     WorkerStopped,
     /// Startup state could not be read because its mutex was poisoned.
     StartStatePoisoned,
@@ -69,6 +71,7 @@ impl std::error::Error for SignalControlError {
 /// Owns the receiver for process-wide signal events.
 pub struct SignalControl {
     receiver: mpsc::Receiver<Result<SignalEvent, SignalControlError>>,
+    failed: Cell<bool>,
 }
 
 impl std::fmt::Debug for SignalControl {
@@ -85,7 +88,9 @@ impl SignalControl {
     ///
     /// # Errors
     /// Returns an OS, startup-state, or thread-creation error. On failure, the control signals
-    /// remain blocked so they cannot be delivered asynchronously during partial setup.
+    /// remain blocked so they cannot be delivered asynchronously during partial setup. A failure
+    /// after one macOS worker starts is terminal; the caller must stop runtime startup and let
+    /// the process exit.
     pub fn start() -> Result<Self, SignalControlError> {
         let mut started = CONTROL_THREAD_STARTED
             .lock()
@@ -100,10 +105,12 @@ impl SignalControl {
         ncl_sys::Thread::ignore_sigpipe().map_err(SignalControlError::OperatingSystem)?;
         ncl_sys::Thread::ensure_alt_signal_stack().map_err(SignalControlError::OperatingSystem)?;
         let (sender, receiver) = mpsc::channel();
+        let worker_failed = Arc::new(AtomicBool::new(false));
         #[cfg(target_os = "linux")]
         spawn_signal_worker(
             "ncl-sigwait",
             sender,
+            worker_failed,
             ncl_sys::Thread::wait_signal_control_set,
         )
         .map_err(SignalControlError::ThreadSpawn)?;
@@ -112,23 +119,30 @@ impl SignalControl {
             spawn_signal_worker(
                 "ncl-sigwait-process",
                 sender.clone(),
+                Arc::clone(&worker_failed),
                 ncl_sys::Thread::wait_process_signal,
             )
             .map_err(SignalControlError::ThreadSpawn)?;
             *started = true;
-            spawn_signal_worker(
+            if let Err(error) = spawn_signal_worker(
                 "ncl-sigwait-children",
                 sender,
+                Arc::clone(&worker_failed),
                 ncl_sys::Thread::wait_child_signal,
-            )
-            .map_err(SignalControlError::ThreadSpawn)?;
+            ) {
+                worker_failed.store(true, Ordering::Release);
+                return Err(SignalControlError::ThreadSpawn(error));
+            }
         }
         #[cfg(target_os = "linux")]
         {
             *started = true;
         }
         drop(started);
-        Ok(Self { receiver })
+        Ok(Self {
+            receiver,
+            failed: Cell::new(false),
+        })
     }
 
     /// Prepare a runtime thread before Lisp execution.
@@ -146,38 +160,62 @@ impl SignalControl {
     /// Wait for the next signal event.
     ///
     /// # Errors
-    /// Returns the sigwait failure or when the control thread has stopped.
+    /// Returns the first worker failure; later calls return WorkerStopped.
     pub fn receive(&self) -> Result<SignalEvent, SignalControlError> {
-        self.receiver
-            .recv()
-            .map_err(|_| SignalControlError::WorkerStopped)?
+        if self.failed.get() {
+            return Err(SignalControlError::WorkerStopped);
+        }
+        match self.receiver.recv() {
+            Ok(result) => self.finish_receive(result),
+            Err(_) => self.finish_receive(Err(SignalControlError::WorkerStopped)),
+        }
     }
 
     /// Wait up to `timeout` for a signal event.
     ///
     /// # Errors
-    /// Returns the sigwait failure or when the control thread has stopped.
+    /// Returns the first worker failure; later calls return WorkerStopped.
     pub fn receive_timeout(
         &self,
         timeout: Duration,
     ) -> Result<Option<SignalEvent>, SignalControlError> {
+        if self.failed.get() {
+            return Err(SignalControlError::WorkerStopped);
+        }
         match self.receiver.recv_timeout(timeout) {
-            Ok(event) => event.map(Some),
+            Ok(result) => self.finish_receive(result).map(Some),
             Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
-            Err(mpsc::RecvTimeoutError::Disconnected) => Err(SignalControlError::WorkerStopped),
+            Err(mpsc::RecvTimeoutError::Disconnected) => self
+                .finish_receive(Err(SignalControlError::WorkerStopped))
+                .map(Some),
         }
     }
 
     /// Read a queued signal event without blocking.
     ///
     /// # Errors
-    /// Returns the sigwait failure or when the control thread has stopped.
+    /// Returns the first worker failure; later calls return WorkerStopped.
     pub fn try_receive(&self) -> Result<Option<SignalEvent>, SignalControlError> {
-        match self.receiver.try_recv() {
-            Ok(event) => event.map(Some),
-            Err(mpsc::TryRecvError::Empty) => Ok(None),
-            Err(mpsc::TryRecvError::Disconnected) => Err(SignalControlError::WorkerStopped),
+        if self.failed.get() {
+            return Err(SignalControlError::WorkerStopped);
         }
+        match self.receiver.try_recv() {
+            Ok(result) => self.finish_receive(result).map(Some),
+            Err(mpsc::TryRecvError::Empty) => Ok(None),
+            Err(mpsc::TryRecvError::Disconnected) => self
+                .finish_receive(Err(SignalControlError::WorkerStopped))
+                .map(Some),
+        }
+    }
+
+    fn finish_receive(
+        &self,
+        result: Result<SignalEvent, SignalControlError>,
+    ) -> Result<SignalEvent, SignalControlError> {
+        if result.is_err() {
+            self.failed.set(true);
+        }
+        result
     }
 }
 
@@ -190,34 +228,55 @@ fn prepare_current_thread() -> Result<(), SignalControlError> {
 fn spawn_signal_worker(
     name: &'static str,
     sender: mpsc::Sender<Result<SignalEvent, SignalControlError>>,
+    worker_failed: Arc<AtomicBool>,
     wait: fn() -> io::Result<i32>,
 ) -> io::Result<()> {
     std::thread::Builder::new()
         .name(name.to_owned())
-        .spawn(move || sigwait_loop(&sender, wait))
+        .spawn(move || sigwait_loop(&sender, &worker_failed, wait))
         .map(|_| ())
 }
 
 fn sigwait_loop(
     sender: &mpsc::Sender<Result<SignalEvent, SignalControlError>>,
+    worker_failed: &AtomicBool,
     wait: fn() -> io::Result<i32>,
 ) {
     loop {
+        if worker_failed.load(Ordering::Acquire) {
+            return;
+        }
         let signal = match wait() {
             Ok(signal) => signal,
             Err(error) => {
-                let _ = sender.send(Err(SignalControlError::SignalWait(error)));
+                report_worker_failure(sender, worker_failed, SignalControlError::SignalWait(error));
                 return;
             }
         };
+        if worker_failed.load(Ordering::Acquire) {
+            return;
+        }
         let Some(event) = control_event(signal) else {
-            let _ = sender.send(Err(SignalControlError::UnexpectedSignal(signal)));
+            report_worker_failure(
+                sender,
+                worker_failed,
+                SignalControlError::UnexpectedSignal(signal),
+            );
             return;
         };
         if sender.send(Ok(event)).is_err() {
             return;
         }
     }
+}
+
+fn report_worker_failure(
+    sender: &mpsc::Sender<Result<SignalEvent, SignalControlError>>,
+    worker_failed: &AtomicBool,
+    error: SignalControlError,
+) {
+    worker_failed.store(true, Ordering::Release);
+    let _ = sender.send(Err(error));
 }
 
 const fn control_event(signal: i32) -> Option<SignalEvent> {
@@ -236,4 +295,44 @@ const fn control_event(signal: i32) -> Option<SignalEvent> {
         return Some(SignalEvent::ChildrenChanged);
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn failed_wait() -> io::Result<i32> {
+        Err(io::Error::other("simulated sigwait failure"))
+    }
+
+    fn sibling_wait_must_not_start() -> io::Result<i32> {
+        panic!("a sibling worker should observe the terminal failure before waiting")
+    }
+
+    #[test]
+    fn worker_failure_stops_siblings_and_receiver() {
+        let worker_failed = Arc::new(AtomicBool::new(false));
+        let (sender, receiver) = mpsc::channel();
+
+        sigwait_loop(&sender, &worker_failed, failed_wait);
+        assert!(worker_failed.load(Ordering::Acquire));
+        sigwait_loop(&sender, &worker_failed, sibling_wait_must_not_start);
+
+        let control = SignalControl {
+            receiver,
+            failed: Cell::new(false),
+        };
+        assert!(matches!(
+            control.receive(),
+            Err(SignalControlError::SignalWait(_))
+        ));
+        assert!(matches!(
+            control.receive_timeout(Duration::ZERO),
+            Err(SignalControlError::WorkerStopped)
+        ));
+        assert!(matches!(
+            control.try_receive(),
+            Err(SignalControlError::WorkerStopped)
+        ));
+    }
 }

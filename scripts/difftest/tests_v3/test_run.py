@@ -259,6 +259,32 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue(metadata["ncl"]["output"].startswith("ncl:"))
             self.assertTrue(metadata["oracle"]["output"].startswith("oracle:"))
 
+    def test_minimizer_skips_candidates_that_fail_in_the_oracle(self):
+        form = ["+", ["*", 7, 8], 3]
+        calls = []
+
+        def fake_execute(engine, binary, policy, candidate, timeout):
+            expression = render_form(candidate)
+            calls.append((engine, expression))
+            if engine == "sbcl" and expression == "0":
+                return run.Execution("crash", "", -6, "non-terminating candidate")
+            output = f"{engine}:{expression}"
+            return run.Execution("passed", output, 0, "")
+
+        minimized, attempts = run.minimize_expression(
+            form,
+            "off",
+            "ncl",
+            "sbcl",
+            1,
+            execute=fake_execute,
+        )
+
+        self.assertEqual(render_form(minimized), "1")
+        self.assertEqual(attempts, 3)
+        self.assertEqual(calls.count(("sbcl", "0")), 2)
+        self.assertNotIn(("ncl", "0"), calls)
+
     def test_crashes_are_differential_failures(self):
         self.assertTrue(run._is_mismatch(
             run.Execution("passed", "1", 0, ""),

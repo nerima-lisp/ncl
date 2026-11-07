@@ -221,7 +221,20 @@ def minimize_expression(
             if attempts >= max_attempts:
                 break
             attempts += 1
-            oracle, candidate = _pair(candidate_form, policy, ncl, sbcl, timeout, execute)
+            oracle = execute("sbcl", sbcl, policy, candidate_form, timeout)
+            if oracle.status in {"harness_error", "launch_error"}:
+                raise RuntimeError(
+                    f"SBCL runner failed during minimization under {policy}: "
+                    f"status={oracle.status}, stderr={oracle.stderr}"
+                )
+            if oracle.status != "passed":
+                continue
+            candidate = execute("ncl", ncl, policy, candidate_form, timeout)
+            if candidate.status in {"harness_error", "launch_error"}:
+                raise RuntimeError(
+                    f"NCL runner failed during minimization under {policy}: "
+                    f"status={candidate.status}, stderr={candidate.stderr}"
+                )
             if _is_mismatch(oracle, candidate):
                 current = candidate_form
                 reduced = True

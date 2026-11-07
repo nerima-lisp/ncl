@@ -119,6 +119,7 @@ fn render_justified(
     let mut prefix = String::new();
     let mut line_width = output.margin;
     let mut spare = 0;
+    let mut prefix_escaped = false;
     if special_prefix {
         let Some(segment) = segments.first() else {
             return Err(FormatError::at(
@@ -126,24 +127,34 @@ fn render_justified(
                 FormatErrorKind::InvalidDirectiveUse,
             ));
         };
-        prefix = render_segment(state, &segment.control, output)?.0;
-        let separator = segments
-            .get(1)
-            .and_then(|segment| segment.separator.as_ref());
-        let (minimum_spare, requested_width) = separator_parameters(state, separator, directive)?;
-        spare = minimum_spare;
-        line_width = requested_width.unwrap_or(output.margin);
+        let (rendered_prefix, flow) = render_segment(state, &segment.control, output)?;
+        prefix = rendered_prefix;
+        prefix_escaped = flow != Flow::Continue;
+        if !prefix_escaped {
+            let separator = segments
+                .get(1)
+                .and_then(|segment| segment.separator.as_ref());
+            let (minimum_spare, requested_width) =
+                separator_parameters(state, separator, directive)?;
+            spare = minimum_spare;
+            line_width = requested_width.unwrap_or(output.margin);
+        }
     }
     let mut pieces = Vec::new();
-    for segment in segments.iter().skip(first) {
-        let (rendered, flow) = render_segment(state, &segment.control, output)?;
-        pieces.push(rendered);
-        if flow != Flow::Continue {
-            break;
+    if prefix_escaped {
+        pieces.push(prefix.clone());
+    } else {
+        for segment in segments.iter().skip(first) {
+            let (rendered, flow) = render_segment(state, &segment.control, output)?;
+            pieces.push(rendered);
+            if flow != Flow::Continue {
+                break;
+            }
         }
     }
     let field = justify(&pieces, mincol, colinc, minpad, padchar, directive)?;
     if special_prefix
+        && !prefix_escaped
         && effective_column(output)
             .checked_add(spare)
             .and_then(|width| width.checked_add(display_width(&field)))

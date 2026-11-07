@@ -1,8 +1,15 @@
 name: Conformance scoreboard
 
+concurrency:
+  group: scoreboard-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
   schedule:
     - cron: '17 3 * * 1'
   workflow_dispatch:
@@ -160,7 +167,7 @@ jobs:
               --baseline-report "$RUNNER_TEMP/ansi-test-sbcl-report-$policy.json" \
               --comparison-report "$RUNNER_TEMP/ansi-test-ncl-report-$policy.json"
           done
-      - name: Find latest successful scoreboard run on the default branch
+      - name: Find latest completed scoreboard run on the default branch
         id: previous_run
         env:
           GH_TOKEN: ${{ github.token }}
@@ -168,7 +175,7 @@ jobs:
         run: |
           set -euo pipefail
           run_data="$(gh api \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/scoreboard.yml/runs?branch=$DEFAULT_BRANCH&status=success&per_page=1" \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/scoreboard.yml/runs?branch=$DEFAULT_BRANCH&status=completed&per_page=1" \
             --jq '.workflow_runs[0] | if . == null then empty else "\(.id)\t\(.head_sha)" end')"
           run_id=""
           head_sha=""

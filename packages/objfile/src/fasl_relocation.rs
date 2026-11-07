@@ -408,3 +408,92 @@ fn bounded_count(count: u32, offset: usize) -> Result<usize, FaslError> {
     }
     Ok(count)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use FaslRelocationKind::{Abs64, ConstantIndex32};
+
+    fn item(kind: FaslRelocationKind) -> FaslRelocation {
+        FaslRelocation {
+            code_object_id: 0,
+            write_offset: 4,
+            kind,
+            target_kind: FaslRelocationTarget::CodeObject,
+            target_index: 0,
+            addend: 0,
+            pair_id: 0,
+        }
+    }
+
+    fn must_encode(items: &[FaslRelocation]) -> Vec<u8> {
+        encode_v1_section(items).unwrap_or_else(|_| panic!("invalid relocation test fixture"))
+    }
+
+    #[test]
+    fn v1_record_layout_tags_and_patch_widths_are_frozen() {
+        assert_eq!((Abs64.width(), ConstantIndex32.width()), (8, 4));
+
+        let item = FaslRelocation {
+            addend: i64::MIN,
+            ..item(FaslRelocationKind::PcRel32)
+        };
+        let bytes = must_encode(&[item]);
+        assert_eq!(&bytes[24..32], &i64::MIN.to_le_bytes());
+        assert_eq!(decode_v1_section(&bytes, 100), Ok(vec![item]));
+    }
+
+    #[test]
+    fn v1_decoder_rejects_bad_kind_target_and_record_width() {
+        let valid = must_encode(&[item(Abs64)]);
+        for (field_offset, value, error_offset) in
+            [(12, 10_u32, 212), (16, 0_u32, 216), (16, 4_u32, 216)]
+        {
+            let mut invalid = valid.clone();
+            invalid[field_offset..field_offset + 4].copy_from_slice(&value.to_le_bytes());
+            assert_eq!(
+                decode_v1_section(&invalid, 200),
+                Err(FaslError::at(
+                    FaslRejectReason::InvalidRelocation,
+                    error_offset
+                ))
+            );
+        }
+
+        assert_eq!(
+            decode_v1_section(&valid[..35], 200),
+            Err(FaslError::at(FaslRejectReason::InvalidRelocation, 200))
+        );
+    }
+
+    #[test]
+    fn v1_encoder_rejects_duplicate_patch_sites() {
+        let first = item(FaslRelocationKind::PcRel32);
+        let second = FaslRelocation {
+            kind: FaslRelocationKind::Abs64,
+            ..first
+        };
+        assert_eq!(
+            encode_v1_section(&[first, second]),
+            Err(FaslError::new(FaslRejectReason::InvalidRelocation))
+        );
+    }
+
+    #[test]
+    fn legacy_encoder_rejects_addends_outside_i32() {
+        let relocation = Relocation {
+            section: SectionId(1),
+            offset: 0,
+            kind: RelocKind::PcRel32,
+            symbol: SymbolRef::Local(0),
+            addend: i64::from(i32::MAX) + 1,
+        };
+        assert_eq!(
+            encode(&[relocation]),
+            Err(ObjectError::InvalidField {
+                field: "relocation addend",
+                value: 2_147_483_648,
+            })
+        );
+    }
+}

@@ -320,6 +320,10 @@ mod tests {
         }
     }
 
+    fn must_encode(groups: &[SafepointGroup]) -> Vec<u8> {
+        encode_section(groups).unwrap_or_else(|error| panic!("valid stack map rejected: {error}"))
+    }
+
     #[test]
     fn safepoint_header_matches_the_existing_sixteen_byte_layout() {
         let bytes = encode_section(&[SafepointGroup {
@@ -377,5 +381,72 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn safepoint_rejects_register_ids_that_do_not_match_the_mask() {
+        let mut bad_ids = entry();
+        bad_ids.register_ids = vec![0, 2];
+        assert_eq!(
+            encode_section(&[SafepointGroup {
+                code_object_id: 0,
+                entries: vec![bad_ids],
+            }]),
+            Err(FaslError::new(FaslRejectReason::InvalidSafepointMap))
+        );
+
+        let layout = [FaslCodeLayout {
+            id: 0,
+            entry_offset: 0,
+            code: &[0; 16],
+            frame_words: 8,
+            constant_count: 0,
+        }];
+        let mut bytes = must_encode(&[SafepointGroup {
+            code_object_id: 0,
+            entries: vec![entry()],
+        }]);
+        bytes[31..33].copy_from_slice(&2_u16.to_le_bytes());
+        assert_eq!(
+            decode_section(&bytes, 300, &layout),
+            Err(FaslError::at(FaslRejectReason::InvalidSafepointMap, 329))
+        );
+    }
+
+    #[test]
+    fn safepoint_encoder_rejects_duplicate_pcs() {
+        assert_eq!(
+            encode_section(&[SafepointGroup {
+                code_object_id: 0,
+                entries: vec![entry(), entry()],
+            }]),
+            Err(FaslError::new(FaslRejectReason::InvalidSafepointMap))
+        );
+    }
+
+    #[test]
+    fn safepoint_with_eight_slots_round_trips_zero_unused_bits() {
+        let groups = [SafepointGroup {
+            code_object_id: 0,
+            entries: vec![SafepointEntry {
+                pc_offset: 7,
+                frame_words: 8,
+                slot_words: 8,
+                word_slot_count: 1,
+                register_mask: 0,
+                map_flags: 0,
+                slot_bitmap: vec![0b0000_0100],
+                register_ids: Vec::new(),
+            }],
+        }];
+        let layout = [FaslCodeLayout {
+            id: 0,
+            entry_offset: 0,
+            code: &[0; 8],
+            frame_words: 8,
+            constant_count: 0,
+        }];
+        let bytes = must_encode(&groups);
+        assert_eq!(decode_section(&bytes, 0, &layout), Ok(groups.to_vec()));
     }
 }

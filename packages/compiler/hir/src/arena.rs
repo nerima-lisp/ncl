@@ -1,5 +1,3 @@
-//! Append-only storage for values owned by one HIR scope.
-
 use std::marker::PhantomData;
 
 use crate::ids::{ArenaIndex, IdError};
@@ -62,15 +60,21 @@ impl<T, I: ArenaIndex> Arena<T, I> {
         self.values.get_mut(index)
     }
 
-    /// Returns the number of values in this arena.
+    /// Returns the number of allocated entries for checked range construction.
     #[must_use]
     pub const fn len(&self) -> usize {
         self.values.len()
     }
 
-    /// Returns whether the arena contains no values.
+    /// Returns whether this arena has allocated any identities.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.values.is_empty()
+    }
+
+    /// Consumes the arena and returns its values in allocation order.
+    #[must_use]
+    pub fn into_values(self) -> Vec<T> {
+        self.values
     }
 }

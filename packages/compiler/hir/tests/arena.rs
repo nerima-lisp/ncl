@@ -12,8 +12,10 @@
 )]
 
 #[path = "../src/arena.rs"]
+/// The arena implementation under test.
 pub mod arena;
 #[path = "../src/ids.rs"]
+/// The typed identities used by the arena tests.
 pub mod ids;
 
 use arena::Arena;

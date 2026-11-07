@@ -21,7 +21,7 @@ pub fn execute(
         output.pretty = PrintOptions::from_specials(state.ctx, state.runtime).pretty();
     }
     match directive.kind {
-        DirectiveKind::Underscore => layout::execute_underscore(directive, output),
+        DirectiveKind::Underscore => layout::execute_underscore(directive, state, output),
         DirectiveKind::Indent => layout::execute_indent(directive, state, output),
         DirectiveKind::Tab => layout::execute_tab(directive, state, output),
         DirectiveKind::LogicalBlock => layout::execute_logical_block(directive, state, output),

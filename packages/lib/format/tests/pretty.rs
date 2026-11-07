@@ -72,6 +72,17 @@ fn enable_pretty(ctx: &mut ThreadContext, runtime: &Runtime) {
     set_symbol_value(ctx, symbol, Word::TRUE).expect("set pretty mode");
 }
 
+fn set_miser_width(ctx: &mut ThreadContext, runtime: &Runtime, width: Word) {
+    let package = runtime
+        .find_package(ctx, "COMMON-LISP")
+        .expect("COMMON-LISP");
+    let (symbol, _) = Package::from_word(package)
+        .intern(ctx, runtime, "*PRINT-MISER-WIDTH*")
+        .expect("intern *PRINT-MISER-WIDTH*");
+    set_symbol_special(ctx, symbol, true).expect("mark miser width special");
+    set_symbol_value(ctx, symbol, width).expect("set miser width");
+}
+
 #[test]
 fn underscore_modes_distinguish_linear_fill_miser_and_mandatory_breaks() {
     let (runtime, mut ctx) = context();
@@ -98,6 +109,29 @@ fn underscore_modes_distinguish_linear_fill_miser_and_mandatory_breaks() {
     );
     let block_prefix = "p".repeat(40);
     let block_content = "x".repeat(41);
+    set_miser_width(&mut ctx, &runtime, Word::NIL);
+    assert_eq!(
+        execute_text(
+            &format!("~@<{block_prefix}~;{block_content}~@_tail~:>"),
+            &[],
+            &mut ctx,
+            &runtime,
+        )
+        .0,
+        format!("{block_prefix}{block_content}tail")
+    );
+    set_miser_width(&mut ctx, &runtime, Word::fixnum(39));
+    assert_eq!(
+        execute_text(
+            &format!("~@<{block_prefix}~;{block_content}~@_tail~:>"),
+            &[],
+            &mut ctx,
+            &runtime,
+        )
+        .0,
+        format!("{block_prefix}{block_content}tail")
+    );
+    set_miser_width(&mut ctx, &runtime, Word::fixnum(40));
     assert_eq!(
         execute_text(
             &format!("~@<{block_prefix}~;{block_content}~@_tail~:>"),

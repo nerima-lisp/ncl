@@ -8,9 +8,10 @@ mod underscore;
 
 pub(super) fn execute_underscore(
     directive: &Directive,
+    state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
 ) -> Result<(), FormatError> {
-    underscore::execute_underscore(directive, output)
+    underscore::execute_underscore(directive, state, output)
 }
 
 use crate::executor::{ControlFrame, ExecutionState, Flow, FormatOutput, execute_control};

@@ -616,6 +616,32 @@ def _valid_passed_row(row: dict[str, Any]) -> bool:
     return True
 
 
+def _valid_partial_result(
+    result: dict[str, Any] | None,
+    name: str,
+    row: dict[str, Any],
+) -> bool:
+    if result is None or result.get("status") != "failed":
+        return False
+    benchmarks = result.get("benchmarks")
+    times = result.get("times")
+    if not isinstance(benchmarks, dict) or len(benchmarks) != 1:
+        return False
+    child_name, child_row = next(iter(benchmarks.items()))
+    if child_name.casefold() != name.casefold() or child_row is not row:
+        return False
+    row_times = row.get("times")
+    return (
+        isinstance(times, list)
+        and isinstance(row_times, list)
+        and len(times) == len(row_times)
+        and all(
+            type(actual) is type(expected) and actual == expected
+            for actual, expected in zip(times, row_times)
+        )
+    )
+
+
 def _run_benchmark_workers(
     *,
     engine: str,
@@ -702,10 +728,9 @@ def _run_benchmark_workers(
                     row["condition"] = "benchmark was not registered"
             elif process.returncode != 0 and row.get("status") in ("passed", "disabled"):
                 if (
-                    child_result is not None
-                    and child_result.get("status") == "failed"
-                    and row.get("status") == "passed"
+                    row.get("status") == "passed"
                     and _valid_passed_row(row)
+                    and _valid_partial_result(child_result, name, row)
                 ):
                     print(
                         f"cl-bench warning: {name} emitted a valid passing row "

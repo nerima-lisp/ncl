@@ -156,6 +156,8 @@ def _score_runs(
 def _run_is_clean(run: Mapping[str, Any]) -> bool:
     if run["process"]["status"] != "passed" or run["driver_status"] != "passed":
         return False
+    if "cl-bench warning:" in run["process"].get("stderr", ""):
+        return False
     return all(
         benchmark["status"] in {"passed", "disabled"}
         for benchmark in run["benchmarks"].values()

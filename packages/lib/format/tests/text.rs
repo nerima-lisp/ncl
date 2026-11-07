@@ -68,9 +68,17 @@ fn character_directive_emits_literal_and_named_characters() {
 }
 
 #[test]
-fn plural_directives_use_and_back_up_the_last_argument() {
+fn plural_directives_consume_or_back_up_the_correct_argument() {
     let (runtime, mut ctx) = context();
-    assert_eq!(run("~D~P", &[Word::fixnum(2)], &mut ctx, &runtime), "2s");
+    assert_eq!(
+        run("~D~P", &[Word::fixnum(2), Word::fixnum(3)], &mut ctx, &runtime),
+        "2s"
+    );
+    let tail = string(&runtime, &mut ctx, "tail");
+    assert_eq!(
+        run("~P~A", &[Word::fixnum(1), tail], &mut ctx, &runtime),
+        "tail"
+    );
     assert_eq!(
         run("~D~:P~A", &[Word::fixnum(2)], &mut ctx, &runtime),
         "2s2"

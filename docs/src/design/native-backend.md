@@ -6,7 +6,7 @@
 
 ## 決定
 
-`ncl-codegen` は `MachineFunction` を作り、asm crate が bytes と `Fixup` を生成し、`ncl-objfile` が `Relocation` と FASL/object sections に変換する。asm crate は `Reg`、`Inst`、`Fixup`、`EncodeError` を自前定義し何にも依存しない。code object は `ncl-sys` 管理の非移動 code space に page 単位で置き、未参照後に解放する。GC は code object 内の constant slots だけを更新する。
+`ncl-codegen` は `MachineFunction` を作り、asm crate が bytes と `Fixup` を生成し、`ncl-objfile` が `Relocation` と FASL/object sections に変換する。asm crate は `Reg`、`Inst`、`Fixup`、`EncodeError` を自前定義し何にも依存しない。code object は `ncl-sys` 管理の非移動 code space に page 単位で置き、未参照後に解放する。GC は code handle が参照する constant vector 内の Lisp 値を更新する。sealed code bytes は書き換えず、heap address の代わりに constant vector index を使う。
 
 frame header は 4 語、`previous FP / return PC / function object / flags` とする。function object は移動 heap 上の精密 root であり、return PC は非移動 code space のため更新しない。handler、cleanup、catch は ThreadContext の 3 本の現在ポインタで record chain を形成し、全 record は frame address と dynamic depth を持つ。unwinder は record chain、backtrace と GC scan は frame header chain を辿る。
 
@@ -26,7 +26,7 @@ fixed builtin は直接 `extern "C" fn(ctx: *mut ThreadContext, a0: Word, a1: Wo
 
 ### metadata と object
 
-SafepointMap は 16-byte header、slot bitmap、`u16` register id 列である。header は `pc_offset u32, frame_words u16, slot_words u16, word_slot_count u16, register_mask u16, map_flags u32`。bitmap bit 0..3 は frame header 語 0..3、bit 2 は常に 1、他は常に 0、bit 4 は最初の local slot である。列挙するのは `Word` を持ちうるレジスタだけである。FASL header は 64 byte、magic `NCLFASL\0`、version 1、architecture、pointer width 8、little-endian、feature bitmap、各 section offset/size を固定する。version 2 は frame-state section を加える(Phase 5)。version 1 の loader は version 2 を拒否する。
+SafepointMap は 16-byte header、slot bitmap、`u16` register id 列である。header は `pc_offset u32, frame_words u16, slot_words u16, word_slot_count u16, register_mask u16, map_flags u32`。bitmap bit 0..3 は frame header 語 0..3、bit 2 は常に 1、他は常に 0、bit 4 は最初の local slot である。列挙するのは `Word` を持ちうるレジスタだけである。FASL wire format は [`fasl.md`](fasl.md) が定義する。semantic FASL v1 は `ncl-objfile` container schema v3 に格納し、128-byte header と 8-section directory を使う。
 
 phase は compiler-pipeline と同じく、1a 固定テンプレート展開、1b 線形走査レジスタ割当と spill、1c self tail call と一般 tail transfer および `&rest`/`&key` 専用プロローグ、2 fixnum/double の unbox、型推論接続、inline cache とする。3〜6 は compiler-pipeline.md に記述されている。1a はスタックスロット、scratch 2 本、プロローグ/定数/return/呼び出し/分岐/割当/safepoint map/unwind を含む動く系である。Phase 1 は性能を主張しない。tail transfer は frame header と dynamic records の条件を満たす場合だけ行い、active cleanup では禁止する。
 
@@ -43,7 +43,7 @@ phase は compiler-pipeline と同じく、1a 固定テンプレート展開、1
 
 ## Phase 1 レーンが前提にしてよいこと / してはいけないこと
 
-- 表のレジスタ、4 語 header、16-byte map、64-byte FASL header、phase 順序を変更しない。
+- 表のレジスタ、4 語 header、16-byte map、`fasl.md` の FASL v1 wire format、phase 順序を変更しない。
 - encoder は `ncl-codegen`、`ncl-object`、`ncl-sys` に依存しない。
 - code bytes に移動 heap address を埋め込まず、constant slot と relocation metadata を使う。
 - stack map、RootToken、pending flag、unwind record を省略した実装を受け入れない。
@@ -111,7 +111,7 @@ The unwinder sets pending status, runs cleanup in LIFO order, restores bindings 
 
 Every map has a 16-byte little-endian header: `pc_offset:u32`, `frame_words:u16`, `slot_words:u16`, `word_slot_count:u16`, `register_mask:u16`, `map_flags:u32`. The bitmap uses bits 0..3 for header words 0..3, with bit 2 always one and the other header bits always zero, and bit 4 for the first local. The function object in header word 2 is forwarded during frame walking; return PC is not. Register ids are `u16` and list only registers that can hold `Word`. Flags are call, loop-backedge, allocation-slow, and has-derived-address at bits 0 through 3. PC lookup is binary search over code-relative offsets.
 
-The code object stores entry, size, constant table, stack-map index, debug table, function name, source locations, frame size, and entry offset. The collector resolves a return PC from the function object's code object, finds the map, updates live slots and registers, and follows previous FP. Native transition records a conservative register spill area; JIT frames remain precise.
+The code handle layout and code-GC handoff are defined by [`code-space.md`](code-space.md). Backend metadata supplies entry, size, constant vector, stack maps, debug records, function name, source locations, frame size, and entry offset; the collector uses the active function object's code handle to resolve a return PC, finds the map, updates live slots and registers, and follows previous FP. Native transition records a conservative register spill area; JIT frames remain precise.
 
 ## Encoder verification
 
@@ -119,36 +119,15 @@ Instruction models reject register, immediate, and displacement overflow with `E
 
 ## FASL and object images
 
-FASL is little-endian with a fixed 64-byte header.
+The previous backend-local freeze specified a 64-byte header with a single version field and planned version 2 to add a frame-state section. That freeze is lifted because it predates the shared native FASL v1 contract: it conflated container schema and semantic format versions, and its header had no compiler identity, runtime ABI, policy fingerprint, or feature fingerprint. The phase-5 frame-state extension is also retired; the backend uses the common v1 records rather than defining a second wire format.
 
-| offset | size | field |
-| ---: | ---: | --- |
-| 0 | 8 | magic `NCLFASL\0` |
-| 8 | 2 | version 1 |
-| 10 | 1 | architecture, 1 x86-64, 2 AArch64 |
-| 11 | 1 | pointer width 8 |
-| 12 | 1 | endian 1 little |
-| 13 | 1 | header size 64 |
-| 14 | 2 | reserved |
-| 16 | 8 | feature bitmap |
-| 24 | 4 | code offset |
-| 28 | 4 | code size |
-| 32 | 4 | relocation offset |
-| 36 | 4 | relocation count |
-| 40 | 4 | constant offset |
-| 44 | 4 | constant count |
-| 48 | 4 | symbol offset |
-| 52 | 4 | symbol size |
-| 56 | 4 | stack-map offset |
-| 60 | 4 | stack-map size |
-
-Each relocation is 16 bytes: `u32 section`, `u32 offset`, `u32 kind`, `i32 addend`. Kinds are absolute Word, PC-relative branch, code-entry address, and external symbol. Sections are code, relocations, tagged constants, symbol bindings, stack maps, and debug records. Bounds and target metadata are checked before mapping.
+The wire contract is [`fasl.md`](fasl.md): semantic FASL version 1 uses `ncl-objfile` container schema version 3, a fixed 128-byte little-endian header, and an eight-entry section directory. The sections are metadata, symbols, constants, code, relocations, stack maps, debug records, and top-level records. Container version, semantic FASL version, compiler identity, runtime ABI, policy, and features remain distinct compatibility checks. This document does not redefine header offsets or relocation record layout.
 
 Mach-O uses `__TEXT,__text`, `__DATA,__const`, `__DATA,__ncl`, declared dylibs, a symbol table, and native entry. ELF uses RX/RW `PT_LOAD`, `.text`, `.rodata`, `.ncl`, `.rela.text`, `.rela.ncl`, and native entry. Missing NCL metadata is rejected. `codesign --sign -` is delegated after final bytes on macOS arm64; JIT pages are governed by OS policy.
 
 ## JIT, diagnostics, and rejected designs
 
-JIT memory follows RW, populate and relocate, then RX. macOS arm64 brackets writes with `pthread_jit_write_protect_np(0/1)` and invalidates the instruction cache. Linux never requests RWX and uses `mprotect` to RX. Publish the entry with a release store and read with acquire load.
+JIT memory follows RW, populate and relocate, then RX. macOS arm64 brackets writes with `pthread_jit_write_protect_np(0/1)`, restores write protection, and invalidates the instruction cache. Linux never requests RWX and uses `mprotect` to RX before cache synchronization. Publish the entry with a release store and read with acquire load.
 
 `disassemble` prints bytes, symbolic branches, frame slots, and safepoint markers using the in-tree decoder. Backtrace resolves function and PC-relative source locations and stops safely when metadata is missing. External objdump is a test oracle, not a runtime dependency.
 
@@ -156,14 +135,7 @@ Rejected: delegating physical registers to a third-party backend, conservative-s
 
 ### Object and relocation loading sequence
 
-1. Validate magic, version, architecture, pointer width, endian, and feature bitmap.
-2. Validate every section offset and count against the input byte length.
-3. Allocate the code object and register its constant table as a GC root.
-4. Copy code bytes into writable code space.
-5. Resolve symbol and object descriptors through Runtime and fill constant slots.
-6. Apply relocations with checked arithmetic.
-7. Install stack maps and debug records before publication.
-8. Change permissions from RW to RX and publish the entry with release ordering.
+FASL header, section, compatibility, and rejection checks follow [`fasl.md`](fasl.md). No symbol interning, code allocation, or top-level evaluation occurs before the complete input passes structural and relocation validation. The backend then resolves imports and materializes constants, allocates writable code space, copies bytes, applies validated relocations, installs stack maps and debug records, changes permissions from RW to RX (or restores macOS JIT write protection), and synchronizes the instruction cache where required. It publishes entries with release ordering only after metadata, permissions, and cache state are ready. Top-level records execute in file order only after their referenced entries are published.
 
 The loader never treats a generic Mach-O or ELF file as an NCL image. A missing `.ncl` section, invalid map index, relocation outside its section, or mismatched target metadata is an error. The loader keeps the code object alive until all function objects and return-PC tables have been detached.
 

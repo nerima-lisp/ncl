@@ -1,0 +1,12 @@
+(defclass micro-base () ())
+(defclass micro-derived (micro-base) ())
+(defgeneric micro-dispatch (object))
+(defmethod micro-dispatch ((object micro-base)) 1)
+(defmethod micro-dispatch ((object micro-derived)) 2)
+
+(defun micro-case (iterations)
+  (let ((object (make-instance 'micro-derived))
+        (sum 0))
+    (dotimes (index iterations sum)
+      (declare (ignore index))
+      (incf sum (micro-dispatch object)))))

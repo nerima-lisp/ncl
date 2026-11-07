@@ -100,7 +100,15 @@ jobs:
             sh ./install.sh --prefix="$sbcl_prefix"
           )
           sbcl_bin="$sbcl_prefix/bin/sbcl"
-          test "$("$sbcl_bin" --version)" = 'SBCL 2.6.10'
+          sbcl_version="$("$sbcl_bin" --version)"
+          printf 'Detected SBCL version: %s\n' "$sbcl_version"
+          case "$sbcl_version" in
+            'SBCL 2.6.10'|'SBCL 2.6.10.roswell') ;;
+            *)
+              printf 'Unexpected SBCL version: %s\n' "$sbcl_version" >&2
+              exit 1
+              ;;
+          esac
           printf 'SBCL_BIN=%s\n' "$sbcl_bin" >> "$GITHUB_ENV"
       - name: Run fixed-seed differential corpus
         run: |

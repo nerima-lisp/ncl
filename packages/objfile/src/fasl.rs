@@ -69,18 +69,7 @@ impl FaslV1Writer {
     ///
     /// Returns a typed error when a record, cross-reference, or section exceeds the wire contract.
     pub fn write(fasl: &FaslV1<'_>) -> Result<Vec<u8>, FaslError> {
-        fasl_validate::validate_sections(
-            fasl.architecture,
-            &fasl.symbols,
-            &fasl.constants,
-            &fasl.code,
-            &fasl.relocations,
-            &fasl.stack_maps,
-            &fasl.debug_files,
-            &fasl.debug_records,
-            &fasl.top_level,
-            None,
-        )?;
+        fasl_validate::validate_sections(fasl, None)?;
 
         let metadata = fasl_metadata::encode(&fasl.metadata)?;
         let symbols = fasl_symbols::encode(&fasl.symbols)?;
@@ -129,8 +118,8 @@ impl FaslV1Writer {
             feature_fingerprint: fasl_metadata::feature_fingerprint(&fasl.metadata.features)?,
         };
         let mut bytes = vec![0; file_length];
-        write_at(&mut bytes, 0, &fasl_header::encode(&header))?;
-        write_at(&mut bytes, 128, &directory.encode())?;
+        write_at(&mut bytes, 0, &fasl_header::encode(&header)?)?;
+        write_at(&mut bytes, 128, &directory.encode()?)?;
         for (entry, section) in directory.entries().iter().zip(&sections) {
             let start = usize::try_from(entry.file_offset)
                 .map_err(|_| FaslError::new(FaslRejectReason::MalformedDirectory))?;
@@ -171,53 +160,7 @@ impl FaslV1Reader {
 
         let (metadata_bytes, metadata_offset) = section(&directory, bytes, SectionId::Metadata)?;
         let metadata = fasl_metadata::decode(metadata_bytes, metadata_offset)?;
-        let compiler_identity = fasl_metadata::compiler_identity(&metadata)?;
-        if compiler_identity != header.compiler_identity {
-            return Err(FaslError::at(
-                FaslRejectReason::CompilerIdentityMismatch,
-                24,
-            ));
-        }
-        let policy_fingerprint = fasl_metadata::policy_fingerprint(&metadata.policies)?;
-        if policy_fingerprint != header.policy_fingerprint {
-            return Err(FaslError::at(
-                FaslRejectReason::PolicyFingerprintMismatch,
-                56,
-            ));
-        }
-        let feature_fingerprint = fasl_metadata::feature_fingerprint(&metadata.features)?;
-        if feature_fingerprint != header.feature_fingerprint {
-            return Err(FaslError::at(
-                FaslRejectReason::FeatureFingerprintMismatch,
-                88,
-            ));
-        }
-        if header.architecture != expected.architecture
-            || metadata.target_triple != expected.target_triple
-        {
-            return Err(FaslError::at(FaslRejectReason::TargetMismatch, 10));
-        }
-        if header.runtime_abi_version != expected.runtime_abi_version {
-            return Err(FaslError::at(FaslRejectReason::RuntimeAbiMismatch, 20));
-        }
-        if compiler_identity != expected.compiler_identity {
-            return Err(FaslError::at(
-                FaslRejectReason::CompilerIdentityMismatch,
-                24,
-            ));
-        }
-        if policy_fingerprint != expected.policy_fingerprint {
-            return Err(FaslError::at(
-                FaslRejectReason::PolicyFingerprintMismatch,
-                56,
-            ));
-        }
-        if feature_fingerprint != expected.feature_fingerprint {
-            return Err(FaslError::at(
-                FaslRejectReason::FeatureFingerprintMismatch,
-                88,
-            ));
-        }
+        validate_compatibility(&header, &metadata, expected)?;
 
         let (symbol_bytes, symbol_offset) = section(&directory, bytes, SectionId::Symbols)?;
         let symbols = fasl_symbols::decode(symbol_bytes, symbol_offset)?;
@@ -238,20 +181,7 @@ impl FaslV1Reader {
         let (top_level_bytes, top_level_offset) =
             section(&directory, bytes, SectionId::TopLevelRecords)?;
         let top_level = fasl_top_level::decode(top_level_bytes, top_level_offset, &code)?;
-        fasl_validate::validate_sections(
-            header.architecture,
-            &symbols,
-            &constants,
-            &code,
-            &relocations,
-            &stack_maps,
-            &debug_files,
-            &debug_records,
-            &top_level,
-            Some(relocation_offset),
-        )?;
-
-        Ok(FaslV1 {
+        let fasl = FaslV1 {
             architecture: header.architecture,
             runtime_abi_version: header.runtime_abi_version,
             metadata,
@@ -263,7 +193,9 @@ impl FaslV1Reader {
             debug_files,
             debug_records,
             top_level,
-        })
+        };
+        fasl_validate::validate_sections(&fasl, Some(relocation_offset))?;
+        Ok(fasl)
     }
 }
 
@@ -280,6 +212,61 @@ fn section<'a>(
     let offset = usize::try_from(entry.file_offset)
         .map_err(|_| FaslError::new(FaslRejectReason::MalformedDirectory))?;
     Ok((directory.section(file, id)?, offset))
+}
+
+fn validate_compatibility(
+    header: &FaslV1Header,
+    metadata: &FaslMetadata,
+    expected: &FaslV1Compatibility,
+) -> Result<(), FaslError> {
+    let compiler_identity = fasl_metadata::compiler_identity(metadata)?;
+    if compiler_identity != header.compiler_identity {
+        return Err(FaslError::at(
+            FaslRejectReason::CompilerIdentityMismatch,
+            24,
+        ));
+    }
+    let policy_fingerprint = fasl_metadata::policy_fingerprint(&metadata.policies)?;
+    if policy_fingerprint != header.policy_fingerprint {
+        return Err(FaslError::at(
+            FaslRejectReason::PolicyFingerprintMismatch,
+            56,
+        ));
+    }
+    let feature_fingerprint = fasl_metadata::feature_fingerprint(&metadata.features)?;
+    if feature_fingerprint != header.feature_fingerprint {
+        return Err(FaslError::at(
+            FaslRejectReason::FeatureFingerprintMismatch,
+            88,
+        ));
+    }
+    if header.architecture != expected.architecture
+        || metadata.target_triple != expected.target_triple
+    {
+        return Err(FaslError::at(FaslRejectReason::TargetMismatch, 10));
+    }
+    if header.runtime_abi_version != expected.runtime_abi_version {
+        return Err(FaslError::at(FaslRejectReason::RuntimeAbiMismatch, 20));
+    }
+    if compiler_identity != expected.compiler_identity {
+        return Err(FaslError::at(
+            FaslRejectReason::CompilerIdentityMismatch,
+            24,
+        ));
+    }
+    if policy_fingerprint != expected.policy_fingerprint {
+        return Err(FaslError::at(
+            FaslRejectReason::PolicyFingerprintMismatch,
+            56,
+        ));
+    }
+    if feature_fingerprint != expected.feature_fingerprint {
+        return Err(FaslError::at(
+            FaslRejectReason::FeatureFingerprintMismatch,
+            88,
+        ));
+    }
+    Ok(())
 }
 
 fn code_layouts<'a>(code: &[FaslCodeObject<'a>]) -> Vec<FaslCodeLayout<'a>> {

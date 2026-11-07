@@ -47,6 +47,12 @@ def _paired_count(value: str) -> int:
     return count
 
 
+def _revision_sha(value: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{40,64}", value):
+        raise ValueError("must be a 40- to 64-character lowercase commit SHA")
+    return value
+
+
 def _round_schedule(ncl_pairs: int, sbcl_samples: int) -> list[list[dict[str, Any]]]:
     rotations = (
         (("ncl", "off"), ("sbcl", None), ("ncl", "default")),
@@ -126,7 +132,14 @@ def _timed_command(
     return result, max(0.0, time.perf_counter() - started)
 
 
-def _revision_record() -> dict[str, Any]:
+def _revision_record(ncl_revision: str | None = None) -> dict[str, Any]:
+    if ncl_revision is not None:
+        return {
+            "commit": _revision_sha(ncl_revision),
+            "status": "passed",
+            "source": "explicit NCL executable build revision",
+            "wall_seconds": 0.0,
+        }
     result, wall_seconds = _timed_command(
         ["jj", "log", "--ignore-working-copy", "--no-graph", "-r", "@-", "-T", "commit_id"],
         cwd=REPO_ROOT,
@@ -231,12 +244,13 @@ def run_baseline(
     pairs: int = 5,
     sbcl_samples: int = 5,
     benchmarks: Sequence[str] | None = None,
+    ncl_revision: str | None = None,
 ) -> dict[str, Any]:
     if pairs < 5 or sbcl_samples < 5:
         raise ValueError("at least 5 samples are required for each runtime comparison")
     ncl_binary = Path(ncl).expanduser().resolve()
     benchmark_names = _select_benchmarks(benchmarks)
-    revision = _revision_record()
+    revision = _revision_record(ncl_revision)
     ncl_runtime = _runtime_probe([str(ncl_binary), "--version"], cwd=REPO_ROOT)
     sbcl_runtime = _runtime_probe([sbcl, "--version"], cwd=REPO_ROOT)
     sbcl_version = sbcl_runtime["version"] or ""
@@ -323,6 +337,11 @@ def run_baseline(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ncl", required=True, help="release NCL binary")
+    parser.add_argument(
+        "--ncl-revision",
+        type=_revision_sha,
+        help="commit SHA used to build --ncl; defaults to the current workspace revision",
+    )
     parser.add_argument("--sbcl", default="sbcl", help=f"SBCL {SBCL_VERSION} executable")
     parser.add_argument("--cache-dir", type=Path, default=Path(".cache/conformance"))
     parser.add_argument("--warmups", type=_positive_count, default=1)
@@ -350,6 +369,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             pairs=args.pairs,
             sbcl_samples=args.sbcl_samples,
             benchmarks=args.benchmarks,
+            ncl_revision=args.ncl_revision,
         )
     except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as error:
         parser.exit(1, f"optimization-baseline: {error}\n")

@@ -236,9 +236,7 @@ impl JitRegion {
         let Some(index) = free.iter().position(|extent| extent.len >= len) else {
             return Err(CodeError::CapacityExceeded);
         };
-        let Some((offset, extent_len)) = free
-            .get(index)
-            .map(|extent| (extent.offset, extent.len))
+        let Some((offset, extent_len)) = free.get(index).map(|extent| (extent.offset, extent.len))
         else {
             return Err(CodeError::CapacityExceeded);
         };

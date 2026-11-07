@@ -25,8 +25,12 @@ jobs:
         include:
           - name: x86-64 Linux
             runner: ubuntu-24.04
-          - name: aarch64 macOS
-            runner: macos-14
+          - name: aarch64 Linux
+            runner: ubuntu-24.04-arm
+          - name: arm64 macOS
+            runner: macos-15
+          - name: x86-64 macOS
+            runner: macos-15-intel
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -77,13 +81,14 @@ jobs:
         with:
           toolchain: 1.98.0
           components: rustfmt, clippy
+      - uses: taiki-e/install-action@nextest
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: v1-rust
           cache-workspace-crates: true
       - run: cargo fmt --all -- --check
       - run: cargo check --locked --workspace --all-targets --all-features
-      - run: cargo test --locked --workspace --all-features --all-targets
+      - run: cargo nextest run --locked --workspace --all-features --all-targets --no-tests=fail
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
   release-check:
@@ -95,14 +100,15 @@ jobs:
         include:
           - name: x86-64 Linux
             runner: ubuntu-24.04
-          - name: aarch64 macOS
-            runner: macos-14
+          - name: arm64 macOS
+            runner: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.0
+      - uses: taiki-e/install-action@nextest
       - uses: Swatinem/rust-cache@v2
       # Build first to warm the incremental cache for the release tests below.
       - run: cargo build --locked --workspace --release
@@ -113,7 +119,7 @@ jobs:
           set -euo pipefail
           output=$(target/release/ncl --load tests/fixtures/clbench_gc_load.lisp)
           test "$output" = 42
-      - run: cargo test --locked --workspace --all-features --all-targets --release
+      - run: cargo nextest run --locked --workspace --all-features --all-targets --release --no-tests=fail
 
   gc-stress:
     name: GC stress and strict forwarding
@@ -195,21 +201,6 @@ jobs:
           restore-prefixes-first-match: nix-${{ runner.os }}-
       - run: nix build --no-link .#checks.x86_64-linux.default
 
-  nix-cargo-test:
-    name: Nix check (cargo-test, x86-64 Linux)
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v31
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: nix-community/cache-nix-action@v7
-        with:
-          primary-key: nix-${{ runner.os }}-${{ github.sha }}-cargo-test
-          restore-prefixes-first-match: nix-${{ runner.os }}-
-      - run: nix build --no-link .#checks.x86_64-linux.cargo-test
-
   coverage:
     name: Coverage report
     runs-on: ubuntu-latest
@@ -224,13 +215,14 @@ jobs:
           cache-workspace-crates: true
           cache-on-failure: true
       - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
       # Region coverage, not line coverage: a line with an untaken branch
       # (e.g. one arm of a match) counts as fully covered by line metrics
       # but only partially by region metrics, so region is the stricter and
       # more accurate signal. This ratchet must remain at the production
       # target; lowering it would hide an untested branch.
       - run: cargo llvm-cov clean --locked --workspace
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --no-report
+      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --no-report nextest --no-tests=fail
       - run: cargo llvm-cov report --locked --workspace --lcov --output-path lcov.info
       - uses: actions/upload-artifact@v4
         if: always()

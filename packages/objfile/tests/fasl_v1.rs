@@ -133,7 +133,7 @@ fn fixture(architecture: Architecture) -> FaslV1<'static> {
     }
 }
 
-fn relocation(
+const fn relocation(
     write_offset: u32,
     kind: Kind,
     target_kind: Target,
@@ -151,8 +151,12 @@ fn relocation(
     }
 }
 
-fn relocation_pair(write_offset: u32, kind: Kind, pair_id: u32) -> FaslRelocation {
+const fn relocation_pair(write_offset: u32, kind: Kind, pair_id: u32) -> FaslRelocation {
     relocation(write_offset, kind, Target::CodeObject, 0, pair_id)
+}
+
+fn must_succeed<T, E>(result: Result<T, E>) -> T {
+    result.unwrap_or_else(|_| panic!("test fixture must be valid"))
 }
 
 fn compatibility(fasl: &FaslV1<'_>) -> FaslV1Compatibility {
@@ -160,11 +164,9 @@ fn compatibility(fasl: &FaslV1<'_>) -> FaslV1Compatibility {
         architecture: fasl.architecture,
         target_triple: fasl.metadata.target_triple.clone(),
         runtime_abi_version: fasl.runtime_abi_version,
-        compiler_identity: compiler_identity(&fasl.metadata).expect("metadata identity is valid"),
-        policy_fingerprint: policy_fingerprint(&fasl.metadata.policies)
-            .expect("policies are valid"),
-        feature_fingerprint: feature_fingerprint(&fasl.metadata.features)
-            .expect("features are valid"),
+        compiler_identity: must_succeed(compiler_identity(&fasl.metadata)),
+        policy_fingerprint: must_succeed(policy_fingerprint(&fasl.metadata.policies)),
+        feature_fingerprint: must_succeed(feature_fingerprint(&fasl.metadata.features)),
     }
 }
 
@@ -180,7 +182,7 @@ fn section_offset(bytes: &[u8], section_index: usize) -> usize {
         bytes[offset + 6],
         bytes[offset + 7],
     ]))
-    .expect("fixture offset fits usize")
+    .unwrap_or_else(|_| panic!("fixture offset fits usize"))
 }
 
 fn write_u32(bytes: &mut [u8], offset: usize, value: u32) {
@@ -192,9 +194,7 @@ fn decode_hex(source: &str) -> Vec<u8> {
     assert!(source.len().is_multiple_of(2));
     (0..source.len())
         .step_by(2)
-        .map(|index| {
-            u8::from_str_radix(&source[index..index + 2], 16).expect("golden byte is hexadecimal")
-        })
+        .map(|index| must_succeed(u8::from_str_radix(&source[index..index + 2], 16)))
         .collect()
 }
 
@@ -202,8 +202,8 @@ fn decode_hex(source: &str) -> Vec<u8> {
 fn complete_files_round_trip_deterministically_for_both_architectures() {
     for architecture in [Architecture::X86_64, Architecture::Aarch64] {
         let value = fixture(architecture);
-        let first = FaslV1Writer::write(&value).expect("valid typed FASL encodes");
-        let second = FaslV1Writer::write(&value).expect("same FASL encodes again");
+        let first = must_succeed(FaslV1Writer::write(&value));
+        let second = must_succeed(FaslV1Writer::write(&value));
         assert_eq!(first, second);
         assert_eq!(&first[..8], b"NCLFASL\0");
         assert_eq!(&first[8..14], &[3, 0, architecture as u8, 8, 1, 128]);
@@ -224,9 +224,9 @@ fn complete_files_round_trip_deterministically_for_both_architectures() {
 }
 
 #[test]
-fn reader_returns_each_stable_rejection_category() {
+fn reader_rejects_header_and_compatibility_mismatches() {
     let value = fixture(Architecture::Aarch64);
-    let valid = FaslV1Writer::write(&value).expect("valid typed FASL encodes");
+    let valid = must_succeed(FaslV1Writer::write(&value));
     let expected = compatibility(&value);
 
     let mut bad_magic = valid.clone();
@@ -272,14 +272,20 @@ fn reader_returns_each_stable_rejection_category() {
         FaslRejectReason::PolicyFingerprintMismatch,
     );
 
-    let mut bad_features = valid.clone();
+    let mut bad_features = valid;
     bad_features[88] ^= 1;
     assert_reason(
         &bad_features,
         &expected,
         FaslRejectReason::FeatureFingerprintMismatch,
     );
+}
 
+#[test]
+fn reader_rejects_malformed_sections_and_records() {
+    let value = fixture(Architecture::Aarch64);
+    let valid = must_succeed(FaslV1Writer::write(&value));
+    let expected = compatibility(&value);
     let mut bad_directory = valid.clone();
     bad_directory[128] = 0;
     assert_reason(
@@ -356,7 +362,7 @@ fn reader_returns_each_stable_rejection_category() {
 fn aarch64_relocation_pairs_reject_missing_halves_mismatches_and_immediates() {
     let value = fixture(Architecture::Aarch64);
     let expected = compatibility(&value);
-    let valid = FaslV1Writer::write(&value).expect("valid AArch64 FASL encodes");
+    let valid = must_succeed(FaslV1Writer::write(&value));
     let relocations = section_offset(&valid, 4);
 
     let mut missing_half = valid.clone();
@@ -421,7 +427,7 @@ fn aarch64_relocation_pairs_reject_missing_halves_mismatches_and_immediates() {
 fn bounded_single_byte_mutations_never_escape_the_typed_reader() {
     for architecture in [Architecture::X86_64, Architecture::Aarch64] {
         let value = fixture(architecture);
-        let bytes = FaslV1Writer::write(&value).expect("valid typed FASL encodes");
+        let bytes = must_succeed(FaslV1Writer::write(&value));
         let expected = compatibility(&value);
         let mut mutations = 0_usize;
         for (index, original) in bytes.iter().copied().enumerate() {
@@ -446,7 +452,7 @@ fn bounded_single_byte_mutations_never_escape_the_typed_reader() {
 fn x86_rejects_aarch64_only_relocation_tags_and_bad_target_kinds() {
     let value = fixture(Architecture::X86_64);
     let expected = compatibility(&value);
-    let valid = FaslV1Writer::write(&value).expect("valid x86 FASL encodes");
+    let valid = must_succeed(FaslV1Writer::write(&value));
     let relocations = section_offset(&valid, 4);
 
     let mut aarch64_kind = valid.clone();

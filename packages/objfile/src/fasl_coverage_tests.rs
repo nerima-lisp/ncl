@@ -1,5 +1,58 @@
 use super::*;
-use crate::{RelocKind, SectionId, SymbolRef};
+use crate::{FaslRejectReason, RelocKind, SectionId, SymbolRef};
+
+#[test]
+fn fasl_rejection_reasons_map_to_stable_keywords() {
+    let cases = [
+        (FaslRejectReason::BadMagic, ":BAD-MAGIC"),
+        (FaslRejectReason::UnsupportedVersion, ":UNSUPPORTED-VERSION"),
+        (FaslRejectReason::TargetMismatch, ":TARGET-MISMATCH"),
+        (FaslRejectReason::RuntimeAbiMismatch, ":RUNTIME-ABI-MISMATCH"),
+        (
+            FaslRejectReason::CompilerIdentityMismatch,
+            ":COMPILER-MISMATCH",
+        ),
+        (
+            FaslRejectReason::PolicyFingerprintMismatch,
+            ":POLICY-MISMATCH",
+        ),
+        (
+            FaslRejectReason::FeatureFingerprintMismatch,
+            ":FEATURE-MISMATCH",
+        ),
+        (FaslRejectReason::MalformedDirectory, ":INVALID-SECTION"),
+        (
+            FaslRejectReason::ResourceLimitExceeded,
+            ":RESOURCE-LIMIT",
+        ),
+        (FaslRejectReason::MalformedMetadata, ":INVALID-METADATA"),
+        (FaslRejectReason::InvalidReference, ":INVALID-REFERENCE"),
+        (
+            FaslRejectReason::InvalidCodeObject,
+            ":INVALID-CODE-OBJECT",
+        ),
+        (
+            FaslRejectReason::InvalidRelocation,
+            ":INVALID-RELOCATION",
+        ),
+        (
+            FaslRejectReason::InvalidSafepointMap,
+            ":INVALID-STACK-MAP",
+        ),
+        (
+            FaslRejectReason::InvalidDebugRecord,
+            ":INVALID-DEBUG-RECORD",
+        ),
+        (
+            FaslRejectReason::InvalidTopLevelRecord,
+            ":INVALID-TOPLEVEL-RECORD",
+        ),
+    ];
+    assert_eq!(cases.len(), 16);
+    for (reason, keyword) in cases {
+        assert_eq!(reason.keyword(), keyword);
+    }
+}
 
 #[test]
 fn malformed_private_fasl_ranges_are_rejected() {

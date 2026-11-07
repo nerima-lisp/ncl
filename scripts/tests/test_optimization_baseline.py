@@ -260,6 +260,7 @@ class OptimizationBaselineTests(unittest.TestCase):
             report["scores"]["disabled_benchmarks"][baseline.DISABLED_BENCHMARK]["sbcl"][0]["reason"],
             baseline.DISABLED_BENCHMARK_REASONS[baseline.DISABLED_BENCHMARK],
         )
+
         for mode, expected_ratio in (("off_over_sbcl", 4.0), ("default_over_sbcl", 2.0)):
             ranking = report["scores"]["slowest_10_by_ncl_over_sbcl_ratio"][mode]
             self.assertEqual(len(ranking), 10)
@@ -293,6 +294,21 @@ class OptimizationBaselineTests(unittest.TestCase):
             self.assertIn("stderr", run["process"])
             self.assertEqual(run["process"]["wall_seconds"], 0.125)
         self.assertTrue(all(call[-1] == scoreboard.DEFAULT_COMMAND_TIMEOUT for call in runner.calls))
+
+    def test_partial_cl_bench_warning_makes_run_unclean(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report, _ = self._run(Path(temporary_directory), benchmarks=["FIB"])
+
+        run = report["runs"][0]
+        self.assertTrue(baseline._run_is_clean(run))
+        warned_run = {
+            **run,
+            "process": {
+                **run["process"],
+                "stderr": "cl-bench warning: FIB emitted a valid passing row\n",
+            },
+        }
+        self.assertFalse(baseline._run_is_clean(warned_run))
 
     def test_selected_benchmarks_are_case_insensitive_and_passed_to_both_drivers(self):
         selected = ["frpoly/fixnum", "fib", "tak", "factorial", "ackermann"]

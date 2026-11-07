@@ -324,7 +324,7 @@ class DriverCheckpointEnvironmentTests(unittest.TestCase):
             child_output = json.dumps(
                 {
                     "status": "failed",
-                    "times": [],
+                    "times": [0.01, 0.02],
                     "benchmarks": {
                         "fixture/fib": {
                             "status": "passed",
@@ -362,6 +362,66 @@ class DriverCheckpointEnvironmentTests(unittest.TestCase):
         self.assertIn("valid passing row", stderr.getvalue())
         self.assertIn("driver exited 1", stderr.getvalue())
         self.assertIn("cl-bench benchmark execution failed", stderr.getvalue())
+
+    def test_driver_failure_does_not_preserve_inconsistent_partial_json(self) -> None:
+        selected = {
+            "fixture/fib": {
+                "status": "passed",
+                "stage": "finish",
+                "times": [0.01, 0.02],
+                "condition": None,
+            }
+        }
+        extra = {
+            "fixture/other": {
+                "status": "failed",
+                "stage": "load",
+                "times": [],
+                "condition": "fixture failure",
+            }
+        }
+        cases = (
+            ("mismatched times", {"status": "failed", "times": [0.03, 0.04], "benchmarks": selected}),
+            ("multiple rows", {"status": "failed", "times": [0.01, 0.02], "benchmarks": selected | extra}),
+        )
+        for description, payload in cases:
+            with self.subTest(description=description), tempfile.TemporaryDirectory() as temporary:
+                cwd = Path(temporary)
+                (cwd / "files").mkdir()
+                (cwd / "package.lisp").write_text(
+                    "(defpackage #:cl-bench (:use #:cl) (:export #:*misc-dir*))\n",
+                    encoding="utf-8",
+                )
+                (cwd / "files" / "fixture.lisp").write_text(
+                    "(defun run-fib () 1)\n",
+                    encoding="utf-8",
+                )
+                child = subprocess.CompletedProcess(
+                    ["ncl"], 1, json.dumps(payload), "cl-bench benchmark execution failed\n"
+                )
+                stderr = io.StringIO()
+                with (
+                    patch.object(driver_supervisor, "SOURCE_FILES", ("fixture.lisp",)),
+                    patch.object(driver_supervisor, "_run_child", return_value=child),
+                    contextlib.redirect_stderr(stderr),
+                ):
+                    report = driver_supervisor._run_benchmark_workers(
+                        engine="ncl",
+                        runner="ncl",
+                        mode="off",
+                        driver=Path("ncl-driver.lisp"),
+                        selected_rows=("fixture/fib",),
+                        registered={"fixture/fib": ("cl-bench.fixture:run-fib",)},
+                        failures={},
+                        timed_out_sources=set(),
+                        preflight_wall_times={},
+                        cwd=cwd,
+                    )
+
+                self.assertEqual(report["status"], "failed")
+                self.assertEqual(report["benchmarks"]["fixture/fib"]["status"], "failed")
+                self.assertEqual(report["benchmarks"]["fixture/fib"]["times"], [])
+                self.assertNotIn("valid passing row", stderr.getvalue())
 
     def test_comparison_benchmarks_are_read_from_the_constants_module(self) -> None:
         benchmarks = driver_supervisor._comparison_benchmarks()

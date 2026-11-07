@@ -1,143 +1,185 @@
 # Crate architecture
 
-## 決定
+## Decision
 
-外部 crate は `[dependencies]` と `[dev-dependencies]` の双方でゼロとする。OS 呼出しは `ncl-sys` の自前 `extern "C"` 宣言だけを使う。対象 crate と隣接リストは次のとおりで、矢印は依存方向である。
+This document revises the crate map frozen on 2026-09-24. The target map governs Wave 1, Wave 2, and the compiler stages that follow. Crates represent bounded contexts named with Common Lisp HyperSpec (CLHS) terms or compiler stages. Modules inside each crate follow the same feature boundary. The revision is explicit: it adds `ncl-hir` and the HIR dependency edges listed below while retaining the prohibition on `ncl-opt -> ncl-runtime`.
 
-```text
-ncl-sys -> none
-ncl-object -> ncl-sys
-ncl-ir -> none
-ncl-asm-x86-64 -> none
-ncl-asm-aarch64 -> none
-ncl-objfile -> none
-ncl-codegen -> ncl-ir, ncl-asm-x86-64, ncl-asm-aarch64, ncl-objfile, ncl-object, ncl-sys
-ncl-opt -> ncl-ir
-ncl-ownership -> ncl-object
-ncl-types -> ncl-object
-ncl-reader -> ncl-object
-ncl-printer -> ncl-object
-ncl-conditions -> ncl-object
-ncl-clos -> ncl-object, ncl-types, ncl-conditions
-ncl-compiler-front -> ncl-ir, ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-clos
-ncl-lib-numbers -> ncl-object, ncl-types, ncl-conditions
-ncl-lib-sequences -> ncl-object, ncl-types, ncl-conditions
-ncl-lib-strings -> ncl-object, ncl-types, ncl-conditions
-ncl-lib-hash-arrays -> ncl-object, ncl-types, ncl-conditions
-ncl-lib-streams -> ncl-object, ncl-types, ncl-conditions, ncl-sys
-ncl-lib-pathnames -> ncl-object, ncl-types, ncl-conditions, ncl-lib-strings, ncl-sys
-ncl-lib-packages -> ncl-object, ncl-types, ncl-conditions
-ncl-lib-format -> ncl-object, ncl-types, ncl-conditions, ncl-lib-streams, ncl-lib-strings, ncl-printer
-ncl-lib-macros -> ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-lib-sequences
-ncl-stdlib -> ncl-types, ncl-reader, ncl-printer, ncl-conditions, ncl-clos,
-              ncl-lib-numbers, ncl-lib-sequences, ncl-lib-strings, ncl-lib-hash-arrays,
-              ncl-lib-streams, ncl-lib-pathnames, ncl-lib-packages, ncl-lib-format, ncl-lib-macros
-ncl-threads -> ncl-object, ncl-sys, ncl-conditions
-ncl-ffi -> ncl-object, ncl-sys, ncl-conditions
-ncl-image -> ncl-object, ncl-objfile, ncl-sys
-ncl-runtime -> ncl-compiler-front, ncl-codegen, ncl-opt, ncl-stdlib, ncl-image, ncl-threads, ncl-ffi
-ncl-conformance -> ncl-runtime, ncl-ownership
-ncl (bin) -> ncl-runtime
-```
+The kernel crate ncl-object owns Word, object tags and layouts, classification required by heap-facing code, heap and rooting APIs, ThreadContext, and Runtime's generic registries. It does not own CLHS feature models or their operations. Feature model crates depend on the kernel. The kernel does not depend on a feature crate.
 
-Paths are `packages/<name>/`, with `packages/asm/x86-64` and `packages/asm/aarch64`, `packages/compiler/front`, `packages/lib/<name>`, `packages/stdlib`, and `packages/ownership`. `ncl-sys` alone permits unsafe code. Its OS surface declares `mmap`, `munmap`, `mprotect`, pthread primitives, mutex and condition-variable operations, `dlopen`, `dlsym`, `dlerror`, `clock_gettime`, `read`, `write`, `open`, `close`, `stat`, `opendir`, `signal`, macOS `pthread_jit_write_protect_np`, and `sys_icache_invalidate` as platform-specific `extern "C"` items. `ncl-ffi` reaches dynamic loading only through `ncl-sys`.
+Registration belongs to the crate that owns the CLHS feature. A feature registration function registers only that feature. ncl-stdlib is the composition root that calls feature registration functions in dependency order. Runtime calls ncl-stdlib rather than owning the order table.
 
-## 根拠
+External dependencies remain prohibited. Unsafe code remains confined to ncl-sys. Feature crates own typed error enums; adapters map those errors to Lisp conditions under the mapping policy in docs/src/design/conditions.md.
 
-asm crates have no neighbors, so encoding is independent of object model and OS. `ncl-objfile` knows only sections and relocations, while `ncl-codegen` owns their conversion. The graph is acyclic because runtime depends on lower layers and no lower layer depends on runtime.
+## Current workspace at the baseline
 
-## 却下した代替案
+The baseline is commit 6aa6639d. The root manifest lists 38 workspace members in Cargo.toml:1-41. Running cargo metadata --format-version 1 --no-deps exited 0 and reported 38 packages and zero non-workspace dependency edges. The table records normal edges and test-only dev edges. Manifest references show the declarations; packages with no edges have none in the metadata output.
 
-- a general-purpose dependency crate is rejected because the zero-external-crate contract would be false.
-- asm depending on codegen is rejected because target encoding would become cyclic.
-- `ncl-object` owning pages and OS calls is rejected because unsafe ownership belongs to `ncl-sys`.
-- `ncl-runtime` depending directly on `ncl-lib-*` is rejected because it mixes the independent concern of registration order into runtime.
+| Crate | Normal dependencies | Test-only dependencies | Manifest evidence |
+| --- | --- | --- | --- |
+| ncl | ncl-runtime | ncl-lib-streams | Cargo.toml:111,114 |
+| ncl-asdf | ncl-object, ncl-conditions, ncl-clos, ncl-uiop | none | packages/asdf/Cargo.toml:9-12 |
+| ncl-asm-aarch64 | none | none | packages/asm/aarch64/Cargo.toml:1-10; cargo metadata (no edges) |
+| ncl-asm-x86-64 | none | none | packages/asm/x86-64/Cargo.toml:1-12; cargo metadata (no edges) |
+| ncl-clos | ncl-object, ncl-lib-numbers, ncl-lib-streams, ncl-types, ncl-conditions | none | packages/clos/Cargo.toml:9-13 |
+| ncl-codegen | ncl-ir, ncl-asm-x86-64, ncl-asm-aarch64, ncl-object, ncl-sys | ncl-disasm, ncl-objfile | packages/codegen/Cargo.toml:9-17 |
+| ncl-compiler-front | ncl-ir, ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-clos | ncl-ownership | packages/compiler/front/Cargo.toml:9-17 |
+| ncl-opt | ncl-ir | none | packages/compiler/opt/Cargo.toml:10 |
+| ncl-conditions | ncl-object, ncl-ownership | ncl-sys | packages/conditions/Cargo.toml:9-13 |
+| ncl-conformance | ncl-runtime, ncl-ownership | none | packages/conformance/Cargo.toml:9-10 |
+| ncl-coverage | ncl-object, ncl-compiler-front | none | packages/coverage/Cargo.toml:9-10 |
+| ncl-debug | ncl-object, ncl-sys, ncl-conditions, ncl-codegen, ncl-lib-streams | none | packages/debug/Cargo.toml:9-13 |
+| ncl-disasm | ncl-object | ncl-asm-x86-64, ncl-asm-aarch64 | packages/disasm/Cargo.toml:10,13-14 |
+| ncl-ffi | ncl-object, ncl-sys, ncl-conditions, ncl-ownership | none | packages/ffi/Cargo.toml:9-12 |
+| ncl-image | ncl-object, ncl-objfile, ncl-sys | ncl-ownership | packages/image/Cargo.toml:9-14 |
+| ncl-ir | none | none | packages/ir/Cargo.toml:1-10; cargo metadata (no edges) |
+| ncl-lib-format | ncl-object, ncl-types, ncl-conditions, ncl-lib-streams, ncl-lib-strings, ncl-printer | none | packages/lib/format/Cargo.toml:9-14 |
+| ncl-lib-hash-arrays | ncl-object, ncl-types, ncl-conditions | ncl-clos | packages/lib/hash-arrays/Cargo.toml:9-14 |
+| ncl-lib-macros | ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-lib-sequences | ncl-sys | packages/lib/macros/Cargo.toml:9-16 |
+| ncl-lib-numbers | ncl-object, ncl-sys, ncl-types, ncl-conditions | none | packages/lib/numbers/Cargo.toml:9-12 |
+| ncl-lib-packages | ncl-object, ncl-types, ncl-conditions | none | packages/lib/packages/Cargo.toml:9-11 |
+| ncl-lib-pathnames | ncl-object, ncl-clos, ncl-types, ncl-conditions, ncl-lib-strings, ncl-sys | none | packages/lib/pathnames/Cargo.toml:9-14 |
+| ncl-lib-sequences | ncl-object, ncl-lib-numbers, ncl-types, ncl-conditions | none | packages/lib/sequences/Cargo.toml:9-12 |
+| ncl-lib-streams | ncl-object, ncl-types, ncl-conditions, ncl-sys | none | packages/lib/streams/Cargo.toml:9-12 |
+| ncl-lib-strings | ncl-object, ncl-types, ncl-conditions | none | packages/lib/strings/Cargo.toml:9-11 |
+| ncl-object | ncl-sys | ncl-ownership | packages/object/Cargo.toml:9,12 |
+| ncl-objfile | none | none | packages/objfile/Cargo.toml:1-10; cargo metadata (no edges) |
+| ncl-os | ncl-object, ncl-sys, ncl-conditions, ncl-lib-streams | none | packages/os/Cargo.toml:9-12 |
+| ncl-ownership | ncl-object | none | packages/ownership/Cargo.toml:9 |
+| ncl-printer | ncl-object, ncl-conditions | ncl-ownership, ncl-lib-streams | packages/printer/Cargo.toml:9-14 |
+| ncl-profiler | ncl-object, ncl-sys, ncl-threads, ncl-conditions | none | packages/profiler/Cargo.toml:9-12 |
+| ncl-reader | ncl-object, ncl-lib-pathnames | ncl-lib-packages, ncl-ownership | packages/reader/Cargo.toml:9-14 |
+| ncl-runtime | ncl-compiler-front, ncl-opt, ncl-ir, ncl-codegen, ncl-conditions, ncl-stdlib, ncl-image, ncl-objfile, ncl-threads, ncl-ffi, ncl-object, ncl-types, ncl-lib-pathnames, ncl-printer, ncl-reader, ncl-sys, ncl-asm-aarch64, ncl-asm-x86-64 | none | packages/runtime/Cargo.toml:9-26 |
+| ncl-stdlib | ncl-object, ncl-sys, ncl-compiler-front, ncl-types, ncl-reader, ncl-printer, ncl-conditions, ncl-clos, ncl-lib-numbers, ncl-lib-sequences, ncl-lib-strings, ncl-lib-hash-arrays, ncl-lib-streams, ncl-lib-pathnames, ncl-lib-packages, ncl-lib-format, ncl-lib-macros, ncl-threads, ncl-ffi, ncl-image, ncl-os, ncl-uiop, ncl-asdf, ncl-profiler, ncl-coverage, ncl-debug, ncl-disasm | none | packages/stdlib/Cargo.toml:9-35 |
+| ncl-sys | none | none | packages/sys/Cargo.toml:1-12; cargo metadata (no edges) |
+| ncl-threads | ncl-object, ncl-sys, ncl-conditions, ncl-ownership | none | packages/threads/Cargo.toml:9-12 |
+| ncl-types | ncl-object | ncl-ownership | packages/types/Cargo.toml:9-12 |
+| ncl-uiop | ncl-object, ncl-conditions, ncl-lib-streams, ncl-lib-pathnames, ncl-lib-strings, ncl-os | none | packages/uiop/Cargo.toml:9-14 |
 
-## Phase 1 レーンが前提にしてよいこと / してはいけないこと
+The earlier crate-map prose treated `ncl-codegen -> ncl-objfile` as a production edge. The baseline manifest declares it as a dev-only edge (`packages/codegen/Cargo.toml:17`), so the current graph follows the manifest. The frozen contract also barred new workspace members and reverse dependency edges. This revision makes a scoped exception for `ncl-hir`, allowing exactly these HIR edges: `ncl-compiler-front -> ncl-hir`, `ncl-hir -> ncl-ir`, and `ncl-opt -> ncl-hir`. It still prohibits `ncl-opt -> ncl-runtime`, which would reverse the existing `ncl-runtime -> ncl-opt` edge.
 
-- The revised crate list and adjacency list above are frozen by the 2026-09-24 revision, which added `ncl-ownership` and `ncl-stdlib` and turned the `ncl-lib-*` edges into real dependencies. The 2026-09-24 revision is the freeze date.
-- No external dependency, hidden workspace member, or reverse edge may be added.
-- `ncl-codegen` converts asm `Fixup` values into objfile `Relocation` values; objfile does not import asm types.
+## Feature modules moving out of ncl-object
 
-### Public API summary
+The destination is the model crate for each CLHS feature. CLHS builtins and registration remain in per-feature ncl-lib-* crates, ncl-reader, or ncl-clos. The target splits the current ncl-lib-hash-arrays adapter into ncl-lib-arrays and ncl-lib-hash-tables, each with a registration function for only its feature. This keeps feature state out of the kernel and keeps Runtime from owning registration order.
 
-| crate | public API and responsibility |
-| --- | --- |
-| ncl-sys | OS `extern "C"`: mmap, mprotect, munmap, pthread_create, pthread_join, pthread_self, pthread stack attributes, mutex, condvar, semaphore, dlopen, dlsym, dlerror, clock_gettime, read, write, open, close, stat, opendir, signal, pthread_jit_write_protect_np, sys_icache_invalidate |
-| ncl-object | `Word`, `TypeTag`, accessors, `Runtime`, `ThreadContext`, `RootToken`, `register`, `builtin!`, allocation and package/intern API |
-| ncl-ir | independent IR data types and descriptors only |
-| ncl-types | type specifiers, predicates, and type errors |
-| ncl-reader/printer | readtable, reader and printer interfaces |
-| ncl-conditions | condition, handler, restart, catch and cleanup interfaces |
-| ncl-clos | class, slot, generic-function and MOP interfaces |
-| ncl-compiler-front | macroexpand, declarations, compiler macros, IR lowering |
-| ncl-codegen | MachineFunction, register allocation, frame and safepoint metadata |
-| ncl-opt | IR pass manager and conservative inlining passes |
-| ncl-asm-x86-64 / ncl-asm-aarch64 | target instruction model and encoder, no codegen dependency |
-| ncl-objfile | FASL and native object writer, returns bytes and calls no OS API |
-| ncl-ownership | crate-local ownership table の行型、`rows_for_crate_from_str`、`assert_crate_coverage_from_table`。テスト支援専用で Lisp 値を公開しない |
-| ncl-stdlib | `register_all(&mut ThreadContext, &Runtime)`: 登録関数を持つ crate の `register` を依存順に呼ぶ唯一の入口。順序表を持つ |
-| ncl-lib-numbers | 数値塔の builtin 登録(所有表 164 行)。bignum/ratio/float/complex の演算、`ash`、`random`、`boole` |
-| ncl-lib-sequences | list/sequence/tree の builtin 登録(150 行)。`equal`/`equalp`、`sort`、`map` 系 |
-| ncl-lib-strings | 文字・文字列の builtin 登録(108 行)。文字述語、`char=` 系、名前と符号 |
-| ncl-lib-hash-arrays | 配列と hash table の builtin 登録(55 行)。`aref` 系、`adjust-array`、synchronized hash table |
-| ncl-lib-streams | stream の builtin 登録(121 行)。fd-stream、standard stream 変数、`read-byte`/`write` 系、external format |
-| ncl-lib-pathnames | pathname と file system の builtin 登録(43 行)。`native-namestring`、directory 操作 |
-| ncl-lib-packages | package と symbol の builtin 登録(58 行)。package-local nickname、`gensym`/`gentemp` |
-| ncl-lib-format | `format` の全 directive(所有表 1 行、directive 集合は CLHS 22.3 全部) |
-| ncl-lib-macros | 標準マクロの Rust expander 登録(97 行)。`defun`/`when`/`setf`/`loop` など、`macroexpand`、`funcall`/`apply` |
-| ncl-threads | Lisp thread API over ncl-sys |
-| ncl-ffi | foreign declarations and calls |
-| ncl-image | image save/load |
-| ncl-runtime | eval, compile, load; calls `ncl-stdlib::register_all` once at startup |
-| ncl-conformance | conformance runner |
+| Current module | Target crate | Evidence and current consumers |
+| --- | --- | --- |
+| array and specialized_array | ncl-arrays | packages/object/src/lib.rs:5,43-46,101-104; array builtins are in packages/lib/hash-arrays/src/arrays.rs:1-21,238-250,284-323. Callers include packages/lib/sequences/src/domain/copy_seq.rs:3-4,31-49, packages/lib/strings/src/builtins/string_ops.rs:9-31, packages/compiler/front/src/form.rs:310-353, packages/runtime/src/constants.rs:4-6,121-179, and packages/printer/src/array.rs:5,31-39. |
+| hash_table | ncl-hash-tables | packages/object/src/lib.rs:16; Package uses it at packages/object/src/package.rs:2,57-60. CLHS operations and registration are in packages/lib/hash-arrays/src/hash_tables.rs:1,73-115 and packages/lib/hash-arrays/src/lib.rs:80-90. Runtime currently uses rooted tables for registries at packages/object/src/runtime.rs:105-115; the kernel keeps generic registry storage, not the CLHS HashTable model. |
+| package | ncl-packages | packages/object/src/lib.rs:27,83 and packages/object/src/registry_extensions.rs:17-60. CLHS functions are in packages/lib/packages/src/introspection/intern_symbol.rs:1-3,25-43. Current callers include packages/reader/src/token.rs:431-442, packages/compiler/front/src/register.rs:31-32, and packages/runtime/src/arith_fast.rs:22-48. |
+| stream | ncl-streams | packages/object/src/lib.rs:38,105-109. Stream operations are in packages/lib/streams/src/file/adapters.rs:98,216-229,282-314. |
+| structure and structure_registry | ncl-structures | packages/object/src/lib.rs:39,110-112 and packages/object/src/structure.rs:25-56. CLOS creates and registers structures in packages/clos/src/lib_structures.rs:7-37 and packages/clos/src/lib_defstruct.rs:68. |
+| number | ncl-numbers | packages/object/src/lib.rs:24,77-81. Arithmetic is in packages/lib/numbers/src/arithmetic/core.rs:8-9,194-215. Runtime constants and compiler decoding use these APIs at packages/runtime/src/constants.rs:5-6,72-95 and packages/compiler/front/src/form.rs:211-231. |
+| readtable | ncl-readtables | packages/object/src/lib.rs:30,86-89. Reader behavior is in packages/reader/src/readtable.rs:84-140 and packages/reader/src/copy_readtable.rs:2-4. Runtime load options use the object descriptor at packages/runtime/src/load/read_options.rs:4-7,36. |
 
-The dependency graph is acyclic. `ncl-ir -> none` and `ncl-objfile -> none` are deliberate. `ncl-opt -> ncl-ir` keeps optimization independent of runtime; the future `ncl-runtime -> ncl-opt` edge connects optimization at the runtime boundary. `Runtime`, `ThreadContext`, and `builtin!` live in ncl-object. No external crate is permitted; OS declarations exist only in ncl-sys.
+The kernel retains the tags, layout descriptors, and classification needed to inspect heap objects without importing feature crates. Its source concentrates those contracts in packages/object/src/layout.rs, packages/object/src/classify.rs:69-80, and packages/object/src/gc.rs:76-119,144-152. Runtime keeps generic registries in packages/object/src/runtime.rs:22-40. Package, HashTable, Stream, Structure, Number, Readtable, and Array domain APIs do not remain as ncl-object public re-exports.
 
-### Registration and ownership rules
+## Target crate map
 
-Each `ncl-lib-*` crate's `register(&Runtime)` is its per-crate registration function. It installs symbols, functions, classes, and compiler macros into Runtime registries and does not create a second global table. `ncl-stdlib::register_all(&mut ThreadContext, &Runtime)` is the only integrated entry point and calls available per-crate `register` functions in dependency order, holding the order table. `ncl-runtime` calls only `register_all`, once at startup; a second call returns `ObjectError`. `ThreadContext` is created and registered by the runtime, owns its TLAB, binding stack, roots, handlers, safepoint state, and multiple-value area, and is unregistered before its OS thread exits.
+The allowed dependency column lists normal direct dependencies. A crate may add an edge only by updating this contract and `docs/src/design/crate-dependencies.tsv`. The TSV records the target production graph; test-only edges remain lane-specific until a test move establishes the destination dependencies.
 
-`ncl-stdlib::register_all(&mut ThreadContext, &Runtime)` が標準ライブラリ登録の唯一の入口である。各
-`ncl-lib-*` の `register(&Runtime)` は他 crate の `register` を呼ばない。`ncl-runtime` は
-起動時に `register_all` を一度だけ呼び、二度目の呼出は `ObjectError` を返す。
+| Crate | Bounded context and owned features | Allowed direct dependencies |
+| --- | --- | --- |
+| ncl | command-line entry point | ncl-runtime |
+| ncl-sys | operating-system ABI, memory, threads, platform calls, and signal-recovery trampoline | none |
+| ncl-object | Word, layout and tags, classification, heap API, roots, ThreadContext, Runtime registries | ncl-sys |
+| ncl-arrays | CLHS array and vector model, rank, element type, displacement, adjustment, storage | ncl-object |
+| ncl-hash-tables | CLHS hash-table model, test function, weakness, rehashing and lookup | ncl-object |
+| ncl-packages | CLHS package model, symbol membership, export, import, shadowing and use-list | ncl-object, ncl-hash-tables |
+| ncl-streams | CLHS stream state, element type, direction, file and character stream model | ncl-object, ncl-sys |
+| ncl-structures | CLHS structure layout, construction, slot access and mutation | ncl-object |
+| ncl-numbers | CLHS number representations and typed numeric access | ncl-object |
+| ncl-readtables | CLHS readtable representation and syntax state | ncl-object |
+| ncl-compiler-front | source forms, macro expansion, declarations, and lowering to HIR | ncl-hir, ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-clos, ncl-arrays, ncl-numbers, ncl-packages |
+| ncl-hir | Lisp-semantic high-level IR and compilation-unit index for function definition locations; located at packages/compiler/hir/ | ncl-ir |
+| ncl-ir | compiler-independent intermediate representation | none |
+| ncl-opt | HIR optimization and inlining that preserve Lisp meaning | ncl-hir |
+| ncl-codegen | machine functions, register allocation, frames and safepoints | ncl-ir, ncl-asm-x86-64, ncl-asm-aarch64, ncl-object, ncl-sys |
+| ncl-asm-x86-64 | x86-64 instruction model and encoder | none |
+| ncl-asm-aarch64 | AArch64 instruction model and encoder | none |
+| ncl-objfile | object-file and FASL byte encoding | none |
+| ncl-types | type specifiers, predicates and type errors | ncl-object |
+| ncl-conditions | Lisp conditions, handlers, restarts and cleanup | ncl-object, ncl-ownership |
+| ncl-reader | tokenization, reader, syntax dispatch and input forms | ncl-object, ncl-lib-pathnames, ncl-packages, ncl-readtables |
+| ncl-printer | readable and pretty printing | ncl-object, ncl-conditions, ncl-arrays, ncl-numbers, ncl-packages, ncl-structures |
+| ncl-clos | classes, slots, generic functions, MOP and defstruct integration | ncl-object, ncl-types, ncl-conditions, ncl-lib-numbers, ncl-lib-streams, ncl-structures |
+| ncl-lib-numbers | CLHS numeric functions and numeric builtin registration | ncl-object, ncl-numbers, ncl-types, ncl-conditions, ncl-sys |
+| ncl-lib-sequences | CLHS list, sequence, tree and equality functions | ncl-object, ncl-lib-numbers, ncl-types, ncl-conditions, ncl-arrays, ncl-hash-tables |
+| ncl-lib-strings | CLHS character and string functions | ncl-object, ncl-types, ncl-conditions, ncl-arrays |
+| ncl-lib-arrays | CLHS array and vector functions and registration | ncl-object, ncl-types, ncl-conditions, ncl-arrays |
+| ncl-lib-hash-tables | CLHS hash-table functions and registration | ncl-object, ncl-types, ncl-conditions, ncl-hash-tables |
+| ncl-lib-packages | CLHS package functions and registration | ncl-object, ncl-types, ncl-conditions, ncl-packages |
+| ncl-lib-streams | CLHS stream functions and registration | ncl-object, ncl-types, ncl-conditions, ncl-sys, ncl-streams |
+| ncl-lib-pathnames | pathname model and file-system functions | ncl-object, ncl-clos, ncl-types, ncl-conditions, ncl-lib-strings, ncl-sys, ncl-hash-tables, ncl-numbers, ncl-packages |
+| ncl-lib-format | FORMAT parser, directives, stream output and registration | ncl-object, ncl-types, ncl-conditions, ncl-lib-streams, ncl-lib-strings, ncl-printer, ncl-packages |
+| ncl-lib-macros | CLHS macro and function expansion functions | ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-lib-sequences |
+| ncl-stdlib | composition root for registration order | ncl-object, ncl-sys, ncl-compiler-front, ncl-types, ncl-reader, ncl-printer, ncl-conditions, ncl-clos, ncl-lib-numbers, ncl-lib-sequences, ncl-lib-strings, ncl-lib-arrays, ncl-lib-hash-tables, ncl-lib-streams, ncl-lib-pathnames, ncl-lib-packages, ncl-lib-format, ncl-lib-macros, ncl-environment, ncl-threads, ncl-ffi, ncl-image, ncl-disasm; add ncl-os, ncl-uiop, ncl-asdf, ncl-profiler, ncl-coverage and ncl-debug only after their owning lanes reintroduce them |
+| ncl-runtime | evaluation, compilation orchestration, loading, literal materialization, and the type-check failure signaling entry point (API name set by conditions.md) | ncl-compiler-front, ncl-opt, ncl-ir, ncl-codegen, ncl-conditions, ncl-stdlib, ncl-image, ncl-objfile, ncl-threads, ncl-ffi, ncl-object, ncl-types, ncl-lib-pathnames, ncl-printer, ncl-reader, ncl-sys, ncl-asm-aarch64, ncl-asm-x86-64, ncl-arrays, ncl-numbers, ncl-packages, ncl-readtables, ncl-structures |
+| ncl-image | image serialization and restoration | ncl-object, ncl-objfile, ncl-sys, ncl-arrays, ncl-hash-tables, ncl-packages, ncl-streams, ncl-structures, ncl-numbers, ncl-readtables |
+| ncl-threads | Lisp thread API | ncl-object, ncl-sys, ncl-conditions, ncl-ownership |
+| ncl-ffi | foreign declarations and calls | ncl-object, ncl-sys, ncl-conditions, ncl-ownership, ncl-arrays |
+| ncl-ownership | ownership-table parsing and validation, with no Lisp feature API | ncl-object |
+| ncl-conformance | conformance runner | ncl-runtime, ncl-ownership; reintroduce with L0-6 when its runner is assigned |
+| ncl-disasm | disassembly interfaces | ncl-object |
+| ncl-environment | environment variables, command-line arguments and process environment | ncl-object, ncl-sys, ncl-conditions |
+| ncl-introspection | inspection of functions, code metadata and runtime state | ncl-object, ncl-codegen, ncl-sys, ncl-conditions |
+| ncl-os | OS-facing Lisp functions | ncl-object, ncl-sys, ncl-conditions, ncl-lib-streams; recreate for L2-ch19/20 and extend in L4-3 |
+| ncl-uiop | UIOP pathname, stream and process functions | ncl-object, ncl-conditions, ncl-lib-streams, ncl-lib-pathnames, ncl-lib-strings, ncl-os; recreate for L4-4 |
+| ncl-asdf | ASDF systems, components and operations | ncl-object, ncl-conditions, ncl-clos, ncl-uiop; recreate for L4-4 |
+| ncl-debug | debugger and SLIME/SLY integration | ncl-object, ncl-sys, ncl-conditions, ncl-codegen, ncl-lib-streams, ncl-introspection; recreate for L4-5 |
+| ncl-profiler | runtime profiling | ncl-object, ncl-sys, ncl-threads, ncl-conditions; recreate for L4-6 |
+| ncl-coverage | coverage collection and reporting | ncl-object, ncl-compiler-front; recreate for L4-6 |
 
-`ncl-sys` owns pages, stack bounds, OS synchronization, dynamic loading, code-space permissions, and platform declarations. `ncl-object` owns the typed boundary and allocation API. `ncl-ir` contains no allocator, OS call, or object ownership. `ncl-codegen` consumes IR and emits machine structures. The assembler crates consume only their own machine model. `ncl-objfile` serializes bytes and never calls mmap, mprotect, or pthread APIs.
+The HIR compilation-unit index maps each function to its definition location and belongs in `ncl-hir`, where `ncl-opt` can read it. `ncl-runtime` already depends on `ncl-opt`; placing the index in runtime would require `ncl-opt -> ncl-runtime` and create a cycle with the existing `ncl-runtime -> ncl-opt` edge. The HIR type-lattice relationship with `ncl-types` is unresolved here: `docs/src/design/hir.md` decides whether to integrate them and where the boundary lies. Until then, neither `ncl-hir -> ncl-types` nor `ncl-types -> ncl-hir` is allowed.
 
-Reverse dependencies are forbidden: object does not import front end, codegen does not import compiler front, assembler does not import codegen, and objfile does not import runtime. A dependency review inspects every Cargo.toml edge and confirms the graph remains acyclic.
+Feature model crates own typed error enums and do not depend on Lisp conditions. Lisp-facing adapters such as ncl-lib-* and ncl-clos depend on both the model and ncl-conditions and map model errors at that boundary. Other consumers propagate their own typed errors for mapping at the outer Lisp API boundary. ncl-conditions does not depend on feature model crates. Condition classes and mapping rules belong in docs/src/design/conditions.md.
 
-### API shape by layer
+Baseline dev edges are listed separately in the current-workspace table. They do not automatically become target test edges; each feature lane records only the dev dependencies still required after its test move.
 
-The unsafe layer returns raw handles and OS status values. The object layer converts them into `Word`, `StorageCondition`, `RootToken`, and typed slot operations. The compiler front end returns `Function` and diagnostics. Codegen returns `MachineFunction` and `CodegenError`. Assemblers return bytes and `Fixup`. Objfile returns a byte vector. Runtime is the only layer that sequences allocation, compilation, loading, and registration.
+## Allowed dependency data and checker
 
-No crate may expose a raw page pointer, mutable global heap, hidden thread registry, or platform-specific register name across its boundary. Platform names stay in ncl-sys or the target assembler. The public API summary and adjacency table are the source of truth for Phase 1 lane ownership.
+Store the target direct-edge allowlist in `docs/src/design/crate-dependencies.tsv`. Use columns `from`, `to`, `kind`, and `target`. `kind` is `normal`, `dev`, or `build`. `target` is empty for an unconditional edge and otherwise holds Cargo's target expression. One row represents one permitted direct edge. Do not infer permission from transitive reachability. The file describes the target graph, including `ncl-compiler-front -> ncl-hir`, `ncl-hir -> ncl-ir`, and `ncl-opt -> ncl-hir`; it does not grant either HIR/type edge while `docs/src/design/hir.md` is pending.
 
-The library crates do not own compilation or allocation policy. They receive `Runtime` and `ThreadContext` from the integration layer, register builtins, and return typed conditions. This keeps registration, GC ownership, and OS access at their declared boundaries.
+The checker `scripts/check_crate_dependencies.py` reads `docs/src/design/crate-dependencies.tsv` and `cargo metadata --format-version 1 --no-deps`. It compares each current workspace package's declared direct edges with the target allowlist, including dependency kind and target expression. It rejects duplicate rows, package names absent from the target crate map, declared edges absent from the allowlist, disallowed external dependencies, and cycles in both the target and current normal/build graphs. It also rejects an empty workspace or graph input. Target edges whose crates have not yet been introduced are valid; the checker does not require every target edge to exist in the current manifests. Dev edges are checked against the allowlist but do not create production-order constraints.
 
-Each crate exposes the smallest API needed by its neighboring contract.
+The checker exits zero only when every current manifest edge is allowed, every endpoint belongs to the target crate map, and both production graphs are acyclic. It prints the offending package, dependency, kind, and target for each violation. This document specifies the checker's inputs and failure behavior; implementation is deferred to a later task.
 
-## Extension crates
+## Differences from the prior freeze
 
-The Gate 0 extension crates and their dependency edges are:
+The 2026-09-24 crate list and adjacency graph are superseded by this target contract. It adds seven feature model crates, splits the combined array and hash-table registration adapter, keeps `ncl-object` as a kernel, and adds `ncl-hir` for Lisp-semantic HIR and its compilation-unit index. It also assigns the signal-recovery trampoline to `ncl-sys` and a type-check-failure signaling entry point to `ncl-runtime`; `docs/src/design/conditions.md` chooses that entry point's API name. The HIR revision does not decide the relation between the HIR type lattice and `ncl-types`.
+D-07 removes placeholder crates from the workspace until an owning lane needs them. Keep their crate names when they return: ncl-asdf, ncl-uiop, ncl-os, ncl-debug, ncl-profiler, ncl-coverage, and ncl-conformance. Their target rows above assign names and expected edges. L0-6 restores ncl-conformance; L2-ch19/20 restores ncl-os, which L4-3 extends; L4-4 restores ncl-uiop and ncl-asdf; L4-5 restores ncl-debug; L4-6 restores ncl-profiler and ncl-coverage. ncl-environment is the new crate for L2-ch24/25. ncl-introspection is the new crate for L4-5.
 
-```text
-ncl-os -> ncl-object, ncl-sys, ncl-conditions, ncl-lib-streams
-ncl-uiop -> ncl-object, ncl-conditions, ncl-lib-streams, ncl-lib-pathnames,
-            ncl-lib-strings, ncl-os
-ncl-asdf -> ncl-object, ncl-conditions, ncl-clos, ncl-uiop
-ncl-profiler -> ncl-object, ncl-sys, ncl-threads, ncl-conditions
-ncl-coverage -> ncl-object, ncl-compiler-front
-ncl-debug -> ncl-object, ncl-sys, ncl-conditions, ncl-codegen, ncl-lib-streams
-ncl-disasm -> ncl-object
-```
+## Migration order
 
-These crates are workspace members. `ncl-disasm` keeps both assembler crates
-in dev-dependencies for encoder round-trip tests only.
+The migration rows follow section 7 of the NCL run specification. A lane is an independently owned work unit with crate and path assignments and prerequisites. Wave 1 covers blockers and enabling work; Wave 2 covers CLHS chapter work. L0-2 freezes contracts before these waves. Wave 1 lanes may run in parallel where their prerequisites allow. L1-4 waits until L1-10 has moved the object features and established the kernel boundary; L1-10 uses move-only commits for that split. `L*` and `L2-ch*` are lane identifiers from the run plan.
 
-`ncl-sys` does not expose Lisp values.
+| Order | Lane | Crate ownership and migration | Prerequisite |
+| --- | --- | --- | --- |
+| Wave 1 | L1-1 | runtime, conditions, codegen trap path | L0-2 |
+| Wave 1 | L1-2 | sys and threads | L0-2 |
+| Wave 1 | L1-3 | sys and runtime publication | L0-2 |
+| Wave 1 | L1-5 | lib/format, which owns ncl-lib-format | L1-1 |
+| Wave 1 | L1-6 | reader and readtable behavior | L1-1 |
+| Wave 1 | L1-7 | lib/numbers and numeric reader/printer paths | L1-1 |
+| Wave 1 | L1-8 | printer | L1-5 |
+| Wave 1 | L1-9 | lib/streams, which owns ncl-lib-streams | L1-1 |
+| Wave 1 | L1-10 | ncl-object feature split and destination crates | L0-2 |
+| Wave 1 | L1-4 | sys and object heap, collector, barrier, weak, rehash and verify work | L0-2 and L1-10 |
+| Wave 1 | L1-11 | workspace lint and quality rules; root manifest stays with FR-011 owner | L0-2 |
+| Wave 2 | L2-ch3 | compiler-front and runtime | Wave 1 |
+| Wave 2 | L2-ch4 | types | Wave 1 |
+| Wave 2 | L2-ch5/14/17 | macros and sequences | Wave 1 |
+| Wave 2 | L2-ch6 | macro loop implementation | L2-ch5 |
+| Wave 2 | L2-ch7 | CLOS | Wave 1 |
+| Wave 2 | L2-ch8 | defstruct within CLOS | L2-ch7 |
+| Wave 2 | L2-ch9 | conditions | L1-1 |
+| Wave 2 | L2-ch10/11 | packages | Wave 1 |
+| Wave 2 | L2-ch12 | remaining numbers work | L1-7 |
+| Wave 2 | L2-ch13/16 | strings | Wave 1 |
+| Wave 2 | L2-ch15/18 | split lib/arrays and lib/hash-tables from lib/hash-arrays | L1-4 rehash |
+| Wave 2 | L2-ch19/20 | pathnames and OS | Wave 1 |
+| Wave 2 | L2-ch24/25 | runtime environment and ncl-environment | Wave 1 |
 
-`ncl-object` does not expose platform register names.
+Give each crate and shared path one lane owner at a time. Keep root Cargo.toml with its existing FR-011 owner. Before closing a lane, record its functional-requirement evidence (FR), verification-layer results (V), conformance scoreboard diff, Rust quality checks (J), and confirmation that it added no `#[allow]` attributes. Run no more than 16 lanes concurrently. The lane rows above follow the section 7 plan.
 
-`ncl-ir` does not expose heap pointers.
+Decision D-08 requires each feature lane to start with one behavior-neutral, move-only commit. Record the selected test names and count before the move; run the same selection across source and destination crates after the move. The selection must be non-empty when the source had tests, names and count must match, and all selected tests must pass. Put behavior changes in a later commit. L1-10 applies this procedure to each moved object feature.
 
-`ncl-objfile` does not expose executable mappings.

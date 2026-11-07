@@ -1,69 +1,89 @@
 # Coding standards
 
-## 決定
+## Architecture boundaries
 
-責務ごとの実装コンテキストは次の表で固定する。
+The target crate map in `docs/src/design/crates.md` defines the bounded contexts. Crate names use CLHS vocabulary for language features and compiler-stage names for the compiler.
 
-| context | crates | 主な契約 |
+| Context | Crates | Contract |
 | --- | --- | --- |
-| unsafe platform | `ncl-sys` | pages、threads、OS declarations、roots、code space |
-| typed object | `ncl-object`, `ncl-types` | Word、widetag、accessor、Runtime、ThreadContext wrapper |
-| language front | `ncl-reader`, `ncl-printer`, `ncl-conditions`, `ncl-clos`, `ncl-compiler-front` | Form、condition、class、IR lowering |
-| machine backend | `ncl-ir`, `ncl-codegen`, `ncl-asm-x86-64`, `ncl-asm-aarch64`, `ncl-objfile` | MachineFunction、encoding、Fixup、Relocation、CodeBlob |
-| library | `ncl-lib-*` | ANSI Common Lisp library surface |
-| integration | `ncl-threads`, `ncl-ffi`, `ncl-image`, `ncl-runtime`, `ncl-conformance`, root `ncl` | execution, image, CLI, conformance |
+| Platform | `ncl-sys` | OS declarations, pages, synchronization, code space, and signal-recovery trampoline |
+| Object kernel | `ncl-object` | Word, tags, layout, heap API, roots, ThreadContext, and generic Runtime lookup registries |
+| Feature models | `ncl-arrays`, `ncl-hash-tables`, `ncl-packages`, `ncl-streams`, `ncl-structures`, `ncl-numbers`, `ncl-readtables` | CLHS feature state, operations, and typed errors |
+| CLHS interfaces | `ncl-reader`, `ncl-printer`, `ncl-conditions`, `ncl-clos`, `ncl-lib-*` | Reader, printer, condition, object-system, and library behavior |
+| Compiler stages | `ncl-compiler-front`, `ncl-hir`, `ncl-ir`, `ncl-opt`, `ncl-codegen`, assemblers, `ncl-objfile` | Source forms through Lisp-semantic HIR, semantics-preserving HIR optimization, machine code, and object-file output |
+| Integration | `ncl-stdlib`, `ncl-runtime`, `ncl-image`, `ncl-threads`, `ncl-ffi`, `ncl-conformance`, root `ncl` | Registration composition, execution, type-check failure signaling, images, FFI, CLI, and conformance |
 
-外部 crate はゼロで、OS API は `ncl-sys` の宣言経由だけにする。safe crate は unsafe boundary を再宣言しない。公開型は所有権と root の責務を表し、heap `Word` を未登録 Rust container に保持しない。
+Each crate depends only on direct edges allowed by `docs/src/design/crates.md` and `docs/src/design/crate-dependencies.tsv`. External crates remain prohibited. Unsafe code and signal-recovery trampoline code stay in `ncl-sys`. Safe crates do not redeclare OS boundaries. Heap Word values are held only through the rooting API or registered root collections. The runtime entry point that signals type-check failures belongs to `ncl-runtime`; `docs/src/design/conditions.md` selects its API name.
 
-## 根拠
+## DDD review checklist
 
-境界を crate と型に対応させると、レビュー対象、依存方向、unsafe の範囲が一致する。低レイヤーを先に固定することで 24 以上の Phase 1 lane が同じ契約から作業できる。
+### Mechanically checkable
 
-## 却下した代替案
+- The planned dependency checker compares current Cargo manifest edges with the target allowlist, rejects external manifest dependencies and cycles, and rejects edge endpoints absent from the target map.
+- The source-layout gate must reject support.rs, utils, helpers, and tests_*.rs under packages/<crate>/src. It also rejects mod.rs and files over 500 lines.
+- The ncl-object boundary check must reject feature model modules and feature API re-exports from its public root.
+- For a test move, record the selected test names and count for the source and destination crates before and after the move. The selection must be non-empty when the source had tests, the count must be unchanged, and the same tests must pass.
+- A changed manifest edge is accepted only after the allowlist and graph check are updated in the same contract change.
 
-- backend 全体を一 crate にする案は encoder と object ownership を混ぜるため却下する。
-- 単一の compiler-back 境界は target encoder と file writer の責務を曖昧にするため採用しない。
-- unsafe helper を各 crate に分散する案は platform audit を困難にするため却下する。
+### Human review
 
-## Phase 1 レーンが前提にしてよいこと / してはいけないこと
-
-- crate 名、path、依存方向、外部依存ゼロを変更しない。
-- unsafe は `ncl-sys` に閉じ込め、public API の root と error semantics を省略しない。
-- formatter、parser、test は対象 crate の最小範囲で実行し、設定ファイルを緩めて通過させない。
-
-## Boundary review checklist
-
-Reviewers check that entities retain identity across movement, value objects remain copyable only when cheap, and aggregate mutation goes through named methods. A public field is rejected when it can bypass package, class, root, or barrier invariants. A repository-like registry belongs to Runtime and is not duplicated by a library crate.
-
-Reviewers check that `&mut ThreadContext` is the first heap API argument, `&Runtime` is the shared argument, RootToken protects allocation-crossing values, and `enter_native` brackets blocking work. A raw OS declaration outside ncl-sys is a boundary violation. A third-party crate in a manifest is a dependency-policy violation even if used only in tests.
+- Names, module boundaries, errors, and documentation use CLHS vocabulary. Compiler contexts use the named compiler stage and its input/output terms.
+- An entity has identity and a lifecycle: symbols, packages, classes, and threads are examples. A value object has no identity separate from its value: Word, TypeSpecifier, pathname components, and characters are examples.
+- An aggregate is a consistency boundary whose root owns every invariant-changing operation. Package changes use named operations such as intern, unintern, export, shadow, and use-package. Hash-table mutation and rehashing go through named operations. Stream transitions and structure-slot changes go through explicit methods.
+- Public fields do not let callers bypass aggregate invariants, rooting, or write barriers. Runtime registries are lookup indexes for packages, functions, classes, and GC metadata; feature model crates own their feature state and invariants, and do not create duplicate registries.
+- Cross-context calls pass through an anti-corruption layer that translates types and failures. The `ncl-object` boundary adapts `ncl-sys` values; `ncl-compiler-front` translates source forms to HIR; CLHS registration crates adapt Lisp arguments to feature model APIs. The allowed compiler edges are `ncl-compiler-front -> ncl-hir`, `ncl-hir -> ncl-ir`, and `ncl-opt -> ncl-hir`. Whether the HIR type lattice integrates with `ncl-types` and the direction of any edge remain for `docs/src/design/hir.md` to decide.
+- Every bounded context owns a typed error enum. New paths do not use String errors. Lisp-facing adapters map those errors to Lisp conditions at the boundary; condition class and mapping rules live in `docs/src/design/conditions.md`.
+- Reviewers decide whether each type is an entity or value object, whether the aggregate owns every mutation, and whether the adapter prevents one context's internal vocabulary from leaking into another.
 
 ## Naming and layout
 
-Use CLHS vocabulary in type, module, and documentation names. Prefer `Symbol`, `Package`, `Readtable`, and `GenericFunction` over abbreviations. Rust uses snake case for Lisp names, such as `symbol_value` and `print_base`. Keep unsafe code and target conditionals close to the platform boundary. Do not hide target behavior behind an untyped string or undocumented global.
+Use CLHS vocabulary in type, module, and documentation names. Prefer `Symbol`, `Package`, `Readtable`, and `GenericFunction` over abbreviations. Rust uses snake case for Lisp names, such as `symbol_value` and `print_base`. Do not introduce support.rs, utils, or helpers as technical-layer modules. Keep unsafe code and target conditionals close to the platform boundary.
 
-## Test evidence
+## Test placement and evidence
 
-Each test states the contract it exercises: lowtag and widetag tests include boundary values; GC tests include promotion, large object, card marking, weak clearing, and finalizer ordering; calling tests include fifth argument, tail cleanup prohibition, multiple values, and status propagation; backend tests include both target encoders, map lookup, relocation bounds, RW-to-RX publication, and FASL header rejection. A passing command with zero selected tests is not evidence.
+Place behavior tests in packages/<crate>/tests/. Keep a test inside packages/<crate>/src only when it verifies a private invariant that an integration test cannot observe. Such a test stays in the implementation module as a private #[cfg(test)] module; do not add a tests_*.rs file under src.
 
-Lane reports list the exact path, command, exit status, and selected test count. A manual table check is labeled manual. A failure already present on the untouched baseline is recorded separately from a regression. Build artifacts are not source evidence unless the command proves the runner loaded changed source.
+For the D-08 test-move procedure, start the feature lane with one behavior-neutral move-only commit. Before moving tests, list each source and destination crate with `cargo test -p <crate> --all-targets -- --list`; record all full test names and the combined count for that crate set. The selection must be non-empty if the source contained tests. After moving, list the same crate set again; the names and count must match. Run every listed test by its exact name with `cargo test -p <crate> --all-targets <test-name> -- --exact`, recording each command and exit status. Put behavior changes in a later commit.
+
+Evaluate coverage by the `notcovered` count from one coverage report and one unchanged scope, including the same changed paths and test set. For the CI changed-path gate, use the Coverage job's `coverage-summary` artifact or its log JSON. Do not substitute a percentage for this count.
+
+The baseline inventory at 6aa6639d has 101 Rust paths under `packages/**/src/**` whose path contains `test`, and 168 `#[cfg(test)]` attributes in 114 src files. Paths under `packages/**/src/tests/` remain source tests for FR-J05. These are file and attribute counts, not test-case counts; recount at the start of each feature lane.
+
+| Crate path | Source test paths |
+| --- | ---: |
+| packages/asm/x86-64 | 1 |
+| packages/clos | 5 |
+| packages/codegen | 14 |
+| packages/compiler/opt | 9 |
+| packages/conditions | 2 |
+| packages/image | 3 |
+| packages/ir | 4 |
+| packages/lib/macros | 22 |
+| packages/lib/packages | 4 |
+| packages/lib/pathnames | 2 |
+| packages/lib/strings | 2 |
+| packages/object | 6 |
+| packages/objfile | 5 |
+| packages/runtime | 11 |
+| packages/sys | 11 |
+
+The inventory used `rg --files` with the source-path `src/.*test.*.rs` filter and `rg -n` with the `#[cfg(test)]` filter. Runtime declares test-only modules in `packages/runtime/src/lib.rs:7-27,480-483` and has test support in `packages/runtime/src/support.rs:13-52`. Codegen declares test modules in `packages/codegen/src/lib.rs:16-32`; its inline regalloc tests are in `packages/codegen/src/regalloc.rs:345-346`.
+
+Each test states the contract it exercises. A passing command with zero selected tests is not evidence. Lane reports list the exact path, command, exit status, and selected test count. A baseline failure is separated from a regression.
 
 ## Change discipline
 
-Design contradictions are resolved by updating the contract before implementation. Do not loosen assertions, disable plugins, extend timeouts, or add skip flags to make a gate green. Do not alter configuration as a lane shortcut. A change crossing crate boundaries is reviewed as one contract change even when the files are separate.
-
-## DDD contract details
-
-An entity is identified by lifecycle identity: symbol, package, class, and thread are entities. `Word`, `TypeSpecifier`, pathname components, and character are value objects. Use newtypes for identifiers crossing GC or Runtime boundaries. Aggregates protect invariants: Package mutation goes through `intern`, `unintern`, and `shadow`; hash rehash is driven by movement notification. `Runtime` owns package, function, class, and GC registries; ThreadContext owns TLAB, bindings, roots, handlers, safepoint, and multiple values. `intern`, `compile`, and `macroexpand` are domain services. The typed ncl-object wrapper around ncl-sys is the anti-corruption layer.
+Update a design contract before implementing a change that conflicts with it. Do not loosen assertions, disable plugins, extend timeouts, or add skip flags to make a gate green. A cross-crate migration is reviewed as one contract change. Keep behavior changes out of the D-08 move-only commit.
 
 ## Rust API rules
 
 Keep files near 300 lines and below 500. Do not use `mod.rs`; use `foo.rs` and optionally `foo/`. Default visibility is private, crate sharing is `pub(crate)`, and only listed contracts are `pub`. Use newtypes when type meaning matters, `#[repr(transparent)]` only when ABI representation is fixed, and `#[must_use]` for Result, tokens, and builders. Public enums that may gain variants are `#[non_exhaustive]`.
 
-Each crate owns its error enum and manually implements Error, Display, and required From conversions. Return failures and propagate with `?`; do not use thiserror or `Box<dyn Error>`. Production code has no unwrap, expect, panic, or unbounded todo. `todo!()` is allowed only in the Phase 0 skeleton, and its count is reported by inspection. `unsafe` is confined to ncl-sys and documents alignment, lifetime, ownership, and FFI invariants with a SAFETY reason. Explicit Send and Sync require an actual sharing proof. Clone is derived only for cheap values.
+Each crate owns its error enum and manually implements Error, Display, and required From conversions. Return failures and propagate with `?`; do not use thiserror or `Box<dyn Error>`. Production code has no unwrap, expect, panic, or unbounded todo. A `todo!()` is allowed only in a file explicitly designated as a Phase 0 skeleton, is reported by inspection, and cannot stand in for behavior a lane claims to implement. `unsafe` is confined to ncl-sys and documents alignment, lifetime, ownership, and FFI invariants with a SAFETY reason. Explicit Send and Sync require an actual sharing proof. Clone is derived only for cheap values.
 
-Prefer iterators and return-position `impl Trait`. Use traits for replaceable strategies such as ISA or allocator and enums for closed sets. Every public item has documentation; public functions document Errors, Panics, and Safety as applicable, including `Panics: Never` when relevant.
+Prefer iterators and return-position `impl Trait`. Use traits for replaceable strategies such as ISA or allocator and enums for closed sets. Every public item has documentation; public functions document `# Errors`, `# Panics`, and `# Safety` when applicable. Do not add a boilerplate `# Panics` section when the function cannot panic.
 
-Required API examples preserve the newtype and error boundaries:
+This Phase 0 API sketch shows the newtype and error boundary; `todo!()` marks an unimplemented skeleton operation:
 
 ```rust
 #[repr(transparent)]
@@ -73,7 +93,7 @@ pub struct SymbolId(Word);
 
 #[must_use]
 pub fn alloc(thread: &mut ThreadContext, runtime: &Runtime, kind: TypeTag, words: usize)
-    -> Result<Word, StorageCondition> { todo!() }
+    -> Result<Word, ObjectError> { todo!() }
 ```
 
 Reader code propagates its domain error with `?`:
@@ -85,10 +105,9 @@ pub fn read_form(input: &mut Input) -> Result<Form, ReaderError> {
 }
 ```
 
-## N08 typed Word contract
+## Typed Word contract
 
-`Word` is the only raw value crossing the object boundary. It is a
-tagged value exported by `ncl-object` from `ncl-sys`. Use `Word` for storage
+`Word` is defined by `ncl-sys` and re-exported by `ncl-object` (`packages/object/src/lib.rs:4`). It is the only raw value crossing the object boundary. Use `Word` for storage
 and ABI boundaries, not `u64`, `usize`, or an untyped string. The object layer
 exposes `ObjectRef` as a non-exhaustive classification enum. `classify(word)`
 uses immediate and lowtag information; `classify_object(ctx, word)` consults
@@ -114,19 +133,21 @@ owns pending errors and multiple values; `Runtime` owns the builtin registry.
 Do not expose a `Word`-accepting helper that can allocate without the mutable
 context and an explicit root lifetime.
 
-The error boundary is `Result<T, ObjectError>` inside `ncl-object`. The typed
-category projection is `ObjectError::kind()`, returning the non-exhaustive
-`ObjectErrorKind`; a type mismatch is `ObjectErrorKind::Type` and a missing
-builtin is `ObjectErrorKind::Unbound`. Do not document condition classes or
+`ncl-object` APIs return `Result<T, ObjectError>`. `WordView::try_from_word`
+returns the typed view's `typed::TypeError`. This is
+distinct from `ObjectError::TypeError`, the object API's error variant, and
+`ObjectErrorKind::Type`, the non-exhaustive category returned by
+`ObjectError::kind()`. The same projection reports a missing builtin as
+`ObjectErrorKind::Unbound`. Do not document condition classes or
 pending-condition construction as part of this typed contract: those APIs are
 not present in the inspected object sources.
 
-## N08b typed builtin contract
+## Typed builtin contract
 
 The safe builtin callback is the public `RustBuiltin` function pointer type:
 
 ```rust
-type RustBuiltin = fn(
+pub type RustBuiltin = fn(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &BuiltinArgs<'_>,
@@ -141,9 +162,9 @@ fixed-arity implementation. `BuiltinImplementation::adapted` additionally
 stores a `KeywordAdapter`, which receives the original `BuiltinArgs` and
 returns a normalized `Vec<Word>` or `ObjectError`.
 
-`Runtime::register_builtin` installs the function object in the symbol cell
-and returns a `FunctionObject`. `Runtime::call_builtin` rejects an unbound or
-unregistered function with `ObjectError::Unbound`, validates a direct arity,
+`RustBuiltin` is defined in `packages/object/src/builtin.rs:309`; typed adapters and `TypedRustBuiltin` are defined in `packages/object/src/typed.rs:57-114`. `BuiltinArgs` wraps the argument slice and exposes checked access in `packages/object/src/builtin.rs:255-303`.
+
+`Runtime::register_builtin` writes the function object into the symbol's function cell and registers the Lisp function name (`packages/object/src/builtin.rs:364-410`). A symbol's function cell is its function binding slot, separate from its value cell. Registration returns a `FunctionObject`. `Runtime::call_builtin` rejects an unbound or unregistered function with `ObjectError::Unbound`, validates a direct arity,
 applies the optional adapter, invokes the callback, copies
 `MultipleValues` into the thread context, and then resolves the pending error.
 `Runtime::builtin_descriptor` returns the registered `Builtin` descriptor when
@@ -155,12 +176,8 @@ an unbound word or a non-function lowtag.
 `MultipleValues` is an explicit side channel. Its evidenced operations are
 `new`, `clear`, `set`, `push`, `as_slice`, `len`, and `is_empty`; the callback's
 returned `Word` remains its primary result. The `NclStatus` enum and exported
-`builtin!` macro exist in `builtin.rs`, but their native entry behavior is not
-part of this typed Rust callback contract.
-
-### N08b example
-
-This example uses only the public object APIs above:
+`builtin!` macro exist in `packages/object/src/builtin.rs`, but their native
+entry behavior is not part of this typed Rust callback contract.
 
 Fixed positional arguments use a direct descriptor and validate each `Word`:
 
@@ -192,7 +209,7 @@ let add = BuiltinImplementation::direct(
 );
 ```
 
-The other evidenced descriptor shapes are explicit constructors:
+`OPTIONAL` and `KEYS` are `&[Parameter]`; `REST` is one `Parameter` (`packages/object/src/builtin.rs:86-102`). The other descriptor shapes are explicit constructors:
 
 ```rust
 let optional = LambdaList::with_optional(REQUIRED, OPTIONAL);
@@ -214,10 +231,7 @@ let type_error = Fixnum::from_lisp_arg(&ctx, Word::NIL); // Err(LispError::TypeE
 let designator = FunctionDesignator::Function(FunctionObject::try_from(function_word)?);
 ```
 
-`TypedRustBuiltin` is the `fn(&mut ThreadContext, &Runtime) ->
-Result<Word, LispError>` shape. `MultipleValues` remains the callback side
-channel; `LispError` is defined in `ncl-object`, while conversion to higher
-layer `ncl-conditions` objects remains unresolved.
+`typed_builtin!` generates a `RustBuiltin` adapter that converts arguments and stores any `LispError` on `ThreadContext` (`packages/object/src/typed.rs:57-114`). `TypedRustBuiltin` is the separate callback shape `fn(&mut ThreadContext, &Runtime) -> Result<Word, LispError>`. `MultipleValues` remains the callback side channel; `LispError` is defined in `ncl-object`, while conversion to higher-layer `ncl-conditions` objects belongs to `docs/src/design/conditions.md`.
 
 
 ## Lisp, GC, and OS boundary
@@ -238,10 +252,6 @@ pub fn unintern(package: &mut Package, name: SymbolName) -> Result<bool, Package
 
 An API returning a dynamic error after `expect("symbol exists")` is rejected because it hides a domain invariant. A trait such as `InstructionSelector::select(&Form) -> Result<Instruction, CodegenError>` is preferred over a string ISA with unchecked branch coverage.
 
-The two corresponding bad examples are a public `unintern` that returns
-`Box<dyn Error>` after `expect("symbol exists")`, and a selector that accepts
-`&str` for a closed ISA set. They hide domain failure and exhaustiveness.
-
 ```rust
 // bad: panic and an untyped error hide the package invariant
 pub fn unintern(package: &mut Package, name: &str) -> Box<dyn Error> {
@@ -256,9 +266,9 @@ pub fn select(isa: &str) -> Result<Vec<String>, String> { todo!() }
 
 ## Tests, benchmarks, and lanes
 
-Use only standard `#[test]`; table-driven helpers replace rstest. Do not use criterion. Benchmarks run through the ncl-conformance runner. Tests must not disable production contracts with unsafe, skip, or weak assertions. A lane edits only its crate and tests, not other crates, conformance, or configuration. Manifests use workspace lints and add no dependency.
+Use only standard `#[test]`; table-driven helpers replace rstest. Do not use criterion. Benchmarks run through the ncl-conformance runner. Tests must not disable production contracts with unsafe, skip, or weak assertions. Feature lanes edit only their assigned crates and tests, not other crates, conformance, or configuration. Manifests use workspace lints and add no dependency.
 
-Verification uses `nix develop path:. --command cargo ...`. Reports name changed files, exact commands, exit status, and selected test count. Commits, when explicitly requested, use a pathspec; push and PR are outside lane scope.
+Verification uses the repository's pinned Nix development environment. Reports name changed files, exact commands, exit status, and selected test count. Commits use explicit pathspecs; lane landing instructions govern bookmark and push operations.
 
 ## Mechanical inspection
 
@@ -272,24 +282,15 @@ An accessor that accepts `&mut Word` without a ThreadContext is incomplete when 
 
 An encoder test that checks only vector length is insufficient; it must compare exact bytes or execute the emitted instruction. A FASL test that only parses a header is insufficient; it must reject out-of-bounds offsets and mismatched target metadata. A green selector that ran no tests is reported as no coverage.
 
-The reviewer records the file, line, command, and observed output for each finding. Inferred consequences are separated from directly read facts. If a check cannot run, the report names the missing tool or environmental condition and gives the exact command to resume. No completion claim is made from static inspection when compilation or the canonical gate remains unrun.
-
 ## Lane handoff
 
 Handoffs identify the contract section, changed files, verification command, exit status, and remaining gap. A lane must not silently broaden its scope to another crate or configuration file. Shared API changes are coordinated at the contract owner and checked against every consumer.
 
 Documentation examples are normative only when they name ownership, root lifetime, error behavior, and target assumptions. Examples that omit those facts are illustrative and cannot replace a test. Generated tables include their source command and are regenerated only through the project workflow.
 
-The same review applies to documentation tables: numeric fields have one owner, cross-document values are checked together, and a renamed crate is updated in the context table, adjacency list, and API examples. A shortened replacement is not accepted when it removes a layout, numeric threshold, or failure condition.
+Before handoff, inspect the complete diff with `jj diff --git --from <base> --to @`, confirm only assigned paths changed, and confirm the strict site build contains all documents. Keep unrelated worktree entries untouched.
 
-Before handoff, inspect the complete diff with `git diff --no-ext-diff`, confirm only requested design documents changed, and confirm the generated site contains all documents. Keep unrelated worktree entries untouched.
-
-The canonical gate is the strict MkDocs build; cargo checks are separate and are not substituted for it.
+For documentation-only changes, the canonical docs gate is `mkdocs build --strict --config-file docs/mkdocs.yml`; cargo checks are separate and are not substituted for it.
 
 No generated site output is committed unless the repository explicitly tracks it.
 
-Reviewers distinguish verified commands from inferred contract implications.
-
-The final report includes gaps instead of silently treating them as passed.
-
-The report names every checklist item by document section.

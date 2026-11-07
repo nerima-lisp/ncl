@@ -10,5 +10,9 @@ description = "Lisp-semantic compiler intermediate representation"
 name = "arena"
 path = "tests/arena.rs"
 
+[[test]]
+name = "bindings"
+path = "tests/bindings.rs"
+
 [lints]
 workspace = true

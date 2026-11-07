@@ -181,6 +181,18 @@ mod tests {
         result.unwrap_or_else(|_| panic!("test fixture must be valid"))
     }
 
+    fn object(id: u32, entry_offset: u32, code: &[u8]) -> FaslCodeObject<'_> {
+        FaslCodeObject {
+            id,
+            entry_offset,
+            frame_words: 0,
+            constant_count: 0,
+            stack_map_count: 0,
+            debug_record_count: 0,
+            code,
+        }
+    }
+
     #[test]
     fn code_section_matches_fixed_record_and_padding_bytes() {
         let code = [0xaa, 0xbb, 0xcc];
@@ -226,6 +238,87 @@ mod tests {
         assert_eq!(
             decode(&trailing, 320).map(|_| ()),
             Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 360))
+        );
+    }
+
+    #[test]
+    fn code_encoder_rejects_sparse_ids_empty_code_and_out_of_range_entries() {
+        assert_eq!(
+            encode(&[object(1, 0, &[0x90])]),
+            Err(FaslError::new(FaslRejectReason::InvalidCodeObject))
+        );
+        assert_eq!(
+            encode(&[object(0, 0, &[])]),
+            Err(FaslError::new(FaslRejectReason::InvalidCodeObject))
+        );
+        assert_eq!(
+            encode(&[object(0, 1, &[0x90])]),
+            Err(FaslError::new(FaslRejectReason::InvalidCodeObject))
+        );
+        assert_eq!(encode(&[]), Ok(vec![0, 0, 0, 0]));
+        assert_eq!(decode(&[0, 0, 0, 0], 320), Ok(Vec::new()));
+
+        let code = [0x90];
+        let too_many = vec![object(1, 0, &code); MAX_RECORDS + 1];
+        assert_eq!(
+            encode(&too_many),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+        );
+    }
+
+    #[test]
+    fn code_decoder_rejects_bad_ids_lengths_padding_and_record_counts() {
+        let valid = must_succeed(encode(&[object(0, 0, &[0x90])]));
+
+        let mut bad_id = valid.clone();
+        bad_id[4..8].copy_from_slice(&1_u32.to_le_bytes());
+        assert_eq!(
+            decode(&bad_id, 320).map(|_| ()),
+            Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 324))
+        );
+
+        let mut zero_length = valid.clone();
+        zero_length[12..16].copy_from_slice(&0_u32.to_le_bytes());
+        assert_eq!(
+            decode(&zero_length, 320).map(|_| ()),
+            Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 332))
+        );
+
+        let mut bad_entry = valid.clone();
+        bad_entry[8..12].copy_from_slice(&1_u32.to_le_bytes());
+        assert_eq!(
+            decode(&bad_entry, 320).map(|_| ()),
+            Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 328))
+        );
+
+        let mut bad_padding = valid.clone();
+        bad_padding[35] = 1;
+        assert_eq!(
+            decode(&bad_padding, 320).map(|_| ()),
+            Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 355))
+        );
+
+        let mut truncated_code = valid.clone();
+        truncated_code[12..16].copy_from_slice(&10_u32.to_le_bytes());
+        assert_eq!(
+            decode(&truncated_code, 320),
+            Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 352))
+        );
+
+        let mut truncated_padding = valid;
+        truncated_padding[12..16].copy_from_slice(&9_u32.to_le_bytes());
+        truncated_padding.extend_from_slice(&[0; 7]);
+        assert_eq!(
+            decode(&truncated_padding, 320),
+            Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 361))
+        );
+        assert_eq!(
+            decode(&[1, 0, 0, 0], 320),
+            Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 320))
+        );
+        assert_eq!(
+            decode(&0x0010_0001_u32.to_le_bytes(), 320),
+            Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 320))
         );
     }
 }

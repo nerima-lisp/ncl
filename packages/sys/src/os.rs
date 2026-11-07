@@ -182,10 +182,6 @@ mod signal_control {
     #[cfg(target_os = "macos")]
     const SIG_BLOCK: c_int = 1;
     #[cfg(target_os = "linux")]
-    const SIG_UNBLOCK: c_int = 1;
-    #[cfg(target_os = "macos")]
-    const SIG_UNBLOCK: c_int = 2;
-    #[cfg(target_os = "linux")]
     const SS_DISABLE: c_int = 2;
     #[cfg(target_os = "macos")]
     const SS_DISABLE: c_int = 4;
@@ -217,21 +213,13 @@ mod signal_control {
         _bits: u32,
     }
 
-    #[cfg(target_os = "linux")]
     #[repr(C)]
     struct SigAction {
         handler: usize,
         mask: SigSet,
         flags: c_int,
+        #[cfg(target_os = "linux")]
         _restorer: *mut c_void,
-    }
-
-    #[cfg(target_os = "macos")]
-    #[repr(C)]
-    struct SigAction {
-        handler: usize,
-        mask: SigSet,
-        flags: c_int,
     }
 
     #[cfg(target_os = "linux")]
@@ -289,7 +277,8 @@ mod signal_control {
         if unsafe { sigemptyset(&raw mut set) } != 0 {
             return Err(last_os_error());
         }
-        for signal in [SIG_INT, SIG_TERM, SIG_CHLD] {
+        let signals = [SIG_INT, SIG_TERM, SIG_CHLD];
+        for signal in signals {
             // SAFETY: set is initialized and signal is a valid target signal number.
             if unsafe { sigaddset(&raw mut set, signal) } != 0 {
                 return Err(last_os_error());
@@ -301,8 +290,7 @@ mod signal_control {
     #[cfg(target_os = "linux")]
     fn positive_sysconf(name: c_int, fallback: usize) -> usize {
         // SAFETY: sysconf accepts the Linux signal-stack configuration selectors.
-        let value = unsafe { sysconf(name) };
-        usize::try_from(value)
+        usize::try_from(unsafe { sysconf(name) })
             .ok()
             .filter(|value| *value > 0)
             .unwrap_or(fallback)
@@ -327,22 +315,15 @@ mod signal_control {
         let rounded_size = base_size
             .checked_add(page_size - 1)
             .map(|size| size / page_size * page_size)
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidInput, "signal stack size overflow")
-            })?;
+            .ok_or_else(|| io::Error::other("signal stack size overflow"))?;
         rounded_size
             .checked_add(ALT_SIGNAL_HANDLER_RESERVE)
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidInput, "signal stack size overflow")
-            })
+            .ok_or_else(|| io::Error::other("signal stack size overflow"))
     }
 
     fn current_alt_signal_stack() -> io::Result<AltSignalStack> {
-        let mut current = AltSignalStack {
-            sp: core::ptr::null_mut(),
-            size: 0,
-            flags: 0,
-        };
+        // SAFETY: all fields in the supported `stack_t` layouts are valid when zeroed.
+        let mut current: AltSignalStack = unsafe { core::mem::zeroed() };
         // SAFETY: current points to writable stack_t storage; null requests a query only.
         if unsafe { sigaltstack(core::ptr::null(), &raw mut current) } != 0 {
             return Err(last_os_error());
@@ -377,7 +358,7 @@ mod signal_control {
                     flags: SS_DISABLE,
                 };
                 // SAFETY: the current thread owns this alternate stack, and it is not active.
-                if unsafe { sigaltstack(&disabled, core::ptr::null_mut()) } != 0 {
+                if unsafe { sigaltstack(&raw const disabled, core::ptr::null_mut()) } != 0 {
                     core::mem::forget(memory);
                 }
             }
@@ -415,7 +396,7 @@ mod signal_control {
                     flags: 0,
                 };
                 // SAFETY: memory remains owned by thread-local storage for the stack's lifetime.
-                if unsafe { sigaltstack(&stack, core::ptr::null_mut()) } != 0 {
+                if unsafe { sigaltstack(&raw const stack, core::ptr::null_mut()) } != 0 {
                     return Err(last_os_error());
                 }
                 owner.memory = Some(memory);
@@ -424,7 +405,7 @@ mod signal_control {
             .map_err(|_| io::Error::other("alternate signal stack TLS unavailable"))?
     }
 
-    extern "C" fn sigchld_wait_handler(_: c_int) {}
+    const extern "C" fn sigchld_wait_handler(_: c_int) {}
     fn set_signal_disposition(signal: c_int, handler: usize) -> io::Result<()> {
         // SAFETY: zeroed storage is valid for sigaction's integer, pointer, and sigset fields.
         let mut action: SigAction = unsafe { core::mem::zeroed() };
@@ -442,16 +423,26 @@ mod signal_control {
 
     impl crate::Thread {
         /// Ignore process-wide `SIGPIPE` so failed writes return `EPIPE` to normal code.
+        ///
+        /// # Errors
+        /// Returns an OS error if the signal disposition cannot be set.
         pub fn ignore_sigpipe() -> io::Result<()> {
             set_signal_disposition(SIG_PIPE, SIG_IGN)
         }
 
         /// Install a no-op disposition so `SIGCHLD` can be consumed with `sigwait`.
+        ///
+        /// # Errors
+        /// Returns an OS error if the signal disposition cannot be set.
         pub fn install_sigchld_wait_disposition() -> io::Result<()> {
+            // check-added-lines: allow(as-cast) `sa_handler` is a function pointer in the POSIX ABI.
             set_signal_disposition(SIG_CHLD, sigchld_wait_handler as *const () as usize)
         }
 
         /// Block `SIGINT`, `SIGTERM`, and `SIGCHLD` on the calling OS thread.
+        ///
+        /// # Errors
+        /// Returns an OS error if the signal mask cannot be updated.
         pub fn block_signal_control_set() -> io::Result<()> {
             let set = control_signal_set()?;
             // SAFETY: set is initialized and old_set is null because its prior value is unused.
@@ -463,19 +454,10 @@ mod signal_control {
             Ok(())
         }
 
-        /// Unblock the control-signal set on the calling OS thread.
-        pub fn unblock_signal_control_set() -> io::Result<()> {
-            let set = control_signal_set()?;
-            // SAFETY: set is initialized and old_set is null because its prior value is unused.
-            let result =
-                unsafe { pthread_sigmask(SIG_UNBLOCK, &raw const set, core::ptr::null_mut()) };
-            if result != 0 {
-                return Err(io::Error::from_raw_os_error(result));
-            }
-            Ok(())
-        }
-
         /// Wait for one blocked control signal and return its target signal number.
+        ///
+        /// # Errors
+        /// Returns an OS error if `sigwait` fails.
         pub fn wait_signal_control_set() -> io::Result<c_int> {
             let set = control_signal_set()?;
             loop {
@@ -493,6 +475,9 @@ mod signal_control {
         }
 
         /// Reuse or register a per-thread alternate signal stack of the contract size.
+        ///
+        /// # Errors
+        /// Returns an OS error if stack sizing or registration fails.
         pub fn ensure_alt_signal_stack() -> io::Result<usize> {
             ensure_alt_signal_stack()
         }

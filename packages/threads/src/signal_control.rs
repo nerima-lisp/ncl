@@ -102,9 +102,10 @@ impl SignalControl {
         let (sender, receiver) = mpsc::channel();
         let worker = std::thread::Builder::new()
             .name("ncl-sigwait".to_owned())
-            .spawn(move || sigwait_loop(sender));
+            .spawn(move || sigwait_loop(&sender));
         worker.map_err(SignalControlError::ThreadSpawn)?;
         *started = true;
+        drop(started);
         Ok(Self { receiver })
     }
 
@@ -164,7 +165,7 @@ fn prepare_current_thread() -> Result<(), SignalControlError> {
     Ok(())
 }
 
-fn sigwait_loop(sender: mpsc::Sender<Result<SignalEvent, SignalControlError>>) {
+fn sigwait_loop(sender: &mpsc::Sender<Result<SignalEvent, SignalControlError>>) {
     loop {
         let signal = match ncl_sys::Thread::wait_signal_control_set() {
             Ok(signal) => signal,
@@ -173,12 +174,9 @@ fn sigwait_loop(sender: mpsc::Sender<Result<SignalEvent, SignalControlError>>) {
                 return;
             }
         };
-        let event = match control_event(signal) {
-            Some(event) => event,
-            None => {
-                let _ = sender.send(Err(SignalControlError::UnexpectedSignal(signal)));
-                return;
-            }
+        let Some(event) = control_event(signal) else {
+            let _ = sender.send(Err(SignalControlError::UnexpectedSignal(signal)));
+            return;
         };
         if sender.send(Ok(event)).is_err() {
             return;
@@ -186,14 +184,20 @@ fn sigwait_loop(sender: mpsc::Sender<Result<SignalEvent, SignalControlError>>) {
     }
 }
 
-fn control_event(signal: i32) -> Option<SignalEvent> {
-    match signal {
-        2 => Some(SignalEvent::Interrupt),
-        15 => Some(SignalEvent::TerminationRequested),
-        #[cfg(target_os = "linux")]
-        17 => Some(SignalEvent::ChildrenChanged),
-        #[cfg(target_os = "macos")]
-        20 => Some(SignalEvent::ChildrenChanged),
-        _ => None,
+const fn control_event(signal: i32) -> Option<SignalEvent> {
+    if signal == 2 {
+        return Some(SignalEvent::Interrupt);
     }
+    if signal == 15 {
+        return Some(SignalEvent::TerminationRequested);
+    }
+    #[cfg(target_os = "linux")]
+    if signal == 17 {
+        return Some(SignalEvent::ChildrenChanged);
+    }
+    #[cfg(target_os = "macos")]
+    if signal == 20 {
+        return Some(SignalEvent::ChildrenChanged);
+    }
+    None
 }

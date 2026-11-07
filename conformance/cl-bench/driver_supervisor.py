@@ -781,7 +781,7 @@ def _registered_functions(cwd: Path) -> dict[str, tuple[str, ...]]:
 
 def _comparison_benchmarks() -> tuple[str, ...]:
     root = Path(__file__).resolve().parents[2]
-    source = root / "scripts" / "optimization_baseline.py"
+    source = root / "scripts" / "optimization_baseline_constants.py"
     module = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
     for node in module.body:
         if isinstance(node, ast.Assign) and any(

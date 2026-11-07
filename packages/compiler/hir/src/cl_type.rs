@@ -144,6 +144,18 @@ impl TypeArena {
         self.nodes.get(id)
     }
 
+    /// Returns the number of interned types.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Iterates over type indices and nodes in allocation order.
+    #[must_use]
+    pub fn iter(&self) -> impl Iterator<Item = (usize, &ClType)> {
+        self.nodes.iter()
+    }
+
     /// Appends a recognized atomic type.
     ///
     /// # Errors

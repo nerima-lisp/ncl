@@ -6,7 +6,7 @@ Code space owns executable native bytes, their address-stable metadata, and thei
 
 The allocator obtains the operating-system page size at runtime through `sysconf(_SC_PAGESIZE)`. It rounds reservations and protection changes with checked arithmetic. The initial Linux arena size is 16 MiB, with page-rounded dedicated extents for larger objects. macOS uses one process-wide `MAP_JIT` reservation and suballocates the same logical arenas inside it. These sizes are allocator policy; the contract is that the number of VM mappings scales with arenas and large extents, not with code-object count.
 
-The unsafe operating-system boundary stays in `ncl-sys`. Runtime coordinates compilation, publication, function cells, and code handles. The exact crate ownership and dependency edges follow the [crate map](crates.md).
+The unsafe operating-system boundary stays in `ncl-sys`. The signal-recovery trampoline's machine-code definition and OS-facing entry point belong there. Runtime coordinates Lisp compilation, publication, function cells, and code handles. The exact crate ownership and dependency edges follow the [crate map](crates.md).
 
 ## Current implementation
 
@@ -71,6 +71,8 @@ A multi-threaded implementation must use synchronized function cells rather than
 ## Code retirement and the heap collector
 
 Lisp heap reachability and executable-page reclamation are related but separate responsibilities. The L02c-GC lane owns heap tracing and moving references. The code-space contract owns code handles, executable page state, and safe retirement. The integration API must let the collector enumerate or update code references without making the heap collector responsible for OS mappings.
+
+Every Lisp thread, including the main thread, runs on a control stack mapped by the runtime, with one guard page at each end. `--control-stack-size` sets the control-stack size. Code GC scans saved return addresses only within the registered bounds of these control stacks and checks current PCs at mutator safepoints; it does not scan unrelated stacks.
 
 A code object remains live while any of these references exist:
 

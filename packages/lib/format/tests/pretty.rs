@@ -262,6 +262,15 @@ fn justification_supports_alignment_padding_and_minimum_internal_padding() {
 }
 
 #[test]
+fn justification_escape_keeps_prefix_text_and_justifies_it() {
+    let (runtime, mut ctx) = context();
+    assert_eq!(
+        execute_text("~10<pre~^ignored~:;body~>", &[], &mut ctx, &runtime).0,
+        "       pre"
+    );
+}
+
+#[test]
 fn justification_prefix_is_emitted_on_a_wrapped_line() {
     let (runtime, mut ctx) = context();
     let control = format!("{}~5<pre~:;body~>", "x".repeat(78));

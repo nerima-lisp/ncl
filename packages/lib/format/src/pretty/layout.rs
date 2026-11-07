@@ -160,7 +160,7 @@ fn add_signed(base: usize, amount: i64) -> Option<usize> {
     }
 }
 
-fn effective_column(output: &FormatOutput<'_>) -> usize {
+const fn effective_column(output: &FormatOutput<'_>) -> usize {
     if output.line_start {
         output.indentation
     } else {
@@ -225,7 +225,14 @@ pub(super) fn execute_logical_block(
             fill,
             per_line_prefix.as_deref(),
         ),
-        None => execute_rest_block(state, body, output, fill, per_line_prefix.as_deref()),
+        None => execute_rest_block(
+            directive,
+            state,
+            body,
+            output,
+            fill,
+            per_line_prefix.as_deref(),
+        ),
     };
     output.block_start = saved_block_start;
     output.indentation = saved_indentation;
@@ -282,7 +289,7 @@ fn logical_block_parts<'a>(
                 literal_control(&suffix.control, directive)?,
             ))
         }
-        _ => Err(FormatError::at(
+        [] | [_, _, _, ..] => Err(FormatError::at(
             directive,
             FormatErrorKind::InvalidDirectiveUse,
         )),
@@ -306,6 +313,7 @@ fn literal_control(control: &FormatControl, directive: &Directive) -> Result<Str
 }
 
 fn execute_rest_block(
+    directive: &Directive,
     state: &mut ExecutionState<'_>,
     body: &FormatControl,
     output: &mut FormatOutput<'_>,
@@ -318,7 +326,10 @@ fn execute_rest_block(
     let mut frames = state.frames.clone();
     frames.push(ControlFrame::LogicalBlock);
     let flow = {
-        let arguments = &state.arguments[start..];
+        let arguments = state
+            .arguments
+            .get(start..)
+            .ok_or_else(|| FormatError::at(directive, FormatErrorKind::InvalidDirectiveUse))?;
         let mut nested = ExecutionState {
             arguments,
             index: 0,
@@ -327,11 +338,10 @@ fn execute_rest_block(
             ctx: state.ctx,
             runtime,
         };
-        execute_logical_control(&mut nested, body, output, fill, per_line_prefix).map(|flow| {
-            state.index = state.arguments.len();
-            state.previous_is_one = nested.previous_is_one;
-            flow
-        })?
+        let flow = execute_logical_control(&mut nested, body, output, fill, per_line_prefix)?;
+        state.index = state.arguments.len();
+        state.previous_is_one = nested.previous_is_one;
+        flow
     };
     let _ = flow;
     Ok(())
@@ -428,10 +438,8 @@ fn execute_logical_control(
 
 fn write_fill_literal(text: &str, output: &mut FormatOutput<'_>) -> Result<(), FormatError> {
     let mut remaining = text;
-    while let Some(index) = remaining.find(' ') {
-        let (word, tail) = remaining.split_at(index);
+    while let Some((word, rest)) = remaining.split_once(' ') {
         output.write_str(word)?;
-        let rest = &tail[1..];
         let next_word = rest
             .chars()
             .take_while(|character| !character.is_whitespace())

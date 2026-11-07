@@ -157,7 +157,7 @@ fn with_parameter_words<T>(
                         .map_err(|_| FormatError::at(directive, FormatErrorKind::InvalidParameter))?
                         .as_word();
                     let mut number = Box::new(number);
-                    let token = push_root(ctx, &mut *number);
+                    let token = push_root(ctx, &mut number);
                     words.push(*number);
                     roots.push((words.len() - 1, number, token));
                 }
@@ -178,23 +178,40 @@ fn with_parameter_words<T>(
     let result = if let Err(error) = build {
         Err(error)
     } else {
+        let mut restore_failure = None;
         for (index, number, _) in &roots {
-            words[*index] = **number;
-        }
-        let mut failure = None;
-        let rooted = with_rooted_slice(ctx, &words, |ctx, rooted| match execute(ctx, rooted) {
-            Ok(value) => Ok(value),
-            Err(error) => {
-                failure = Some(error);
-                Err(ObjectError::TypeError)
-            }
-        });
-        match failure {
-            Some(error) => Err(error),
-            None => {
-                rooted.map_err(|_| FormatError::at(directive, FormatErrorKind::InvalidDirectiveUse))
+            if let Some(word) = words.get_mut(*index) {
+                *word = **number;
+            } else {
+                restore_failure = Some(FormatError::at(
+                    directive,
+                    FormatErrorKind::InvalidDirectiveUse,
+                ));
+                break;
             }
         }
+        restore_failure.map_or_else(
+            || {
+                let mut failure = None;
+                let rooted =
+                    with_rooted_slice(ctx, &words, |ctx, rooted| match execute(ctx, rooted) {
+                        Ok(value) => Ok(value),
+                        Err(error) => {
+                            failure = Some(error);
+                            Err(ObjectError::TypeError)
+                        }
+                    });
+                failure.map_or_else(
+                    || {
+                        rooted.map_err(|_| {
+                            FormatError::at(directive, FormatErrorKind::InvalidDirectiveUse)
+                        })
+                    },
+                    Err,
+                )
+            },
+            Err,
+        )
     };
     let mut root_failure = false;
     for (_, _, token) in roots.into_iter().rev() {

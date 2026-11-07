@@ -5,6 +5,10 @@ use crate::model::{
     FormatControl, Parameter, Terminator, TerminatorKind,
 };
 
+mod header;
+
+use header::Header;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ParseError {
     pub offset: usize,
@@ -67,11 +71,6 @@ struct Boundary {
     opening_position: usize,
 }
 
-struct Header {
-    modifiers: DirectiveModifiers,
-    character: char,
-}
-
 impl Parser {
     fn parse_parts(&mut self, boundary: Boundary) -> Result<ParsedParts, ParseError> {
         let mut parts = Vec::new();
@@ -82,7 +81,7 @@ impl Parser {
                 self.index += 1;
                 continue;
             }
-            self.push_literal(&mut parts, &mut literal);
+            Self::push_literal(&mut parts, &mut literal);
             let header = self.parse_header()?;
             if header.character == ';' {
                 if boundary.allow_separator {
@@ -91,7 +90,7 @@ impl Parser {
                         stop: Stop::Separator(header.modifiers),
                     });
                 }
-                return Err(self.error(
+                return Err(Self::error(
                     header.modifiers.position,
                     Some(';'),
                     ParseErrorKind::UnexpectedTerminator,
@@ -109,7 +108,7 @@ impl Parser {
                         }),
                     });
                 }
-                return Err(self.error(
+                return Err(Self::error(
                     header.modifiers.position,
                     Some(header.character),
                     ParseErrorKind::UnexpectedTerminator,
@@ -128,9 +127,9 @@ impl Parser {
                 }
             }
         }
-        self.push_literal(&mut parts, &mut literal);
+        Self::push_literal(&mut parts, &mut literal);
         if let Some(expected) = boundary.terminator {
-            return Err(self.error(
+            return Err(Self::error(
                 boundary.opening_position,
                 Some(expected.character()),
                 ParseErrorKind::UnterminatedConstruct {
@@ -144,118 +143,14 @@ impl Parser {
         })
     }
 
-    fn parse_header(&mut self) -> Result<Header, ParseError> {
-        let position = self.index;
-        self.index += 1;
-        let mut parameters = Vec::new();
-        let mut colon = false;
-        let mut at_sign = false;
-        let mut slot_started = false;
-        let mut slot_has_value = false;
-        let mut modifiers_started = false;
-        while let Some(character) = self.characters.get(self.index).copied() {
-            match character {
-                ':' => {
-                    if slot_started && !slot_has_value {
-                        parameters.push(Parameter::Unsupplied);
-                        slot_has_value = true;
-                    }
-                    colon = true;
-                    modifiers_started = true;
-                    self.index += 1;
-                }
-                '@' => {
-                    if slot_started && !slot_has_value {
-                        parameters.push(Parameter::Unsupplied);
-                        slot_has_value = true;
-                    }
-                    at_sign = true;
-                    modifiers_started = true;
-                    self.index += 1;
-                }
-                ',' => {
-                    if modifiers_started {
-                        return Err(self.error(position, None, ParseErrorKind::InvalidParameter));
-                    }
-                    if !slot_started {
-                        parameters.push(Parameter::Unsupplied);
-                        slot_started = true;
-                    } else if slot_has_value {
-                        slot_has_value = false;
-                    } else {
-                        parameters.push(Parameter::Unsupplied);
-                    }
-                    self.index += 1;
-                }
-                '\'' => {
-                    if modifiers_started || slot_has_value {
-                        return Err(self.error(position, None, ParseErrorKind::InvalidParameter));
-                    }
-                    self.index += 1;
-                    let Some(value) = self.characters.get(self.index).copied() else {
-                        return Err(self.error(position, None, ParseErrorKind::InvalidParameter));
-                    };
-                    parameters.push(Parameter::Character(value));
-                    slot_started = true;
-                    slot_has_value = true;
-                    self.index += 1;
-                }
-                '+' | '-' | '0'..='9' => {
-                    if modifiers_started || slot_has_value {
-                        return Err(self.error(position, None, ParseErrorKind::InvalidParameter));
-                    }
-                    parameters.push(self.parse_integer_parameter(position)?);
-                    slot_started = true;
-                    slot_has_value = true;
-                }
-                'v' | 'V' => {
-                    if modifiers_started || slot_has_value {
-                        return Err(self.error(position, None, ParseErrorKind::InvalidParameter));
-                    }
-                    parameters.push(Parameter::Relative);
-                    slot_started = true;
-                    slot_has_value = true;
-                    self.index += 1;
-                }
-                '#' => {
-                    if modifiers_started || slot_has_value {
-                        return Err(self.error(position, None, ParseErrorKind::InvalidParameter));
-                    }
-                    parameters.push(Parameter::Remaining);
-                    slot_started = true;
-                    slot_has_value = true;
-                    self.index += 1;
-                }
-                other => {
-                    if other.is_numeric() {
-                        return Err(self.error(position, None, ParseErrorKind::InvalidParameter));
-                    }
-                    if slot_started && !slot_has_value {
-                        parameters.push(Parameter::Unsupplied);
-                    }
-                    self.index += 1;
-                    return Ok(Header {
-                        modifiers: DirectiveModifiers {
-                            parameters,
-                            colon,
-                            at_sign,
-                            position,
-                        },
-                        character: other,
-                    });
-                }
-            }
-        }
-        Err(self.error(position, None, ParseErrorKind::UnterminatedDirective))
-    }
-
     fn parse_integer_parameter(
         &mut self,
         directive_position: usize,
     ) -> Result<Parameter, ParseError> {
-        let sign = match self.characters.get(self.index).copied() {
-            Some('-') => -1_i128,
-            _ => 1_i128,
+        let sign = if self.characters.get(self.index) == Some(&'-') {
+            -1_i128
+        } else {
+            1_i128
         };
         if matches!(self.characters.get(self.index), Some('+' | '-')) {
             self.index += 1;
@@ -267,30 +162,34 @@ impl Parser {
                 break;
             }
             let digit = character.to_digit(10).ok_or_else(|| {
-                self.error(directive_position, None, ParseErrorKind::InvalidParameter)
+                Self::error(directive_position, None, ParseErrorKind::InvalidParameter)
             })?;
             value = value
                 .checked_mul(10)
                 .and_then(|current| current.checked_add(i128::from(digit)))
                 .ok_or_else(|| {
-                    self.error(directive_position, None, ParseErrorKind::InvalidParameter)
+                    Self::error(directive_position, None, ParseErrorKind::InvalidParameter)
                 })?;
             self.index += 1;
         }
         if self.index == start {
-            return Err(self.error(directive_position, None, ParseErrorKind::InvalidParameter));
+            return Err(Self::error(
+                directive_position,
+                None,
+                ParseErrorKind::InvalidParameter,
+            ));
         }
         let signed = value.checked_mul(sign).ok_or_else(|| {
-            self.error(directive_position, None, ParseErrorKind::InvalidParameter)
+            Self::error(directive_position, None, ParseErrorKind::InvalidParameter)
         })?;
         let value = i64::try_from(signed)
-            .map_err(|_| self.error(directive_position, None, ParseErrorKind::InvalidParameter))?;
+            .map_err(|_| Self::error(directive_position, None, ParseErrorKind::InvalidParameter))?;
         Ok(Parameter::Integer(value))
     }
 
     fn parse_directive(&mut self, header: Header) -> Result<Directive, ParseError> {
         let kind = DirectiveKind::from_character(header.character).ok_or_else(|| {
-            self.error(
+            Self::error(
                 header.modifiers.position,
                 Some(header.character),
                 ParseErrorKind::UnknownDirective,
@@ -320,7 +219,7 @@ impl Parser {
                     opening_position: position,
                 })?;
                 let Stop::Terminator(terminator) = parsed.stop else {
-                    return Err(self.error(
+                    return Err(Self::error(
                         position,
                         None,
                         ParseErrorKind::UnterminatedConstruct {
@@ -346,7 +245,31 @@ impl Parser {
                 };
                 (kind, DirectiveBody::Clauses(segments), Some(terminator))
             }
-            _ => (kind, DirectiveBody::None, None),
+            DirectiveKind::A
+            | DirectiveKind::S
+            | DirectiveKind::W
+            | DirectiveKind::C
+            | DirectiveKind::R
+            | DirectiveKind::D
+            | DirectiveKind::B
+            | DirectiveKind::O
+            | DirectiveKind::X
+            | DirectiveKind::F
+            | DirectiveKind::E
+            | DirectiveKind::G
+            | DirectiveKind::Dollar
+            | DirectiveKind::Percent
+            | DirectiveKind::Ampersand
+            | DirectiveKind::Bar
+            | DirectiveKind::Tilde
+            | DirectiveKind::Newline
+            | DirectiveKind::Underscore
+            | DirectiveKind::Indent
+            | DirectiveKind::Tab
+            | DirectiveKind::Star
+            | DirectiveKind::Recursive
+            | DirectiveKind::Plural
+            | DirectiveKind::UpArrow => (kind, DirectiveBody::None, None),
         };
         Ok(Directive {
             position,
@@ -383,7 +306,7 @@ impl Parser {
                 Stop::Separator(next) => separator = Some(next),
                 Stop::Terminator(terminator) => return Ok((segments, terminator)),
                 Stop::End => {
-                    return Err(self.error(
+                    return Err(Self::error(
                         opening_position,
                         None,
                         ParseErrorKind::UnterminatedConstruct {
@@ -404,20 +327,20 @@ impl Parser {
             }
             name.push(character);
         }
-        Err(self.error(
+        Err(Self::error(
             directive_position,
             Some('/'),
             ParseErrorKind::UnterminatedFunctionName,
         ))
     }
 
-    fn push_literal(&self, parts: &mut Vec<ControlPart>, literal: &mut String) {
+    fn push_literal(parts: &mut Vec<ControlPart>, literal: &mut String) {
         if !literal.is_empty() {
             parts.push(ControlPart::Literal(std::mem::take(literal)));
         }
     }
 
-    fn error(&self, offset: usize, directive: Option<char>, kind: ParseErrorKind) -> ParseError {
+    const fn error(offset: usize, directive: Option<char>, kind: ParseErrorKind) -> ParseError {
         ParseError {
             offset,
             directive,

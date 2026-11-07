@@ -160,21 +160,23 @@ impl SignalControl {
     /// Wait for the next signal event.
     ///
     /// # Errors
-    /// Returns the first worker failure; later calls return WorkerStopped.
+    /// Returns the first worker failure; later calls report that the worker stopped.
+    /// After a worker failure, callers must stop runtime work and exit the process.
     pub fn receive(&self) -> Result<SignalEvent, SignalControlError> {
         if self.failed.get() {
             return Err(SignalControlError::WorkerStopped);
         }
-        match self.receiver.recv() {
-            Ok(result) => self.finish_receive(result),
-            Err(_) => self.finish_receive(Err(SignalControlError::WorkerStopped)),
-        }
+        self.receiver.recv().map_or_else(
+            |_| self.finish_receive(Err(SignalControlError::WorkerStopped)),
+            |result| self.finish_receive(result),
+        )
     }
 
     /// Wait up to `timeout` for a signal event.
     ///
     /// # Errors
-    /// Returns the first worker failure; later calls return WorkerStopped.
+    /// Returns the first worker failure; later calls report that the worker stopped.
+    /// After a worker failure, callers must stop runtime work and exit the process.
     pub fn receive_timeout(
         &self,
         timeout: Duration,
@@ -194,7 +196,8 @@ impl SignalControl {
     /// Read a queued signal event without blocking.
     ///
     /// # Errors
-    /// Returns the first worker failure; later calls return WorkerStopped.
+    /// Returns the first worker failure; later calls report that the worker stopped.
+    /// After a worker failure, callers must stop runtime work and exit the process.
     pub fn try_receive(&self) -> Result<Option<SignalEvent>, SignalControlError> {
         if self.failed.get() {
             return Err(SignalControlError::WorkerStopped);
@@ -305,18 +308,26 @@ mod tests {
         Err(io::Error::other("simulated sigwait failure"))
     }
 
+    static SIBLING_WAIT_CALLED: AtomicBool = AtomicBool::new(false);
+
     fn sibling_wait_must_not_start() -> io::Result<i32> {
-        panic!("a sibling worker should observe the terminal failure before waiting")
+        if SIBLING_WAIT_CALLED.swap(true, Ordering::AcqRel) {
+            Err(io::Error::other("sibling wait was called repeatedly"))
+        } else {
+            Ok(2)
+        }
     }
 
     #[test]
     fn worker_failure_stops_siblings_and_receiver() {
         let worker_failed = Arc::new(AtomicBool::new(false));
         let (sender, receiver) = mpsc::channel();
+        SIBLING_WAIT_CALLED.store(false, Ordering::Release);
 
         sigwait_loop(&sender, &worker_failed, failed_wait);
         assert!(worker_failed.load(Ordering::Acquire));
         sigwait_loop(&sender, &worker_failed, sibling_wait_must_not_start);
+        assert!(!SIBLING_WAIT_CALLED.load(Ordering::Acquire));
 
         let control = SignalControl {
             receiver,

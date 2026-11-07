@@ -170,7 +170,7 @@ fn recursive_format_accepts_function_controls_only_in_list_mode() {
         .function(&mut ctx, "COMMON-LISP", "FORMAT")
         .expect("FORMAT function");
     let common_lisp = runtime
-        .find_package(&mut ctx, "COMMON-LISP")
+        .find_package(&ctx, "COMMON-LISP")
         .expect("COMMON-LISP package");
     let (formatter_symbol, _) = Package::from_word(common_lisp)
         .intern(&mut ctx, &runtime, "FORMAT")

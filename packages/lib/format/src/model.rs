@@ -106,39 +106,69 @@ pub enum DirectiveKind {
 
 impl DirectiveKind {
     pub(crate) const fn from_character(character: char) -> Option<Self> {
-        Some(match character {
-            'A' | 'a' => Self::A,
-            'S' | 's' => Self::S,
-            'W' | 'w' => Self::W,
-            'C' | 'c' => Self::C,
-            'R' | 'r' => Self::R,
-            'D' | 'd' => Self::D,
-            'B' | 'b' => Self::B,
-            'O' | 'o' => Self::O,
-            'X' | 'x' => Self::X,
-            'F' | 'f' => Self::F,
-            'E' | 'e' => Self::E,
-            'G' | 'g' => Self::G,
-            '$' => Self::Dollar,
-            '%' => Self::Percent,
-            '&' => Self::Ampersand,
-            '|' => Self::Bar,
-            '~' => Self::Tilde,
-            '\n' => Self::Newline,
-            '_' => Self::Underscore,
-            '<' => Self::Justification,
-            'I' | 'i' => Self::Indent,
-            '/' => Self::Slash,
-            'T' | 't' => Self::Tab,
-            '*' => Self::Star,
-            '[' => Self::Conditional,
-            '{' => Self::Iteration,
-            '?' => Self::Recursive,
-            '(' => Self::CaseConversion,
-            'P' | 'p' => Self::Plural,
-            '^' => Self::UpArrow,
-            _ => return None,
-        })
+        if matches!(character, 'A' | 'a') {
+            Some(Self::A)
+        } else if matches!(character, 'S' | 's') {
+            Some(Self::S)
+        } else if matches!(character, 'W' | 'w') {
+            Some(Self::W)
+        } else if matches!(character, 'C' | 'c') {
+            Some(Self::C)
+        } else if matches!(character, 'R' | 'r') {
+            Some(Self::R)
+        } else if matches!(character, 'D' | 'd') {
+            Some(Self::D)
+        } else if matches!(character, 'B' | 'b') {
+            Some(Self::B)
+        } else if matches!(character, 'O' | 'o') {
+            Some(Self::O)
+        } else if matches!(character, 'X' | 'x') {
+            Some(Self::X)
+        } else if matches!(character, 'F' | 'f') {
+            Some(Self::F)
+        } else if matches!(character, 'E' | 'e') {
+            Some(Self::E)
+        } else if matches!(character, 'G' | 'g') {
+            Some(Self::G)
+        } else if character == '$' {
+            Some(Self::Dollar)
+        } else if character == '%' {
+            Some(Self::Percent)
+        } else if character == '&' {
+            Some(Self::Ampersand)
+        } else if character == '|' {
+            Some(Self::Bar)
+        } else if character == '~' {
+            Some(Self::Tilde)
+        } else if character == '\n' {
+            Some(Self::Newline)
+        } else if character == '_' {
+            Some(Self::Underscore)
+        } else if character == '<' {
+            Some(Self::Justification)
+        } else if matches!(character, 'I' | 'i') {
+            Some(Self::Indent)
+        } else if character == '/' {
+            Some(Self::Slash)
+        } else if matches!(character, 'T' | 't') {
+            Some(Self::Tab)
+        } else if character == '*' {
+            Some(Self::Star)
+        } else if character == '[' {
+            Some(Self::Conditional)
+        } else if character == '{' {
+            Some(Self::Iteration)
+        } else if character == '?' {
+            Some(Self::Recursive)
+        } else if character == '(' {
+            Some(Self::CaseConversion)
+        } else if matches!(character, 'P' | 'p') {
+            Some(Self::Plural)
+        } else if character == '^' {
+            Some(Self::UpArrow)
+        } else {
+            None
+        }
     }
 
     #[must_use]
@@ -180,12 +210,16 @@ impl DirectiveKind {
 
 impl TerminatorKind {
     pub(crate) const fn from_character(character: char) -> Option<Self> {
-        match character {
-            '>' => Some(Self::GreaterThan),
-            ']' => Some(Self::RightBracket),
-            '}' => Some(Self::RightBrace),
-            ')' => Some(Self::RightParen),
-            _ => None,
+        if character == '>' {
+            Some(Self::GreaterThan)
+        } else if character == ']' {
+            Some(Self::RightBracket)
+        } else if character == '}' {
+            Some(Self::RightBrace)
+        } else if character == ')' {
+            Some(Self::RightParen)
+        } else {
+            None
         }
     }
 

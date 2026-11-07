@@ -20,15 +20,18 @@ pub(super) fn execute(
         return Err(invalid_use(directive));
     }
     let control_word = state.take_argument(directive)?;
-    match classify_object(state.ctx, control_word) {
-        ObjectRef::String(_) => execute_string_control(directive, state, output, control_word),
-        ObjectRef::Function(_) | ObjectRef::Closure(_) if !directive.at_sign => {
-            execute_function_control(directive, state, output, control_word)
-        }
-        _ => Err(FormatError::at(
+    let control_type = classify_object(state.ctx, control_word);
+    if matches!(control_type, ObjectRef::String(_)) {
+        execute_string_control(directive, state, output, control_word)
+    } else if !directive.at_sign
+        && matches!(control_type, ObjectRef::Function(_) | ObjectRef::Closure(_))
+    {
+        execute_function_control(directive, state, output, control_word)
+    } else {
+        Err(FormatError::at(
             directive,
             FormatErrorKind::WrongArgumentType,
-        )),
+        ))
     }
 }
 
@@ -110,12 +113,18 @@ fn call_formatter(
     rooted_values.push(Word::NIL);
     with_rooted_slice(ctx, &rooted_values, |ctx, rooted| {
         let stream = call_stream_builtin(ctx, runtime, "MAKE-STRING-OUTPUT-STREAM", &[])?;
-        let stream_index = rooted.len() - 1;
-        rooted[stream_index] = stream;
-        let designator = FunctionDesignator::try_from_word(ctx, rooted[0])?;
-        let mut call_arguments = Vec::with_capacity(arguments.len() + 1);
-        call_arguments.push(rooted[stream_index]);
-        call_arguments.extend_from_slice(&rooted[1..stream_index]);
+        let Some((stream_slot, control_arguments)) = rooted.split_last_mut() else {
+            return Err(ObjectError::Layout);
+        };
+        *stream_slot = stream;
+        let control_word = control_arguments
+            .first()
+            .copied()
+            .ok_or(ObjectError::Layout)?;
+        let designator = FunctionDesignator::try_from_word(ctx, control_word)?;
+        let mut call_arguments = Vec::with_capacity(control_arguments.len());
+        call_arguments.push(*stream_slot);
+        call_arguments.extend_from_slice(control_arguments.get(1..).ok_or(ObjectError::Layout)?);
         let mut caller = BuiltinFunctionCaller;
         let mut values = MultipleValues::new();
         caller.call_function(
@@ -125,12 +134,7 @@ fn call_formatter(
             FunctionArguments::new(&call_arguments),
             &mut values,
         )?;
-        let text = call_stream_builtin(
-            ctx,
-            runtime,
-            "GET-OUTPUT-STREAM-STRING",
-            &[rooted[stream_index]],
-        )?;
+        let text = call_stream_builtin(ctx, runtime, "GET-OUTPUT-STREAM-STRING", &[*stream_slot])?;
         string_value(ctx, text)
     })
     .map_err(|error| object_error(directive, error))

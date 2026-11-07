@@ -16,7 +16,32 @@ pub(super) fn execute(
         DirectiveKind::O => integer(directive, state, output, parameters, 8, 0),
         DirectiveKind::X => integer(directive, state, output, parameters, 16, 0),
         DirectiveKind::R => radix(directive, state, output, parameters),
-        _ => Err(invalid(directive)),
+        DirectiveKind::A
+        | DirectiveKind::S
+        | DirectiveKind::W
+        | DirectiveKind::C
+        | DirectiveKind::F
+        | DirectiveKind::E
+        | DirectiveKind::G
+        | DirectiveKind::Dollar
+        | DirectiveKind::Percent
+        | DirectiveKind::Ampersand
+        | DirectiveKind::Bar
+        | DirectiveKind::Tilde
+        | DirectiveKind::Newline
+        | DirectiveKind::Underscore
+        | DirectiveKind::LogicalBlock
+        | DirectiveKind::Indent
+        | DirectiveKind::Slash
+        | DirectiveKind::Tab
+        | DirectiveKind::Justification
+        | DirectiveKind::Star
+        | DirectiveKind::Conditional
+        | DirectiveKind::Iteration
+        | DirectiveKind::Recursive
+        | DirectiveKind::CaseConversion
+        | DirectiveKind::Plural
+        | DirectiveKind::UpArrow => Err(invalid(directive)),
     }
 }
 
@@ -43,7 +68,9 @@ fn radix(
     let base = match parameters.first() {
         Some(Parameter::Integer(base)) => *base,
         None | Some(Parameter::Unsupplied) => 10,
-        Some(_) => return Err(invalid(directive)),
+        Some(Parameter::Character(_) | Parameter::Relative | Parameter::Remaining) => {
+            return Err(invalid(directive));
+        }
     };
     let base = u32::try_from(base)
         .ok()
@@ -107,7 +134,7 @@ fn format_as_a(
 
 fn integer_field(number: &str, width: usize, pad: char, force_sign: bool) -> String {
     let negative = number.starts_with('-');
-    let digits = if negative { &number[1..] } else { number };
+    let digits = number.strip_prefix('-').unwrap_or(number);
     let sign = if negative {
         "-"
     } else if force_sign {
@@ -168,27 +195,14 @@ fn render(
 }
 
 fn is_integer(state: &ExecutionState<'_>, value: Word) -> bool {
-    match classify_object(state.ctx, value) {
-        ObjectRef::Fixnum(_) => integer_value(state.ctx, value).is_some(),
-        ObjectRef::Bignum(_) => true,
-        _ => false,
+    let object = classify_object(state.ctx, value);
+    if matches!(object, ObjectRef::Fixnum(_)) {
+        return integer_value(state.ctx, value).is_some();
     }
+    matches!(object, ObjectRef::Bignum(_))
 }
 
 fn english(decimal: &str, ordinal: bool, directive: &Directive) -> Result<String, FormatError> {
-    let (negative, digits) = decimal
-        .strip_prefix('-')
-        .map_or((false, decimal), |d| (true, d));
-    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(wrong_type(directive));
-    }
-    let mut chunks = Vec::new();
-    for chunk in digits.as_bytes().rchunks(3) {
-        let value = chunk
-            .iter()
-            .fold(0_u16, |value, digit| value * 10 + u16::from(*digit - b'0'));
-        chunks.push(value);
-    }
     const SCALE: &[&str] = &[
         "",
         "thousand",
@@ -223,6 +237,19 @@ fn english(decimal: &str, ordinal: bool, directive: &Directive) -> Result<String
         "novemvigintillion",
         "trigintillion",
     ];
+    let (negative, digits) = decimal
+        .strip_prefix('-')
+        .map_or((false, decimal), |d| (true, d));
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(wrong_type(directive));
+    }
+    let mut chunks = Vec::new();
+    for chunk in digits.as_bytes().rchunks(3) {
+        let value = chunk
+            .iter()
+            .fold(0_u16, |value, digit| value * 10 + u16::from(*digit - b'0'));
+        chunks.push(value);
+    }
     if chunks.len() > SCALE.len() {
         return Err(invalid(directive));
     }
@@ -234,26 +261,34 @@ fn english(decimal: &str, ordinal: bool, directive: &Directive) -> Result<String
         words.push("minus".to_owned());
     }
     for index in (0..=last).rev() {
-        let value = chunks[index];
+        let value = chunks
+            .get(index)
+            .copied()
+            .ok_or_else(|| invalid(directive))?;
         if value == 0 {
             continue;
         }
         let final_chunk = index == last;
         if index == 0 {
-            words.extend(under_thousand(value, ordinal && final_chunk));
+            words.extend(under_thousand(value, ordinal && final_chunk, directive)?);
         } else {
-            words.extend(under_thousand(value, false));
+            words.extend(under_thousand(value, false, directive)?);
+            let scale = SCALE.get(index).ok_or_else(|| invalid(directive))?;
             words.push(if ordinal && final_chunk {
-                format!("{}th", SCALE[index])
+                format!("{scale}th")
             } else {
-                SCALE[index].to_owned()
+                (*scale).to_owned()
             });
         }
     }
     Ok(words.join(" "))
 }
 
-fn under_thousand(value: u16, ordinal: bool) -> Vec<String> {
+fn under_thousand(
+    value: u16,
+    ordinal: bool,
+    directive: &Directive,
+) -> Result<Vec<String>, FormatError> {
     const SMALL: &[&str] = &[
         "zero",
         "one",
@@ -317,7 +352,7 @@ fn under_thousand(value: u16, ordinal: bool) -> Vec<String> {
     let remainder = value % 100;
     let mut words = Vec::new();
     if hundreds != 0 {
-        words.push(SMALL[usize::from(hundreds)].to_owned());
+        words.push(table_word(SMALL, usize::from(hundreds), directive)?.to_owned());
         words.push(
             if ordinal && remainder == 0 {
                 "hundredth"
@@ -328,36 +363,35 @@ fn under_thousand(value: u16, ordinal: bool) -> Vec<String> {
         );
     }
     if remainder == 0 {
-        return words;
+        return Ok(words);
     }
     if remainder < 20 {
-        words.push(
-            if ordinal {
-                ORDINAL[usize::from(remainder)]
-            } else {
-                SMALL[usize::from(remainder)]
-            }
-            .to_owned(),
-        );
+        let table = if ordinal { ORDINAL } else { SMALL };
+        words.push(table_word(table, usize::from(remainder), directive)?.to_owned());
     } else {
         let tens = usize::from(remainder / 10);
         let units = usize::from(remainder % 10);
         if ordinal && units == 0 {
-            words.push(TENS_ORDINAL[tens].to_owned());
+            words.push(table_word(TENS_ORDINAL, tens, directive)?.to_owned());
         } else {
-            let mut word = TENS[tens].to_owned();
+            let mut word = table_word(TENS, tens, directive)?.to_owned();
             if units != 0 {
                 word.push('-');
-                word.push_str(if ordinal {
-                    ORDINAL[units]
-                } else {
-                    SMALL[units]
-                });
+                let table = if ordinal { ORDINAL } else { SMALL };
+                word.push_str(table_word(table, units, directive)?);
             }
             words.push(word);
         }
     }
-    words
+    Ok(words)
+}
+
+fn table_word(
+    table: &[&'static str],
+    index: usize,
+    directive: &Directive,
+) -> Result<&'static str, FormatError> {
+    table.get(index).copied().ok_or_else(|| invalid(directive))
 }
 
 fn roman(decimal: &str, old_style: bool, directive: &Directive) -> Result<String, FormatError> {
@@ -422,7 +456,9 @@ fn integer_parameter(
         Some(Parameter::Integer(value)) => usize::try_from(*value)
             .map(Some)
             .map_err(|_| invalid(directive)),
-        _ => Err(invalid(directive)),
+        Some(Parameter::Character(_) | Parameter::Relative | Parameter::Remaining) => {
+            Err(invalid(directive))
+        }
     }
 }
 
@@ -435,7 +471,9 @@ fn character_parameter(
     match parameters.get(index) {
         None | Some(Parameter::Unsupplied) => Ok(default),
         Some(Parameter::Character(value)) => Ok(*value),
-        _ => Err(invalid(directive)),
+        Some(Parameter::Integer(_) | Parameter::Relative | Parameter::Remaining) => {
+            Err(invalid(directive))
+        }
     }
 }
 
@@ -453,10 +491,10 @@ fn repeated(character: char, count: usize, directive: &Directive) -> Result<Stri
     Ok(result)
 }
 
-pub(super) fn invalid(directive: &Directive) -> FormatError {
+pub(super) const fn invalid(directive: &Directive) -> FormatError {
     FormatError::at(directive, FormatErrorKind::InvalidParameter)
 }
 
-fn wrong_type(directive: &Directive) -> FormatError {
+const fn wrong_type(directive: &Directive) -> FormatError {
     FormatError::at(directive, FormatErrorKind::WrongArgumentType)
 }

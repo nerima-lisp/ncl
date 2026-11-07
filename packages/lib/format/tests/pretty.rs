@@ -2,7 +2,6 @@
 
 #![expect(
     clippy::expect_used,
-    clippy::unwrap_used,
     reason = "Test setup uses expect and unwrap to keep fixture failures local."
 )]
 

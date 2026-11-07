@@ -6,7 +6,7 @@ use ncl_printer::PrintOptions;
 use crate::executor::{ExecutionState, FormatError, FormatErrorKind, FormatOutput};
 use crate::model::{Directive, DirectiveKind, Parameter};
 
-pub(crate) fn execute(
+pub fn execute(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
@@ -21,7 +21,27 @@ pub(crate) fn execute(
         | DirectiveKind::Bar
         | DirectiveKind::Tilde
         | DirectiveKind::Newline => execute_line(directive, state, output),
-        _ => Err(FormatError::at(
+        DirectiveKind::R
+        | DirectiveKind::D
+        | DirectiveKind::B
+        | DirectiveKind::O
+        | DirectiveKind::X
+        | DirectiveKind::F
+        | DirectiveKind::E
+        | DirectiveKind::G
+        | DirectiveKind::Dollar
+        | DirectiveKind::Underscore
+        | DirectiveKind::LogicalBlock
+        | DirectiveKind::Indent
+        | DirectiveKind::Slash
+        | DirectiveKind::Tab
+        | DirectiveKind::Justification
+        | DirectiveKind::Star
+        | DirectiveKind::Conditional
+        | DirectiveKind::Iteration
+        | DirectiveKind::Recursive
+        | DirectiveKind::CaseConversion
+        | DirectiveKind::UpArrow => Err(FormatError::at(
             directive,
             FormatErrorKind::InvalidDirectiveUse,
         )),
@@ -42,14 +62,11 @@ fn execute_value(
                 FormatErrorKind::InvalidParameter,
             ));
         }
-        let codepoint = match classify_object(state.ctx, value) {
-            ObjectRef::Character(codepoint) => codepoint,
-            _ => {
-                return Err(FormatError::at(
-                    directive,
-                    FormatErrorKind::WrongArgumentType,
-                ));
-            }
+        let ObjectRef::Character(codepoint) = classify_object(state.ctx, value) else {
+            return Err(FormatError::at(
+                directive,
+                FormatErrorKind::WrongArgumentType,
+            ));
         };
         let character = char::from_u32(codepoint)
             .ok_or_else(|| FormatError::at(directive, FormatErrorKind::WrongArgumentType))?;
@@ -64,27 +81,26 @@ fn execute_value(
         return output.write_str(&rendered);
     }
 
-    let options = match directive.kind {
-        DirectiveKind::A => PrintOptions::new().with_escape(false),
-        DirectiveKind::S => PrintOptions::new().with_escape(true).with_readably(true),
-        DirectiveKind::W => {
-            let mut options = PrintOptions::from_specials(state.ctx, state.runtime);
-            if directive.colon {
-                options = options.with_pretty(true);
-            }
-            if directive.at_sign {
-                options = options.with_level(None).with_length(None);
-            }
-            options
+    let options = if directive.kind == DirectiveKind::A {
+        PrintOptions::new().with_escape(false)
+    } else if directive.kind == DirectiveKind::S {
+        PrintOptions::new().with_escape(true).with_readably(true)
+    } else if directive.kind == DirectiveKind::W {
+        let mut options = PrintOptions::from_specials(state.ctx, state.runtime);
+        if directive.colon {
+            options = options.with_pretty(true);
         }
-        _ => {
-            return Err(FormatError::at(
-                directive,
-                FormatErrorKind::InvalidDirectiveUse,
-            ));
+        if directive.at_sign {
+            options = options.with_level(None).with_length(None);
         }
+        options
+    } else {
+        return Err(FormatError::at(
+            directive,
+            FormatErrorKind::InvalidDirectiveUse,
+        ));
     };
-    let rendered = output.render(state, value, &options, directive)?;
+    let rendered = FormatOutput::render(state, value, &options, directive)?;
     let rendered = if directive.colon && value == Word::NIL {
         "()".to_owned()
     } else {
@@ -216,7 +232,32 @@ fn execute_line(
                 output.write_char('\n')?;
             }
         }
-        _ => {
+        DirectiveKind::A
+        | DirectiveKind::S
+        | DirectiveKind::W
+        | DirectiveKind::C
+        | DirectiveKind::R
+        | DirectiveKind::D
+        | DirectiveKind::B
+        | DirectiveKind::O
+        | DirectiveKind::X
+        | DirectiveKind::F
+        | DirectiveKind::E
+        | DirectiveKind::G
+        | DirectiveKind::Dollar
+        | DirectiveKind::Underscore
+        | DirectiveKind::LogicalBlock
+        | DirectiveKind::Indent
+        | DirectiveKind::Slash
+        | DirectiveKind::Tab
+        | DirectiveKind::Justification
+        | DirectiveKind::Star
+        | DirectiveKind::Conditional
+        | DirectiveKind::Iteration
+        | DirectiveKind::Recursive
+        | DirectiveKind::CaseConversion
+        | DirectiveKind::Plural
+        | DirectiveKind::UpArrow => {
             return Err(FormatError::at(
                 directive,
                 FormatErrorKind::InvalidDirectiveUse,
@@ -243,15 +284,17 @@ fn parameter(
 }
 
 fn character_name(character: char) -> String {
-    match character {
-        '\u{0000}' => "Null".to_owned(),
-        '\u{0008}' => "Backspace".to_owned(),
-        '\t' => "Tab".to_owned(),
-        '\n' => "Newline".to_owned(),
-        '\u{000c}' => "Page".to_owned(),
-        '\r' => "Return".to_owned(),
-        ' ' => "Space".to_owned(),
-        '\u{007f}' => "Rubout".to_owned(),
-        _ => character.to_string(),
-    }
+    [
+        ('\u{0000}', "Null"),
+        ('\u{0008}', "Backspace"),
+        ('\t', "Tab"),
+        ('\n', "Newline"),
+        ('\u{000c}', "Page"),
+        ('\r', "Return"),
+        (' ', "Space"),
+        ('\u{007f}', "Rubout"),
+    ]
+    .into_iter()
+    .find_map(|(known, name)| (known == character).then_some(name))
+    .map_or_else(|| character.to_string(), String::from)
 }

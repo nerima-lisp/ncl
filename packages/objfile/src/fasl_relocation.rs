@@ -5,7 +5,7 @@ use crate::{ObjectError, RelocKind, Relocation, SectionId, SymbolRef};
 const MAX_FASL_RECORDS: usize = 1_048_576;
 const FASL_RELOCATION_RECORD_SIZE: usize = 32;
 
-pub(super) fn encode(items: &[Relocation]) -> Result<Vec<u8>, ObjectError> {
+pub fn encode(items: &[Relocation]) -> Result<Vec<u8>, ObjectError> {
     let mut out = Vec::new();
     for item in items {
         out.extend_from_slice(&item.section.0.to_le_bytes());
@@ -38,11 +38,7 @@ pub(super) fn encode(items: &[Relocation]) -> Result<Vec<u8>, ObjectError> {
     Ok(out)
 }
 
-pub(super) fn decode(
-    bytes: &[u8],
-    version: u16,
-    count: u32,
-) -> Result<Vec<Relocation>, ObjectError> {
+pub fn decode(bytes: &[u8], version: u16, count: u32) -> Result<Vec<Relocation>, ObjectError> {
     if version == 1 {
         if !bytes.len().is_multiple_of(16)
             || bytes.len() / 16 != usize::try_from(count).unwrap_or(usize::MAX)
@@ -147,7 +143,7 @@ fn u32_at(bytes: &[u8], offset: usize) -> Result<u32, ObjectError> {
     Ok(u32::from_le_bytes(take_at(bytes, offset)?))
 }
 
-pub(super) const fn kind_number(kind: RelocKind) -> u32 {
+pub const fn kind_number(kind: RelocKind) -> u32 {
     match kind {
         RelocKind::Abs64 => 0,
         RelocKind::PcRel32 => 1,
@@ -161,7 +157,7 @@ pub(super) const fn kind_number(kind: RelocKind) -> u32 {
     }
 }
 
-pub(super) fn number_kind(value: u32) -> Result<RelocKind, ObjectError> {
+pub fn number_kind(value: u32) -> Result<RelocKind, ObjectError> {
     let index = usize::try_from(value).map_err(|_| ObjectError::InvalidField {
         field: "relocation kind",
         value: u64::from(value),
@@ -185,7 +181,7 @@ pub(super) fn number_kind(value: u32) -> Result<RelocKind, ObjectError> {
     })
 }
 
-pub(super) const fn width(kind: RelocKind) -> u32 {
+pub const fn width(kind: RelocKind) -> u32 {
     match kind {
         RelocKind::Abs64 | RelocKind::CodeEntry | RelocKind::ExternalSymbol => 8,
         RelocKind::PcRel32
@@ -206,13 +202,13 @@ pub enum FaslRelocationKind {
     PcRel32,
     /// Signed 32-bit PLT displacement to an imported function.
     Plt32,
-    /// AArch64 scaled unconditional-branch displacement.
+    /// `AArch64` scaled unconditional-branch displacement.
     Branch26,
-    /// First half of an AArch64 page-address pair.
+    /// First half of an `AArch64` page-address pair.
     Adrp21,
-    /// Second half of an AArch64 page-address pair.
+    /// Second half of an `AArch64` page-address pair.
     Add12,
-    /// AArch64 scaled conditional-branch displacement.
+    /// `AArch64` scaled conditional-branch displacement.
     CondBranch19,
     /// Absolute code-object entry address.
     CodeEntry,
@@ -238,7 +234,7 @@ impl FaslRelocationKind {
         }
     }
 
-    fn from_tag(tag: u32, offset: usize) -> Result<Self, FaslError> {
+    const fn from_tag(tag: u32, offset: usize) -> Result<Self, FaslError> {
         match tag {
             0 => Ok(Self::Abs64),
             1 => Ok(Self::PcRel32),
@@ -250,11 +246,13 @@ impl FaslRelocationKind {
             7 => Ok(Self::CodeEntry),
             8 => Ok(Self::ExternalSymbol),
             9 => Ok(Self::ConstantIndex32),
-            _ => Err(FaslError::at(FaslRejectReason::InvalidRelocation, offset)),
+            10..=u32::MAX => Err(FaslError::at(FaslRejectReason::InvalidRelocation, offset)),
         }
     }
 
-    pub(super) const fn width(self) -> u32 {
+    /// Returns the number of bytes written at a relocation site.
+    #[must_use]
+    pub const fn width(self) -> u32 {
         match self {
             Self::Abs64 | Self::CodeEntry | Self::ExternalSymbol => 8,
             Self::PcRel32
@@ -288,12 +286,12 @@ impl FaslRelocationTarget {
         }
     }
 
-    fn from_tag(tag: u32, offset: usize) -> Result<Self, FaslError> {
+    const fn from_tag(tag: u32, offset: usize) -> Result<Self, FaslError> {
         match tag {
             1 => Ok(Self::CodeObject),
             2 => Ok(Self::NativeFunction),
             3 => Ok(Self::ConstantVector),
-            _ => Err(FaslError::at(FaslRejectReason::InvalidRelocation, offset)),
+            0 | 4..=u32::MAX => Err(FaslError::at(FaslRejectReason::InvalidRelocation, offset)),
         }
     }
 }
@@ -313,12 +311,12 @@ pub struct FaslRelocation {
     pub target_index: u32,
     /// Signed adjustment applied to the selected target.
     pub addend: i64,
-    /// AArch64 address-pair identifier, or zero for an unpaired relocation.
+    /// `AArch64` address-pair identifier, or zero for an unpaired relocation.
     pub pair_id: u32,
 }
 
 /// Decodes the count-prefixed fixed-width FASL v1 relocation section.
-pub(super) fn decode_v1_section(
+pub fn decode_v1_section(
     bytes: &[u8],
     base_offset: usize,
 ) -> Result<Vec<FaslRelocation>, FaslError> {
@@ -372,7 +370,7 @@ pub(super) fn decode_v1_section(
 }
 
 /// Encodes FASL v1 relocation records in canonical code-object/site order.
-pub(super) fn encode_v1_section(items: &[FaslRelocation]) -> Result<Vec<u8>, FaslError> {
+pub fn encode_v1_section(items: &[FaslRelocation]) -> Result<Vec<u8>, FaslError> {
     if items.len() > MAX_FASL_RECORDS {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
@@ -381,8 +379,7 @@ pub(super) fn encode_v1_section(items: &[FaslRelocation]) -> Result<Vec<u8>, Fas
     let mut ordered = items.to_vec();
     ordered.sort_by_key(|item| (item.code_object_id, item.write_offset));
     if ordered.windows(2).any(|pair| {
-        pair[0].code_object_id == pair[1].code_object_id
-            && pair[0].write_offset == pair[1].write_offset
+        matches!(pair, [left, right] if left.code_object_id == right.code_object_id && left.write_offset == right.write_offset)
     }) {
         return Err(FaslError::new(FaslRejectReason::InvalidRelocation));
     }

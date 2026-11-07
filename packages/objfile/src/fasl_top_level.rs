@@ -18,7 +18,7 @@ pub struct FaslTopLevelRecord {
 }
 
 /// Encodes top-level records after checking their code-object entries.
-pub(super) fn encode(
+pub fn encode(
     records: &[FaslTopLevelRecord],
     code_objects: &[FaslCodeObject<'_>],
 ) -> Result<Vec<u8>, FaslError> {
@@ -37,7 +37,7 @@ pub(super) fn encode(
 }
 
 /// Decodes fixed-width top-level records and validates their code-object entries.
-pub(super) fn decode(
+pub fn decode(
     bytes: &[u8],
     base_offset: usize,
     code_objects: &[FaslCodeObject<'_>],
@@ -96,7 +96,10 @@ fn validate(
         }
         let code_index = usize::try_from(record.code_object_id).map_err(|_| error)?;
         let code = code_objects.get(code_index).ok_or(error)?;
-        if code.id != record.code_object_id || code.entry_offset != record.entry_offset {
+        if code.id != record.code_object_id {
+            return Err(error);
+        }
+        if code.entry_offset != record.entry_offset {
             return Err(error);
         }
     }

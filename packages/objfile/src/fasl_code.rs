@@ -25,7 +25,7 @@ pub struct FaslCodeObject<'a> {
 }
 
 /// Encodes code objects in dense ID order.
-pub(super) fn encode(objects: &[FaslCodeObject<'_>]) -> Result<Vec<u8>, FaslError> {
+pub fn encode(objects: &[FaslCodeObject<'_>]) -> Result<Vec<u8>, FaslError> {
     if objects.len() > MAX_RECORDS {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
@@ -67,10 +67,7 @@ pub(super) fn encode(objects: &[FaslCodeObject<'_>]) -> Result<Vec<u8>, FaslErro
 }
 
 /// Decodes code objects without copying machine-code bytes.
-pub(super) fn decode(
-    bytes: &[u8],
-    base_offset: usize,
-) -> Result<Vec<FaslCodeObject<'_>>, FaslError> {
+pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslCodeObject<'_>>, FaslError> {
     if bytes.len() > MAX_SECTION_BYTES {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
@@ -180,6 +177,10 @@ fn validate_object(
 mod tests {
     use super::*;
 
+    fn must_succeed<T, E>(result: Result<T, E>) -> T {
+        result.unwrap_or_else(|_| panic!("test fixture must be valid"))
+    }
+
     #[test]
     fn code_section_matches_fixed_record_and_padding_bytes() {
         let code = [0xaa, 0xbb, 0xcc];
@@ -192,7 +193,7 @@ mod tests {
             debug_record_count: 5,
             code: &code,
         };
-        let encoded = encode(&[object.clone()]);
+        let encoded = encode(core::slice::from_ref(&object));
         let mut expected = vec![1, 0, 0, 0];
         expected.extend_from_slice(&[0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0]);
         expected.extend_from_slice(&[2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 5, 0, 0, 0]);
@@ -212,8 +213,8 @@ mod tests {
             stack_map_count: 0,
             debug_record_count: 0,
             code: &[0x90],
-        }])
-        .expect("test code encodes");
+        }]);
+        let valid = must_succeed(valid);
         let mut bad_flags = valid.clone();
         bad_flags[18..20].copy_from_slice(&1_u16.to_le_bytes());
         assert_eq!(

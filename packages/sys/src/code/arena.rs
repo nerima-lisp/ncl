@@ -100,7 +100,8 @@ impl CodeArena {
             {
                 Ok(_) => {
                     let address = self.base.checked_add(start).ok_or(CodeError::OutOfBounds)?;
-                    let ptr = NonNull::new(address as *mut u8).ok_or(CodeError::MappingFailed)?;
+                    let ptr = NonNull::new(core::ptr::with_exposed_provenance_mut(address))
+                        .ok_or(CodeError::MappingFailed)?;
                     return Ok(Some(CodeExtent {
                         ptr,
                         #[cfg(not(target_os = "macos"))]
@@ -119,7 +120,8 @@ impl Drop for CodeArena {
         #[cfg(target_os = "linux")]
         {
             // SAFETY: this arena owns the complete mmap reservation.
-            let _ = unsafe { declarations::munmap(self.base as *mut c_void, self.len) };
+            let base = core::ptr::with_exposed_provenance_mut(self.base).cast::<c_void>();
+            let _ = unsafe { declarations::munmap(base, self.len) };
         }
         #[cfg(target_os = "macos")]
         let ArenaBacking::JitRegion { offset } = &self.backing;
@@ -183,7 +185,7 @@ fn round_up(value: usize, alignment: usize) -> Result<usize, CodeError> {
 fn map_anonymous(len: usize, protection: c_int, flags: c_int) -> Result<usize, CodeError> {
     // SAFETY: null requests an OS-selected page-aligned anonymous mapping.
     let raw = unsafe { declarations::mmap(core::ptr::null_mut(), len, protection, flags, -1, 0) };
-    if raw == (-1_isize as *mut c_void) {
+    if raw.addr() == usize::MAX {
         return Err(CodeError::MappingFailed);
     }
     let Some(ptr) = NonNull::new(raw.cast::<u8>()) else {
@@ -191,7 +193,7 @@ fn map_anonymous(len: usize, protection: c_int, flags: c_int) -> Result<usize, C
         let _ = unsafe { declarations::munmap(raw, len) };
         return Err(CodeError::MappingFailed);
     };
-    Ok(ptr.as_ptr() as usize)
+    Ok(ptr.as_ptr().addr())
 }
 
 #[cfg(target_os = "macos")]
@@ -234,12 +236,26 @@ impl JitRegion {
         let Some(index) = free.iter().position(|extent| extent.len >= len) else {
             return Err(CodeError::CapacityExceeded);
         };
-        let offset = free[index].offset;
-        if free[index].len == len {
+        let Some((offset, extent_len)) = free
+            .get(index)
+            .map(|extent| (extent.offset, extent.len))
+        else {
+            return Err(CodeError::CapacityExceeded);
+        };
+        if extent_len == len {
             free.remove(index);
         } else {
-            free[index].offset += len;
-            free[index].len -= len;
+            let Some(extent) = free.get_mut(index) else {
+                return Err(CodeError::CapacityExceeded);
+            };
+            extent.offset = extent
+                .offset
+                .checked_add(len)
+                .ok_or(CodeError::CapacityExceeded)?;
+            extent.len = extent
+                .len
+                .checked_sub(len)
+                .ok_or(CodeError::CapacityExceeded)?;
         }
         drop(free);
         Ok(offset)
@@ -254,10 +270,29 @@ impl JitRegion {
         free.sort_unstable_by_key(|extent| extent.offset);
         let mut index = 0;
         while index + 1 < free.len() {
-            let end = free[index].offset + free[index].len;
-            if end == free[index + 1].offset {
-                let next = free.remove(index + 1);
-                free[index].len += next.len;
+            let Some(current_end) = free
+                .get(index)
+                .and_then(|extent| extent.offset.checked_add(extent.len))
+            else {
+                index += 1;
+                continue;
+            };
+            let Some(next_offset) = free.get(index + 1).map(|extent| extent.offset) else {
+                break;
+            };
+            if current_end == next_offset {
+                let Some(next_len) = free.get(index + 1).map(|extent| extent.len) else {
+                    break;
+                };
+                let Some(extent) = free.get_mut(index) else {
+                    break;
+                };
+                let Some(merged_len) = extent.len.checked_add(next_len) else {
+                    index += 1;
+                    continue;
+                };
+                extent.len = merged_len;
+                free.remove(index + 1);
             } else {
                 index += 1;
             }

@@ -18,5 +18,9 @@ path = "tests/bindings.rs"
 name = "cl_type"
 path = "tests/cl_type.rs"
 
+[[test]]
+name = "verifier"
+path = "tests/verifier.rs"
+
 [lints]
 workspace = true

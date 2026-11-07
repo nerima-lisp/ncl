@@ -413,4 +413,82 @@ mod tests {
             ))
         );
     }
+
+    #[test]
+    fn directory_bounds_check_section_lengths_without_allocating_file_sized_buffers() {
+        let mut over_limit = [0; SECTION_COUNT];
+        over_limit[0] = MAX_FILE_SIZE + 1;
+        assert_eq!(
+            Directory::from_lengths(over_limit),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+        );
+
+        let mut end_over_limit = [0; SECTION_COUNT];
+        end_over_limit[0] = MAX_FILE_SIZE;
+        assert_eq!(
+            Directory::from_lengths(end_over_limit),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+        );
+
+        let mut exact_limit = [0; SECTION_COUNT];
+        exact_limit[0] = MAX_FILE_SIZE - 320;
+        assert!(Directory::from_lengths(exact_limit).is_ok());
+    }
+
+    #[test]
+    fn directory_decode_checks_exact_size_alignment_and_section_size_limits() {
+        assert_eq!(
+            Directory::decode(&[0; DIRECTORY_SIZE - 1]),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 128))
+        );
+        assert_eq!(
+            Directory::decode(&[0; DIRECTORY_SIZE + 1]),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 128))
+        );
+
+        let (directory, _) = fixture();
+        for alignment in [0_u32, 8192, 8] {
+            let mut bytes = must_succeed(directory.encode());
+            bytes[4..8].copy_from_slice(&alignment.to_le_bytes());
+            assert_eq!(
+                Directory::decode(&bytes),
+                Err(FaslError::at(FaslRejectReason::MalformedDirectory, 132)),
+                "invalid alignment {alignment}"
+            );
+        }
+
+        let mut oversized_section = must_succeed(directory.encode());
+        oversized_section[16..24].copy_from_slice(&(MAX_FILE_SIZE + 1).to_le_bytes());
+        assert_eq!(
+            Directory::decode(&oversized_section),
+            Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 144))
+        );
+    }
+
+    #[test]
+    fn directory_file_validation_reports_short_ranges_misalignment_and_overflow() {
+        let (directory, file) = fixture();
+        assert_eq!(
+            directory.validate_file(&[]),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 0))
+        );
+        assert_eq!(
+            directory.validate_file(&file[..321]),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 321))
+        );
+
+        let mut bad_offset = must_succeed(directory.encode());
+        bad_offset[8..16].copy_from_slice(&321_u64.to_le_bytes());
+        let bad_directory = must_succeed(Directory::decode(&bad_offset));
+        assert_eq!(
+            bad_directory.validate_file(&file),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 136))
+        );
+
+        let section = must_succeed(Directory::from_lengths([4, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            section.validate_file(&[0; 323]),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 144))
+        );
+    }
 }

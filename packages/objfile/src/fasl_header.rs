@@ -224,4 +224,45 @@ mod tests {
             Err(FaslError::at(FaslRejectReason::MalformedDirectory, 127))
         );
     }
+
+    #[test]
+    fn v1_header_rejects_remaining_fixed_fields_and_reserved_bytes() {
+        let valid = must_succeed(encode(&header()));
+
+        let mut bad_reserved_high_byte = valid;
+        bad_reserved_high_byte[15] = 1;
+        assert_eq!(
+            decode(&bad_reserved_high_byte),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 14))
+        );
+
+        let mut bad_data_representation = valid;
+        bad_data_representation[13] = 0;
+        assert_eq!(
+            decode(&bad_data_representation),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 13))
+        );
+
+        let mut bad_directory_offset = valid;
+        bad_directory_offset[124..128].copy_from_slice(&129_u32.to_le_bytes());
+        assert_eq!(
+            decode(&bad_directory_offset),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 124))
+        );
+    }
+
+    #[test]
+    fn v1_header_array_reader_reports_truncation_and_offset_overflow() {
+        assert_eq!(
+            read_array::<4>(&[1, 2, 3], 0),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 0))
+        );
+        assert_eq!(
+            read_array::<2>(&[], usize::MAX),
+            Err(FaslError::at(
+                FaslRejectReason::MalformedDirectory,
+                usize::MAX
+            ))
+        );
+    }
 }

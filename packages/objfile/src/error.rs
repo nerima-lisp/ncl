@@ -180,3 +180,20 @@ impl fmt::Display for ObjectError {
 }
 
 impl std::error::Error for ObjectError {}
+
+#[cfg(test)]
+mod private_tests {
+    use super::{FaslError, FaslRejectReason};
+
+    #[test]
+    fn fasl_error_formats_keyword_with_optional_offset() {
+        assert_eq!(
+            FaslError::new(FaslRejectReason::BadMagic).to_string(),
+            ":BAD-MAGIC"
+        );
+        assert_eq!(
+            FaslError::at(FaslRejectReason::MalformedMetadata, 12).to_string(),
+            ":INVALID-METADATA at byte 12"
+        );
+    }
+}

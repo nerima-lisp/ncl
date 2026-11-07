@@ -1,13 +1,13 @@
 use crate::error::{FaslError, FaslRejectReason};
 
-pub(super) const SECTION_COUNT: usize = 8;
+pub const SECTION_COUNT: usize = 8;
 const DIRECTORY_ENTRY_SIZE: usize = 24;
 const DIRECTORY_SIZE: usize = SECTION_COUNT * DIRECTORY_ENTRY_SIZE;
 const FIRST_SECTION_OFFSET: u64 = 320;
-pub(super) const MAX_FILE_SIZE: u64 = 256 * 1024 * 1024;
+pub const MAX_FILE_SIZE: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum SectionId {
+pub enum SectionId {
     Metadata,
     Symbols,
     Constants,
@@ -64,20 +64,20 @@ impl SectionId {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct DirectoryEntry {
-    pub(super) id: SectionId,
-    pub(super) alignment: u32,
-    pub(super) file_offset: u64,
-    pub(super) byte_length: u64,
+pub struct DirectoryEntry {
+    pub id: SectionId,
+    pub alignment: u32,
+    pub file_offset: u64,
+    pub byte_length: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct Directory {
+pub struct Directory {
     entries: [DirectoryEntry; SECTION_COUNT],
 }
 
 impl Directory {
-    pub(super) fn from_lengths(lengths: [u64; SECTION_COUNT]) -> Result<Self, FaslError> {
+    pub fn from_lengths(lengths: [u64; SECTION_COUNT]) -> Result<Self, FaslError> {
         let mut entries = [DirectoryEntry {
             id: SectionId::Metadata,
             alignment: 4,
@@ -108,19 +108,35 @@ impl Directory {
         Ok(Self { entries })
     }
 
-    pub(super) fn encode(&self) -> [u8; DIRECTORY_SIZE] {
+    pub fn encode(&self) -> Result<[u8; DIRECTORY_SIZE], FaslError> {
         let mut bytes = [0; DIRECTORY_SIZE];
         for (index, entry) in self.entries.iter().enumerate() {
             let start = index * DIRECTORY_ENTRY_SIZE;
-            bytes[start..start + 2].copy_from_slice(&entry.id.wire_id().to_le_bytes());
-            bytes[start + 4..start + 8].copy_from_slice(&entry.alignment.to_le_bytes());
-            bytes[start + 8..start + 16].copy_from_slice(&entry.file_offset.to_le_bytes());
-            bytes[start + 16..start + 24].copy_from_slice(&entry.byte_length.to_le_bytes());
+            write_range(
+                &mut bytes,
+                start..start + 2,
+                &entry.id.wire_id().to_le_bytes(),
+            )?;
+            write_range(
+                &mut bytes,
+                start + 4..start + 8,
+                &entry.alignment.to_le_bytes(),
+            )?;
+            write_range(
+                &mut bytes,
+                start + 8..start + 16,
+                &entry.file_offset.to_le_bytes(),
+            )?;
+            write_range(
+                &mut bytes,
+                start + 16..start + 24,
+                &entry.byte_length.to_le_bytes(),
+            )?;
         }
-        bytes
+        Ok(bytes)
     }
 
-    pub(super) fn decode(bytes: &[u8]) -> Result<Self, FaslError> {
+    pub fn decode(bytes: &[u8]) -> Result<Self, FaslError> {
         if bytes.len() != DIRECTORY_SIZE {
             return Err(FaslError::at(FaslRejectReason::MalformedDirectory, 128));
         }
@@ -130,7 +146,7 @@ impl Directory {
             file_offset: FIRST_SECTION_OFFSET,
             byte_length: 0,
         }; SECTION_COUNT];
-        for (index, expected_id) in SectionId::ALL.into_iter().enumerate() {
+        for (index, (entry, expected_id)) in entries.iter_mut().zip(SectionId::ALL).enumerate() {
             let start = index * DIRECTORY_ENTRY_SIZE;
             let id = read_u16(bytes, start)?;
             if SectionId::from_wire_id(id) != Some(expected_id) {
@@ -170,7 +186,7 @@ impl Directory {
                     128 + start + 16,
                 ));
             }
-            entries[index] = DirectoryEntry {
+            *entry = DirectoryEntry {
                 id: expected_id,
                 alignment,
                 file_offset,
@@ -180,11 +196,11 @@ impl Directory {
         Ok(Self { entries })
     }
 
-    pub(super) fn entries(&self) -> &[DirectoryEntry; SECTION_COUNT] {
+    pub const fn entries(&self) -> &[DirectoryEntry; SECTION_COUNT] {
         &self.entries
     }
 
-    pub(super) fn validate_file(&self, file: &[u8]) -> Result<(), FaslError> {
+    pub fn validate_file(&self, file: &[u8]) -> Result<(), FaslError> {
         let file_len = u64::try_from(file.len())
             .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
         if file_len > MAX_FILE_SIZE {
@@ -243,7 +259,7 @@ impl Directory {
         Ok(())
     }
 
-    pub(super) fn section<'a>(&self, file: &'a [u8], id: SectionId) -> Result<&'a [u8], FaslError> {
+    pub fn section<'a>(&self, file: &'a [u8], id: SectionId) -> Result<&'a [u8], FaslError> {
         let entry = self
             .entries
             .iter()
@@ -259,6 +275,22 @@ impl Directory {
         file.get(start..end)
             .ok_or_else(|| FaslError::at(FaslRejectReason::MalformedDirectory, start))
     }
+}
+
+fn write_range(
+    bytes: &mut [u8],
+    range: core::ops::Range<usize>,
+    value: &[u8],
+) -> Result<(), FaslError> {
+    let offset = range.start;
+    let destination = bytes
+        .get_mut(range)
+        .ok_or_else(|| FaslError::at(FaslRejectReason::MalformedDirectory, offset))?;
+    if destination.len() != value.len() {
+        return Err(FaslError::at(FaslRejectReason::MalformedDirectory, offset));
+    }
+    destination.copy_from_slice(value);
+    Ok(())
 }
 
 fn align_up(value: u64, alignment: u32) -> Result<u64, FaslError> {
@@ -301,22 +333,27 @@ fn read_u64(bytes: &[u8], offset: usize) -> Result<u64, FaslError> {
 mod tests {
     use super::*;
 
+    fn must_succeed<T, E>(result: Result<T, E>) -> T {
+        result.unwrap_or_else(|_| panic!("test fixture must be valid"))
+    }
+
+    fn must_exist<T>(value: Option<T>) -> T {
+        value.unwrap_or_else(|| panic!("fixed directory entry must exist"))
+    }
+
     fn fixture() -> (Directory, Vec<u8>) {
-        let directory = Directory::from_lengths([1; SECTION_COUNT]).expect("bounded section sizes");
-        let last = directory
-            .entries()
-            .last()
-            .map(|entry| entry.file_offset.saturating_add(entry.byte_length))
-            .expect("eight directory entries");
-        let mut file = vec![0; usize::try_from(last).expect("small fixture")];
-        file[128..320].copy_from_slice(&directory.encode());
+        let directory = must_succeed(Directory::from_lengths([1; SECTION_COUNT]));
+        let last = must_exist(directory.entries().last());
+        let last = last.file_offset.saturating_add(last.byte_length);
+        let mut file = vec![0; must_succeed(usize::try_from(last))];
+        file[128..320].copy_from_slice(&must_succeed(directory.encode()));
         (directory, file)
     }
 
     #[test]
     fn directory_round_trip_fixes_ids_alignments_empty_offsets_and_padding() {
         let (directory, file) = fixture();
-        let decoded = Directory::decode(&directory.encode());
+        let decoded = Directory::decode(&must_succeed(directory.encode()));
         assert_eq!(decoded, Ok(directory.clone()));
         assert_eq!(directory.validate_file(&file), Ok(()));
         let entries = directory.entries();
@@ -331,28 +368,28 @@ mod tests {
     #[test]
     fn directory_rejects_bad_order_flags_alignment_overflow_padding_and_trailing_bytes() {
         let (directory, file) = fixture();
-        let mut bytes = directory.encode();
+        let mut bytes = must_succeed(directory.encode());
         bytes[..2].copy_from_slice(&2u16.to_le_bytes());
         assert_eq!(
             Directory::decode(&bytes).map(|_| ()),
             Err(FaslError::at(FaslRejectReason::MalformedDirectory, 128))
         );
 
-        let mut bytes = directory.encode();
+        let mut bytes = must_succeed(directory.encode());
         bytes[2] = 1;
         assert_eq!(
             Directory::decode(&bytes).map(|_| ()),
             Err(FaslError::at(FaslRejectReason::MalformedDirectory, 130))
         );
 
-        let mut bytes = directory.encode();
+        let mut bytes = must_succeed(directory.encode());
         bytes[4..8].copy_from_slice(&3u32.to_le_bytes());
         assert_eq!(
             Directory::decode(&bytes).map(|_| ()),
             Err(FaslError::at(FaslRejectReason::MalformedDirectory, 132))
         );
 
-        let mut overflow = directory.encode();
+        let mut overflow = must_succeed(directory.encode());
         overflow[8..16].copy_from_slice(&u64::MAX.to_le_bytes());
         assert_eq!(
             Directory::decode(&overflow).map(|_| ()),

@@ -1,8 +1,8 @@
 use crate::error::{FaslError, FaslRejectReason};
 use crate::fasl::Architecture;
 use crate::fasl_code::FaslCodeObject;
-use crate::fasl_constants::{self, FaslConstantGroup};
-use crate::fasl_debug::{self, DebugFile, DebugRecord};
+use crate::fasl_constants::{FaslConstant, FaslConstantGroup};
+use crate::fasl_debug::{self, DebugRecord};
 use crate::fasl_records::FaslCodeLayout;
 use crate::fasl_relocation::{FaslRelocation, FaslRelocationKind, FaslRelocationTarget};
 use crate::fasl_stack_map::SafepointGroup;
@@ -11,34 +11,85 @@ use crate::fasl_top_level::FaslTopLevelRecord;
 
 const MAX_RECORDS: usize = 1_048_576;
 
-pub(super) fn validate_sections(
-    architecture: Architecture,
-    symbols: &[FaslSymbol],
-    constants: &[FaslConstantGroup],
-    code: &[FaslCodeObject<'_>],
-    relocations: &[FaslRelocation],
-    stack_maps: &[SafepointGroup],
-    debug_files: &[DebugFile],
-    debug_records: &[DebugRecord],
-    top_level: &[FaslTopLevelRecord],
+pub fn validate_sections(
+    fasl: &crate::fasl::FaslV1<'_>,
     relocation_section_offset: Option<usize>,
 ) -> Result<(), FaslError> {
-    if code.len() > MAX_RECORDS {
+    if fasl.code.len() > MAX_RECORDS {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
-    let layouts = code_layouts(code);
-    validate_record_counts(code, constants, stack_maps, debug_records)?;
-    fasl_constants::validate_references(constants, symbols)?;
-    validate_stack_maps(stack_maps, &layouts)?;
-    fasl_debug::validate(debug_files, debug_records, &layouts)?;
-    validate_top_level(top_level, &layouts)?;
+    let layouts = code_layouts(&fasl.code);
+    validate_record_counts(
+        &fasl.code,
+        &fasl.constants,
+        &fasl.stack_maps,
+        &fasl.debug_records,
+    )?;
+    validate_references(&fasl.constants, &fasl.symbols)?;
+    validate_stack_maps(&fasl.stack_maps, &layouts)?;
+    fasl_debug::validate(&fasl.debug_files, &fasl.debug_records, &layouts)?;
+    validate_top_level(&fasl.top_level, &layouts)?;
     validate_relocations(
-        architecture,
-        relocations,
+        fasl.architecture,
+        &fasl.relocations,
         &layouts,
-        symbols,
+        &fasl.symbols,
         relocation_section_offset,
     )
+}
+
+/// Checks symbol and intra-object constant references after all sections are parsed.
+pub fn validate_references(
+    groups: &[FaslConstantGroup],
+    symbols: &[FaslSymbol],
+) -> Result<(), FaslError> {
+    for group in groups {
+        let count = u32::try_from(group.constants.len())
+            .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
+        for constant in &group.constants {
+            match constant {
+                FaslConstant::SymbolReference(symbol_id) => {
+                    let symbol = usize::try_from(*symbol_id)
+                        .ok()
+                        .and_then(|id| symbols.get(id));
+                    if symbol.is_none_or(|symbol| {
+                        symbol.id != *symbol_id || symbol.binding_kind != SymbolBindingKind::Lisp
+                    }) {
+                        return Err(FaslError::new(FaslRejectReason::InvalidReference));
+                    }
+                }
+                FaslConstant::Cons { car, cdr }
+                | FaslConstant::Ratio {
+                    numerator: car,
+                    denominator: cdr,
+                }
+                | FaslConstant::Complex {
+                    real: car,
+                    imaginary: cdr,
+                } if *car >= count || *cdr >= count => {
+                    return Err(FaslError::new(FaslRejectReason::InvalidReference));
+                }
+                FaslConstant::SimpleVector(indices)
+                    if indices.iter().any(|index| *index >= count) =>
+                {
+                    return Err(FaslError::new(FaslRejectReason::InvalidReference));
+                }
+                FaslConstant::Nil
+                | FaslConstant::Truth
+                | FaslConstant::Fixnum(_)
+                | FaslConstant::Character(_)
+                | FaslConstant::SingleFloat(_)
+                | FaslConstant::DoubleFloat(_)
+                | FaslConstant::String(_)
+                | FaslConstant::Cons { .. }
+                | FaslConstant::SimpleVector(_)
+                | FaslConstant::Bignum { .. }
+                | FaslConstant::Ratio { .. }
+                | FaslConstant::Complex { .. } => {}
+            }
+        }
+    }
+    Ok(())
 }
 
 fn code_layouts<'a>(code: &[FaslCodeObject<'a>]) -> Vec<FaslCodeLayout<'a>> {
@@ -219,25 +270,22 @@ fn validate_relocations(
     validate_relocation_pairs(&ordered, &pairs, layouts, section_offset)
 }
 
-fn target_kind_allowed(kind: FaslRelocationKind, target: FaslRelocationTarget) -> bool {
+const fn target_kind_allowed(kind: FaslRelocationKind, target: FaslRelocationTarget) -> bool {
     use FaslRelocationKind as Kind;
     use FaslRelocationTarget as Target;
-    matches!(
-        (kind, target),
-        (Kind::Abs64, Target::CodeObject | Target::NativeFunction)
-            | (Kind::PcRel32, Target::CodeObject)
-            | (Kind::Plt32, Target::NativeFunction)
-            | (Kind::Branch26, Target::CodeObject | Target::NativeFunction)
-            | (Kind::Adrp21, Target::CodeObject | Target::NativeFunction)
-            | (Kind::Add12, Target::CodeObject | Target::NativeFunction)
-            | (Kind::CondBranch19, Target::CodeObject)
-            | (Kind::CodeEntry, Target::CodeObject)
-            | (Kind::ExternalSymbol, Target::NativeFunction)
-            | (Kind::ConstantIndex32, Target::ConstantVector)
-    )
+    match kind {
+        Kind::Abs64 | Kind::Branch26 | Kind::Adrp21 | Kind::Add12 => {
+            matches!(target, Target::CodeObject | Target::NativeFunction)
+        }
+        Kind::PcRel32 | Kind::CondBranch19 | Kind::CodeEntry => {
+            matches!(target, Target::CodeObject)
+        }
+        Kind::Plt32 | Kind::ExternalSymbol => matches!(target, Target::NativeFunction),
+        Kind::ConstantIndex32 => matches!(target, Target::ConstantVector),
+    }
 }
 
-fn architecture_allows(architecture: Architecture, kind: FaslRelocationKind) -> bool {
+const fn architecture_allows(architecture: Architecture, kind: FaslRelocationKind) -> bool {
     use FaslRelocationKind as Kind;
     match architecture {
         Architecture::X86_64 => !matches!(
@@ -248,7 +296,7 @@ fn architecture_allows(architecture: Architecture, kind: FaslRelocationKind) -> 
     }
 }
 
-fn needs_instruction_alignment(kind: FaslRelocationKind) -> bool {
+const fn needs_instruction_alignment(kind: FaslRelocationKind) -> bool {
     matches!(
         kind,
         FaslRelocationKind::Branch26
@@ -298,11 +346,10 @@ fn validate_target(
             let valid = usize::try_from(relocation.target_index)
                 .ok()
                 .and_then(|index| symbols.get(index))
-                .filter(|symbol| {
+                .is_some_and(|symbol| {
                     symbol.id == relocation.target_index
                         && symbol.binding_kind == SymbolBindingKind::NativeFunction
-                })
-                .is_some();
+                });
             if !valid {
                 return Err(rejection(FaslRejectReason::InvalidReference, record_offset));
             }
@@ -332,16 +379,29 @@ fn validate_relocation_pairs(
     ordered_pairs.sort_unstable_by_key(|(pair_id, index)| (*pair_id, *index));
     let mut start = 0;
     while start < ordered_pairs.len() {
-        let pair_id = ordered_pairs[start].0;
-        let end = ordered_pairs[start..]
+        let pair = ordered_pairs
+            .get(start)
+            .copied()
+            .ok_or_else(|| FaslError::new(FaslRejectReason::InvalidRelocation))?;
+        let pair_id = pair.0;
+        let suffix = ordered_pairs
+            .get(start..)
+            .ok_or_else(|| pair_error(section_offset, pair.1))?;
+        let end = suffix
             .iter()
             .position(|(candidate, _)| *candidate != pair_id)
             .map_or(ordered_pairs.len(), |length| start + length);
         if end - start != 2 {
-            return Err(pair_error(section_offset, ordered_pairs[start].1));
+            return Err(pair_error(section_offset, pair.1));
         }
-        let first_index = ordered_pairs[start].1;
-        let second_index = ordered_pairs[start + 1].1;
+        let first_index = pair.1;
+        let second_position = start
+            .checked_add(1)
+            .ok_or_else(|| pair_error(section_offset, first_index))?;
+        let second_index = ordered_pairs
+            .get(second_position)
+            .map(|(_, index)| *index)
+            .ok_or_else(|| pair_error(section_offset, first_index))?;
         let Some(first) = relocations.get(first_index) else {
             return Err(pair_error(section_offset, first_index));
         };
@@ -393,7 +453,9 @@ fn instruction_word(code: &[u8], offset: u32) -> Option<u32> {
     let start = usize::try_from(offset).ok()?;
     let end = start.checked_add(4)?;
     let bytes = code.get(start..end)?;
-    Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    let mut word = [0; 4];
+    word.copy_from_slice(bytes);
+    Some(u32::from_le_bytes(word))
 }
 
 fn code_layout<'a, 'b>(

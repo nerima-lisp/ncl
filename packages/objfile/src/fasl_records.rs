@@ -2,7 +2,7 @@ use crate::{FaslError, FaslRejectReason};
 
 /// Code-object facts shared by section validators.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct FaslCodeLayout<'a> {
+pub struct FaslCodeLayout<'a> {
     pub id: u32,
     pub entry_offset: u32,
     pub frame_words: u16,
@@ -11,7 +11,7 @@ pub(super) struct FaslCodeLayout<'a> {
 }
 
 /// Checked cursor for one bounded FASL section.
-pub(super) struct SectionReader<'a> {
+pub struct SectionReader<'a> {
     bytes: &'a [u8],
     base_offset: usize,
     cursor: usize,
@@ -19,7 +19,7 @@ pub(super) struct SectionReader<'a> {
 }
 
 impl<'a> SectionReader<'a> {
-    pub fn new(bytes: &'a [u8], base_offset: usize, reason: FaslRejectReason) -> Self {
+    pub const fn new(bytes: &'a [u8], base_offset: usize, reason: FaslRejectReason) -> Self {
         Self {
             bytes,
             base_offset,
@@ -28,11 +28,11 @@ impl<'a> SectionReader<'a> {
         }
     }
 
-    pub fn absolute_position(&self) -> usize {
+    pub const fn absolute_position(&self) -> usize {
         self.base_offset.saturating_add(self.cursor)
     }
 
-    pub fn remaining(&self) -> usize {
+    pub const fn remaining(&self) -> usize {
         self.bytes.len().saturating_sub(self.cursor)
     }
 
@@ -77,27 +77,26 @@ impl<'a> SectionReader<'a> {
     }
 
     pub fn u16(&mut self) -> Result<u16, FaslError> {
-        let bytes = self.take(2)?;
-        Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+        Ok(u16::from_le_bytes(self.take_array()?))
     }
 
     pub fn u32(&mut self) -> Result<u32, FaslError> {
-        let bytes = self.take(4)?;
-        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+        Ok(u32::from_le_bytes(self.take_array()?))
     }
 
     pub fn u64(&mut self) -> Result<u64, FaslError> {
-        let bytes = self.take(8)?;
-        Ok(u64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        ]))
+        Ok(u64::from_le_bytes(self.take_array()?))
     }
 
     pub fn i64(&mut self) -> Result<i64, FaslError> {
-        let bytes = self.take(8)?;
-        Ok(i64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        ]))
+        Ok(i64::from_le_bytes(self.take_array()?))
+    }
+
+    fn take_array<const N: usize>(&mut self) -> Result<[u8; N], FaslError> {
+        let source = self.take(N)?;
+        let mut bytes = [0; N];
+        bytes.copy_from_slice(source);
+        Ok(bytes)
     }
 
     pub fn zero_padding(&mut self, alignment: usize) -> Result<(), FaslError> {
@@ -109,7 +108,7 @@ impl<'a> SectionReader<'a> {
         Ok(())
     }
 
-    pub fn finish(self) -> Result<(), FaslError> {
+    pub const fn finish(self) -> Result<(), FaslError> {
         if self.cursor == self.bytes.len() {
             Ok(())
         } else {
@@ -120,7 +119,7 @@ impl<'a> SectionReader<'a> {
 
 /// Deterministic little-endian writer for one FASL section.
 #[derive(Default)]
-pub(super) struct SectionWriter {
+pub struct SectionWriter {
     bytes: Vec<u8>,
 }
 

@@ -1,3 +1,8 @@
+use ncl_object::{
+    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, FunctionDesignator, FunctionObject,
+    MultipleValues, ObjectError, ObjectRef, Word, classify_object, with_rooted_slice,
+};
+
 use crate::executor::{ExecutionState, Flow, FormatError, FormatErrorKind, execute_control};
 use crate::model::Directive;
 
@@ -14,9 +19,27 @@ pub(super) fn execute(
     if directive.colon || !directive.parameters.is_empty() {
         return Err(invalid_use(directive));
     }
-    let control = state.take_argument(directive)?;
+    let control_word = state.take_argument(directive)?;
+    match classify_object(state.ctx, control_word) {
+        ObjectRef::String(_) => execute_string_control(directive, state, output, control_word),
+        ObjectRef::Function(_) | ObjectRef::Closure(_) if !directive.at_sign => {
+            execute_function_control(directive, state, output, control_word)
+        }
+        _ => Err(FormatError::at(
+            directive,
+            FormatErrorKind::WrongArgumentType,
+        )),
+    }
+}
+
+fn execute_string_control(
+    directive: &Directive,
+    state: &mut State<'_>,
+    output: &mut Output<'_>,
+    control_word: Word,
+) -> FlowResult {
     let control =
-        string_value(state.ctx, control).map_err(|error| object_error(directive, error))?;
+        string_value(state.ctx, control_word).map_err(|error| object_error(directive, error))?;
     let parsed = crate::parser::parse(&control).map_err(|error| {
         FormatError::new(
             error.offset,
@@ -53,4 +76,75 @@ pub(super) fn execute(
     } else {
         flow
     })
+}
+
+fn execute_function_control(
+    directive: &Directive,
+    state: &mut State<'_>,
+    output: &mut Output<'_>,
+    control_word: Word,
+) -> FlowResult {
+    let list = state.take_argument(directive)?;
+    let arguments = list_elements(state.ctx, list, directive)?;
+    let text = call_formatter(
+        directive,
+        state.ctx,
+        state.runtime,
+        control_word,
+        &arguments,
+    )?;
+    output.write_str(&text)?;
+    Ok(Flow::Continue)
+}
+
+fn call_formatter(
+    directive: &Directive,
+    ctx: &mut ncl_object::ThreadContext,
+    runtime: &ncl_object::Runtime,
+    control_word: Word,
+    arguments: &[Word],
+) -> Result<String, FormatError> {
+    let mut rooted_values = Vec::with_capacity(arguments.len() + 2);
+    rooted_values.push(control_word);
+    rooted_values.extend_from_slice(arguments);
+    rooted_values.push(Word::NIL);
+    with_rooted_slice(ctx, &rooted_values, |ctx, rooted| {
+        let stream = call_stream_builtin(ctx, runtime, "MAKE-STRING-OUTPUT-STREAM", &[])?;
+        let stream_index = rooted.len() - 1;
+        rooted[stream_index] = stream;
+        let designator = FunctionDesignator::try_from_word(ctx, rooted[0])?;
+        let mut call_arguments = Vec::with_capacity(arguments.len() + 1);
+        call_arguments.push(rooted[stream_index]);
+        call_arguments.extend_from_slice(&rooted[1..stream_index]);
+        let mut caller = BuiltinFunctionCaller;
+        let mut values = MultipleValues::new();
+        caller.call_function(
+            ctx,
+            runtime,
+            designator,
+            FunctionArguments::new(&call_arguments),
+            &mut values,
+        )?;
+        let text = call_stream_builtin(
+            ctx,
+            runtime,
+            "GET-OUTPUT-STREAM-STRING",
+            &[rooted[stream_index]],
+        )?;
+        string_value(ctx, text)
+    })
+    .map_err(|error| object_error(directive, error))
+}
+
+fn call_stream_builtin(
+    ctx: &mut ncl_object::ThreadContext,
+    runtime: &ncl_object::Runtime,
+    name: &str,
+    arguments: &[Word],
+) -> Result<Word, ObjectError> {
+    let function = runtime
+        .function(ctx, "COMMON-LISP", name)
+        .ok_or(ObjectError::UndefinedFunction)
+        .and_then(FunctionObject::try_from)?;
+    runtime.call_builtin(ctx, function, arguments)
 }

@@ -1,0 +1,199 @@
+use super::common::*;
+use crate::executor::{ExecutionState, FormatError, FormatOutput};
+use crate::model::{Directive, DirectiveKind, Parameter};
+
+pub(super) fn execute(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+    output: &mut FormatOutput<'_>,
+    parameters: &[Parameter],
+) -> Result<(), FormatError> {
+    match directive.kind {
+        DirectiveKind::F => fixed(directive, state, output, parameters),
+        DirectiveKind::E => exponential(directive, state, output, parameters),
+        DirectiveKind::G => general(directive, state, output, parameters),
+        DirectiveKind::Dollar => monetary(directive, state, output, parameters),
+        _ => Err(invalid(directive)),
+    }
+}
+
+fn fixed(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+    output: &mut FormatOutput<'_>,
+    parameters: &[Parameter],
+) -> Result<(), FormatError> {
+    if parameters.len() > 5 {
+        return Err(invalid(directive));
+    }
+    let width = integer_parameter(parameters, 0, directive)?;
+    let precision = integer_parameter(parameters, 1, directive)?;
+    let scale = signed_parameter(parameters, 2, 0, directive)?;
+    let overflow = optional_character(parameters, 3, directive)?;
+    let pad = character_parameter(parameters, 4, ' ', directive)?;
+    let word = state.take_argument(directive)?;
+    let Some(value) = number_value(state, word, directive)? else {
+        return fallback(directive, state, output, word, width);
+    };
+    let value = scaled(value, scale, directive)?;
+    let text = if width.is_none() && precision.is_none() && scale == 0 {
+        free_float(state, directive, word, value)?
+    } else {
+        let (digits, trim) = match precision {
+            Some(digits) => (digits, false),
+            None => (shortest_fraction_digits(value), true),
+        };
+        fixed_core(value, digits, None, trim, directive)?
+    };
+    output.write_str(&field(
+        signed(text, value, directive.at_sign),
+        width,
+        pad,
+        overflow,
+        directive,
+    )?)
+}
+
+fn exponential(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+    output: &mut FormatOutput<'_>,
+    parameters: &[Parameter],
+) -> Result<(), FormatError> {
+    if parameters.len() > 7 {
+        return Err(invalid(directive));
+    }
+    let width = integer_parameter(parameters, 0, directive)?;
+    let precision = integer_parameter(parameters, 1, directive)?;
+    let exponent_width = integer_parameter(parameters, 2, directive)?;
+    let scale = signed_parameter(parameters, 3, 1, directive)?;
+    let overflow = optional_character(parameters, 4, directive)?;
+    let pad = character_parameter(parameters, 5, ' ', directive)?;
+    let exponent_char = character_parameter(parameters, 6, 'E', directive)?;
+    let word = state.take_argument(directive)?;
+    let Some(value) = number_value(state, word, directive)? else {
+        return fallback(directive, state, output, word, width);
+    };
+    let digits = precision.unwrap_or_else(|| default_exponential_precision(value, scale));
+    let text = exponential_core(
+        value,
+        digits,
+        scale,
+        exponent_width,
+        exponent_char,
+        directive,
+    )?;
+    output.write_str(&field(
+        signed(text, value, directive.at_sign),
+        width,
+        pad,
+        overflow,
+        directive,
+    )?)
+}
+
+fn general(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+    output: &mut FormatOutput<'_>,
+    parameters: &[Parameter],
+) -> Result<(), FormatError> {
+    if parameters.len() > 7 {
+        return Err(invalid(directive));
+    }
+    let width = integer_parameter(parameters, 0, directive)?;
+    let requested_digits = integer_parameter(parameters, 1, directive)?;
+    let exponent_width = integer_parameter(parameters, 2, directive)?;
+    let scale = signed_parameter(parameters, 3, 1, directive)?;
+    let overflow = optional_character(parameters, 4, directive)?;
+    let pad = character_parameter(parameters, 5, ' ', directive)?;
+    let exponent_char = character_parameter(parameters, 6, 'E', directive)?;
+    let word = state.take_argument(directive)?;
+    let Some(value) = number_value(state, word, directive)? else {
+        return fallback(directive, state, output, word, width);
+    };
+
+    let digits = requested_digits.unwrap_or_else(|| {
+        let minimum = usize::try_from(decimal_order(value).unwrap_or(1).min(7)).unwrap_or(0);
+        significant_digits(value).max(minimum)
+    });
+    check_precision(digits, directive)?;
+    if !value.is_finite() {
+        let text = signed(value.abs().to_string(), value, directive.at_sign);
+        return output.write_str(&field(text, width, pad, overflow, directive)?);
+    }
+    let order = decimal_order(value).ok_or_else(|| invalid(directive))?;
+    let n = if value == 0.0 { 1 } else { order };
+    let d = i64::try_from(digits).map_err(|_| invalid(directive))?;
+    let dd = d
+        .checked_sub(i64::from(n))
+        .ok_or_else(|| invalid(directive))?;
+    let exponent_chars = exponent_width
+        .unwrap_or(2)
+        .checked_add(2)
+        .ok_or_else(|| invalid(directive))?;
+
+    if (0..=d).contains(&dd) {
+        let fractional = usize::try_from(dd).map_err(|_| invalid(directive))?;
+        let fixed_width = width.map(|width| width.saturating_sub(exponent_chars));
+        let fixed = fixed_core(value, fractional, None, false, directive)?;
+        let mut text = field(
+            signed(fixed, value, directive.at_sign),
+            fixed_width,
+            pad,
+            overflow,
+            directive,
+        )?;
+        text.push_str(&repeated(' ', exponent_chars, directive)?);
+        output.write_str(&text)
+    } else {
+        let text = exponential_core(
+            value,
+            digits,
+            scale,
+            exponent_width,
+            exponent_char,
+            directive,
+        )?;
+        output.write_str(&field(
+            signed(text, value, directive.at_sign),
+            width,
+            pad,
+            overflow,
+            directive,
+        )?)
+    }
+}
+
+fn monetary(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+    output: &mut FormatOutput<'_>,
+    parameters: &[Parameter],
+) -> Result<(), FormatError> {
+    if parameters.len() > 4 {
+        return Err(invalid(directive));
+    }
+    let precision = integer_parameter(parameters, 0, directive)?.unwrap_or(2);
+    let minimum_integer = integer_parameter(parameters, 1, directive)?.unwrap_or(1);
+    let width = integer_parameter(parameters, 2, directive)?.unwrap_or(0);
+    let pad = character_parameter(parameters, 3, ' ', directive)?;
+    check_precision(precision, directive)?;
+    let word = state.take_argument(directive)?;
+    let Some(value) = number_value(state, word, directive)? else {
+        return fallback(directive, state, output, word, Some(width));
+    };
+    let body = fixed_core(value, precision, Some(minimum_integer), false, directive)?;
+    let sign = sign(value, directive.at_sign);
+    let padding = width.saturating_sub(sign.len() + body.chars().count());
+    let mut text = String::new();
+    if directive.colon {
+        text.push_str(sign);
+        text.push_str(&repeated(pad, padding, directive)?);
+    } else {
+        text.push_str(&repeated(pad, padding, directive)?);
+        text.push_str(sign);
+    }
+    text.push_str(&body);
+    output.write_str(&text)
+}

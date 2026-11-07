@@ -161,3 +161,90 @@ impl SectionWriter {
         self.bytes
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SectionReader;
+    use crate::{FaslError, FaslRejectReason};
+
+    #[test]
+    fn section_reader_counts_exact_fits_and_rejects_over_limit_headers() {
+        let mut exact_fit = SectionReader::new(
+            &[2, 0, 0, 0, 0xaa, 0xbb],
+            320,
+            FaslRejectReason::InvalidCodeObject,
+        );
+        assert_eq!(exact_fit.count(2, 1), Ok(2));
+        assert_eq!(exact_fit.absolute_position(), 324);
+
+        let mut over_limit =
+            SectionReader::new(&[2, 0, 0, 0], 400, FaslRejectReason::InvalidCodeObject);
+        assert_eq!(
+            over_limit.count(1, 0),
+            Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 400))
+        );
+
+        let mut truncated_header =
+            SectionReader::new(&[1, 0], 500, FaslRejectReason::InvalidTopLevelRecord);
+        assert_eq!(
+            truncated_header.count(1, 0),
+            Err(FaslError::at(FaslRejectReason::InvalidTopLevelRecord, 500))
+        );
+    }
+
+    #[test]
+    fn section_reader_rejects_counts_that_cannot_fit_the_remaining_bytes() {
+        let mut insufficient_records = SectionReader::new(
+            &[2, 0, 0, 0, 0xaa],
+            700,
+            FaslRejectReason::InvalidDebugRecord,
+        );
+        assert_eq!(
+            insufficient_records.count(2, 1),
+            Err(FaslError::at(FaslRejectReason::InvalidDebugRecord, 700))
+        );
+
+        let mut unbounded_record_size =
+            SectionReader::new(&[2, 0, 0, 0], 800, FaslRejectReason::InvalidCodeObject);
+        assert_eq!(unbounded_record_size.count(2, 0), Ok(2));
+    }
+
+    #[test]
+    fn section_reader_take_and_padding_errors_keep_absolute_offsets() {
+        let reason = FaslRejectReason::InvalidTopLevelRecord;
+        let mut short = SectionReader::new(&[0xaa, 0xbb], 900, reason);
+        assert_eq!(short.take(1), Ok(&[0xaa][..]));
+        assert_eq!(short.take(2), Err(FaslError::at(reason, 901)));
+        assert_eq!(short.remaining(), 1);
+        assert_eq!(short.absolute_position(), 901);
+
+        let mut nonzero_padding = SectionReader::new(&[0xaa, 0, 1, 0], 1000, reason);
+        assert_eq!(nonzero_padding.take(1), Ok(&[0xaa][..]));
+        assert_eq!(
+            nonzero_padding.zero_padding(4),
+            Err(FaslError::at(reason, 1002))
+        );
+
+        let mut truncated_padding = SectionReader::new(&[0xaa], 1100, reason);
+        assert_eq!(truncated_padding.take(1), Ok(&[0xaa][..]));
+        assert_eq!(
+            truncated_padding.zero_padding(4),
+            Err(FaslError::at(reason, 1101))
+        );
+    }
+
+    #[test]
+    fn section_reader_finish_requires_the_section_to_end_at_the_cursor() {
+        let mut reader =
+            SectionReader::new(&[0xaa, 0xbb], 1200, FaslRejectReason::InvalidCodeObject);
+        assert_eq!(reader.take(1), Ok(&[0xaa][..]));
+        assert_eq!(
+            reader.finish(),
+            Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 1201))
+        );
+
+        let mut complete = SectionReader::new(&[0xaa], 1300, FaslRejectReason::InvalidCodeObject);
+        assert_eq!(complete.take(1), Ok(&[0xaa][..]));
+        assert_eq!(complete.finish(), Ok(()));
+    }
+}

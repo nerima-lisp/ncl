@@ -1,4 +1,9 @@
-use super::common::*;
+use super::common::{
+    character_parameter, check_precision, decimal_order, default_exponential_precision,
+    exponential_core, fallback, field, fixed_core, free_float, integer_parameter, invalid,
+    number_value, optional_character, repeated, scaled, shortest_fraction_digits, sign, signed,
+    signed_parameter, significant_digits,
+};
 use crate::executor::{ExecutionState, FormatError, FormatOutput};
 use crate::model::{Directive, DirectiveKind, Parameter};
 
@@ -13,7 +18,33 @@ pub(super) fn execute(
         DirectiveKind::E => exponential(directive, state, output, parameters),
         DirectiveKind::G => general(directive, state, output, parameters),
         DirectiveKind::Dollar => monetary(directive, state, output, parameters),
-        _ => Err(invalid(directive)),
+        DirectiveKind::A
+        | DirectiveKind::S
+        | DirectiveKind::W
+        | DirectiveKind::C
+        | DirectiveKind::R
+        | DirectiveKind::D
+        | DirectiveKind::B
+        | DirectiveKind::O
+        | DirectiveKind::X
+        | DirectiveKind::Percent
+        | DirectiveKind::Ampersand
+        | DirectiveKind::Bar
+        | DirectiveKind::Tilde
+        | DirectiveKind::Newline
+        | DirectiveKind::Underscore
+        | DirectiveKind::LogicalBlock
+        | DirectiveKind::Indent
+        | DirectiveKind::Slash
+        | DirectiveKind::Tab
+        | DirectiveKind::Justification
+        | DirectiveKind::Star
+        | DirectiveKind::Conditional
+        | DirectiveKind::Iteration
+        | DirectiveKind::Recursive
+        | DirectiveKind::CaseConversion
+        | DirectiveKind::Plural
+        | DirectiveKind::UpArrow => Err(invalid(directive)),
     }
 }
 
@@ -39,14 +70,14 @@ fn fixed(
     let text = if width.is_none() && precision.is_none() && scale == 0 {
         free_float(state, directive, word, value)?
     } else {
-        let (digits, trim) = match precision {
-            Some(digits) => (digits, false),
-            None => (shortest_fraction_digits(value), true),
-        };
+        let (digits, trim) = precision.map_or_else(
+            || (shortest_fraction_digits(value), true),
+            |digits| (digits, false),
+        );
         fixed_core(value, digits, None, trim, directive)?
     };
     output.write_str(&field(
-        signed(text, value, directive.at_sign),
+        signed(&text, value, directive.at_sign),
         width,
         pad,
         overflow,
@@ -74,7 +105,8 @@ fn exponential(
     let Some(value) = number_value(state, word, directive)? else {
         return fallback(directive, state, output, word, width);
     };
-    let digits = precision.unwrap_or_else(|| default_exponential_precision(value, scale));
+    let mut precision = precision;
+    let digits = *precision.get_or_insert_with(|| default_exponential_precision(value, scale));
     let text = exponential_core(
         value,
         digits,
@@ -84,7 +116,7 @@ fn exponential(
         directive,
     )?;
     output.write_str(&field(
-        signed(text, value, directive.at_sign),
+        signed(&text, value, directive.at_sign),
         width,
         pad,
         overflow,
@@ -113,13 +145,15 @@ fn general(
         return fallback(directive, state, output, word, width);
     };
 
-    let digits = requested_digits.unwrap_or_else(|| {
+    let mut requested_digits = requested_digits;
+    let digits = *requested_digits.get_or_insert_with(|| {
         let minimum = usize::try_from(decimal_order(value).unwrap_or(1).min(7)).unwrap_or(0);
         significant_digits(value).max(minimum)
     });
     check_precision(digits, directive)?;
     if !value.is_finite() {
-        let text = signed(value.abs().to_string(), value, directive.at_sign);
+        let absolute = value.abs().to_string();
+        let text = signed(&absolute, value, directive.at_sign);
         return output.write_str(&field(text, width, pad, overflow, directive)?);
     }
     let order = decimal_order(value).ok_or_else(|| invalid(directive))?;
@@ -138,7 +172,7 @@ fn general(
         let fixed_width = width.map(|width| width.saturating_sub(exponent_chars));
         let fixed = fixed_core(value, fractional, None, false, directive)?;
         let mut text = field(
-            signed(fixed, value, directive.at_sign),
+            signed(&fixed, value, directive.at_sign),
             fixed_width,
             pad,
             overflow,
@@ -156,7 +190,7 @@ fn general(
             directive,
         )?;
         output.write_str(&field(
-            signed(text, value, directive.at_sign),
+            signed(&text, value, directive.at_sign),
             width,
             pad,
             overflow,

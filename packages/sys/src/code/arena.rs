@@ -89,12 +89,12 @@ impl CodeArena {
         }
     }
 
-    fn reserve(self: &Arc<Self>, len: usize) -> Result<Option<CodeExtent>, CodeError> {
+    fn reserve(self: &Arc<Self>, len: usize) -> Result<CodeExtent, CodeError> {
         let mut start = self.next.load(Ordering::Relaxed);
         loop {
             let end = start.checked_add(len).ok_or(CodeError::OutOfBounds)?;
             if end > self.len {
-                return Ok(None);
+                return Err(CodeError::CapacityExceeded);
             }
             match self
                 .next
@@ -104,12 +104,12 @@ impl CodeArena {
                     let address = self.base.checked_add(start).ok_or(CodeError::OutOfBounds)?;
                     let ptr = NonNull::new(core::ptr::with_exposed_provenance_mut(address))
                         .ok_or(CodeError::MappingFailed)?;
-                    return Ok(Some(CodeExtent {
+                    return Ok(CodeExtent {
                         ptr,
                         #[cfg(not(target_os = "macos"))]
                         len,
                         arena: Arc::clone(self),
-                    }));
+                    });
                 }
                 Err(actual) => start = actual,
             }
@@ -140,23 +140,25 @@ pub(super) fn allocate(bytes: usize) -> Result<CodeExtent, CodeError> {
     let arena_len = round_up(ARENA_SIZE, page)?;
     if extent_len > arena_len {
         let arena = CodeArena::new(extent_len)?;
-        return CodeArena::reserve(&arena, extent_len)?.ok_or(CodeError::CapacityExceeded);
+        return CodeArena::reserve(&arena, extent_len);
     }
 
     let mut active = ACTIVE_ARENA
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some(arena) = active.as_ref().and_then(Weak::upgrade)
-        && let Some(extent) = arena.reserve(extent_len)?
-    {
-        drop(active);
-        return Ok(extent);
+    if let Some(arena) = active.as_ref().and_then(Weak::upgrade) {
+        match arena.reserve(extent_len) {
+            Ok(extent) => {
+                drop(active);
+                return Ok(extent);
+            }
+            Err(CodeError::CapacityExceeded) => {}
+            Err(error) => return Err(error),
+        }
     }
 
     let arena = CodeArena::new(arena_len)?;
-    let extent = arena
-        .reserve(extent_len)?
-        .ok_or(CodeError::CapacityExceeded)?;
+    let extent = arena.reserve(extent_len)?;
     *active = Some(Arc::downgrade(&arena));
     drop(active);
     Ok(extent)
@@ -306,5 +308,80 @@ fn jit_region() -> Result<&'static JitRegion, CodeError> {
     match JIT_REGION.get_or_init(JitRegion::new) {
         Ok(region) => Ok(region),
         Err(error) => Err(*error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Barrier;
+    use std::thread;
+
+    #[test]
+    fn mmap_rejects_zero_length() {
+        assert!(matches!(
+            map_anonymous(0, PROT_READ, MAP_PRIVATE | MAP_ANON),
+            Err(CodeError::MappingFailed)
+        ));
+    }
+
+    #[test]
+    fn oversized_code_uses_a_dedicated_arena() {
+        let page = page_size().unwrap_or_else(|error| panic!("page size unavailable: {error:?}"));
+        let extent = allocate(ARENA_SIZE + 1)
+            .unwrap_or_else(|error| panic!("oversized allocation failed: {error:?}"));
+        assert_eq!(extent.ptr.as_ptr().addr() % page, 0);
+        #[cfg(not(target_os = "macos"))]
+        assert!(extent.len > ARENA_SIZE);
+    }
+
+    #[test]
+    fn concurrent_reservations_return_non_overlapping_extents() {
+        const THREADS: usize = 32;
+
+        let page = page_size().unwrap_or_else(|error| panic!("page size unavailable: {error:?}"));
+        let arena = CodeArena::new(page * THREADS)
+            .unwrap_or_else(|error| panic!("arena allocation failed: {error:?}"));
+        let start = Arc::new(Barrier::new(THREADS));
+        let mut workers = Vec::with_capacity(THREADS);
+
+        for _ in 0..THREADS {
+            let arena = Arc::clone(&arena);
+            let start = Arc::clone(&start);
+            workers.push(thread::spawn(move || {
+                start.wait();
+                arena
+                    .reserve(page)
+                    .unwrap_or_else(|error| panic!("extent reservation failed: {error:?}"))
+                    .ptr
+                    .as_ptr()
+                    .addr()
+            }));
+        }
+
+        let mut addresses = workers
+            .into_iter()
+            .map(|worker| {
+                worker
+                    .join()
+                    .unwrap_or_else(|_| panic!("reservation worker panicked"))
+            })
+            .collect::<Vec<_>>();
+        addresses.sort_unstable();
+        assert!(addresses.windows(2).all(|pair| pair[1] - pair[0] == page));
+    }
+
+    #[test]
+    fn arena_reports_capacity_when_it_cannot_reserve_an_extent() {
+        let page = page_size().unwrap_or_else(|error| panic!("page size unavailable: {error:?}"));
+        let arena = CodeArena::new(page)
+            .unwrap_or_else(|error| panic!("arena allocation failed: {error:?}"));
+        let _extent = arena
+            .reserve(page)
+            .unwrap_or_else(|error| panic!("first reservation failed: {error:?}"));
+        assert!(matches!(
+            arena.reserve(page),
+            Err(CodeError::CapacityExceeded)
+        ));
     }
 }

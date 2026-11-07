@@ -1,0 +1,208 @@
+name: Nightly differential and stress checks
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-ncl:
+    name: Build NCL release binary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ncl-release
+          path: target/release/ncl
+          if-no-files-found: error
+
+  ansi-random:
+    name: ansi-test random tester
+    needs: build-ncl
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ncl-release
+          path: ${{ runner.temp }}/ncl-release
+      - name: Prepare binary and reproduction directory
+        run: |
+          set -euo pipefail
+          chmod +x "$RUNNER_TEMP/ncl-release/ncl"
+          mkdir -p "$RUNNER_TEMP/ansi-random-repros"
+      - name: Run fixed-seed ANSI random tester
+        run: |
+          set -euo pipefail
+          python3 scripts/difftest/ansi_random.py \
+            --ncl "$RUNNER_TEMP/ncl-release/ncl" \
+            --seed-count 64 \
+            --seed-start 0 \
+            --cache-dir "$RUNNER_TEMP/ncl-conformance" \
+            --repro-dir "$RUNNER_TEMP/ansi-random-repros"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ansi-random-reproductions
+          path: ${{ runner.temp }}/ansi-random-repros/
+          if-no-files-found: warn
+
+  sbcl-differential:
+    name: SBCL random differential tests
+    needs: build-ncl
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ncl-release
+          path: ${{ runner.temp }}/ncl-release
+      - name: Prepare NCL binary and reproduction directory
+        run: |
+          set -euo pipefail
+          chmod +x "$RUNNER_TEMP/ncl-release/ncl"
+          mkdir -p "$RUNNER_TEMP/difftest-repros"
+      - name: Install pinned SBCL 2.6.10 binary
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/sbcl-2.6.10-x86-64-linux-binary.tar.bz2"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            https://github.com/roswell/sbcl_bin/releases/download/2.6.10/sbcl-2.6.10-x86-64-linux-binary.tar.bz2
+          printf '%s  %s\n' \
+            0cb08be993fe27a5d73f86df84b879685b5d041edb9e25e63590ec9985f0b1c7 \
+            "$archive" | sha256sum --check --strict
+          tar -xjf "$archive" -C "$RUNNER_TEMP"
+          sbcl_dir="$RUNNER_TEMP/sbcl-2.6.10-x86-64-linux"
+          sbcl_prefix="$RUNNER_TEMP/sbcl-2.6.10"
+          (
+            cd "$sbcl_dir"
+            sh ./install.sh --prefix="$sbcl_prefix"
+          )
+          sbcl_bin="$sbcl_prefix/bin/sbcl"
+          test "$("$sbcl_bin" --version)" = 'SBCL 2.6.10'
+          printf 'SBCL_BIN=%s\n' "$sbcl_bin" >> "$GITHUB_ENV"
+      - name: Run fixed-seed differential corpus
+        run: |
+          set -euo pipefail
+          python3 scripts/difftest/run.py \
+            --seed-count 256 \
+            --seed-start 0 \
+            --ncl "$RUNNER_TEMP/ncl-release/ncl" \
+            --sbcl "$SBCL_BIN" \
+            --repro-dir "$RUNNER_TEMP/difftest-repros"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbcl-differential-reproductions
+          path: ${{ runner.temp }}/difftest-repros/
+          if-no-files-found: warn
+
+  gc-stress:
+    name: GC stress and strict forwarding
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Collect after every allocation
+        run: cargo test --locked --all-features -p ncl-object --test gc_stress -- --nocapture
+      - name: Reject stale forwarded words
+        run: cargo test --locked --workspace --all-features --all-targets strict_forwarding -- --nocapture
+
+  multithread-stress:
+    name: Concurrent allocation and collection stress
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Collect while worker threads allocate
+        run: cargo test --locked -p ncl-threads --test gc_concurrency -- --nocapture --test-threads=1
+
+  address-sanitizer:
+    name: AddressSanitizer (ncl-sys)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-29
+      RUSTFLAGS: -Zsanitizer=address
+      RUSTDOCFLAGS: -Zsanitizer=address
+      ASAN_OPTIONS: detect_leaks=1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-10-29
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: nightly-asan
+      - name: Run ncl-sys tests under AddressSanitizer
+        run: cargo test --locked -Zbuild-std --target x86_64-unknown-linux-gnu -p ncl-sys --lib -- --nocapture
+
+  thread-sanitizer:
+    name: ThreadSanitizer (concurrent GC)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-29
+      RUSTFLAGS: -Zsanitizer=thread
+      RUSTDOCFLAGS: -Zsanitizer=thread
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-10-29
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: nightly-tsan
+      - name: Run concurrent GC test under ThreadSanitizer
+        run: cargo test --locked -Zbuild-std --target x86_64-unknown-linux-gnu -p ncl-threads --test gc_concurrency -- --nocapture --test-threads=1
+
+  miri:
+    name: Miri (ncl-sys native word validation)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-29
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-10-29
+          components: miri, rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: nightly-miri
+      - name: Prepare Miri sysroot
+        run: cargo miri setup
+      - name: Run pure native word validation tests under Miri
+        run: cargo miri test --locked -p ncl-sys --lib native_word_tests -- --nocapture

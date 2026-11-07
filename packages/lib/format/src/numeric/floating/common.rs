@@ -14,30 +14,29 @@ pub(super) fn number_value(
     word: Word,
     directive: &Directive,
 ) -> Result<Option<f64>, FormatError> {
-    match classify_object(state.ctx, word) {
-        ObjectRef::DoubleFloat(word) => {
-            let object = DoubleFloat::from_word(word);
-            Ok(Some(
-                double_value(state.ctx, object).map_err(|_| wrong_type(directive))?,
-            ))
-        }
-        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => integer_float(state, word, directive),
-        ObjectRef::Ratio(word) => {
-            let ratio = Ratio::from_word(word);
-            let numerator = ratio_numerator(state.ctx, ratio).map_err(|_| wrong_type(directive))?;
-            let denominator =
-                ratio_denominator(state.ctx, ratio).map_err(|_| wrong_type(directive))?;
-            let numerator =
-                integer_float(state, numerator, directive)?.ok_or_else(|| wrong_type(directive))?;
-            let denominator = integer_float(state, denominator, directive)?
-                .ok_or_else(|| wrong_type(directive))?;
-            if denominator == 0.0 {
-                Err(wrong_type(directive))
-            } else {
-                Ok(Some(numerator / denominator))
-            }
-        }
-        _ => Ok(None),
+    let object = classify_object(state.ctx, word);
+    if let ObjectRef::DoubleFloat(word) = object {
+        let object = DoubleFloat::from_word(word);
+        let value = double_value(state.ctx, object).map_err(|_| wrong_type(directive))?;
+        return Ok(Some(value));
+    }
+    if matches!(object, ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)) {
+        return integer_float(state, word, directive);
+    }
+    let ObjectRef::Ratio(word) = object else {
+        return Ok(None);
+    };
+    let ratio = Ratio::from_word(word);
+    let numerator = ratio_numerator(state.ctx, ratio).map_err(|_| wrong_type(directive))?;
+    let denominator = ratio_denominator(state.ctx, ratio).map_err(|_| wrong_type(directive))?;
+    let numerator =
+        integer_float(state, numerator, directive)?.ok_or_else(|| wrong_type(directive))?;
+    let denominator =
+        integer_float(state, denominator, directive)?.ok_or_else(|| wrong_type(directive))?;
+    if denominator == 0.0 {
+        Err(wrong_type(directive))
+    } else {
+        Ok(Some(numerator / denominator))
     }
 }
 
@@ -46,26 +45,27 @@ fn integer_float(
     word: Word,
     directive: &Directive,
 ) -> Result<Option<f64>, FormatError> {
-    match classify_object(state.ctx, word) {
-        ObjectRef::Fixnum(_) => Ok(crate::executor::integer_value(state.ctx, word)
-            .and_then(|value| value.to_string().parse::<f64>().ok())),
-        ObjectRef::Bignum(word) => {
-            let object = Bignum::from_word(word);
-            let mut magnitude = 0.0_f64;
-            for limb in bignum_limbs(state.ctx, object)
-                .map_err(|_| wrong_type(directive))?
-                .into_iter()
-                .rev()
-            {
-                magnitude = magnitude * 4_294_967_296.0 + f64::from(limb);
-            }
-            if bignum_sign(state.ctx, object).map_err(|_| wrong_type(directive))? {
-                magnitude = -magnitude;
-            }
-            Ok(Some(magnitude))
-        }
-        _ => Ok(None),
+    let object = classify_object(state.ctx, word);
+    if matches!(object, ObjectRef::Fixnum(_)) {
+        return Ok(crate::executor::integer_value(state.ctx, word)
+            .and_then(|value| value.to_string().parse::<f64>().ok()));
     }
+    let ObjectRef::Bignum(word) = object else {
+        return Ok(None);
+    };
+    let object = Bignum::from_word(word);
+    let mut magnitude = 0.0_f64;
+    for limb in bignum_limbs(state.ctx, object)
+        .map_err(|_| wrong_type(directive))?
+        .into_iter()
+        .rev()
+    {
+        magnitude = magnitude.mul_add(4_294_967_296.0, f64::from(limb));
+    }
+    if bignum_sign(state.ctx, object).map_err(|_| wrong_type(directive))? {
+        magnitude = -magnitude;
+    }
+    Ok(Some(magnitude))
 }
 
 pub(super) fn exponential_core(
@@ -118,12 +118,10 @@ pub(super) fn exponential_core(
     check_precision(fraction, directive)?;
     let mut exponent = exponent;
     let mut body = format!("{mantissa:.fraction$}");
-    let limit = if scale > 0 {
-        10.0_f64.powi(scale)
-    } else if scale == 0 {
-        1.0
-    } else {
-        0.1_f64.powi(scale.saturating_neg())
+    let limit = match scale.cmp(&0) {
+        std::cmp::Ordering::Greater => 10.0_f64.powi(scale),
+        std::cmp::Ordering::Equal => 1.0,
+        std::cmp::Ordering::Less => 0.1_f64.powi(scale.saturating_neg()),
     };
     if limit == 0.0 || !limit.is_finite() {
         return Err(invalid(directive));
@@ -208,9 +206,10 @@ pub(super) fn free_float(
     word: Word,
     value: f64,
 ) -> Result<String, FormatError> {
-    let text = match classify_object(state.ctx, word) {
-        ObjectRef::DoubleFloat(_) => object_text(state, directive, word)?,
-        _ => value.abs().to_string(),
+    let text = if matches!(classify_object(state.ctx, word), ObjectRef::DoubleFloat(_)) {
+        object_text(state, directive, word)?
+    } else {
+        value.abs().to_string()
     };
     let mut magnitude = text.strip_prefix('-').unwrap_or(&text).to_owned();
     if !magnitude.contains('.') && !magnitude.contains('e') && !magnitude.contains('E') {
@@ -336,11 +335,11 @@ pub(super) fn default_exponential_precision(value: f64, scale: i64) -> usize {
     usize::try_from(precision).unwrap_or(MAX_PRECISION)
 }
 
-pub(super) fn signed(text: String, value: f64, force: bool) -> String {
+pub(super) fn signed(text: &str, value: f64, force: bool) -> String {
     format!("{}{text}", sign(value, force))
 }
 
-pub(super) fn sign(value: f64, force: bool) -> &'static str {
+pub(super) const fn sign(value: f64, force: bool) -> &'static str {
     if value.is_sign_negative() {
         "-"
     } else if force {
@@ -360,7 +359,9 @@ pub(super) fn integer_parameter(
         Some(Parameter::Integer(value)) => usize::try_from(*value)
             .map(Some)
             .map_err(|_| invalid(directive)),
-        _ => Err(invalid(directive)),
+        Some(Parameter::Character(_) | Parameter::Relative | Parameter::Remaining) => {
+            Err(invalid(directive))
+        }
     }
 }
 
@@ -373,7 +374,9 @@ pub(super) fn signed_parameter(
     match parameters.get(index) {
         None | Some(Parameter::Unsupplied) => Ok(default),
         Some(Parameter::Integer(value)) => Ok(*value),
-        _ => Err(invalid(directive)),
+        Some(Parameter::Character(_) | Parameter::Relative | Parameter::Remaining) => {
+            Err(invalid(directive))
+        }
     }
 }
 
@@ -386,7 +389,9 @@ pub(super) fn character_parameter(
     match parameters.get(index) {
         None | Some(Parameter::Unsupplied) => Ok(default),
         Some(Parameter::Character(value)) => Ok(*value),
-        _ => Err(invalid(directive)),
+        Some(Parameter::Integer(_) | Parameter::Relative | Parameter::Remaining) => {
+            Err(invalid(directive))
+        }
     }
 }
 
@@ -398,11 +403,16 @@ pub(super) fn optional_character(
     match parameters.get(index) {
         None | Some(Parameter::Unsupplied) => Ok(None),
         Some(Parameter::Character(value)) => Ok(Some(*value)),
-        _ => Err(invalid(directive)),
+        Some(Parameter::Integer(_) | Parameter::Relative | Parameter::Remaining) => {
+            Err(invalid(directive))
+        }
     }
 }
 
-pub(super) fn check_precision(value: usize, directive: &Directive) -> Result<(), FormatError> {
+pub(super) const fn check_precision(
+    value: usize,
+    directive: &Directive,
+) -> Result<(), FormatError> {
     if value > MAX_PRECISION {
         Err(invalid(directive))
     } else {
@@ -428,10 +438,10 @@ pub(super) fn repeated(
     Ok(result)
 }
 
-pub(super) fn invalid(directive: &Directive) -> FormatError {
+pub(super) const fn invalid(directive: &Directive) -> FormatError {
     FormatError::at(directive, FormatErrorKind::InvalidParameter)
 }
 
-fn wrong_type(directive: &Directive) -> FormatError {
+const fn wrong_type(directive: &Directive) -> FormatError {
     FormatError::at(directive, FormatErrorKind::WrongArgumentType)
 }

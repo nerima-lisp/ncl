@@ -63,6 +63,8 @@ nav:
       - Native FASL: design/fasl.md
       - Coding standards: design/coding-standards.md
       - Threads: design/threads.md
+      - Conditions: design/conditions.md
+      - Signals: design/signals.md
       - Compiler pipeline: design/compiler-pipeline.md
       - HIR: design/hir.md
       - Crates: design/crates.md

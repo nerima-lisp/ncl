@@ -1,5 +1,10 @@
 //! Expected FORMAT output for numeric directives.
 
+#![expect(
+    clippy::expect_used,
+    reason = "Test fixtures keep setup failures local to each test."
+)]
+
 use ncl_lib_format::{execute, parse};
 use ncl_object::{Runtime, ThreadContext, Word, make_bignum_from_limbs, make_double, make_ratio};
 use ncl_printer::StringSink;

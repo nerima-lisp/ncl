@@ -1,6 +1,6 @@
 #![allow(missing_docs, clippy::expect_used, clippy::unwrap_used)]
 
-use ncl_lib_format::{FormatError, execute, parse};
+use ncl_lib_format::{FormatErrorKind, execute, parse};
 use ncl_object::{Runtime, ThreadContext, Word, make_string};
 use ncl_printer::StringSink;
 
@@ -47,24 +47,21 @@ fn executes_integer_radices_and_line_controls() {
 }
 
 #[test]
-fn rejects_missing_and_non_integer_arguments() {
+fn rejects_missing_arguments_and_formats_non_integer_radix_arguments_as_aesthetic() {
     let (runtime, mut ctx) = context();
     let mut sink = StringSink::new();
     let missing = parse("~A").expect("control");
-    assert_eq!(
-        execute(&missing, &[], &mut ctx, &runtime, &mut sink),
-        Err(FormatError::MissingArgument {
-            directive: ncl_lib_format::DirectiveKind::A,
-        })
-    );
+    let error =
+        execute(&missing, &[], &mut ctx, &runtime, &mut sink).expect_err("missing argument");
+    assert_eq!(error.position, 0);
+    assert_eq!(error.directive, Some('A'));
+    assert_eq!(error.kind, FormatErrorKind::MissingArgument);
     let non_integer = parse("~D").expect("control");
     let value = string(&runtime, &mut ctx, "not an integer");
-    assert_eq!(
-        execute(&non_integer, &[value], &mut ctx, &runtime, &mut sink),
-        Err(FormatError::NonInteger {
-            directive: ncl_lib_format::DirectiveKind::D,
-        })
-    );
+    let consumed = execute(&non_integer, &[value], &mut ctx, &runtime, &mut sink)
+        .expect("non-integer radix arguments use aesthetic output");
+    assert_eq!(consumed, 1);
+    assert_eq!(sink.into_string(), "not an integer");
 }
 
 #[test]

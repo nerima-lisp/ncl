@@ -6,7 +6,7 @@ use ncl_object::{
 };
 use ncl_printer::{CharSink, PrintError, StringSink};
 
-use crate::{execute, parse};
+use crate::{FormatError, FormatErrorKind, execute, parse};
 
 const DESTINATION: Parameter = Parameter {
     name: BuiltinName::new("DESTINATION"),
@@ -60,7 +60,14 @@ fn format_builtin(
     let mut destination = args.required(0)?;
     let control = args.required(1)?;
     let control = string_value(ctx, control)?;
-    let parsed = parse(&control).map_err(|_| ObjectError::TypeError)?;
+    let parsed = parse(&control).map_err(|error| {
+        let format_error = FormatError::new(
+            error.offset,
+            error.directive,
+            FormatErrorKind::Parse(error.kind),
+        );
+        format_error_to_object_error(&format_error)
+    })?;
     let arguments = (2..args.len())
         .map(|index| args.get(index).ok_or(ObjectError::TypeError))
         .collect::<Result<Vec<_>, _>>()?;
@@ -133,13 +140,16 @@ fn standard_output(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, O
     })
 }
 
-const fn format_error_to_object_error(error: &crate::FormatError) -> ObjectError {
-    match error {
-        crate::FormatError::Print(PrintError::Object(error)) => *error,
-        crate::FormatError::MissingArgument { .. }
-        | crate::FormatError::InvalidParameter { .. }
-        | crate::FormatError::NonInteger { .. }
-        | crate::FormatError::Print(_) => ObjectError::TypeError,
+const fn format_error_to_object_error(error: &FormatError) -> ObjectError {
+    match &error.kind {
+        FormatErrorKind::Print(PrintError::Object(error)) => *error,
+        FormatErrorKind::Parse(_)
+        | FormatErrorKind::MissingArgument
+        | FormatErrorKind::WrongArgumentType
+        | FormatErrorKind::InvalidParameter
+        | FormatErrorKind::InvalidDirectiveUse
+        | FormatErrorKind::ImproperList
+        | FormatErrorKind::Print(_) => ObjectError::TypeError,
     }
 }
 

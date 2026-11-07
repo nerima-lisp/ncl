@@ -2,7 +2,7 @@
 
 use ncl_lib_format::register;
 use ncl_object::{
-    FunctionObject, Runtime, ThreadContext, Word, make_string, make_symbol, string_ref,
+    FunctionObject, Runtime, ThreadContext, Word, make_cons, make_string, make_symbol, string_ref,
 };
 
 fn string(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> Word {
@@ -71,4 +71,31 @@ fn format_accepts_symbol_and_character_controls() {
         )
         .expect("character control");
     assert_eq!(read_string(&ctx, character_result), "x");
+}
+
+#[test]
+fn format_runs_nested_iteration_over_a_list() {
+    let runtime = Runtime::new().expect("runtime");
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).expect("context");
+    ncl_lib_streams::register(&runtime).expect("streams");
+    register(&runtime).expect("format");
+
+    let function = runtime
+        .function(&mut ctx, "COMMON-LISP", "FORMAT")
+        .expect("FORMAT");
+    let function = FunctionObject::try_from(function).expect("function");
+    let control = string(&runtime, &mut ctx, "~{~A~}");
+    let list = Word::NIL;
+    let rooted_list = ncl_object::HeapRootedWord::new(&ctx, list).expect("root list");
+    for value in [3, 2, 1] {
+        let cons =
+            make_cons(&mut ctx, &runtime, Word::fixnum(value), rooted_list.get()).expect("cons");
+        rooted_list.set(cons);
+    }
+
+    let result = runtime
+        .call_builtin(&mut ctx, function, &[Word::NIL, control, rooted_list.get()])
+        .expect("format iteration");
+    assert_eq!(read_string(&ctx, result), "123");
 }

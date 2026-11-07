@@ -166,12 +166,12 @@ fn execute_plural(
             FormatErrorKind::InvalidParameter,
         ));
     }
-    let singular = if directive.at_sign && !directive.colon {
-        state.take_argument(directive)? == Word::fixnum(1)
-    } else {
+    let singular = if directive.colon {
         state
             .previous_is_one
             .ok_or_else(|| FormatError::at(directive, FormatErrorKind::MissingArgument))?
+    } else {
+        state.take_argument(directive)? == Word::fixnum(1)
     };
     if directive.colon {
         state.index = state.index.saturating_sub(1);

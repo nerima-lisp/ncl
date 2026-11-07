@@ -77,14 +77,14 @@ impl std::error::Error for FormatError {
 
 /// Execution may escape the current enclosing control construct.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Flow {
+pub enum Flow {
     Continue,
     Escape,
     EscapeIterations,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ControlFrame {
+pub enum ControlFrame {
     Iteration {
         colon: bool,
         at_sign: bool,
@@ -94,7 +94,7 @@ pub(crate) enum ControlFrame {
     Justification,
 }
 
-pub(crate) struct ExecutionState<'a> {
+pub struct ExecutionState<'a> {
     pub(crate) arguments: &'a [Word],
     pub(crate) index: usize,
     pub(crate) previous_is_one: Option<bool>,
@@ -104,7 +104,7 @@ pub(crate) struct ExecutionState<'a> {
 }
 
 impl ExecutionState<'_> {
-    pub(crate) fn remaining(&self) -> usize {
+    pub const fn remaining(&self) -> usize {
         self.arguments.len().saturating_sub(self.index)
     }
 
@@ -131,25 +131,23 @@ impl ExecutionState<'_> {
                     if value == Word::NIL {
                         Parameter::Unsupplied
                     } else {
-                        match classify_object(self.ctx, value) {
-                            ObjectRef::Character(codepoint) => {
-                                let character = char::from_u32(codepoint).ok_or_else(|| {
-                                    FormatError::at(directive, FormatErrorKind::WrongArgumentType)
-                                })?;
-                                Parameter::Character(character)
-                            }
-                            ObjectRef::Fixnum(integer) => Parameter::Integer(integer),
-                            ObjectRef::Bignum(_) => Parameter::Integer(
-                                integer_value(self.ctx, value).ok_or_else(|| {
-                                    FormatError::at(directive, FormatErrorKind::InvalidParameter)
-                                })?,
-                            ),
-                            _ => {
-                                return Err(FormatError::at(
-                                    directive,
-                                    FormatErrorKind::WrongArgumentType,
-                                ));
-                            }
+                        let object = classify_object(self.ctx, value);
+                        if let ObjectRef::Character(codepoint) = object {
+                            let character = char::from_u32(codepoint).ok_or_else(|| {
+                                FormatError::at(directive, FormatErrorKind::WrongArgumentType)
+                            })?;
+                            Parameter::Character(character)
+                        } else if let ObjectRef::Fixnum(integer) = object {
+                            Parameter::Integer(integer)
+                        } else if let ObjectRef::Bignum(_) = object {
+                            Parameter::Integer(integer_value(self.ctx, value).ok_or_else(|| {
+                                FormatError::at(directive, FormatErrorKind::InvalidParameter)
+                            })?)
+                        } else {
+                            return Err(FormatError::at(
+                                directive,
+                                FormatErrorKind::WrongArgumentType,
+                            ));
                         }
                     }
                 }
@@ -159,14 +157,14 @@ impl ExecutionState<'_> {
                     })?;
                     Parameter::Integer(remaining)
                 }
-                other => other.clone(),
+                other => *other,
             });
         }
         Ok(parameters)
     }
 }
 
-pub(crate) struct FormatOutput<'a> {
+pub struct FormatOutput<'a> {
     sink: &'a mut dyn CharSink,
     pub(crate) column: usize,
     pub(crate) line_start: bool,
@@ -220,17 +218,17 @@ impl FormatOutput<'_> {
         options: &PrintOptions,
         directive: &Directive,
     ) -> Result<(), FormatError> {
-        let rendered = self.render(state, value, options, directive)?;
-        self.write_str(&rendered).map_err(|error| match error.kind {
-            FormatErrorKind::Print(print) => {
-                FormatError::at(directive, FormatErrorKind::Print(print))
+        let rendered = Self::render(state, value, options, directive)?;
+        self.write_str(&rendered).map_err(|error| {
+            if matches!(&error.kind, FormatErrorKind::Print(_)) {
+                FormatError::at(directive, error.kind)
+            } else {
+                error
             }
-            _ => error,
         })
     }
 
     pub(crate) fn render(
-        &mut self,
         state: &mut ExecutionState<'_>,
         value: Word,
         options: &PrintOptions,
@@ -242,7 +240,7 @@ impl FormatOutput<'_> {
         Ok(sink.into_string())
     }
 
-    fn track(&mut self, character: char) {
+    const fn track(&mut self, character: char) {
         if character == '\n' {
             self.column = 0;
             self.line_start = true;
@@ -279,7 +277,7 @@ pub fn execute(
     Ok(state.index)
 }
 
-pub(crate) fn execute_control(
+pub fn execute_control(
     state: &mut ExecutionState<'_>,
     control: &FormatControl,
     output: &mut FormatOutput<'_>,
@@ -356,31 +354,29 @@ fn execute_directive(
     }
 }
 
-pub(crate) fn integer_value(ctx: &ThreadContext, value: Word) -> Option<i64> {
-    match classify_object(ctx, value) {
-        ObjectRef::Fixnum(integer) => Some(integer),
-        ObjectRef::Bignum(word) => {
-            let bignum = ncl_object::Bignum::from_word(word);
-            let limbs = bignum_limbs(ctx, bignum).ok()?;
-            let mut magnitude = 0_u64;
-            for (index, limb) in limbs.into_iter().enumerate() {
-                match index {
-                    0 => magnitude = u64::from(limb),
-                    1 => magnitude |= u64::from(limb) << 32,
-                    _ if limb == 0 => {}
-                    _ => return None,
-                }
-            }
-            if bignum_sign(ctx, bignum).ok()? {
-                if magnitude == 1_u64 << 63 {
-                    Some(i64::MIN)
-                } else {
-                    i64::try_from(magnitude).ok()?.checked_neg()
-                }
-            } else {
-                i64::try_from(magnitude).ok()
-            }
+pub fn integer_value(ctx: &ThreadContext, value: Word) -> Option<i64> {
+    let object = classify_object(ctx, value);
+    if let ObjectRef::Fixnum(integer) = object {
+        return Some(integer);
+    }
+    let ObjectRef::Bignum(word) = object else {
+        return None;
+    };
+    let bignum = ncl_object::Bignum::from_word(word);
+    let mut limbs = bignum_limbs(ctx, bignum).ok()?.into_iter();
+    let low = limbs.next().unwrap_or_default();
+    let high = limbs.next().unwrap_or_default();
+    if limbs.any(|limb| limb != 0) {
+        return None;
+    }
+    let magnitude = u64::from(low) | (u64::from(high) << 32);
+    if bignum_sign(ctx, bignum).ok()? {
+        if magnitude == 1_u64 << 63 {
+            Some(i64::MIN)
+        } else {
+            i64::try_from(magnitude).ok()?.checked_neg()
         }
-        _ => None,
+    } else {
+        i64::try_from(magnitude).ok()
     }
 }

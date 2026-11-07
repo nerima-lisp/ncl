@@ -8,7 +8,7 @@ pub(super) fn execute_star(directive: &Directive, state: &mut State<'_>) -> Flow
     if parameters.len() > 1 || (directive.colon && directive.at_sign) {
         return Err(invalid_parameter(directive));
     }
-    let default = if directive.at_sign { 0 } else { 1 };
+    let default = i64::from(!directive.at_sign);
     let count = usize::try_from(integer_parameter(&parameters, 0, default, directive)?)
         .map_err(|_| invalid_parameter(directive))?;
     if directive.colon {
@@ -52,7 +52,9 @@ pub(super) fn execute_up_arrow(directive: &Directive, state: &mut State<'_>) -> 
         [value] => *value == 0,
         [left, right] => left == right,
         [first, second, third] => first <= second && second <= third,
-        _ => return Err(invalid_parameter(directive)),
+        [_first, _second, _third, _fourth, ..] => {
+            return Err(invalid_parameter(directive));
+        }
     };
     if !escape {
         return Ok(Flow::Continue);
@@ -94,13 +96,19 @@ fn colon_up_arrow_scope(frames: &[ControlFrame]) -> Option<UpArrowScope> {
         }),
         ControlFrame::Iteration { .. } => None,
         ControlFrame::LogicalBlock | ControlFrame::Justification => {
-            let outer_iteration = frames[..index]
+            let outer_frames = frames.get(..index)?;
+            let outer_iteration = outer_frames
                 .iter()
                 .rev()
                 .find(|frame| matches!(frame, ControlFrame::Iteration { .. }));
             match outer_iteration {
                 Some(ControlFrame::Iteration { colon: true, .. }) => Some(UpArrowScope::Block),
-                _ => None,
+                Some(
+                    ControlFrame::Iteration { colon: false, .. }
+                    | ControlFrame::LogicalBlock
+                    | ControlFrame::Justification,
+                )
+                | None => None,
             }
         }
     }

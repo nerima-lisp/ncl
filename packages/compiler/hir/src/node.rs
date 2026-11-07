@@ -1,9 +1,12 @@
 //! Semantic HIR nodes that retain Lisp-level identity and control semantics.
 
 use crate::arena::Arena;
-use crate::binding::LocalFunctionKind;
+use crate::binding::{LocalFunctionKind, ScopeId};
 use crate::control::ExitTarget;
-use crate::ids::{BindingId, BlockId, CleanupId, NodeId, SourceOriginId, SymbolId, TypeId};
+use crate::ids::{
+    BindingId, BlockId, CleanupId, NodeId, SourceOriginId, SymbolId, TypeId, TypeSpecConstId,
+    ValueId,
+};
 
 /// Storage for nodes in one top-level form.
 pub type NodeArena = Arena<Node, NodeId>;
@@ -11,6 +14,8 @@ pub type NodeArena = Arena<Node, NodeId>;
 /// One semantic operation and its source origin.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Node {
+    /// The lexical scope in which this operation is evaluated.
+    pub scope: ScopeId,
     /// The source or expansion origin that produced this node.
     pub origin: SourceOriginId,
     /// The operation represented by this node.
@@ -51,6 +56,12 @@ pub enum NodeKind {
         kind: LetKind,
         /// The bindings and their optional initializer forms.
         bindings: Vec<LetBinding>,
+        /// Scope used for each initializer, aligned with `bindings`.
+        initializer_scopes: Vec<ScopeId>,
+        /// Scope after each binding, aligned with `bindings`.
+        binding_scopes: Vec<ScopeId>,
+        /// Scope visible to the body forms.
+        body_scope: ScopeId,
         /// The body forms.
         body: Vec<NodeId>,
     },
@@ -67,6 +78,8 @@ pub enum NodeKind {
     Lambda {
         /// The lexical parameters.
         parameters: Vec<BindingId>,
+        /// Scope containing the parameters and body.
+        body_scope: ScopeId,
         /// The function body forms.
         body: Vec<NodeId>,
     },
@@ -74,6 +87,8 @@ pub enum NodeKind {
     LocalFunctions {
         /// Whether definitions are mutually recursive.
         kind: LocalFunctionKind,
+        /// Scope in which the group body sees all local function names.
+        body_scope: ScopeId,
         /// The local function bodies.
         definitions: Vec<LocalFunctionDefinition>,
         /// The body where all local function names are visible.
@@ -189,8 +204,17 @@ pub enum NodeKind {
         kind: RuntimeCheckKind,
         /// The value checked.
         value: NodeId,
-        /// The expected type, when this is a type check.
-        expected_type: Option<TypeId>,
+    },
+    /// A type check with the complete source type form retained for diagnostics.
+    CheckType {
+        /// The SSA value checked.
+        value: ValueId,
+        /// The HIR type used to prove that the check is redundant.
+        accepted_type: TypeId,
+        /// The full type-specifier constant passed to the runtime condition.
+        expected_type: TypeSpecConstId,
+        /// The source origin used to report a failed check.
+        source_origin: SourceOriginId,
     },
     /// A top-level definition retained by the compilation unit.
     TopLevelDefinition {
@@ -351,8 +375,12 @@ pub struct LetBinding {
 pub struct LocalFunctionDefinition {
     /// The local function binding identity.
     pub binding: BindingId,
+    /// Scope used to resolve names in this function definition.
+    pub definition_scope: ScopeId,
     /// The lexical parameter bindings.
     pub parameters: Vec<BindingId>,
+    /// Scope containing the parameters and body.
+    pub body_scope: ScopeId,
     /// The body forms.
     pub body: Vec<NodeId>,
 }
@@ -391,6 +419,8 @@ pub enum MultipleValueOperation {
         value: NodeId,
         /// Bindings receiving the values, in order.
         bindings: Vec<BindingId>,
+        /// Scope containing these bindings and the body.
+        body_scope: ScopeId,
         /// The body evaluated with the bindings.
         body: Vec<NodeId>,
     },
@@ -412,8 +442,6 @@ pub enum MultipleValueOperation {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum RuntimeCheckKind {
-    /// Validate a value against a type.
-    Type,
     /// Validate an array index.
     Bounds,
     /// Validate an array element representation.

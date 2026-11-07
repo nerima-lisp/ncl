@@ -72,6 +72,12 @@ impl<T, I: ArenaIndex> Arena<T, I> {
         self.values.is_empty()
     }
 
+    /// Iterates over entries with their zero-based arena indices.
+    #[must_use]
+    pub fn iter(&self) -> impl Iterator<Item = (usize, &T)> {
+        self.values.iter().enumerate()
+    }
+
     /// Consumes the arena and returns its values in allocation order.
     #[must_use]
     pub fn into_values(self) -> Vec<T> {

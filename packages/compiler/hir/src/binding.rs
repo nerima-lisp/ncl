@@ -26,6 +26,7 @@ pub struct Binding {
     id: BindingId,
     symbol: SymbolId,
     kind: BindingKind,
+    scope: ScopeId,
     reads: Vec<NodeId>,
     writes: Vec<NodeId>,
 }
@@ -47,6 +48,12 @@ impl Binding {
     #[must_use]
     pub const fn kind(&self) -> BindingKind {
         self.kind
+    }
+
+    /// Returns the lexical scope that owns this binding.
+    #[must_use]
+    pub const fn scope(&self) -> ScopeId {
+        self.scope
     }
 
     /// Returns the reference nodes that read this binding.
@@ -201,6 +208,15 @@ impl BindingEnvironment {
         self.root
     }
 
+    /// Returns the parent scope, or `None` for the root scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns `BindingError::UnknownScope` when `scope` is outside this environment.
+    pub fn scope_parent(&self, scope: ScopeId) -> Result<Option<ScopeId>, BindingError> {
+        Ok(self.scope_frame(scope)?.parent)
+    }
+
     /// Creates a child scope under `parent`.
     ///
     /// # Errors
@@ -345,6 +361,12 @@ impl BindingEnvironment {
         self.bindings.get(id)
     }
 
+    /// Iterates over bindings in allocation order.
+    #[must_use]
+    pub fn iter(&self) -> impl Iterator<Item = &Binding> {
+        self.bindings.iter().map(|(_, binding)| binding)
+    }
+
     /// Records a read or write node on a binding.
     ///
     /// # Errors
@@ -396,6 +418,7 @@ impl BindingEnvironment {
             id,
             symbol,
             kind,
+            scope,
             reads: Vec::new(),
             writes: Vec::new(),
         })?;

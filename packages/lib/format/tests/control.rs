@@ -6,7 +6,7 @@
 )]
 
 use ncl_lib_format::{FormatErrorKind, execute, parse};
-use ncl_object::{Runtime, ThreadContext, Word, make_cons, make_string};
+use ncl_object::{Package, Runtime, ThreadContext, Word, make_cons, make_string};
 use ncl_printer::StringSink;
 
 fn context() -> (Runtime, ThreadContext) {
@@ -169,6 +169,12 @@ fn recursive_format_accepts_function_controls_only_in_list_mode() {
     let formatter = runtime
         .function(&mut ctx, "COMMON-LISP", "FORMAT")
         .expect("FORMAT function");
+    let common_lisp = runtime
+        .find_package(&mut ctx, "COMMON-LISP")
+        .expect("COMMON-LISP package");
+    let (formatter_symbol, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "FORMAT")
+        .expect("FORMAT symbol");
     let nested_control = string(&runtime, &mut ctx, "<~A>");
     let value = string(&runtime, &mut ctx, "item");
     let arguments = list(&runtime, &mut ctx, &[nested_control, value]);
@@ -176,10 +182,21 @@ fn recursive_format_accepts_function_controls_only_in_list_mode() {
         run("~?", &[formatter, arguments], &mut ctx, &runtime),
         ("<item>".to_owned(), 2),
     );
+    let tail = string(&runtime, &mut ctx, "tail");
+    assert_eq!(
+        run(
+            "~?~A",
+            &[formatter_symbol, arguments, tail],
+            &mut ctx,
+            &runtime
+        ),
+        ("<item>tail".to_owned(), 3),
+    );
 
     for (control, arguments) in [
         ("~@?", vec![formatter]),
-        ("~?", vec![Word::NIL, Word::NIL]),
+        ("~@?", vec![formatter_symbol]),
+        ("~?", vec![Word::fixnum(0), Word::NIL]),
         ("~@?", vec![Word::character(u32::from('x'))]),
     ] {
         let parsed = parse(control).expect("control");

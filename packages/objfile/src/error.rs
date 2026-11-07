@@ -74,6 +74,7 @@ pub struct FaslError {
 
 impl FaslError {
     /// Creates a rejection without an input offset.
+    #[must_use]
     pub const fn new(reason: FaslRejectReason) -> Self {
         Self {
             reason,
@@ -82,6 +83,7 @@ impl FaslError {
     }
 
     /// Creates a rejection at a byte offset in the serialized input.
+    #[must_use]
     pub const fn at(reason: FaslRejectReason, offset: usize) -> Self {
         Self {
             reason,

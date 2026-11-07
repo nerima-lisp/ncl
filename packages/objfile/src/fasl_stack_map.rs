@@ -4,7 +4,7 @@ use crate::fasl_records::{FaslCodeLayout, SectionReader, SectionWriter};
 const HEADER_SIZE: usize = 16;
 const MAX_RECORDS: usize = 1_048_576;
 
-/// One decoded entry in the existing SafepointMap wire representation.
+/// One decoded entry in the existing `SafepointMap` wire representation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SafepointEntry {
     /// Code-relative safepoint PC.
@@ -35,7 +35,7 @@ pub struct SafepointGroup {
 }
 
 /// Decodes and validates the canonical stack-map section.
-pub(super) fn decode_section(
+pub fn decode_section(
     bytes: &[u8],
     base_offset: usize,
     code_objects: &[FaslCodeLayout<'_>],
@@ -108,7 +108,7 @@ pub(super) fn decode_section(
 }
 
 /// Encodes stack-map groups in code-object and increasing-PC order.
-pub(super) fn encode_section(groups: &[SafepointGroup]) -> Result<Vec<u8>, FaslError> {
+pub fn encode_section(groups: &[SafepointGroup]) -> Result<Vec<u8>, FaslError> {
     if groups.len() > MAX_RECORDS {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
@@ -118,7 +118,7 @@ pub(super) fn encode_section(groups: &[SafepointGroup]) -> Result<Vec<u8>, FaslE
     ordered_groups.sort_by_key(|group| group.code_object_id);
     if ordered_groups
         .windows(2)
-        .any(|pair| pair[0].code_object_id == pair[1].code_object_id)
+        .any(|pair| matches!(pair, [left, right] if left.code_object_id == right.code_object_id))
     {
         return Err(FaslError::new(FaslRejectReason::InvalidSafepointMap));
     }
@@ -190,7 +190,7 @@ fn decode_entry(cursor: &mut SectionReader<'_>) -> Result<SafepointEntry, FaslEr
     if register_ids
         .iter()
         .enumerate()
-        .any(|(bit, id)| usize::try_from(*id).ok() != bit_for_register(register_mask, bit))
+        .any(|(bit, id)| Some(usize::from(*id)) != bit_for_register(register_mask, bit))
     {
         return Err(FaslError::at(
             FaslRejectReason::InvalidSafepointMap,
@@ -280,7 +280,7 @@ fn bit_for_register(mask: u16, ordinal: usize) -> Option<usize> {
         .and_then(|bit| usize::try_from(bit).ok())
 }
 
-fn unused_bitmap_bits_are_set(bitmap: &[u8], slot_words: u16) -> bool {
+const fn unused_bitmap_bits_are_set(bitmap: &[u8], slot_words: u16) -> bool {
     let used = slot_words % 8;
     if used == 0 {
         return false;

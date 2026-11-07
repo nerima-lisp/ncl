@@ -23,11 +23,11 @@ impl SymbolBindingKind {
         }
     }
 
-    fn from_tag(tag: u32, offset: usize) -> Result<Self, FaslError> {
+    const fn from_tag(tag: u32, offset: usize) -> Result<Self, FaslError> {
         match tag {
             1 => Ok(Self::Lisp),
             2 => Ok(Self::NativeFunction),
-            _ => Err(FaslError::at(FaslRejectReason::InvalidReference, offset)),
+            0 | 3..=u32::MAX => Err(FaslError::at(FaslRejectReason::InvalidReference, offset)),
         }
     }
 }
@@ -46,7 +46,7 @@ pub struct FaslSymbol {
 }
 
 /// Encodes the canonical symbol section.
-pub(super) fn encode(symbols: &[FaslSymbol]) -> Result<Vec<u8>, FaslError> {
+pub fn encode(symbols: &[FaslSymbol]) -> Result<Vec<u8>, FaslError> {
     check_record_count(symbols.len())?;
     validate_order(symbols)?;
     let mut section_size = 4_usize;
@@ -85,7 +85,7 @@ pub(super) fn encode(symbols: &[FaslSymbol]) -> Result<Vec<u8>, FaslError> {
 }
 
 /// Decodes the canonical symbol section. `base_offset` is its file offset.
-pub(super) fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslSymbol>, FaslError> {
+pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslSymbol>, FaslError> {
     if bytes.len() > MAX_SECTION_BYTES {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
@@ -186,7 +186,7 @@ fn validate_text(value: &str) -> Result<(), FaslError> {
     Ok(())
 }
 
-fn check_record_count(count: usize) -> Result<(), FaslError> {
+const fn check_record_count(count: usize) -> Result<(), FaslError> {
     if count > MAX_RECORDS {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
@@ -232,6 +232,10 @@ fn read_text(reader: &mut SectionReader<'_>) -> Result<String, FaslError> {
 mod tests {
     use super::*;
 
+    fn must_succeed<T, E>(result: Result<T, E>) -> T {
+        result.unwrap_or_else(|_| panic!("test fixture must be valid"))
+    }
+
     #[test]
     fn symbol_section_matches_canonical_bytes_and_round_trips() {
         let symbols = [FaslSymbol {
@@ -256,8 +260,8 @@ mod tests {
             binding_kind: SymbolBindingKind::Lisp,
             package: String::new(),
             name: "A".into(),
-        }])
-        .expect("test input encodes");
+        }]);
+        let valid = must_succeed(valid);
 
         let mut bad_flags = valid.clone();
         bad_flags[12..16].copy_from_slice(&1_u32.to_le_bytes());
@@ -266,7 +270,7 @@ mod tests {
             Err(FaslError::at(FaslRejectReason::InvalidReference, 332))
         );
 
-        let mut bad_padding = valid.clone();
+        let mut bad_padding = valid;
         let last = bad_padding.len() - 1;
         bad_padding[last] = 1;
         assert_eq!(

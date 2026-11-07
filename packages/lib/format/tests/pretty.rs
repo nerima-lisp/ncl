@@ -74,19 +74,41 @@ fn enable_pretty(ctx: &mut ThreadContext, runtime: &Runtime) {
 }
 
 #[test]
-fn underscore_modes_are_gated_by_pretty_mode_and_support_mandatory_breaks() {
+fn underscore_modes_distinguish_linear_fill_miser_and_mandatory_breaks() {
     let (runtime, mut ctx) = context();
     assert_eq!(execute_text("a~:@_b", &[], &mut ctx, &runtime).0, "ab");
     enable_pretty(&mut ctx, &runtime);
     assert_eq!(execute_text("a~:@_b", &[], &mut ctx, &runtime).0, "a\nb");
-    let long = "x".repeat(80);
-    for directive in ["~_", "~:_", "~@_"] {
-        let control = format!("{long}{directive}tail");
-        assert_eq!(
-            execute_text(&control, &[], &mut ctx, &runtime).0,
-            format!("{long}\ntail")
-        );
-    }
+    let exact_margin = "x".repeat(80);
+    assert_eq!(
+        execute_text(&format!("{exact_margin}~_tail"), &[], &mut ctx, &runtime).0,
+        format!("{exact_margin}\ntail")
+    );
+    assert_eq!(
+        execute_text(&format!("{exact_margin}~:_tail"), &[], &mut ctx, &runtime).0,
+        format!("{exact_margin}\ntail")
+    );
+    let over_margin = "x".repeat(81);
+    assert_eq!(
+        execute_text(&format!("{over_margin}~_tail"), &[], &mut ctx, &runtime).0,
+        format!("{over_margin}\ntail")
+    );
+    assert_eq!(
+        execute_text(&format!("{over_margin}~@_tail"), &[], &mut ctx, &runtime).0,
+        format!("{over_margin}tail")
+    );
+    let block_prefix = "p".repeat(40);
+    let block_content = "x".repeat(41);
+    assert_eq!(
+        execute_text(
+            &format!("~@<{block_prefix}~;{block_content}~@_tail~:>"),
+            &[],
+            &mut ctx,
+            &runtime,
+        )
+        .0,
+        format!("{block_prefix}{block_content}\n{}tail", " ".repeat(40))
+    );
 }
 
 #[test]
@@ -137,6 +159,29 @@ fn logical_blocks_apply_prefix_body_suffix_and_default_parentheses() {
     assert_eq!(
         execute_text("~:<pre~;~A~;post~:>", &[list], &mut ctx, &runtime).0,
         "preitempost"
+    );
+}
+
+#[test]
+fn logical_block_at_sign_separator_repeats_prefix_after_each_line_break() {
+    let (runtime, mut ctx) = context();
+    enable_pretty(&mut ctx, &runtime);
+    let first = string(&runtime, &mut ctx, "ab");
+    let second = string(&runtime, &mut ctx, "ef");
+    let tail = make_cons(&mut ctx, &runtime, second, Word::NIL).expect("tail");
+    let list = make_cons(&mut ctx, &runtime, first, tail).expect("list");
+    assert_eq!(
+        execute_text("~<pre~@;~A~:@_~A~:>", &[list], &mut ctx, &runtime).0,
+        "preab\npreef"
+    );
+
+    let first = string(&runtime, &mut ctx, "ab\ncd");
+    let second = string(&runtime, &mut ctx, "ef");
+    let tail = make_cons(&mut ctx, &runtime, second, Word::NIL).expect("tail");
+    let list = make_cons(&mut ctx, &runtime, first, tail).expect("list");
+    assert_eq!(
+        execute_text("~<pre~@;~A~3,4T~A~:>", &[list], &mut ctx, &runtime).0,
+        "preab\nprecd  ef"
     );
 }
 
@@ -291,13 +336,13 @@ fn named_formatter_lookup_errors_are_typed() {
 }
 
 #[test]
-fn logical_block_rejects_non_lists_and_dotted_lists() {
+fn logical_block_prints_non_lists_and_rejects_dotted_lists() {
     let (runtime, mut ctx) = context();
+    assert_eq!(
+        execute_text("~<pre~;~A~;post~:>", &[Word::fixnum(1)], &mut ctx, &runtime),
+        ("1".into(), 1)
+    );
     let control = parse("~<~A~:>").expect("format control");
-    let mut sink = StringSink::new();
-    let error = execute(&control, &[Word::fixnum(1)], &mut ctx, &runtime, &mut sink)
-        .expect_err("non-list block argument");
-    assert_eq!(error.kind, FormatErrorKind::WrongArgumentType);
     let dotted =
         make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2)).expect("dotted list");
     let mut sink = StringSink::new();

@@ -218,7 +218,7 @@ mod private_tests {
         bytes[84] = b'a';
         assert_eq!(
             decode_section(&bytes, 0, &layout()),
-            Err(FaslError::at(FaslRejectReason::InvalidDebugRecord, 80))
+            Err(FaslError::at(FaslRejectReason::InvalidDebugRecord, 65))
         );
     }
 

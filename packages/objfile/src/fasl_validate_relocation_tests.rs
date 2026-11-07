@@ -308,11 +308,18 @@ fn debug_validation_checks_file_and_record_ranges() {
         ),
         Ok(())
     );
+    assert_reason(
+        fasl_debug::validate(
+            std::slice::from_ref(&file),
+            &[DebugRecord {
+                code_object_id: 1,
+                ..valid_record.clone()
+            }],
+            &layouts,
+        ),
+        FaslRejectReason::InvalidReference,
+    );
     let invalid_records = [
-        DebugRecord {
-            code_object_id: 1,
-            ..valid_record.clone()
-        },
         DebugRecord {
             pc_start: 2,
             pc_end: 1,
@@ -335,6 +342,7 @@ fn debug_validation_checks_file_and_record_ranges() {
             ..valid_record.clone()
         },
         DebugRecord {
+            source_start: 1,
             source_end: 0,
             ..valid_record
         },

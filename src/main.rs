@@ -158,3 +158,21 @@ fn repl(options: ncl_runtime::RuntimeOptions) -> std::process::ExitCode {
     }
     std::process::ExitCode::SUCCESS
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_runtime_options;
+
+    #[test]
+    fn regular_ncl_diagnostics_do_not_enable_allocator_tracking() {
+        let (options, arguments) = parse_runtime_options(
+            ["--opt-diagnostics", "--script", "driver.lisp"]
+                .into_iter()
+                .map(str::to_owned),
+        )
+        .unwrap_or_else(|error| panic!("options: {error}"));
+        assert!(options.opt_diagnostics);
+        assert!(!options.pass_allocation_diagnostics);
+        assert_eq!(arguments, ["--script", "driver.lisp"]);
+    }
+}

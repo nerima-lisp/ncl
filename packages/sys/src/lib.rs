@@ -1,6 +1,7 @@
 #![deny(unsafe_op_in_unsafe_fn, clippy::undocumented_unsafe_blocks)]
 //! The single unsafe boundary of the NCL runtime.
 
+mod allocation_tracking;
 mod code;
 mod codegen;
 pub mod foreign;
@@ -21,6 +22,9 @@ mod word;
 #[cfg(test)]
 mod native_word_tests;
 
+pub use allocation_tracking::{
+    AllocationTrackingAllocator, AllocationTrackingError, AllocationTrackingScope,
+};
 pub use code::{
     CodeError, CodeObjectMetadata, CodePtr, CodeRegistry, FrameHeader, Safepoint, SafepointMap,
     SourceLocation, alloc_code, free_code, publish_code, scan_frame, scan_frame_chain,

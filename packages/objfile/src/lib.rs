@@ -13,7 +13,7 @@ pub use elf::{
     ElfArchitecture, ElfObject, ElfReader, ElfSection, ElfSectionKind, ElfSymbol,
     sections_from_generic, validate_elf,
 };
-pub use error::ObjectError;
+pub use error::{FaslError, FaslRejectReason, ObjectError};
 pub use executable::{
     ExecutableImage, validate_elf_executable, write_elf_executable, write_mach_executable,
 };

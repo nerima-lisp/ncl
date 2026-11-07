@@ -291,3 +291,7 @@ fn write_at(bytes: &mut [u8], offset: usize, value: &[u8]) -> Result<(), FaslErr
     destination.copy_from_slice(value);
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests_fasl_v1.rs"]
+mod private_tests;

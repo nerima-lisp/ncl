@@ -39,14 +39,13 @@ pub(super) struct CodeArena {
     base: usize,
     len: usize,
     next: AtomicUsize,
+    #[cfg(target_os = "macos")]
     backing: ArenaBacking,
 }
 
+#[cfg(target_os = "macos")]
 #[derive(Debug)]
 enum ArenaBacking {
-    #[cfg(target_os = "linux")]
-    Mapping,
-    #[cfg(target_os = "macos")]
     JitRegion { offset: usize },
 }
 
@@ -66,7 +65,6 @@ impl CodeArena {
                 base,
                 len,
                 next: AtomicUsize::new(0),
-                backing: ArenaBacking::Mapping,
             }))
         }
         #[cfg(target_os = "macos")]

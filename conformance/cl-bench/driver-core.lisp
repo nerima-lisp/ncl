@@ -73,7 +73,7 @@
   (loop for sample in samples
         for first = t then nil
         do (unless first (write-char #\, stream))
-           (format stream "~A" (coerce sample 'double-float)))
+           (format stream "~A" sample))
   (write-char #\] stream))
 
 (defun result-failed-p (results)

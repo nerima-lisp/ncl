@@ -1023,7 +1023,12 @@ class ScoreboardTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             with patch.object(
                 inclusion, "_run_process",
-                return_value=("process", "", "ReadEvalUnavailable while loading universe.lsp\n", 1),
+                return_value=(
+                    "process",
+                    f"{inclusion.PROTOCOL}\tPHASE\tARRAYS.1\tload:gclload2.lsp\n",
+                    "ReadEvalUnavailable while loading universe.lsp\n",
+                    1,
+                ),
             ):
                 with patch.object(inclusion, "_runtime_version", return_value="NCL"):
                     report = inclusion.measure_tests(
@@ -1031,9 +1036,13 @@ class ScoreboardTests(unittest.TestCase):
                         {"ARRAYS.1": "universe"}, 1, "ncl",
                     )
 
-        self.assertEqual(report["tests"][0]["status"], "error")
-        self.assertEqual(report["tests"][0]["reason"], "ReadEvalUnavailable while loading universe.lsp")
+        self.assertEqual(report["tests"][0]["status"], "harness_error")
+        self.assertEqual(report["tests"][0]["failure_class"], "runner-initialization")
+        self.assertEqual(report["tests"][0]["startup_phase"], "load:gclload2.lsp")
+        self.assertIn("ReadEvalUnavailable while loading universe.lsp", report["tests"][0]["reason"])
         self.assertEqual(report["tests"][0]["process_exit_status"], 1)
+        self.assertEqual(report["harness_error"], 1)
+        self.assertEqual(report["error"], 0)
 
     def test_compare_test_option_selects_one_baseline_test(self):
         with TemporaryDirectory() as directory:

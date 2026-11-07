@@ -95,15 +95,19 @@ def _test_runner(test_name: str, policy: str = "safety-3") -> str:
     return f'''(defvar *root-path*
   (make-pathname :name nil :type nil :version nil :defaults (truename "init.lsp")))
 {policy_form}
+{_protocol_record("PHASE", f"(write-string {test_symbol})", '(write-string "load:gclload1.lsp")')}
 (let ((*default-pathname-defaults* *root-path*))
   (load "gclload1.lsp"))
+{_protocol_record("PHASE", f"(write-string {test_symbol})", '(write-string "load:gclload2.lsp")')}
 (let ((*default-pathname-defaults* *root-path*))
   (load "gclload2.lsp"))
+{_protocol_record("PHASE", f"(write-string {test_symbol})", '(write-string "select-test")')}
 (when *load-pathname*
   (mapc #'regression-test:rem-test '{REMOVED_TEST_FORMS}))
 (let ((name (find-symbol {test_symbol} "CL-TEST")))
   (unless (and name (gethash name regression-test::*entries-table*))
     (error "No registered ANSI test named ~A" {test_symbol}))
+  {_protocol_record("PHASE", f"(princ (symbol-name name))", '(write-string "execute-test")')}
   {_protocol_record("BEGIN", "(princ (symbol-name name))")}
   (handler-case
       (let ((passed
@@ -177,6 +181,7 @@ def _parse_records(stdout: str) -> dict[str, Any]:
     results: dict[str, str] = {}
     conditions: dict[str, dict[str, str]] = {}
     sources: dict[str, str] = {}
+    phases: dict[str, str] = {}
     disabled: set[str] = set()
     begun: set[str] = set()
     done: set[str] = set()
@@ -223,6 +228,10 @@ def _parse_records(stdout: str) -> dict[str, Any]:
             if message_name is None or message_name not in conditions:
                 raise ValueError("condition message has no preceding error record")
             message_lines = ["\t".join(parts[2:])]
+        elif len(parts) == 4 and parts[1] == "PHASE":
+            if not parts[2] or not parts[3]:
+                raise ValueError("runner phase record requires a test name and phase")
+            phases[parts[2]] = parts[3]
         elif len(parts) == 4 and parts[1] == "ENTRY":
             if parts[2] in sources:
                 raise ValueError(f"duplicate test source: {parts[2]}")
@@ -238,6 +247,7 @@ def _parse_records(stdout: str) -> dict[str, Any]:
         "results": results,
         "conditions": conditions,
         "sources": sources,
+        "phases": phases,
         "disabled": disabled,
         "begun": begun,
         "done": done,
@@ -414,7 +424,7 @@ def _ncl_error_kind(diagnostic: str | None) -> str | None:
 
 
 def failure_summary(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    groups: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    groups: dict[tuple[str, str, str], list[Mapping[str, Any]]] = {}
     default_classes = {
         "failed": "assertion",
         "error": "error",
@@ -427,20 +437,24 @@ def failure_summary(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
             continue
         failure_class = str(row.get("failure_class") or default_classes.get(str(row.get("status")), "incomplete"))
         subtype = str(row.get("condition_type") or row.get("error_kind") or "")
-        groups.setdefault((failure_class, subtype), []).append(row)
+        startup_phase = str(row.get("startup_phase") or "")
+        groups.setdefault((failure_class, subtype, startup_phase), []).append(row)
     summary = []
-    for (failure_class, subtype), members in sorted(
-        groups.items(), key=lambda item: (-len(item[1]), item[0][0], item[0][1]),
+    for (failure_class, subtype, startup_phase), members in sorted(
+        groups.items(), key=lambda item: (-len(item[1]), item[0][0], item[0][1], item[0][2]),
     ):
         ordered = sorted(members, key=lambda row: (str(row.get("chapter", "")), str(row.get("name", ""))))
-        summary.append({
+        item = {
             "failure_class": failure_class,
             "condition_type": subtype or None,
             "count": len(ordered),
             "representative_tests": [str(row.get("name", "")) for row in ordered[:3]],
             "chapters": sorted({str(row.get("chapter", "")) for row in ordered}),
             "message": str(ordered[0].get("message") or ordered[0].get("reason") or ""),
-        })
+        }
+        if startup_phase:
+            item["startup_phase"] = startup_phase
+        summary.append(item)
     return summary
 
 
@@ -510,6 +524,8 @@ def _run_test(
     status: str
     reason: str | None = None
     condition: Mapping[str, str] = {}
+    began = False
+    startup_phase: str | None = None
     if process_status == "timeout":
         status, reason = "timeout", diagnostic or f"test exceeded {timeout:g} seconds"
     elif process_status == "harness_error":
@@ -518,7 +534,7 @@ def _run_test(
         try:
             records = _parse_records(stdout)
         except ValueError as error:
-            records = {"results": {}, "conditions": {}, "begun": set(), "done": set()}
+            records = {"results": {}, "conditions": {}, "phases": {}, "begun": set(), "done": set()}
             parse_error = str(error)
         else:
             parse_error = None
@@ -527,11 +543,14 @@ def _run_test(
         began = name in records["begun"]
         completed = name in records["done"]
         if not began:
+            startup_phase = records.get("phases", {}).get(name, "runner-startup")
             if returncode not in (None, 0) or diagnostic:
-                status = "error"
-                reason = parse_error or diagnostic or f"interpreter exited with status {returncode} before test start"
+                status = "harness_error"
+                detail = parse_error or diagnostic or f"interpreter exited with status {returncode}"
+                reason = f"runner stopped before BEGIN during {startup_phase}: {detail}"
             else:
-                status, reason = "harness_error", parse_error or "test runner did not start the requested test"
+                status = "harness_error"
+                reason = parse_error or f"test runner did not start the requested test during {startup_phase}"
         elif returncode != 0:
             status = "error"
             reason = diagnostic or f"interpreter exited with status {returncode}"
@@ -555,6 +574,8 @@ def _run_test(
         failure_class, termination = "harness", "spawn_error"
     elif signal_number is not None:
         failure_class, termination = "crash", "signal"
+    elif not began:
+        failure_class, termination = "runner-initialization", "exit"
     elif status == "failed":
         failure_class, termination = "assertion", "exit"
     elif condition.get("condition_type"):
@@ -575,6 +596,8 @@ def _run_test(
     }
     if failure_class:
         row["failure_class"] = failure_class
+    if startup_phase:
+        row["startup_phase"] = startup_phase
     if reason:
         row["reason"] = reason
     if diagnostic:
@@ -674,7 +697,7 @@ def compare_results(
         if isinstance(result, Mapping):
             for key in (
                 "failure_class", "condition_type", "message", "diagnostic", "error_kind",
-                "exit_code", "signal_number", "termination", "process_exit_status",
+                "exit_code", "signal_number", "termination", "process_exit_status", "startup_phase",
             ):
                 if key in result:
                     row[key] = result[key]

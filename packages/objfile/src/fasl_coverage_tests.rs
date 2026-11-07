@@ -188,3 +188,160 @@ fn private_fasl_helpers_round_trip_payload_and_relocations() {
         Ok(())
     );
 }
+
+fn legacy_value(relocations: Vec<Relocation>) -> Fasl {
+    Fasl {
+        header: FaslHeader {
+            architecture: Architecture::X86_64,
+            features: 0,
+        },
+        sections: FaslSection {
+            code: vec![0; 8],
+            relocations,
+            constants: vec![1],
+            symbols: vec![2],
+            stack_maps: vec![3],
+            debug: vec![4],
+        },
+    }
+}
+
+fn legacy_bytes(value: &Fasl) -> Vec<u8> {
+    let result = FaslWriter::write(value);
+    assert!(result.is_ok());
+    let Ok(bytes) = result else { return Vec::new() };
+    bytes
+}
+
+fn assert_legacy_header_field(bytes: &[u8], field: &'static str) {
+    assert!(matches!(
+        FaslReader::read(bytes, Architecture::X86_64, 0),
+        Err(ObjectError::InvalidField { field: actual, .. }) if actual == field
+    ));
+}
+
+#[test]
+fn legacy_reader_accepts_both_versions_and_reports_header_failures() {
+    let value = legacy_value(Vec::new());
+    let v2 = legacy_bytes(&value);
+    assert_eq!(
+        FaslReader::read(&v2, Architecture::X86_64, 0),
+        Ok(value.clone())
+    );
+
+    let mut v1 = v2.clone();
+    v1[8..10].copy_from_slice(&1_u16.to_le_bytes());
+    assert_eq!(FaslReader::read(&v1, Architecture::X86_64, 0), Ok(value));
+    assert!(matches!(
+        FaslReader::read(&v2[..63], Architecture::X86_64, 0),
+        Err(ObjectError::Truncated { needed: 64, .. })
+    ));
+
+    for (offset, byte, field) in [
+        (0, b'X', "magic"),
+        (8, 3, "version"),
+        (10, Architecture::Aarch64.wire_tag(), "architecture"),
+        (11, 4, "pointer width"),
+        (12, 0, "header"),
+        (14, 1, "reserved"),
+        (16, 1, "feature bitmap"),
+    ] {
+        let mut malformed = v2.clone();
+        malformed[offset] = byte;
+        assert_legacy_header_field(&malformed, field);
+    }
+    let mut bad_header_size = v2;
+    bad_header_size[12] = 1;
+    bad_header_size[13] = 63;
+    assert_legacy_header_field(&bad_header_size, "header");
+}
+
+#[test]
+fn legacy_reader_rejects_invalid_relocation_references_and_sites() {
+    let relocation = |section, offset| Relocation {
+        section: SectionId(section),
+        offset,
+        kind: RelocKind::Abs64,
+        symbol: SymbolRef::Local(0),
+        addend: 0,
+    };
+    let wrong_section = legacy_bytes(&legacy_value(vec![relocation(1, 0)]));
+    assert!(matches!(
+        FaslReader::read(&wrong_section, Architecture::X86_64, 0),
+        Err(ObjectError::InvalidReference {
+            kind: "FASL relocation section",
+            index: 1
+        })
+    ));
+
+    let wrong_site = legacy_bytes(&legacy_value(vec![relocation(0, 1)]));
+    assert!(matches!(
+        FaslReader::read(&wrong_site, Architecture::X86_64, 0),
+        Err(ObjectError::OutOfBounds {
+            section: "FASL relocation",
+            offset: 1,
+            size: 8
+        })
+    ));
+}
+
+#[test]
+fn legacy_writer_and_ranges_reject_unrepresentable_values() {
+    let bad_addend = legacy_value(vec![Relocation {
+        section: SectionId(0),
+        offset: 0,
+        kind: RelocKind::Abs64,
+        symbol: SymbolRef::Local(0),
+        addend: i64::MAX,
+    }]);
+    assert!(matches!(
+        FaslWriter::write(&bad_addend),
+        Err(ObjectError::InvalidField {
+            field: "relocation addend",
+            ..
+        })
+    ));
+
+    let mut underflow = legacy_bytes(&legacy_value(Vec::new()));
+    underflow[40..44].copy_from_slice(&64_u32.to_le_bytes());
+    assert!(matches!(
+        read_fasl_ranges(&underflow, 2),
+        Err(ObjectError::Overlap {
+            first: "relocation",
+            second: "constant"
+        })
+    ));
+
+    let mut relocation_size_overflow = legacy_bytes(&legacy_value(Vec::new()));
+    relocation_size_overflow[8..10].copy_from_slice(&1_u16.to_le_bytes());
+    relocation_size_overflow[36..40].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(matches!(
+        read_fasl_ranges(&relocation_size_overflow, 1),
+        Err(ObjectError::InvalidField {
+            field: "relocation size",
+            value: u64::MAX
+        })
+    ));
+
+    assert!(matches!(
+        fixed_array::<4>(&[], usize::MAX),
+        Err(ObjectError::Truncated {
+            offset: usize::MAX,
+            needed: 4
+        })
+    ));
+    assert!(matches!(
+        write_at(&mut [0], usize::MAX, &[1], "test"),
+        Err(ObjectError::OutOfBounds {
+            section: "test",
+            ..
+        })
+    ));
+    assert!(matches!(
+        write_at(&mut [0], 1, &[1], "test"),
+        Err(ObjectError::OutOfBounds {
+            section: "test",
+            ..
+        })
+    ));
+}

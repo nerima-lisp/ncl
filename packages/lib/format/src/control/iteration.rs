@@ -142,26 +142,26 @@ fn sublist_iteration(
     let frames = s.frames.clone();
     let (_, previous_is_one) = with_rooted_words(s.ctx, &sublists, d, |ctx, rooted| {
         let mut previous_is_one = previous_is_one;
-        let mut repetitions = 0;
         for (index, sublist) in rooted.iter().copied().enumerate() {
-            if limit.is_some_and(|max| repetitions >= max) {
+            if limit.is_some_and(|max| index >= max) {
                 break;
             }
             let args = list_elements(ctx, sublist, d)?;
             let (flow, next_previous_is_one) = sublist_body(
                 ctx,
-                runtime,
-                &args,
-                previous_is_one,
-                &frames,
-                body,
-                d,
+                SublistRequest {
+                    runtime,
+                    arguments: &args,
+                    previous_is_one,
+                    frames: &frames,
+                    body,
+                    directive: d,
+                    at_sign: false,
+                    last_sublist: index + 1 == rooted.len(),
+                },
                 o,
-                false,
-                index + 1 == rooted.len(),
             )?;
             previous_is_one = next_previous_is_one;
-            repetitions += 1;
             if flow == Flow::EscapeIterations {
                 break;
             }
@@ -169,15 +169,17 @@ fn sublist_iteration(
         if rooted.is_empty() && force && limit != Some(0) {
             let (_, next_previous_is_one) = sublist_body(
                 ctx,
-                runtime,
-                &[],
-                previous_is_one,
-                &frames,
-                body,
-                d,
+                SublistRequest {
+                    runtime,
+                    arguments: &[],
+                    previous_is_one,
+                    frames: &frames,
+                    body,
+                    directive: d,
+                    at_sign: false,
+                    last_sublist: true,
+                },
                 o,
-                false,
-                true,
             )?;
             previous_is_one = next_previous_is_one;
         }
@@ -204,15 +206,17 @@ fn rest_sublist_iteration(
             if force && repetitions == 0 {
                 sublist_body(
                     s.ctx,
-                    s.runtime,
-                    &[],
-                    s.previous_is_one,
-                    &s.frames,
-                    body,
-                    d,
+                    SublistRequest {
+                        runtime: s.runtime,
+                        arguments: &[],
+                        previous_is_one: s.previous_is_one,
+                        frames: &s.frames,
+                        body,
+                        directive: d,
+                        at_sign: true,
+                        last_sublist: true,
+                    },
                     o,
-                    true,
-                    true,
                 )?;
             }
             break;
@@ -239,48 +243,55 @@ fn rest_sublist_body(
 ) -> FlowResult {
     let (flow, previous_is_one) = sublist_body(
         s.ctx,
-        s.runtime,
-        args,
-        s.previous_is_one,
-        &s.frames,
-        body,
-        d,
+        SublistRequest {
+            runtime: s.runtime,
+            arguments: args,
+            previous_is_one: s.previous_is_one,
+            frames: &s.frames,
+            body,
+            directive: d,
+            at_sign: true,
+            last_sublist,
+        },
         o,
-        true,
-        last_sublist,
     )?;
     s.previous_is_one = previous_is_one;
     Ok(flow)
 }
 
-fn sublist_body(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &[Word],
+#[derive(Clone, Copy)]
+struct SublistRequest<'a> {
+    runtime: &'a Runtime,
+    arguments: &'a [Word],
     previous_is_one: Option<bool>,
-    frames: &[ControlFrame],
-    body: &FormatControl,
-    d: &Directive,
-    o: &mut Output<'_>,
+    frames: &'a [ControlFrame],
+    body: &'a FormatControl,
+    directive: &'a Directive,
     at_sign: bool,
     last_sublist: bool,
+}
+
+fn sublist_body(
+    ctx: &mut ThreadContext,
+    request: SublistRequest<'_>,
+    output: &mut Output<'_>,
 ) -> Result<(Flow, Option<bool>), FormatError> {
-    let mut frames = frames.to_vec();
+    let mut frames = request.frames.to_vec();
     frames.push(ControlFrame::Iteration {
         colon: true,
-        at_sign,
-        last_sublist,
+        at_sign: request.at_sign,
+        last_sublist: request.last_sublist,
     });
-    with_rooted_words(ctx, args, d, |ctx, rooted| {
+    with_rooted_words(ctx, request.arguments, request.directive, |ctx, rooted| {
         let mut local = ExecutionState {
             arguments: rooted,
             index: 0,
-            previous_is_one,
+            previous_is_one: request.previous_is_one,
             frames,
             ctx,
-            runtime,
+            runtime: request.runtime,
         };
-        let flow = execute_control(&mut local, body, o)?;
+        let flow = execute_control(&mut local, request.body, output)?;
         Ok((flow, local.previous_is_one))
     })
 }

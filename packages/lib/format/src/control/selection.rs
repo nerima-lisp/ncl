@@ -43,26 +43,26 @@ pub(super) fn execute(
         }
         validate_separators(clauses, directive, false)?;
         let argument = state.take_argument(directive)?;
-        Some(if argument == Word::NIL { 0 } else { 1 })
+        Some(usize::from(argument != Word::NIL))
     } else {
         validate_separators(clauses, directive, true)?;
         match parameters.first() {
             None | Some(Parameter::Unsupplied) => {
                 let selector = state.take_argument(directive)?;
-                match classify_object(state.ctx, selector) {
-                    ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => {
-                        integer_value(state.ctx, selector).and_then(selector_index)
-                    }
-                    _ => {
-                        return Err(FormatError::at(
-                            directive,
-                            FormatErrorKind::WrongArgumentType,
-                        ));
-                    }
+                if matches!(
+                    classify_object(state.ctx, selector),
+                    ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)
+                ) {
+                    integer_value(state.ctx, selector).and_then(selector_index)
+                } else {
+                    return Err(FormatError::at(
+                        directive,
+                        FormatErrorKind::WrongArgumentType,
+                    ));
                 }
             }
             Some(Parameter::Integer(value)) => selector_index(*value),
-            Some(_) => {
+            Some(Parameter::Character(_) | Parameter::Relative | Parameter::Remaining) => {
                 return Err(FormatError::at(
                     directive,
                     FormatErrorKind::WrongArgumentType,
@@ -86,10 +86,10 @@ fn execute_selected(
     let index = selected
         .filter(|index| *index < clauses.len())
         .or_else(|| default.then_some(clauses.len().saturating_sub(1)));
-    match index {
-        Some(index) => execute_control(state, &clauses[index].control, output),
-        None => Ok(Flow::Continue),
-    }
+    index.and_then(|index| clauses.get(index)).map_or_else(
+        || Ok(Flow::Continue),
+        |clause| execute_control(state, &clause.control, output),
+    )
 }
 
 fn validate_separators(

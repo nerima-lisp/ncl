@@ -1,28 +1,24 @@
 use std::collections::HashSet;
 
 use ncl_object::{ObjectError, ObjectRef, Word, car, cdr, classify_object, with_rooted_slice};
+use ncl_printer::PrintOptions;
 
-use crate::executor::{ControlFrame, ExecutionState, Flow, FormatOutput, execute_control};
-use crate::model::{
-    ControlPart, ControlSegment, Directive, DirectiveBody, FormatControl, Parameter, TerminatorKind,
-};
-use crate::{FormatError, FormatErrorKind};
+mod prefix;
+mod underscore;
 
 pub(super) fn execute_underscore(
     directive: &Directive,
     output: &mut FormatOutput<'_>,
 ) -> Result<(), FormatError> {
-    if !directive.parameters.is_empty() {
-        return Err(FormatError::at(
-            directive,
-            FormatErrorKind::InvalidDirectiveUse,
-        ));
-    }
-    if output.pretty && ((directive.colon && directive.at_sign) || output.column >= output.margin) {
-        output.write_char('\n')?;
-    }
-    Ok(())
+    underscore::execute_underscore(directive, output)
 }
+
+use crate::executor::{ControlFrame, ExecutionState, Flow, FormatOutput, execute_control};
+use crate::model::{
+    ControlPart, ControlSegment, Directive, DirectiveBody, DirectiveKind, FormatControl, Parameter,
+    TerminatorKind,
+};
+use crate::{FormatError, FormatErrorKind};
 
 pub(super) fn execute_indent(
     directive: &Directive,
@@ -195,19 +191,41 @@ pub(super) fn execute_logical_block(
             FormatErrorKind::InvalidDirectiveUse,
         ));
     };
-    let (prefix, body, suffix) = logical_block_parts(segments, directive)?;
-    output.write_str(&prefix)?;
+    let (prefix, per_line_prefix, body, suffix) = logical_block_parts(segments, directive)?;
+    let list = if directive.at_sign {
+        None
+    } else {
+        let list = state.take_argument(directive)?;
+        if list != Word::NIL && !list.is_cons() {
+            let options = PrintOptions::from_specials(state.ctx, state.runtime);
+            return output.print(state, list, &options, directive);
+        }
+        Some(list)
+    };
+    if per_line_prefix.is_none() {
+        output.write_str(&prefix)?;
+    }
     let saved_block_start = output.block_start;
     let saved_indentation = output.indentation;
     output.block_start = effective_column(output);
     output.indentation = output.block_start;
+    if let Some(per_line_prefix) = &per_line_prefix {
+        output.write_str(per_line_prefix)?;
+    }
     let fill = directive
         .terminator
         .is_some_and(|terminator| terminator.at_sign);
-    let result = if directive.at_sign {
-        execute_rest_block(state, body, output, fill)
-    } else {
-        execute_list_block(directive, state, body, output, fill)
+    let result = match list {
+        Some(list) => execute_list_block(
+            directive,
+            state,
+            list,
+            body,
+            output,
+            fill,
+            per_line_prefix.as_deref(),
+        ),
+        None => execute_rest_block(state, body, output, fill, per_line_prefix.as_deref()),
     };
     output.block_start = saved_block_start;
     output.indentation = saved_indentation;
@@ -218,23 +236,52 @@ pub(super) fn execute_logical_block(
 fn logical_block_parts<'a>(
     segments: &'a [ControlSegment],
     directive: &Directive,
-) -> Result<(String, &'a FormatControl, String), FormatError> {
+) -> Result<(String, Option<String>, &'a FormatControl, String), FormatError> {
     match segments {
         [body] => Ok((
             if directive.colon { "(" } else { "" }.to_owned(),
+            None,
             &body.control,
             if directive.colon { ")" } else { "" }.to_owned(),
         )),
-        [prefix, body] => Ok((
-            literal_control(&prefix.control, directive)?,
-            &body.control,
-            if directive.colon { ")" } else { "" }.into(),
-        )),
-        [prefix, body, suffix] => Ok((
-            literal_control(&prefix.control, directive)?,
-            &body.control,
-            literal_control(&suffix.control, directive)?,
-        )),
+        [prefix, body] => {
+            let prefix = literal_control(&prefix.control, directive)?;
+            let per_line = body
+                .separator
+                .as_ref()
+                .is_some_and(|separator| separator.at_sign);
+            Ok((
+                if per_line {
+                    String::new()
+                } else {
+                    prefix.clone()
+                },
+                per_line.then_some(prefix),
+                &body.control,
+                if directive.colon {
+                    ")".into()
+                } else {
+                    String::new()
+                },
+            ))
+        }
+        [prefix, body, suffix] => {
+            let prefix = literal_control(&prefix.control, directive)?;
+            let per_line = body
+                .separator
+                .as_ref()
+                .is_some_and(|separator| separator.at_sign);
+            Ok((
+                if per_line {
+                    String::new()
+                } else {
+                    prefix.clone()
+                },
+                per_line.then_some(prefix),
+                &body.control,
+                literal_control(&suffix.control, directive)?,
+            ))
+        }
         _ => Err(FormatError::at(
             directive,
             FormatErrorKind::InvalidDirectiveUse,
@@ -263,6 +310,7 @@ fn execute_rest_block(
     body: &FormatControl,
     output: &mut FormatOutput<'_>,
     fill: bool,
+    per_line_prefix: Option<&str>,
 ) -> Result<(), FormatError> {
     let start = state.index;
     let previous_is_one = state.previous_is_one;
@@ -279,7 +327,7 @@ fn execute_rest_block(
             ctx: state.ctx,
             runtime,
         };
-        execute_logical_control(&mut nested, body, output, fill).map(|flow| {
+        execute_logical_control(&mut nested, body, output, fill, per_line_prefix).map(|flow| {
             state.index = state.arguments.len();
             state.previous_is_one = nested.previous_is_one;
             flow
@@ -292,11 +340,12 @@ fn execute_rest_block(
 fn execute_list_block(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
+    list: Word,
     body: &FormatControl,
     output: &mut FormatOutput<'_>,
     fill: bool,
+    per_line_prefix: Option<&str>,
 ) -> Result<(), FormatError> {
-    let list = state.take_argument(directive)?;
     let elements = list_elements(state.ctx, list, directive)?;
     let previous_is_one = state.previous_is_one;
     let runtime = state.runtime;
@@ -314,7 +363,7 @@ fn execute_list_block(
             runtime,
         };
         nested_previous_is_one = nested.previous_is_one;
-        match execute_logical_control(&mut nested, body, output, fill) {
+        match execute_logical_control(&mut nested, body, output, fill, per_line_prefix) {
             Ok(_) => Ok(()),
             Err(error) => {
                 execution_error = Some(error);
@@ -334,24 +383,41 @@ fn execute_logical_control(
     control: &FormatControl,
     output: &mut FormatOutput<'_>,
     fill: bool,
+    per_line_prefix: Option<&str>,
 ) -> Result<Flow, FormatError> {
     for part in &control.parts {
         let flow = match part {
             ControlPart::Literal(text) if fill => {
-                write_fill_literal(text, output)?;
+                if let Some(prefix) = per_line_prefix {
+                    prefix::write_fill_literal(text, output, prefix)?;
+                } else {
+                    write_fill_literal(text, output)?;
+                }
                 Flow::Continue
             }
             ControlPart::Literal(text) => {
-                output.write_str(text)?;
+                if let Some(prefix) = per_line_prefix {
+                    prefix::write_text(text, output, prefix)?;
+                } else {
+                    output.write_str(text)?;
+                }
                 Flow::Continue
             }
-            ControlPart::Directive(_) => execute_control(
-                state,
-                &FormatControl {
+            ControlPart::Directive(_) => {
+                let single = FormatControl {
                     parts: vec![part.clone()],
-                },
-                output,
-            )?,
+                };
+                if let Some(prefix) = per_line_prefix {
+                    let changes_indentation = matches!(
+                        part,
+                        ControlPart::Directive(directive)
+                            if directive.kind == DirectiveKind::Indent
+                    );
+                    prefix::execute_directive(state, &single, output, prefix, changes_indentation)?
+                } else {
+                    execute_control(state, &single, output)?
+                }
+            }
         };
         if flow != Flow::Continue {
             return Ok(flow);

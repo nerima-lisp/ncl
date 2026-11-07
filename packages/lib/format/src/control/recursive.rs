@@ -24,7 +24,10 @@ pub(super) fn execute(
     if matches!(control_type, ObjectRef::String(_)) {
         execute_string_control(directive, state, output, control_word)
     } else if !directive.at_sign
-        && matches!(control_type, ObjectRef::Function(_) | ObjectRef::Closure(_))
+        && matches!(
+            control_type,
+            ObjectRef::Function(_) | ObjectRef::Closure(_) | ObjectRef::Symbol(_)
+        )
     {
         execute_function_control(directive, state, output, control_word)
     } else {

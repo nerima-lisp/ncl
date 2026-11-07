@@ -47,7 +47,7 @@ pub(super) fn execute_up_arrow(directive: &Directive, state: &mut State<'_>) -> 
         return Err(invalid_use(directive));
     }
     let escape = match values.as_slice() {
-        [] if matches!(scope, Some(UpArrowScope::Iteration { .. })) => true,
+        [] if directive.colon && matches!(scope, Some(UpArrowScope::Iteration { .. })) => true,
         [] => state.remaining() == 0,
         [value] => *value == 0,
         [left, right] => left == right,
@@ -56,6 +56,9 @@ pub(super) fn execute_up_arrow(directive: &Directive, state: &mut State<'_>) -> 
     };
     if !escape {
         return Ok(Flow::Continue);
+    }
+    if !directive.colon {
+        return Ok(Flow::Escape);
     }
     match scope {
         Some(UpArrowScope::Iteration { last_sublist: true }) => Ok(Flow::EscapeIterations),

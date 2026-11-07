@@ -34,6 +34,7 @@ mod mutex;
 mod process;
 mod register;
 mod semaphore;
+pub mod signal_control;
 mod state;
 mod symbols;
 mod sync;

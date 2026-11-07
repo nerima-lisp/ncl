@@ -1,6 +1,10 @@
 use crate::os::declarations;
 use core::ptr::NonNull;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+#[path = "code/arena.rs"]
+mod arena;
+use arena::{CodeArena, allocate};
 #[path = "code/metadata.rs"]
 mod metadata;
 pub use metadata::{CodeObjectMetadata, SourceLocation};
@@ -14,17 +18,10 @@ pub use frames::{
     scan_frame_chain_with_registry, scan_frame_with_registers, walk_frame_headers,
 };
 
-const PAGE_SIZE: usize = 4096;
+#[cfg(not(target_os = "macos"))]
 const PROT_READ: i32 = 1;
-const PROT_WRITE: i32 = 2;
+#[cfg(not(target_os = "macos"))]
 const PROT_EXEC: i32 = 4;
-const MAP_PRIVATE: i32 = 2;
-#[cfg(target_os = "macos")]
-const MAP_ANON: i32 = 0x1000;
-#[cfg(target_os = "macos")]
-const MAP_JIT: i32 = 0x800;
-#[cfg(target_os = "linux")]
-const MAP_ANON: i32 = 0x20;
 
 /// Errors from executable code-space operations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -39,6 +36,8 @@ pub enum CodeError {
     NotPublished,
     /// The operating system rejected the mapping request.
     MappingFailed,
+    /// The process-wide executable code reservation has no free extent.
+    CapacityExceeded,
     /// The operating system rejected executable page permissions.
     ProtectionFailed,
     /// A live registered frame still returns into the code allocation.
@@ -52,7 +51,9 @@ pub enum CodeError {
 pub struct CodePtr {
     ptr: NonNull<u8>,
     len: usize,
+    #[cfg(not(target_os = "macos"))]
     mapping_len: usize,
+    _arena: Arc<CodeArena>,
     published: AtomicBool,
     entry: AtomicUsize,
 }
@@ -151,49 +152,23 @@ impl CodePtr {
     }
 }
 
-impl Drop for CodePtr {
-    fn drop(&mut self) {
-        // SAFETY: ptr and mapping_len came from the successful mmap owned by self.
-        let _ = unsafe { declarations::munmap(self.ptr.as_ptr().cast(), self.mapping_len) };
-    }
-}
-
 /// Allocate writable, non-moving code storage.
 ///
 /// # Errors
 ///
-/// Returns an error for an empty allocation or when the OS cannot map pages.
+/// Returns an error for an empty allocation, arithmetic overflow, unavailable
+/// mapping capacity, or an operating-system mapping failure.
 pub fn alloc_code(bytes: usize) -> Result<CodePtr, CodeError> {
     if bytes == 0 {
         return Err(CodeError::EmptyAllocation);
     }
-    let mapping_len = bytes
-        .checked_next_multiple_of(PAGE_SIZE)
-        .ok_or(CodeError::MappingFailed)?;
-    #[cfg(target_os = "macos")]
-    let flags = MAP_PRIVATE | MAP_ANON | MAP_JIT;
-    #[cfg(not(target_os = "macos"))]
-    let flags = MAP_PRIVATE | MAP_ANON;
-    #[cfg(target_os = "macos")]
-    let initial_prot = PROT_READ | PROT_WRITE | PROT_EXEC;
-    #[cfg(not(target_os = "macos"))]
-    let initial_prot = PROT_READ | PROT_WRITE;
-    // SAFETY: null requests an OS-selected page-aligned anonymous mapping.
-    let raw = unsafe {
-        declarations::mmap(
-            core::ptr::null_mut(),
-            mapping_len,
-            initial_prot,
-            flags,
-            -1,
-            0,
-        )
-    };
-    let ptr = NonNull::new(raw.cast()).ok_or(CodeError::MappingFailed)?;
+    let extent = allocate(bytes)?;
     Ok(CodePtr {
-        ptr,
+        ptr: extent.ptr,
         len: bytes,
-        mapping_len,
+        #[cfg(not(target_os = "macos"))]
+        mapping_len: extent.len,
+        _arena: extent.arena,
         published: AtomicBool::new(false),
         entry: AtomicUsize::new(0),
     })

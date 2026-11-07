@@ -322,12 +322,14 @@ fn observer_reports_pass_context_and_verification() {
     assert_eq!(events[0].function.as_deref(), Some("leaf"));
     assert_eq!(events[0].pass, "toggle");
     assert_eq!(events[0].changed, Some(true));
+    assert_eq!(events[0].allocated_bytes, None);
     assert_eq!(events[0].verification, crate::PassVerification::Passed);
     assert!(events[0].error.is_none());
     let formatted = events[0].to_string();
     assert!(formatted.contains("function=\"leaf\""));
     assert!(formatted.contains("pass=\"toggle\""));
     assert!(formatted.contains("changed=true verification=passed elapsed_ns="));
+    assert!(!formatted.contains("allocated_bytes"));
 }
 
 #[test]

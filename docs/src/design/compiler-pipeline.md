@@ -74,18 +74,27 @@ application: its registry starts empty, and the definition probe fails first.
 
 ## HIR and MIR boundary
 
-HIR is the semantic optimization layer required by decision D-02 between macro
-expansion and the existing low-level `ncl-ir` MIR. HIR keeps package-qualified
-identities for functions and variables, lexical and dynamic scope, and full CL
-type facts, declarations, source origins, and explicit condition behavior.
-HIR operations
+HIR is the semantic optimization layer required by D-02, which separates
+Lisp-semantic HIR from machine-oriented MIR, between macro expansion and the
+existing low-level `ncl-ir` MIR. It belongs to the new `ncl-hir` crate at
+`packages/compiler/hir/`. The l02a-crates lane must revise the [crate map](crates.md)
+before L3-1 starts, adding the member and the
+`ncl-compiler-front -> ncl-hir -> ncl-ir` and
+`ncl-opt -> ncl-hir` edges. HIR keeps package-qualified identities for
+functions and variables, lexical and dynamic scope, full CL type facts,
+declarations, source origins, and explicit condition behavior. HIR operations
 must not be reduced to name-only builtins before known-function transforms,
 type inference, call analysis, and policy checks have run.
 
+HIR owns the compilation-unit index across per-form arenas. The inliner reads
+that index through `ncl-opt -> ncl-hir`; runtime owns the compilation entry
+point but not the index. `ncl-types` remains the runtime type-specifier model,
+while HIR owns the compiler-only abstract lattice and front end maps known
+runtime specifiers into it. See the [HIR type contract](hir.md#common-lisp-type-lattice).
 MIR carries control flow, machine-oriented value classes, explicit call and
-condition edges, and the GC facts needed by code generation. The final crate
-assignment for HIR and MIR follows the [crate map](crates.md); the names in
-this contract describe compiler stages, not a competing crate map.
+condition edges, and the GC facts needed by code generation. The crate edges
+listed above are a required addition to the crate map, not a change to its
+other ownership rules.
 
 The HIR-to-MIR boundary must:
 
@@ -113,11 +122,11 @@ fact is not itself a register assignment.
 | Stage | Representation | Work and dependency |
 |---|---|---|
 | 1. Read and expand | Forms, then front-end AST | Read source, macroexpand ordinary macros, apply compiler macros and source transforms in the correct environment, and retain source expansion origins. A compiler macro obeys `NOTINLINE`. |
-| 2. Build HIR | Per-form HIR arenas plus a compilation-unit index | Resolve lexical bindings and package-qualified symbols; attach declarations, policy, source locations, and known-function facts. Verify the completed form. |
+| 2. Build HIR | `ncl-hir`: per-form arenas plus its compilation-unit index | Resolve lexical bindings and package-qualified symbols; attach declarations, policy, source locations, and known-function facts. Verify the completed form. |
 | 3. Normalize local functions | HIR | Perform local-call analysis, assignment conversion, contification, capture analysis, and tail-position marking. Preserve `FLET` and `LABELS` scope rules. |
 | 4. Infer and optimize | HIR | Run type/effect/constraint propagation, known-function and sequence transforms, inlining, SCCP, GVN/CSE, copy propagation, jump threading, and loop transforms. Re-run dependent analyses after a rewrite changes calls or control flow. |
-| 5. Generate required checks | HIR | After inference and source transforms, insert policy-required type, argument-count, keyword, and array-bound checks as explicit condition edges. Re-run HIR simplification to remove only checks proved redundant. |
-| 6. Select allocation lifetime | HIR facts | Run escape and dynamic-extent analysis after HIR transforms and required checks have exposed all relevant control flow. Decide which values may use stack lifetime; defer layout, barriers, TLAB code, and physical representation to MIR/codegen. |
+| 5. Generate required checks | HIR | `H130 CheckGeneration` inserts policy-required type, argument-count, keyword, and array-bound checks as explicit condition edges after inference. Lower type-check failures through `ncl_signal_type_error(datum, expected_type, source_origin)`; pass a full type-specifier constant and code-origin ID. Apply the [FR-C08 safety matrix](hir.md#declarations-and-optimization-policy), then run post-check simplification. |
+| 6. Select allocation lifetime | HIR facts | Run escape and dynamic-extent analysis after HIR transforms and required checks have exposed all relevant control flow. Decide which values may use stack lifetime; defer layout, barriers, TLAB code, and physical representation to MIR/codegen. Omit a write barrier only for a raw non-managed slot, as specified by the [GC contract](gc-interface.md); every managed reference store writes the slot and then calls the barrier. |
 | 7. Lower and optimize | MIR | Lower semantic operations and selected representations; run MIR cleanup, instruction selection, address/immediate folding, compare/branch fusion, and peephole optimization. Preserve explicit GC maps and debug origins. |
 | 8. Allocate and emit | Machine IR and code | Run register allocation and its checker, emit target code and relocation data, and publish specialized/public entries with the runtime metadata. |
 
@@ -126,6 +135,41 @@ verifier runs after each MIR pass. The machine verifier and register allocator
 checker run before encoding. A pass that changes a fact invalidates dependent
 type, effect, escape, dominance, and liveness information before the next
 consumer uses it.
+
+### Stable pass IDs and order
+
+These IDs name the HIR optimization schedule and the later MIR passes. IDs are
+stable across releases and are never reassigned. A new pass receives a new ID
+and an explicit order before any implementation lane starts.
+
+| Phase | ID | Pass |
+|---|---|---|
+| HIR fixed point before checks | H010 | Local-call analysis and assignment conversion |
+| HIR fixed point before checks | H020 | Control normalization, tail-position marking, and capture analysis |
+| HIR fixed point before checks | H030 | Type, effect, and constraint propagation |
+| HIR fixed point before checks | H040 | Known-function and guarded source transforms |
+| HIR fixed point before checks | H050 | Inlining and dependent-analysis invalidation |
+| HIR fixed point before checks | H060 | Arithmetic and sequence transforms |
+| HIR fixed point before checks | H070 | SCCP |
+| HIR fixed point before checks | H080 | GVN/CSE |
+| HIR fixed point before checks | H090 | Copy propagation |
+| HIR fixed point before checks | H100 | Jump threading |
+| HIR fixed point before checks | H110 | Loop transforms |
+| Check insertion | H130 | Policy-driven check generation |
+| HIR fixed point after checks | H140 | Check-aware simplification and dead-code elimination |
+| Final HIR analysis | H150 | Escape and allocation-lifetime analysis |
+| MIR | M010 | Representation selection and semantic lowering |
+| MIR | M020 | MIR value and control-flow cleanup |
+| MIR | M030 | Target instruction selection |
+| MIR | M040 | Address and immediate folding |
+| MIR | M050 | Compare/branch fusion |
+| MIR | M060 | Target peephole cleanup |
+| Machine | M070 | Register allocation and its checker |
+
+HIR passes H010-H110 run in ID order to a fixed point. H130 runs once after
+that fixed point; H140 then runs to a fixed point, and H150 recomputes escape
+and lifetime facts from the final checked CFG. MIR and machine passes run in ID
+order after lowering. Each pass reports which fact domains it invalidates.
 
 ### Fixed points and opt-bisect
 
@@ -136,16 +180,21 @@ limit. If fuel expires, the compiler reports that optimization stopped; it
 must not report convergence or use unverified facts. The last verified HIR is
 the rollback point for a failed pass.
 
-Passes have stable identifiers and deterministic ordering. `opt-bisect` accepts
-a pass-prefix limit: compile once with the first N passes enabled, then binary
-search the smallest prefix that reproduces a failure. The report records the
-pass identifiers, iteration, source form, and policy. Pass dumps are available
-at each boundary. A verifier failure or fuel exhaustion cannot be hidden by
-bisect mode.
+Pass invocation order is the flattened deterministic trace of the ordered pass
+schedule across fixed-point iterations. `opt-bisect N` runs the first N pass
+invocations in that trace, not the first N distinct pass IDs; a repeated pass
+in a later iteration is another invocation. It verifies the boundary after
+the Nth invocation, then binary-searches the smallest invocation prefix that
+reproduces a failure. `N = 0` runs no optimization pass invocation. The report
+records the pass ID, invocation iteration, source form, and policy. Pass dumps
+are available at each boundary. A verifier
+failure or fuel exhaustion cannot be hidden by bisect mode.
 
-Per decision D-10, CI and tests always verify HIR. Release builds keep the
-verifier enabled by default until V2 and V3 pass; afterward, release builds
-may disable it by default but retain an explicit enable option.
+Per D-10, CI and tests always verify HIR. Release builds keep the verifier
+enabled by default until V2 and V3 pass; afterward, release builds may disable
+it by default but retain an explicit enable option. This keeps verification on
+while type and behavior soundness lack differential evidence, then permits the
+compile-time cost to be removed from ordinary release builds.
 
 V2 is the fixed-seed ANSI test suite's random tester (`RTP.*`), including
 `loop-random-int-forms`; V3 compares generated UB-free programs with SBCL under
@@ -168,7 +217,7 @@ mismatches.
 | C10 arithmetic | HIR transforms, then MIR | Specialize generic arithmetic by proven types and arity; preserve overflow and bignum fallback. Resolve operators by symbol identity, not printed name. |
 | C11 sequences and arrays | HIR transforms, then MIR | Specialize only with proven sequence/element types; resolve constant keyword arguments; let safety policy control bounds checks. |
 | C12 control and multiple values | HIR control, then MIR/codegen | Preserve multiple-value and NLX semantics; select jump tables only when type range, density, policy, and target favor them. |
-| C13 allocation | HIR escape/lifetime analysis, then MIR/codegen | Honor `DYNAMIC-EXTENT`; stack-allocate only proven non-escaping values; lower TLAB allocation and barrier elision with GC invariants. |
+| C13 allocation | HIR escape/lifetime analysis, then MIR/codegen | Honor `DYNAMIC-EXTENT`; stack-allocate only proven non-escaping values; lower TLAB allocation. Omit a write barrier only for a raw non-managed slot, as specified by the [GC contract](gc-interface.md); every managed reference store writes the slot and then calls the barrier. |
 | C14 loops | HIR analysis and transforms, then MIR | Recognize loops and induction variables before LICM, strength reduction, and bounds-check removal. Unswitching and unrolling remain optional. |
 | C15 global SSA optimization | HIR and MIR | HIR owns semantic SCCP/GVN/copy propagation/jump threading; MIR owns target-aware cleanup and peepholes. Preserve effects and error paths. |
 | C16 CLOS and structures | HIR transforms plus runtime | Specialize proven slots, accessors, constructors, and dispatch sites. Runtime owns mutable generic-function and effective-method caches. |
@@ -205,7 +254,7 @@ backtracking allocator such as regalloc2 and measure:
 Record the CPU, OS, compiler revision, and corpus with the measurements. Run
 both allocators on the same host and interleave at least five A/B runs. Treat a
 regression as confirmed only when both the candidate median and minimum are at
-least 10% slower, as required by the lane measurement rules.
+least 10% slower.
 
 ## SBCL 2.6.10 source comparison
 
@@ -254,7 +303,7 @@ closures, and `&KEY` calls.
 |---|---|
 | HIR/MIR verifier | Zero invariant violations after each pass. |
 | Register-allocation checker | Zero invalid assignments or GC-map mismatches; it is the oracle for FR-D01. |
-| Opt-bisect | A controlled bad pass is isolated by pass-prefix search. |
+| Opt-bisect | A controlled bad pass is isolated by invocation-prefix search over the stable IDs and fixed-point trace. |
 | Generated code | The expected specialization, check, branch, allocation, or unboxed instruction is present or absent as asserted by the requirement. |
 | Allocation measurement | Allocation-byte assertions cover zero-allocation requirements and stack/TLAB allocation requirements. |
 | Runtime comparison | Compare V7 micro suites and cl-bench with the same-day SBCL baseline under AC-3. |
@@ -265,39 +314,48 @@ closures, and `&KEY` calls.
 L3 names the Wave 3 optimization lanes in the
 [wave plan](../project/wave-plan.md). Lane IDs such as L0-3, L1-4, and L2-ch7
 refer to dependencies in that plan. L3-1 lands first and freezes the HIR
-contract before the other optimization lanes start. The commit sequence below
-keeps the HIR foundation reviewable. Paths name bounded contexts; final crate
+contract before the other optimization lanes start. L3-1a through L3-1e are
+sequential commits in the listed order; each depends on the preceding slice.
+L3-2 through L3-15 start after L3-1e completes. Paths name bounded contexts; final crate
 names follow the [crate map](crates.md).
 
 | Order | Owned paths | Completion condition and focused evidence |
 |---|---|---|
-| L3-1a: arena and IDs | `packages/compiler/hir/src/lib.rs`, `packages/compiler/hir/src/arena.rs`, `packages/compiler/hir/src/ids.rs`, `packages/compiler/hir/tests/arena.rs` | One arena per top-level form; typed indices reject invalid bounds. Test arena ownership, index reuse rules, and overflow handling. |
-| L3-1b: semantic nodes and bindings | `packages/compiler/hir/src/node.rs`, `packages/compiler/hir/src/binding.rs`, `packages/compiler/hir/src/control.rs`, `packages/compiler/hir/tests/bindings.rs` | Node kinds preserve calls, assignments, local function scope, multiple values, cleanup, and non-local exits. Test `FLET`/`LABELS` visibility and binding identity. |
-| L3-1c: CL type model | `packages/compiler/hir/src/cl_type.rs`, `packages/compiler/hir/tests/cl_type.rs` | Range endpoints, `MEMBER`, union/intersection, and yes/no/unknown subtype results preserve CL meaning. Test known and unknown subtype cases. |
-| L3-1d: policy, locations, and verifier | `packages/compiler/hir/src/policy.rs`, `packages/compiler/hir/src/source.rs`, `packages/compiler/hir/src/verify.rs`, `packages/compiler/hir/tests/verifier.rs` | Verifier catches invalid indices, scope, CFG, source origins, and unsound facts after every pass. Release behavior matches D-10. |
-| L3-1e: front-end builder and MIR bridge | `packages/compiler/front/src/hir_builder.rs`, `packages/compiler/hir/src/lower.rs`, `packages/compiler/front/tests/hir_builder.rs` | Front end builds verified HIR and lowers representative forms to current MIR without changing behavior. Run V4 verifier and compare execution results for the covered forms. |
+| L3-1a: arena and IDs | `packages/compiler/hir/src/arena.rs`, `packages/compiler/hir/src/ids.rs`, `packages/compiler/hir/tests/arena.rs` | One arena per top-level form; typed indices reject invalid bounds. Test arena ownership, index reuse rules, and overflow handling. |
+| L3-1b: semantic nodes and bindings | `packages/compiler/hir/src/node.rs`, `packages/compiler/hir/src/binding.rs`, `packages/compiler/hir/src/control.rs`, `packages/compiler/hir/tests/bindings.rs` | Node kinds preserve calls, assignments, local function scope, multiple values, cleanup, and non-local exits. Use the specified structured-node plus CFG-block representation. Test `FLET`/`LABELS` visibility and binding identity. |
+| L3-1c: CL type model | `packages/compiler/hir/src/cl_type.rs`, `packages/compiler/hir/src/cl_type/numeric.rs`, `packages/compiler/hir/src/cl_type/compound.rs`, `packages/compiler/hir/src/cl_type/relation.rs`, `packages/compiler/hir/tests/cl_type.rs` | Keep `cl_type.rs` as a facade below 500 lines. Map known `ncl-types::TypeSpecifier` forms, retain unresolved forms opaquely, and test shared type meanings plus yes/no/unknown subtype results. |
+| L3-1d: policy, locations, and verifier | `packages/compiler/hir/src/policy.rs`, `packages/compiler/hir/src/source.rs`, `packages/compiler/hir/src/verify.rs`, `packages/compiler/hir/tests/verifier.rs` | Verifier checks indices, scope, CFG, source origins, fact epochs, and check edges after every pass. Type-fact soundness is verified by V3. Release behavior matches D-10. |
+| L3-1e: front-end builder and MIR bridge | `packages/compiler/hir/src/lib.rs`, `packages/compiler/front/src/hir_builder.rs`, `packages/compiler/front/src/hir_builder/bindings.rs`, `packages/compiler/front/src/hir_builder/control.rs`, `packages/compiler/front/src/hir_builder/calls.rs`, `packages/compiler/front/src/hir_builder/types.rs`, `packages/compiler/front/src/hir_builder/declarations.rs`, `packages/compiler/hir/src/lower.rs`, `packages/compiler/front/tests/hir_builder.rs`, `packages/compiler/front/tests/fixtures/hir-bridge/` | Keep `hir_builder.rs` as a facade below 500 lines. L3-1e solely owns `ncl-hir`'s `lib.rs` and exports the L3-1 modules. The checked-in fixture corpus covers every emitted HIR node family, including bindings, local/global/indirect calls, declarations, multiple values, cleanup, and non-local exits. Compare results and condition outcomes with baseline outputs; run V4 verification through HIR and MIR. |
 
-The remaining L3 lanes own non-overlapping modules. Integration tests use
-lane-prefixed paths such as `packages/compiler/opt/tests/l3_2_*.rs`; private
-invariant tests stay beside their module. Prefixes are unique within each
-crate. All rows use V4 as a candidate requirement. Each optimization row also
-uses V7 generated-code inspection and its requirement-specific suite.
+The remaining L3 lanes own non-overlapping modules. L3-2 solely owns
+`packages/compiler/opt/src/hir.rs`, the pass registry root and the ordered
+schedule. Other lanes add implementations and pass constructors only in their
+owned modules; they do not edit the registry root. L3-2 performs the registry
+integration after the pass modules are ready. `packages/compiler/hir/src/lib.rs`
+is solely owned by L3-1e, which integrates module exports after the earlier
+L3-1 modules land. Integration tests use lane-prefixed paths such as
+`packages/compiler/opt/tests/l3_2_*.rs`; private invariant tests stay beside
+their module. Prefixes are unique within each crate. Split large
+`type_inference.rs` implementations into its facade and named files under
+`type_inference/`. No lane uses `mod.rs`. All rows use V4 as a candidate
+requirement. Each optimization row also uses V7 generated-code inspection and
+its requirement-specific suite.
 
 | Lane | Requirement | Owned paths | Depends on | Additional V4/V7 evidence |
 |---|---|---|---|---|
-| L3-2 | C01-C03 | `packages/compiler/opt/src/hir/local_calls.rs`, `packages/compiler/opt/src/hir/tail_calls.rs`, `packages/compiler/opt/src/hir/closures.rs`, `packages/codegen/src/tail_call.rs` | L3-1 | Ten-million-step tail recursion, mutual-tail calls, nonescaping `FLET` allocation, closure micro suite. |
-| L3-3 | C04, C05, C10, C11 | `packages/compiler/opt/src/hir/known_functions.rs`, `packages/compiler/opt/src/hir/source_transforms.rs`, `packages/compiler/opt/src/hir/arithmetic.rs`, `packages/compiler/opt/src/hir/sequences.rs`, `packages/compiler/front/src/compiler_macro_lisp.rs` | L3-1 | `(+ 1 2)` folds; failing folds retain calls and notes; compiler-macro expansion and `NOTINLINE`; arithmetic/sequence code inspection. |
-| L3-4 | C07-C08 | `packages/compiler/opt/src/hir/type_inference.rs`, `packages/compiler/opt/src/hir/constraints.rs`, `packages/compiler/opt/tests/l3_4_type_inference.rs` | L3-1 | Type soundness cases plus V2 RTP before merge to the next dependent optimizer. Check safety policies and generated guard counts. |
-| L3-5 | C06, C18 | `packages/compiler/opt/src/hir/inlining.rs`, `packages/runtime/src/compilation_unit.rs` | L3-3 | Same-unit cross-form inline test; declared inline call disappears from generated code; `NOTINLINE` remains a call. |
-| L3-6 | C09, FR-D03 | `packages/compiler/opt/src/hir/representation.rs`, `packages/codegen/src/lowering.rs`, `packages/codegen/src/safepoint.rs` | L3-4 | Double loop allocates zero bytes; generated scalar operations are unboxed; GC maps classify scalar values as non-pointers. |
-| L3-7 | C13 | `packages/compiler/opt/src/hir/escape.rs`, `packages/codegen/src/allocation.rs` | L3-2, L1-4 | Stack/TLAB allocation byte counts, escape cases that remain heap allocated, and GC stress. |
+| L3-2 | C01-C03 | `packages/compiler/opt/src/hir.rs`, `packages/compiler/opt/src/hir/local_calls.rs`, `packages/compiler/opt/src/hir/tail_calls.rs`, `packages/compiler/opt/src/hir/closures.rs`, `packages/codegen/src/tail_call.rs` | L3-1 | Sole owner of pass registry root and schedule; integrate lane pass constructors in stable-ID order. Ten-million-step tail recursion, mutual-tail calls, nonescaping `FLET` allocation, closure micro suite. |
+| L3-3 | C04, C05, C10, C11 | `packages/compiler/opt/src/hir/known_functions.rs`, `packages/compiler/opt/src/hir/source_transforms.rs`, `packages/compiler/opt/src/hir/arithmetic.rs`, `packages/compiler/opt/src/hir/sequences.rs`, `packages/compiler/front/src/compiler_macro_lisp.rs`, `packages/runtime/src/lib.rs` | L3-1 | Own the runtime compile entry's compiler-macro registry initialization (`packages/runtime/src/lib.rs:190`). `(+ 1 2)` folds; failing folds retain calls and notes; compiler-macro expansion and `NOTINLINE`; arithmetic/sequence code inspection. |
+| L3-4 | C07-C08 | `packages/compiler/opt/src/hir/type_inference.rs`, `packages/compiler/opt/src/hir/type_inference/transfer.rs`, `packages/compiler/opt/src/hir/type_inference/refine.rs`, `packages/compiler/opt/src/hir/type_inference/constraints.rs`, `packages/compiler/opt/src/hir/type_inference/worklist.rs`, `packages/compiler/opt/src/hir/constraints.rs`, `packages/compiler/opt/src/hir/checkgen.rs`, `packages/compiler/opt/tests/l3_4_type_inference.rs` | L3-1 | Keep `type_inference.rs` as a facade below 500 lines. Own stage H130 check generation. Run type-soundness cases and V2 RTP before the next dependent optimizer; inspect safety-policy guards. |
+| L3-5 | C06, C18 | `packages/compiler/opt/src/hir/inlining.rs`, `packages/compiler/hir/src/compilation_unit.rs` | L3-1, L3-3 | The compilation-unit index lives in `ncl-hir`, not runtime. Test same-unit cross-form inlining; declared inline call disappears from generated code; `NOTINLINE` remains a call. |
+| L3-6 | C09, FR-D03 | `packages/ir/src/types.rs`, `packages/compiler/opt/src/hir/representation.rs`, `packages/codegen/src/lowering.rs`, `packages/codegen/src/safepoint.rs`, `packages/codegen/src/target_x86_64_lowering.rs`, `packages/codegen/src/target_aarch64_lowering.rs`, `packages/codegen/src/target_x86_64_lowering/representation.rs`, `packages/codegen/src/target_aarch64_lowering/representation.rs` | L3-4 | Sole owner of new scalar MIR types, shared representation/safepoint lowering, and target-lowerer dispatch roots. L3-7 and L3-10 add only feature-specific target modules and submit dispatch integration to L3-6. Double loop allocates zero bytes; generated scalar operations are unboxed; GC maps classify scalar values as non-pointers. |
+| L3-7 | C13 | `packages/compiler/opt/src/hir/escape.rs`, `packages/codegen/src/allocation.rs`, `packages/codegen/src/target_x86_64_lowering/allocation.rs`, `packages/codegen/src/target_aarch64_lowering/allocation.rs` | L3-2, L3-6, L1-4 | Add allocation-only target lowerers; do not edit `lowering.rs` or `safepoint.rs`. Stack/TLAB allocation byte counts, escape cases that remain heap allocated, and GC stress. |
 | L3-8 | C14-C15 | `packages/compiler/opt/src/hir/loops.rs`, `packages/compiler/opt/src/hir/global_value_numbering.rs`, `packages/codegen/src/mir_opt.rs` | L3-4 | Loop and SSA micro suites; inspect eliminated bounds checks, repeated loads, and dead branches. |
 | L3-9 | C16 | `packages/clos/**`, `packages/compiler/opt/src/hir/clos.rs` | L2-ch7, L3-3 | Dispatch microbench is within 1.5x SBCL; inspect specialized slot, accessor, and constructor code. |
-| L3-10 | C12, C17 | `packages/compiler/front/src/hir_calls.rs`, `packages/codegen/src/call_abi.rs`, `packages/codegen/src/control.rs` | L3-1 | `&KEY` calls allocate zero bytes; inspect fixed-arity entries, multiple values, jump tables, and NLX paths. |
+| L3-10 | C12, C17 | `packages/compiler/front/src/hir_calls.rs`, `packages/codegen/src/call_abi.rs`, `packages/codegen/src/control.rs`, `packages/codegen/src/target_x86_64_lowering/calls.rs`, `packages/codegen/src/target_aarch64_lowering/calls.rs`, `packages/codegen/src/target_x86_64_lowering/control.rs`, `packages/codegen/src/target_aarch64_lowering/control.rs` | L3-1, L3-6 | Add call/control-only target modules; do not edit shared lowering, safepoint, or target-dispatch roots. `&KEY` calls allocate zero bytes; inspect fixed-arity entries, multiple values, jump tables, and NLX paths. |
 | L3-11 | FR-D01, FR-D02 | `packages/codegen/src/regalloc.rs`, `packages/codegen/src/instruction_select.rs`, `packages/codegen/tests/regalloc.rs` | L3-6 | Register checker is the oracle; inspect folded addresses/immediates, compare-branch fusion, and peephole output. |
-| L3-12 | E01-E04 | `packages/compiler/front/src/compiler_diagnostics.rs`, `packages/runtime/src/compile_diagnostics.rs` | L3-4 | Warning and failure flags match the diagnostic tests; inspect file, form, and line locations. |
-| L3-13 | D05-D08 | `packages/objfile/src/**`, `packages/image/src/**`, `packages/runtime/src/image.rs`, `packages/disasm/src/**` | L1-3 | FASL/image round trip, disassembly, relocation, and target fingerprint tests. |
-| L3-14 | I01-I03 | `scripts/compiler-metrics/**`, `packages/compiler/performance.rs`, `packages/runtime/src/compile_cache.rs` | L0-3 | V8 fixed-corpus time, pass time, peak RSS, and cache-key invalidation evidence. |
+| L3-12 | Diagnostics (E01-E04) | `packages/compiler/front/src/compiler_diagnostics.rs`, `packages/runtime/src/compile_diagnostics.rs` | L3-4 | Warning and failure flags match the diagnostic tests; inspect file, form, and line locations. |
+| L3-13 | FASL and images (D05-D08) | `packages/objfile/src/**`, `packages/image/src/**`, `packages/runtime/src/image.rs`, `packages/disasm/src/**` | L1-3 | FASL/image round trip, disassembly, relocation, and target fingerprint tests. |
+| L3-14 | Compiler metrics and cache (I01-I03) | `scripts/compiler-metrics/**`, `packages/compiler/opt/src/metrics.rs`, `packages/runtime/src/compile_cache.rs` | L0-3 | V8 fixed-corpus time, pass time, peak RSS, and cache-key invalidation evidence. |
 | L3-15 | C19-C20 (optional) | `packages/compiler/opt/src/hir/profile_guided.rs`, `packages/runtime/src/profile.rs`, `packages/codegen/src/simd.rs`, `packages/codegen/src/simd_x86_64.rs`, `packages/codegen/src/simd_aarch64.rs` | L3-6 | Compare optional SIMD/PGO output with an unoptimized baseline; inspect target instruction selection and profile-key rejection. |
 
 The paths in this table are ownership boundaries for the parallel lanes. A

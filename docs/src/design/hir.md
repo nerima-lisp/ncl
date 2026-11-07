@@ -20,25 +20,34 @@ current expansion and lowering path is documented in the
 compiler-macro definitions and compilation-unit state visible where they are
 semantically in scope.
 
-HIR is a compiler-stage bounded context. Its final crate assignment follows
-the [crate map](crates.md). HIR must not depend on runtime objects, machine
-registers, or target encoders. MIR lowering is the only boundary where CL
-types become machine value classes and generic calls become target call
-sequences.
+HIR belongs to the new `ncl-hir` crate at `packages/compiler/hir/`. The
+l02a-crates lane must revise the [crate map](crates.md) before L3-1 starts,
+adding that workspace member and these edges: `ncl-compiler-front -> ncl-hir`,
+`ncl-hir -> ncl-ir`, and `ncl-opt -> ncl-hir`. The current crate map at
+`crates.md` lines 58-59 does not yet include this member. `ncl-hir` must not
+depend on runtime objects, machine registers, or target encoders. MIR lowering
+is the only boundary where CL types become machine value classes and generic
+calls become target call sequences.
 
 ## Storage and identity (FR-I03)
+
+FR-I03 sets the compiler-performance direction: use per-form arenas and index
+references, intern names, memoize type operations, and avoid repeated vector
+reconstruction.
 
 Each top-level form owns an arena. Nodes, types, declarations, and source
 records are referred to by small typed indices, not pointers into growable
 vectors. A reference is valid only in its owning form arena unless it is an
 explicit compilation-unit reference.
 
-The compilation unit owns the cross-form index for definitions, proclamations,
-and inline templates. Cross-form references use stable definition identities,
-not borrowed node references. An inliner that copies a body into another form
-must allocate nodes in the caller's arena and retain the callee's source
-origin. This allows `WITH-COMPILATION-UNIT` and `:BLOCK-COMPILE` without
-turning every form into one global arena.
+`ncl-hir` owns the compilation-unit index across form arenas. It indexes
+definitions, proclamations, and inline templates. Cross-form references use
+stable definition identities, not borrowed node references. Runtime owns the
+compilation entry point and the lifetime of the compilation, not this index.
+An inliner that copies a body into another form must allocate nodes in the
+caller's arena and retain the callee's source origin. This allows
+`WITH-COMPILATION-UNIT` and `:BLOCK-COMPILE` without turning every form into one
+global arena or making `ncl-opt` depend on runtime.
 
 Intern package-qualified symbol names once and use a `SymbolId` for global
 function and variable identity. Lexical bindings use distinct `BindingId`
@@ -98,11 +107,12 @@ until its target and cleanup behavior are proven. `UNWIND-PROTECT` cleanup
 must run on each applicable exit. Multiple values retain their count and
 ordering until a call boundary requires a convention conversion.
 
-The implementation may choose structured control nodes, explicit basic
-blocks, or a combination. If it uses blocks, each block has one terminator and
-all successor references resolve within the owning function. The selected
-representation must support dominance, reachability, loop, and data-flow
-analysis without erasing lexical scope or dynamic control.
+HIR uses structured nodes for lexical and dynamic control constructs, cleanup,
+and non-local exits, with explicit basic blocks for local branches and loops.
+Each block has one terminator and all successor references resolve within the
+owning function. The CFG view must support dominance, reachability, loop, and
+data-flow analysis without erasing the structured scope or cleanup semantics.
+L3-1b implements this hybrid representation.
 
 ## Common Lisp type lattice
 
@@ -125,13 +135,43 @@ return `yes`, `no`, or `unknown`, matching the two-value certainty behavior of
 whose preconditions depend on that subtype. An opaque type may be preserved,
 but it cannot authorize an unchecked representation.
 
+`ncl-types` remains the runtime model: it parses and stores Lisp type
+specifiers and implements `TYPEP` and `SUBTYPEP`. `ncl-hir` owns a separate,
+compiler-only abstract lattice for inference and optimization; it does not
+store runtime `Word` values or depend on `ncl-types`. The front end maps known
+`ncl-types::TypeSpecifier` constructors into HIR type nodes. For an unresolved
+or implementation-defined specifier, it retains an opaque HIR node with the
+source `SymbolId` and operands. Runtime type checks continue to use
+`ncl-types`; HIR facts may remove a check only when their subtype result is
+proven `yes`. Shared known specifiers must have mapping tests so the compiler
+and runtime models preserve the same CL meaning.
+
 Keep declared, asserted, and inferred type facts distinct. A declaration is
-not evidence that a value has the declared type. Under the configured safety
-policy, the compiler either emits the required check or treats the declaration
-as an optimization assumption according to the policy contract. Type
-intersections that become empty may report a compile-time contradiction, but
-must not change a runtime error into an unrelated compile-time failure when
-the policy requires the original check.
+not evidence that a value has the declared type.
+
+FR-C08 defines the policy for type, arity, keyword, and array-bound checks.
+For these checks a call is safe when the active `SAFETY` value is at least 1.
+`SAFETY 0` trusts declared types and call contracts; it does not make an
+invalid operation safe for Rust or the machine backend.
+
+| Check | `SAFETY 0` | `SAFETY 1` | `SAFETY 3` |
+|---|---|---|---|
+| Declared or asserted type | Treat declarations as optimization assumptions and omit policy-controlled type checks. | Check a declared or asserted type unless HIR proves it or an explicit runtime guard already enforces it. | Keep the same required check set as level 1; do not weaken a check because a declaration enabled specialization. |
+| Argument count | Calls are unsafe; a dynamic arity check may be omitted. A statically known invalid call may be diagnosed, but runtime `PROGRAM-ERROR` behavior is not promised. | Calls are safe. Check dynamic calls unless the known entry and argument count prove the call valid; diagnose a statically known mismatch. | Same safe-call rule as level 1; do not omit a dynamic check without proof. |
+| Keyword arguments | Calls are unsafe; a dynamic keyword check may be omitted. | Calls are safe. Validate dynamic keys unless the known entry or compile-time arguments prove them valid; diagnose a statically known mismatch. | Same safe-call rule as level 1; do not omit a dynamic check without proof. |
+| Array bounds | Omit the Lisp bounds check. The backend must still avoid Rust undefined behavior and invalid machine memory access. | Check each access unless range analysis proves the index is in bounds. | Check each access unless range analysis proves the index is in bounds; safety-driven specialization must retain its guard. |
+
+For these four check classes, levels 1 and 3 have the same required checks;
+level 3 forbids weakening or removing a required check without proof. The
+compiler may remove a check at any level only after proving its condition or
+reusing an equivalent guard. A safe-call arity failure signals `PROGRAM-ERROR`
+as specified by the shared condition contract. An unsafe call has undefined
+consequences.
+
+At `SAFETY` 1 or 3, an empty type intersection derived from known facts may be
+reported as a compile-time contradiction. At `SAFETY` 0, do not turn inferred
+facts alone into a compile-time error; retain the runtime behavior specified by
+the check matrix.
 
 The implementation may intern normalized type nodes and memoize subtype,
 union, intersection, and range operations. Cache keys include the full type
@@ -146,10 +186,9 @@ even after deriving facts from them, so diagnostics and `NOTINLINE` decisions
 can refer to the original contract.
 
 The policy includes `SPEED`, `SAFETY`, `DEBUG`, and `SPACE`, each with its
-Common Lisp quality value. At minimum, `SAFETY` controls whether declared
-types and call contracts require runtime checks; it must not be inferred from
-`SPEED`. Array bounds, argument count, keyword, and general type checks have
-separate policy decisions where their contracts differ.
+Common Lisp quality value. `SAFETY` uses the explicit FR-C08 matrix above and
+is never inferred from `SPEED`. `DEBUG`, `SPEED`, and `SPACE` remain separate
+quality settings.
 
 Debug policy controls variable visibility, retained source paths, and frame
 state. It may change which metadata reaches machine code, but it must not
@@ -183,17 +222,40 @@ least:
    unresolved for normal compile-time diagnostics.
 4. Each control-flow successor, non-local exit target, cleanup, and multiple-
    value edge satisfies its arity and scope contract.
-5. Every type reference is valid, and every attached inferred fact is a
-   conservative over-approximation of possible runtime values. Unknown facts
-   cannot authorize an unchecked operation.
-6. Every explicit check has a failure edge with the correct Lisp condition
-   behavior for its operation and active safety policy.
+5. Every type and fact reference is valid. Each cached fact has a valid source
+   epoch and provenance. An `unknown` fact cannot authorize an unchecked
+   operation.
+6. Every explicit check has a success edge and a failure edge whose condition
+   matches its operation and active safety policy. A type check is represented
+   as `CheckType { value: ValueId, accepted_type: TypeId,
+   expected_type: TypeSpecConstId, source_origin: SourceOriginId }`; the
+   failing edge lowers to one runtime signal entry named
+   `ncl_signal_type_error(datum, expected_type, source_origin)`. `expected_type`
+   is a GC-rooted constant-pool `Word` containing the complete Lisp type
+   specifier, not `ObjectType`, a class name, or a string. The runtime entry
+   must not route this through `LispError::TypeError { expected: ObjectType }`,
+   which cannot carry the full specifier. It constructs `TYPE-ERROR` with both
+   standard slots and routes it through the condition boundary and active
+   handler search. Source origin is a code-object origin ID resolved by runtime
+   source metadata. The `conditions.md` contract from l02d-cond must use this
+   exact entry name and expected-type encoding.
 7. Every source origin resolves, and transform-origin links do not form a
    cycle.
 8. Any SSA subgraph verifies its definitions, uses, dominance, and block
    arguments independently of storage order.
-9. A pass reports which cached facts it invalidated; no later pass consumes a
-   stale type, effect, escape, or CFG result.
+9. Every cached type, effect, escape, dominance, and CFG fact carries the
+   epoch of its source IR domain. A mutation increments the affected domain
+   epoch; a consumer rejects facts with an older epoch. Each pass declares the
+   domains it invalidates, and the verifier checks that no stale fact is
+   consumed.
+
+The verifier checks fact references and epochs; it does not prove that an
+inferred type is a sound over-approximation. Type-fact soundness is a V3
+obligation: differential tests compare generated UB-free programs with SBCL
+under optimization-off, default, and `(SPEED 3)` policies. Add targeted
+type-boundary cases for `SAFETY 0`, `1`, and `3` to that corpus. An `unknown`
+fact must never authorize check removal, which the verifier checks
+structurally.
 
 CI and test builds always run the verifier. Per decision D-10, release builds
 keep verification enabled by default until V2 and V3 pass. After both gates
@@ -204,6 +266,10 @@ optimization result is never accepted as verified merely because the verifier
 was compiled out.
 
 ## Compiler performance
+
+Keep the module facades `cl_type.rs`, `hir_builder.rs`, and `type_inference.rs`
+below the 500-line file limit. Put implementation in named child modules under
+`cl_type/`, `hir_builder/`, and `type_inference/`; do not use `mod.rs`.
 
 HIR uses per-form arenas and indices to avoid a heap allocation per edge.
 Intern names and memoize type operations. Reuse pass worklists and buffers

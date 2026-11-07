@@ -40,7 +40,10 @@ fn standard_io_call_arguments(
 }
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one integration scenario checks composed standard input and output syntax expansion"
+)]
 fn standard_io_syntax_expansion_binds_standard_values() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

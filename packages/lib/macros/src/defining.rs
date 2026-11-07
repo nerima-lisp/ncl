@@ -1,9 +1,11 @@
 //! Expanders for Common Lisp definition forms.
-#![allow(clippy::redundant_pub_crate)]
 //!
 //! These expanders lower definitions to ordinary forms so the evaluator
 //! performs the definition through the runtime-owned generalized places.
-#![allow(missing_docs, clippy::missing_errors_doc)]
+#![expect(
+    clippy::redundant_pub_crate,
+    reason = "items stay crate-visible; workspace will enable unreachable_pub, which conflicts with this nursery lint"
+)]
 
 use ncl_object::{
     HeapRootedWord, HeapRootedWords, ObjectError, Runtime, ThreadContext, Word,

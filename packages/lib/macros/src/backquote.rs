@@ -1,6 +1,4 @@
 //! Backquote (quasiquote) expansion, per CLHS 2.4.6.
-#![allow(clippy::redundant_pub_crate)]
-
 use crate::{elements, list, symbol};
 use ncl_object::{
     BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word, car, cdr,

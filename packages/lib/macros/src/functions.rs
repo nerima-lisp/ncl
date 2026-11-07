@@ -46,7 +46,10 @@ fn functionp_builtin(
     Ok(if is_function { Word::TRUE } else { Word::NIL })
 }
 
-#[allow(clippy::unnecessary_wraps)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "the VALUES builtin uses the shared fallible Lisp callback signature"
+)]
 fn values_builtin(
     _ctx: &mut ThreadContext,
     _runtime: &Runtime,

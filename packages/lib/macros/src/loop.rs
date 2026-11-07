@@ -158,6 +158,6 @@ mod holding;
 mod parser;
 mod typed;
 pub use callback::expand_loop_callback;
-#[allow(unused_imports)]
+#[cfg(test)]
 pub use expansion::expand_loop_ast;
 pub use parser::parse_loop;

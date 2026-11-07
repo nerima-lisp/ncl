@@ -55,7 +55,10 @@ pub(super) fn find_it_word(ctx: &ThreadContext, word: Word) -> Result<Option<Wor
 /// of `d-var-spec`s) against the already-bound value held at `source`,
 /// pushing one `(leaf nil)` binding per leaf symbol into `bindings` and one
 /// `(setq leaf accessor)` form per leaf into `body`, in left-to-right order.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "destructuring lowers one pattern while threading its binding and body output state"
+)]
 fn destructure(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -124,7 +127,10 @@ fn destructure(
 
 /// Bind a `for`-clause variable, which may be a plain symbol or a
 /// destructuring pattern, to `current` for this iteration.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "FOR-variable lowering threads the current value and generated binding lists through one clause"
+)]
 pub(super) fn bind_for_variable(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -160,7 +166,10 @@ pub(super) fn bind_for_variable(
 /// nested conditional), appending the forms it produces to `body`. Also used
 /// to expand the top-level loop body's `do`/`return`/accumulation/conditional
 /// clauses, so the two paths stay in sync.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "selectable LOOP clauses share held variables and output buffers across clause variants"
+)]
 pub(super) fn expand_selectable_clause(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -259,7 +268,10 @@ pub(super) fn expand_selectable_clause(
 /// `then`/`otherwise` forms written with that symbol observe the test's
 /// value, per ANSI CL 6.1.3. Falls back to a `COMMON-LISP::IT` binding when
 /// the loop form never mentions `it` (the binding is then simply unused).
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "conditional lowering carries test, branch clauses, names, and generated bindings as separate state"
+)]
 fn expand_conditional(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

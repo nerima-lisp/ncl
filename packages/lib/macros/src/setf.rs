@@ -1,6 +1,8 @@
-#![allow(missing_docs, clippy::missing_errors_doc)]
-#![allow(clippy::trivially_copy_pass_by_ref, clippy::chunks_exact_to_as_chunks)]
-
+#![expect(
+    missing_docs,
+    clippy::missing_errors_doc,
+    reason = "macro expansion helpers are exposed through Lisp forms and return shared ObjectError values mapped at the evaluator boundary"
+)]
 use crate::{PlaceRegistry, SetfExpansion, elements, fresh_symbol, list, symbol};
 use ncl_object::{
     Handle, HeapRootedWord, Local, ObjectError, ObjectRef, Runtime, Scope, ThreadContext, Word,
@@ -142,7 +144,7 @@ fn eval_quasiquote<'scope>(
 fn place(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    registry: &PlaceRegistry,
+    registry: PlaceRegistry,
     place_word: Word,
 ) -> Result<SetfExpansion, ObjectError> {
     if !registry.belongs_to(runtime) {
@@ -324,7 +326,7 @@ fn store_place_prebound_roots(
 fn setf_pairs(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    registry: &PlaceRegistry,
+    registry: PlaceRegistry,
     arguments: &[Word],
     parallel: bool,
 ) -> Result<Word, ObjectError> {
@@ -332,12 +334,13 @@ fn setf_pairs(
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
+        let (pairs, []) = arguments.as_chunks::<2>() else {
+            return Err(ObjectError::TypeError);
+        };
         if parallel {
             let mut evaluation_bindings = Vec::<HeapRootedWord>::new();
             let mut stores = Vec::new();
-            for pair in arguments.chunks_exact(2) {
-                let place_word = &pair[0]; // check-added-lines: allow(index) chunks_exact(2) guarantees each pair has two elements.
-                let value = &pair[1]; // check-added-lines: allow(index) chunks_exact(2) guarantees each pair has two elements.
+            for [place_word, value] in pairs {
                 let expansion = place(ctx, runtime, registry, place_word.get())?;
                 let expansion = RootedExpansion::new(ctx, expansion)?;
                 for (variable, value_form) in expansion
@@ -380,9 +383,7 @@ fn setf_pairs(
             }
         } else {
             let mut forms = Vec::<HeapRootedWord>::new();
-            for pair in arguments.chunks_exact(2) {
-                let place_word = &pair[0]; // check-added-lines: allow(index) chunks_exact(2) guarantees each pair has two elements.
-                let value = &pair[1]; // check-added-lines: allow(index) chunks_exact(2) guarantees each pair has two elements.
+            for [place_word, value] in pairs {
                 let expansion = place(ctx, runtime, registry, place_word.get())?;
                 let expansion = RootedExpansion::new(ctx, expansion)?;
                 let value = place_value(ctx, runtime, place_word.get(), value.get())?;
@@ -402,7 +403,7 @@ pub fn expand_setf(
     registry: &PlaceRegistry,
     arguments: &[Word],
 ) -> Result<Word, ObjectError> {
-    setf_pairs(ctx, runtime, registry, arguments, false)
+    setf_pairs(ctx, runtime, *registry, arguments, false)
 }
 
 pub fn expand_psetf(
@@ -411,7 +412,7 @@ pub fn expand_psetf(
     registry: &PlaceRegistry,
     arguments: &[Word],
 ) -> Result<Word, ObjectError> {
-    setf_pairs(ctx, runtime, registry, arguments, true)
+    setf_pairs(ctx, runtime, *registry, arguments, true)
 }
 
 pub fn expand_get_setf_expansion(
@@ -422,7 +423,7 @@ pub fn expand_get_setf_expansion(
 ) -> Result<SetfExpansion, ObjectError> {
     let mut place_word = place_word;
     ncl_object::with_root(ctx, &mut place_word, |ctx, place_word| {
-        let expansion = place(ctx, runtime, registry, *place_word)?;
+        let expansion = place(ctx, runtime, *registry, *place_word)?;
         with_expansion_roots(
             ctx,
             &expansion,

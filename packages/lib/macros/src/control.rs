@@ -1,6 +1,8 @@
 //! Structural expanders for the control macros.
-#![allow(clippy::redundant_pub_crate)]
-
+#![expect(
+    clippy::redundant_pub_crate,
+    reason = "items stay crate-visible; workspace will enable unreachable_pub, which conflicts with this nursery lint"
+)]
 use crate::{elements, fresh_symbol, list, symbol};
 use ncl_object::{
     BuiltinArgs, Handle, HeapRootedWord, HeapRootedWords, Local, MultipleValues, ObjectError,

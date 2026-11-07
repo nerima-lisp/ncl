@@ -186,7 +186,10 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "unit tests assert on callback and multiple-value results from valid test functions"
+)]
 mod tests {
     use super::*;
     use ncl_object::{Arity, Package, make_cons};
@@ -208,7 +211,10 @@ mod tests {
         Ok(Word::fixnum(sum))
     }
 
-    #[allow(clippy::unnecessary_wraps)]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "test callbacks match the fallible builtin ABI while setting multiple values"
+    )]
     fn returns_zero(
         _ctx: &mut ThreadContext,
         _runtime: &Runtime,
@@ -219,7 +225,10 @@ mod tests {
         Ok(Word::NIL)
     }
 
-    #[allow(clippy::unnecessary_wraps)]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "test callbacks match the fallible builtin ABI while setting multiple values"
+    )]
     fn returns_one(
         _ctx: &mut ThreadContext,
         _runtime: &Runtime,
@@ -231,7 +240,10 @@ mod tests {
         Ok(value)
     }
 
-    #[allow(clippy::unnecessary_wraps)]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "test callbacks match the fallible builtin ABI while setting multiple values"
+    )]
     fn returns_two(
         _ctx: &mut ThreadContext,
         _runtime: &Runtime,

@@ -5,7 +5,10 @@ use super::super::{
 };
 use super::{required, word_name};
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "FOR clause parsing coordinates variable, type, initialization, and iteration state in one cursor"
+)]
 pub(super) fn parse_for(
     ctx: &ThreadContext,
     input: &[Word],

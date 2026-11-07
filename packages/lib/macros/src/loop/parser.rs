@@ -152,7 +152,10 @@ fn required(input: &[Word], cursor: &mut usize) -> Result<Word> {
 }
 
 /// Parse the body of a LOOP form (the operator itself is not included).
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the top-level LOOP parser is a single cursor-driven grammar state machine"
+)]
 pub fn parse_loop(ctx: &mut ThreadContext, runtime: &Runtime, input: &[Word]) -> Result<LoopAst> {
     let mut cursor = 0;
     let mut name = None;

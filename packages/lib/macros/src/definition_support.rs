@@ -1,6 +1,4 @@
 //! Runtime support for definition-related accessors and generalized places.
-#![allow(clippy::missing_errors_doc)]
-
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, FunctionObject, HandleVec, LambdaList, ObjectError, Runtime,

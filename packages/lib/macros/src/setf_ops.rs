@@ -154,7 +154,7 @@ fn pushnew_option_pairs(
 fn modify(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    registry: &PlaceRegistry,
+    registry: PlaceRegistry,
     arguments: &[Word],
     operator: &str,
 ) -> Result {
@@ -198,7 +198,7 @@ pub fn expand_incf(
     registry: &PlaceRegistry,
     arguments: &[Word],
 ) -> Result {
-    modify(ctx, runtime, registry, arguments, "+")
+    modify(ctx, runtime, *registry, arguments, "+")
 }
 
 pub fn expand_decf(
@@ -207,7 +207,7 @@ pub fn expand_decf(
     registry: &PlaceRegistry,
     arguments: &[Word],
 ) -> Result {
-    modify(ctx, runtime, registry, arguments, "-")
+    modify(ctx, runtime, *registry, arguments, "-")
 }
 
 pub fn expand_push(
@@ -229,7 +229,7 @@ pub fn expand_push(
         } else {
             Vec::new()
         };
-        let expansion = place(ctx, runtime, registry, place_word.get())?;
+        let expansion = place(ctx, runtime, *registry, place_word.get())?;
         let expansion = RootedExpansion::new(ctx, expansion)?;
         let mut bindings = Vec::new();
         let item_variable = fresh_symbol(ctx, runtime)?;
@@ -273,7 +273,7 @@ pub fn expand_pop(
     }
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
         let place_word = &arguments[0]; // check-added-lines: allow(index) expand_pop requires exactly one argument above.
-        let expansion = place(ctx, runtime, registry, place_word.get())?;
+        let expansion = place(ctx, runtime, *registry, place_word.get())?;
         let expansion = RootedExpansion::new(ctx, expansion)?;
         let mut bindings = Vec::new();
         add_place_bindings(ctx, runtime, &expansion, &mut bindings)?;
@@ -311,7 +311,7 @@ pub fn expand_shiftf(
     if arguments.len() < 2 {
         return Err(ObjectError::TypeError);
     }
-    rotate_like(ctx, runtime, registry, arguments, false)
+    rotate_like(ctx, runtime, *registry, arguments, false)
 }
 
 pub fn expand_rotatef(
@@ -323,13 +323,13 @@ pub fn expand_rotatef(
     if arguments.is_empty() {
         return Ok(Word::NIL);
     }
-    rotate_like(ctx, runtime, registry, arguments, true)
+    rotate_like(ctx, runtime, *registry, arguments, true)
 }
 
 fn rotate_like(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    registry: &PlaceRegistry,
+    registry: PlaceRegistry,
     arguments: &[Word],
     rotate: bool,
 ) -> Result {

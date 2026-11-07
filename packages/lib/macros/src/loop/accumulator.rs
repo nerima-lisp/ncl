@@ -1,7 +1,10 @@
 use super::held::{held_form, held_fresh_symbol, held_list};
 use super::{AccumulatorKind, Result, Runtime, ThreadContext, Word};
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "accumulator lowering carries held indices and output buffers together across clause expansion"
+)]
 pub(super) fn expand_accumulator(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

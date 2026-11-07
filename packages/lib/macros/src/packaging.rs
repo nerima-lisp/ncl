@@ -13,7 +13,10 @@
 //! accumulator that is re-rooted through [`ncl_object::with_roots`] on every
 //! allocating step, mirroring `iteration.rs`'s `held_form` idiom.
 
-#![allow(clippy::redundant_pub_crate)]
+#![expect(
+    clippy::redundant_pub_crate,
+    reason = "items stay crate-visible; workspace will enable unreachable_pub, which conflicts with this nursery lint"
+)]
 
 use ncl_object::{MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word};
 
@@ -193,7 +196,7 @@ fn designator_text(ctx: &ThreadContext, word: Word) -> Result<String> {
 ///
 /// Expands to a `PROGN` that creates the package (if it does not already
 /// exist), applies the package options, and returns the package.
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "expands each DEFPACKAGE clause in order"
 )]

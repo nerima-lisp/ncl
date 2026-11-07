@@ -10,7 +10,10 @@ use super::{
 };
 
 /// Expand a parsed LOOP AST into portable CL primitive forms.
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "LOOP expansion preserves clause order while preparing rooted forms and the final body"
+)]
 pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst) -> Result {
     let mut held = Vec::new();
     let name = ast.name.map(|name| {

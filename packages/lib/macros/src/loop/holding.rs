@@ -14,7 +14,10 @@ fn hold_type_spec(held: &mut Vec<Word>, type_spec: Word) -> usize {
 /// Convert one parsed [`LoopClause`] into a [`HeldLoopClause`]. Recurses for
 /// the selectable clauses nested inside a `when`/`unless`/`if` conditional
 /// clause.
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the helper roots each LOOP clause field while mapping all clause variants"
+)]
 fn hold_clause(
     ctx: &mut ThreadContext,
     held: &mut Vec<Word>,

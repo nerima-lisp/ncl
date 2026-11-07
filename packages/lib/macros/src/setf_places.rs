@@ -7,8 +7,6 @@
 //!
 //! The array and hash-table places call their corresponding `NCL-EXT` setter
 //! builtins, which return the stored value required by `SETF`.
-#![allow(clippy::missing_errors_doc)]
-
 use ncl_object::{
     HeapRootedWord, ObjectError, PlaceExpander, Runtime, SetfExpansion, ThreadContext, Word,
 };

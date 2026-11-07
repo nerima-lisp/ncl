@@ -136,7 +136,7 @@ pub fn expand_remf(
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
         let place_word = &arguments[0]; // check-added-lines: allow(index) expand_remf requires exactly two arguments above.
         let property = &arguments[1]; // check-added-lines: allow(index) expand_remf requires exactly two arguments above.
-        let expansion = place(ctx, runtime, registry, place_word.get())?;
+        let expansion = place(ctx, runtime, *registry, place_word.get())?;
         let expansion = RootedExpansion::new(ctx, expansion)?;
 
         let mut bindings = Vec::new();

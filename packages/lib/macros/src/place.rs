@@ -1,4 +1,8 @@
-#![allow(missing_docs, clippy::missing_errors_doc)]
+#![expect(
+    missing_docs,
+    clippy::missing_errors_doc,
+    reason = "macro expansion helpers are exposed through Lisp forms and return shared ObjectError values mapped at the evaluator boundary"
+)]
 
 use ncl_object::{ObjectError, Runtime, ThreadContext, Word};
 pub use ncl_object::{PlaceExpander, SetfExpansion};

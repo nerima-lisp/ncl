@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Coverage tests for registered macro expanders.
 
 use ncl_object::{FunctionObject, ObjectError, Runtime, ThreadContext, Word};
 

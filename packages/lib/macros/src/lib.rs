@@ -1,5 +1,8 @@
 //! Builtin registration and small, structural macro expanders.
-#![allow(clippy::missing_errors_doc)]
+#![expect(
+    clippy::missing_errors_doc,
+    reason = "macro expansion helpers return shared ObjectError values that the evaluator maps to Lisp conditions"
+)]
 
 mod backquote;
 mod control;
@@ -401,7 +404,10 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "registration tests assert on valid macro setup and expected expansion failures"
+)]
 #[path = "tests/registration.rs"]
 mod tests;
 

@@ -213,7 +213,10 @@ fn expand_output(ctx: &mut ThreadContext, runtime: &Runtime, values: &[HeapRoote
         .ok_or(ObjectError::Layout)
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the input-stream expander validates options and builds the cursor binding sequence"
+)]
 fn expand_input(ctx: &mut ThreadContext, runtime: &Runtime, values: &[HeapRootedWord]) -> Result {
     let spec = values.first().ok_or(ObjectError::TypeError)?.get();
     let raw_spec_parts = elements(ctx, spec)?;

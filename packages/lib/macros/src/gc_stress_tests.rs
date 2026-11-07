@@ -107,7 +107,10 @@ fn loop_clause_expansion_survives_gc_stress_and_strict_forwarding() -> Result<()
 }
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the test checks all registered macro expansions in one GC-stress and forwarding scenario"
+)]
 fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<(), ObjectError> {
     fn form(
         ctx: &mut ThreadContext,

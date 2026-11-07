@@ -8,6 +8,15 @@ use crate::{FormatError, FormatErrorKind};
 
 use super::layout::parameter_usize;
 
+#[derive(Clone, Copy)]
+struct JustificationParameters {
+    special_prefix: bool,
+    mincol: usize,
+    colinc: usize,
+    minpad: usize,
+    padchar: char,
+}
+
 pub(super) fn execute_justification(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
@@ -38,7 +47,7 @@ pub(super) fn execute_justification(
     let padchar = match parameters.get(3) {
         None | Some(Parameter::Unsupplied) => ' ',
         Some(Parameter::Character(character)) => *character,
-        _ => {
+        Some(Parameter::Integer(_) | Parameter::Relative | Parameter::Remaining) => {
             return Err(FormatError::at(
                 directive,
                 FormatErrorKind::InvalidParameter,
@@ -57,11 +66,13 @@ pub(super) fn execute_justification(
         state,
         output,
         segments,
-        special_prefix,
-        mincol,
-        colinc,
-        minpad,
-        padchar,
+        JustificationParameters {
+            special_prefix,
+            mincol,
+            colinc,
+            minpad,
+            padchar,
+        },
     );
     state.frames = saved_frames;
     result
@@ -90,36 +101,41 @@ fn validate_separators(
     Ok(())
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "A justification pass needs the parsed field parameters and output state together."
-)]
 fn render_justified(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
     segments: &[ControlSegment],
-    special_prefix: bool,
-    mincol: usize,
-    colinc: usize,
-    minpad: usize,
-    padchar: char,
+    parameters: JustificationParameters,
 ) -> Result<(), FormatError> {
+    let JustificationParameters {
+        special_prefix,
+        mincol,
+        colinc,
+        minpad,
+        padchar,
+    } = parameters;
     let first = usize::from(special_prefix);
     let mut prefix = String::new();
     let mut line_width = output.margin;
     let mut spare = 0;
     if special_prefix {
-        prefix = render_segment(state, &segments[0].control, output)?.0;
+        let Some(segment) = segments.first() else {
+            return Err(FormatError::at(
+                directive,
+                FormatErrorKind::InvalidDirectiveUse,
+            ));
+        };
+        prefix = render_segment(state, &segment.control, output)?.0;
         let separator = segments
             .get(1)
             .and_then(|segment| segment.separator.as_ref());
         let (minimum_spare, requested_width) = separator_parameters(state, separator, directive)?;
         spare = minimum_spare;
-        line_width = requested_width.map_or(output.margin, |width| width);
+        line_width = requested_width.unwrap_or(output.margin);
     }
     let mut pieces = Vec::new();
-    for segment in &segments[first..] {
+    for segment in segments.iter().skip(first) {
         let (rendered, flow) = render_segment(state, &segment.control, output)?;
         pieces.push(rendered);
         if flow != Flow::Continue {
@@ -145,13 +161,14 @@ fn render_segment(
     layout: &FormatOutput<'_>,
 ) -> Result<(String, Flow), FormatError> {
     let mut sink = StringSink::new();
-    let mut buffered = FormatOutput::new(&mut sink);
-    buffered.margin = layout.margin;
-    buffered.indentation = layout.indentation;
-    buffered.block_start = layout.block_start;
-    buffered.pretty = layout.pretty;
-    let flow = execute_control(state, control, &mut buffered)?;
-    drop(buffered);
+    let flow = {
+        let mut buffered = FormatOutput::new(&mut sink);
+        buffered.margin = layout.margin;
+        buffered.indentation = layout.indentation;
+        buffered.block_start = layout.block_start;
+        buffered.pretty = layout.pretty;
+        execute_control(state, control, &mut buffered)?
+    };
     Ok((sink.into_string(), flow))
 }
 
@@ -178,7 +195,12 @@ fn separator_parameters(
         parameter_usize(&parameters, 0, 0, directive)?,
         match parameters.get(1) {
             None | Some(Parameter::Unsupplied) => None,
-            _ => Some(parameter_usize(&parameters, 1, 0, directive)?),
+            Some(
+                Parameter::Integer(_)
+                | Parameter::Character(_)
+                | Parameter::Relative
+                | Parameter::Remaining,
+            ) => Some(parameter_usize(&parameters, 1, 0, directive)?),
         },
     ))
 }
@@ -229,7 +251,13 @@ fn justify(
         .checked_sub(text_width)
         .ok_or_else(|| FormatError::at(directive, FormatErrorKind::InvalidParameter))?;
     if pieces.len() == 1 && !directive.colon && !directive.at_sign {
-        return Ok(format!("{}{}", pad(padchar, extra), pieces[0]));
+        let Some(piece) = pieces.first() else {
+            return Err(FormatError::at(
+                directive,
+                FormatErrorKind::InvalidParameter,
+            ));
+        };
+        return Ok(format!("{}{}", pad(padchar, extra), piece));
     }
     let leading = usize::from(directive.colon);
     let trailing = usize::from(directive.at_sign);
@@ -251,18 +279,30 @@ fn justify(
     let mut result = String::new();
     let mut slot = 0;
     if leading == 1 {
-        result.push_str(&pad(padchar, padding[slot]));
+        let amount = padding
+            .get(slot)
+            .copied()
+            .ok_or_else(|| FormatError::at(directive, FormatErrorKind::InvalidParameter))?;
+        result.push_str(&pad(padchar, amount));
         slot += 1;
     }
     for (index, piece) in pieces.iter().enumerate() {
         result.push_str(piece);
         if index < gaps {
-            result.push_str(&pad(padchar, padding[slot]));
+            let amount = padding
+                .get(slot)
+                .copied()
+                .ok_or_else(|| FormatError::at(directive, FormatErrorKind::InvalidParameter))?;
+            result.push_str(&pad(padchar, amount));
             slot += 1;
         }
     }
     if trailing == 1 {
-        result.push_str(&pad(padchar, padding[slot]));
+        let amount = padding
+            .get(slot)
+            .copied()
+            .ok_or_else(|| FormatError::at(directive, FormatErrorKind::InvalidParameter))?;
+        result.push_str(&pad(padchar, amount));
     }
     Ok(result)
 }
@@ -277,7 +317,7 @@ fn display_width(text: &str) -> usize {
         .map_or(0, |line| line.chars().count())
 }
 
-fn effective_column(output: &FormatOutput<'_>) -> usize {
+const fn effective_column(output: &FormatOutput<'_>) -> usize {
     if output.line_start {
         output.indentation
     } else {

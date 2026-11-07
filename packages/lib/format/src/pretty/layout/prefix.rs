@@ -83,10 +83,8 @@ pub(super) fn write_fill_literal(
     prefix: &str,
 ) -> Result<(), FormatError> {
     let mut remaining = text;
-    while let Some(index) = remaining.find(' ') {
-        let (word, tail) = remaining.split_at(index);
+    while let Some((word, rest)) = remaining.split_once(' ') {
         write_text(word, output, prefix)?;
-        let rest = &tail[1..];
         let next_word = rest
             .chars()
             .take_while(|character| !character.is_whitespace())

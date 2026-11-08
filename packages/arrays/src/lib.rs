@@ -1,6 +1,7 @@
-use crate::{ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
-use crate::{specialized_array_element_type, specialized_array_ref, specialized_array_set};
-use ncl_sys::Word;
+use ncl_object::{
+    Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, Word, allocate, classify_object,
+    layout, string_length, string_ref, with_roots,
+};
 /// Options for constructing a non-simple array.
 #[derive(Clone, Copy, Debug)]
 pub struct ArrayOptions {
@@ -11,20 +12,38 @@ pub struct ArrayOptions {
     pub displaced_to: Option<Word>,
     pub displaced_index_offset: usize,
 }
+mod element_type;
+pub use element_type::ArrayElementType;
+pub(crate) use element_type::validate_element;
+
+mod simple_vector;
+pub use simple_vector::{
+    make_simple_vector, simple_vector_length, simple_vector_ref, simple_vector_set,
+};
+
+mod construction;
+pub use construction::make_array;
+
+mod specialized_array;
+pub use specialized_array::{
+    make_specialized_array, specialized_array_element_type, specialized_array_ref,
+    specialized_array_set,
+};
+
+mod vector_ops;
+pub use vector_ops::{vector_pop, vector_push, vector_push_extend};
+
+const fn metadata_offset(rank: usize, field: usize) -> usize {
+    layout::array_offset::DYNAMIC_BASE + rank + field
+}
+
 pub(crate) fn read(
     ctx: &ThreadContext,
     object: Word,
     slot: usize,
     tag: u8,
 ) -> Result<Word, ObjectError> {
-    if object.lowtag() != ncl_sys::LowTag::OtherPointer as u8
-        || ncl_sys::object_widetag(&ctx.thread, object) != Some(tag)
-    {
-        return Err(ObjectError::TypeError);
-    }
-    ncl_sys::read_object_word(&ctx.thread, object, slot).ok_or(ObjectError::Storage(
-        ncl_sys::StorageCondition::ThreadNotRegistered,
-    ))
+    ncl_object::get(ctx, object, tag, slot)
 }
 pub(crate) fn write(
     ctx: &mut ThreadContext,
@@ -34,13 +53,7 @@ pub(crate) fn write(
     tag: u8,
 ) -> Result<(), ObjectError> {
     read(ctx, object, slot, tag)?;
-    if !ncl_sys::write_object_word(&mut ctx.thread, object, slot, value) {
-        return Err(ObjectError::Storage(
-            ncl_sys::StorageCondition::ThreadNotRegistered,
-        ));
-    }
-    ncl_sys::write_barrier(core::ptr::NonNull::from(ctx.thread.as_mut()), object, slot);
-    Ok(())
+    ncl_object::put(ctx, object, slot, value)
 }
 
 pub(crate) fn length(
@@ -57,21 +70,49 @@ pub(crate) fn length(
     .map_err(|_| ObjectError::Layout)
 }
 
-mod element_type;
-pub use element_type::ArrayElementType;
-pub(crate) use element_type::validate_element;
+fn widetag(ctx: &ThreadContext, object: Word) -> Option<u8> {
+    match classify_object(ctx, object) {
+        ObjectRef::String(_) => Some(layout::widetag::STRING),
+        ObjectRef::SimpleVector(_) => Some(layout::widetag::SIMPLE_VECTOR),
+        ObjectRef::SpecializedArray(_) => Some(layout::widetag::SPECIALIZED_ARRAY),
+        ObjectRef::Array(_) => Some(layout::widetag::NON_SIMPLE_ARRAY),
+        ObjectRef::Other { widetag, .. } => Some(widetag),
+        _ => None,
+    }
+}
 
-mod strings_vectors;
-pub use strings_vectors::{
-    make_simple_vector, make_string, simple_vector_length, simple_vector_ref, simple_vector_set,
-    string_length, string_ref, string_set,
-};
-
-mod construction;
-pub use construction::make_array;
-
-const fn metadata_offset(rank: usize, field: usize) -> usize {
-    layout::array_offset::DYNAMIC_BASE + rank + field
+/// Register the reference scanning layouts for Lisp arrays.
+///
+/// # Errors
+///
+/// Returns [`ObjectError::Layout`] when a layout has already been registered.
+pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
+    for (tag, layout) in [
+        (
+            layout::widetag::SIMPLE_VECTOR,
+            ncl_object::ReferenceLayout {
+                reference_words: layout::reference_words(&[layout::simple_vector_offset::DATA]),
+                boxed_from: Some(layout::simple_vector_offset::DATA + 1),
+            },
+        ),
+        (
+            layout::widetag::SPECIALIZED_ARRAY,
+            ncl_object::ReferenceLayout {
+                reference_words: Vec::new(),
+                boxed_from: Some(layout::specialized_array_offset::DATA + 1),
+            },
+        ),
+        (
+            layout::widetag::NON_SIMPLE_ARRAY,
+            ncl_object::ReferenceLayout {
+                reference_words: Vec::new(),
+                boxed_from: Some(1),
+            },
+        ),
+    ] {
+        runtime.register_layout(tag, layout)?;
+    }
+    Ok(())
 }
 
 fn array_flags(ctx: &ThreadContext, object: Word, rank: usize) -> Result<u64, ObjectError> {
@@ -97,7 +138,7 @@ pub fn array_element_type(
     ctx: &ThreadContext,
     object: Word,
 ) -> Result<ArrayElementType, ObjectError> {
-    match ncl_sys::object_widetag(&ctx.thread, object) {
+    match widetag(ctx, object) {
         Some(layout::widetag::NON_SIMPLE_ARRAY) => ArrayElementType::from_word(read(
             ctx,
             object,
@@ -117,8 +158,8 @@ pub fn array_element_type(
 ///
 /// Returns [`ObjectError`] for a non-array or malformed layout.
 pub fn array_displacement(ctx: &ThreadContext, object: Word) -> Result<(Word, usize), ObjectError> {
-    if ncl_sys::object_widetag(&ctx.thread, object) != Some(layout::widetag::NON_SIMPLE_ARRAY) {
-        return match ncl_sys::object_widetag(&ctx.thread, object) {
+    if widetag(ctx, object) != Some(layout::widetag::NON_SIMPLE_ARRAY) {
+        return match widetag(ctx, object) {
             Some(
                 layout::widetag::SIMPLE_VECTOR
                 | layout::widetag::SPECIALIZED_ARRAY
@@ -225,13 +266,13 @@ pub fn set_fill_pointer(
 ///
 /// Returns [`ObjectError`] for a non-array or malformed metadata.
 pub fn array_dimensions(ctx: &ThreadContext, object: Word) -> Result<Vec<usize>, ObjectError> {
-    if ncl_sys::object_widetag(&ctx.thread, object) == Some(layout::widetag::SIMPLE_VECTOR) {
+    if widetag(ctx, object) == Some(layout::widetag::SIMPLE_VECTOR) {
         return Ok(vec![simple_vector_length(ctx, object)?]);
     }
-    if ncl_sys::object_widetag(&ctx.thread, object) == Some(layout::widetag::STRING) {
+    if widetag(ctx, object) == Some(layout::widetag::STRING) {
         return Ok(vec![string_length(ctx, object)?]);
     }
-    if ncl_sys::object_widetag(&ctx.thread, object) == Some(layout::widetag::SPECIALIZED_ARRAY) {
+    if widetag(ctx, object) == Some(layout::widetag::SPECIALIZED_ARRAY) {
         return Ok(vec![length(
             ctx,
             object,
@@ -262,7 +303,7 @@ pub fn array_row_major_ref(
     object: Word,
     index: usize,
 ) -> Result<Word, ObjectError> {
-    match ncl_sys::object_widetag(&ctx.thread, object) {
+    match widetag(ctx, object) {
         Some(layout::widetag::SIMPLE_VECTOR) => return simple_vector_ref(ctx, object, index),
         Some(layout::widetag::SPECIALIZED_ARRAY) => {
             return specialized_array_ref(ctx, object, index);
@@ -300,7 +341,7 @@ pub fn array_row_major_ref(
         )
         .map_err(|_| ObjectError::Layout)?;
         let target = offset.checked_add(index).ok_or(ObjectError::Layout)?;
-        return match ncl_sys::object_widetag(&ctx.thread, displaced) {
+        return match widetag(ctx, displaced) {
             Some(layout::widetag::SIMPLE_VECTOR) => simple_vector_ref(ctx, displaced, target),
             Some(layout::widetag::SPECIALIZED_ARRAY) => {
                 specialized_array_ref(ctx, displaced, target)
@@ -327,7 +368,7 @@ pub fn array_row_major_set(
     index: usize,
     value: Word,
 ) -> Result<(), ObjectError> {
-    match ncl_sys::object_widetag(&ctx.thread, object) {
+    match widetag(ctx, object) {
         Some(layout::widetag::SIMPLE_VECTOR) => {
             return simple_vector_set(ctx, object, index, value);
         }
@@ -372,7 +413,7 @@ pub fn array_row_major_set(
         )
         .map_err(|_| ObjectError::Layout)?;
         let target = offset.checked_add(index).ok_or(ObjectError::Layout)?;
-        return match ncl_sys::object_widetag(&ctx.thread, displaced) {
+        return match widetag(ctx, displaced) {
             Some(layout::widetag::SIMPLE_VECTOR) => {
                 simple_vector_set(ctx, displaced, target, value)
             }

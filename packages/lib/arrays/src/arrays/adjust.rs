@@ -1,9 +1,9 @@
-use ncl_object::array::{
+use ncl_arrays::{
     adjust_array, adjustable_array_p, array_element_type, array_has_fill_pointer_p, fill_pointer,
+    array_row_major_ref, array_row_major_set, make_array, ArrayOptions,
 };
 use ncl_object::{
-    ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
-    array_row_major_ref, array_row_major_set, make_array, pop_root, push_root,
+    BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word, pop_root, push_root,
 };
 
 use super::helpers::{array_shape, dimension_values};

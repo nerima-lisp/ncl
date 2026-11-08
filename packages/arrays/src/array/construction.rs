@@ -137,6 +137,7 @@ mod tests {
     #[test]
     fn capacity_overflow_is_reported_as_layout_error() {
         let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        crate::register_layouts(&runtime).unwrap_or_else(|error| panic!("layouts: {error:?}"));
         let mut ctx = ThreadContext::new();
         ctx.register(&runtime)
             .unwrap_or_else(|error| panic!("register: {error:?}"));

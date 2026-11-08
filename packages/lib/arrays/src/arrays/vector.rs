@@ -1,11 +1,12 @@
 use super::array_shape;
-use ncl_object::array::{
+use ncl_arrays::{
     adjustable_array_p, array_displacement, array_element_type, array_has_fill_pointer_p,
+    make_simple_vector, ArrayElementType,
 };
 use ncl_object::package::{nil, truth};
 use ncl_object::{
-    ArrayElementType, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext,
-    Word, classify_object, make_simple_vector,
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    classify_object,
 };
 
 pub(super) fn vector_builtin(

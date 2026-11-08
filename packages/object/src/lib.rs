@@ -5,7 +5,6 @@
 )]
 pub use context::{ConditionHandlerInvoker, PendingRuntimeErrors};
 pub use ncl_sys::Word;
-pub mod array;
 mod builtin;
 mod builtin_package;
 mod classify;
@@ -19,7 +18,7 @@ pub(crate) mod gc;
 pub mod hash_table;
 mod instance;
 mod keyword_builtins;
-mod layout;
+pub mod layout;
 mod load;
 mod nonlocal;
 #[cfg(test)]
@@ -36,16 +35,11 @@ mod roots;
 mod runtime;
 mod runtime_sb_symbols;
 pub mod scope;
-mod specialized_array;
 mod structure;
 mod structure_registry;
 mod symbol_extensions;
+mod string;
 pub mod typed;
-pub use array::{
-    ArrayElementType, ArrayOptions, array_dimensions, array_row_major_ref, array_row_major_set,
-    make_array, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
-    simple_vector_set, string_length, string_ref, string_set,
-};
 pub use builtin::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, FunctionObject, KeywordAdapter, LambdaList, LispErrorConverter, MultipleValues,
@@ -74,6 +68,7 @@ pub use layout::{
 };
 pub use load::LoadPort;
 pub use ncl_sys::RootSlot;
+pub use ncl_sys::ReferenceLayout;
 pub use ncl_sys::{ThreadLayout, thread_layout};
 pub use number::{
     Bignum, Complex, DoubleFloat, Ratio, bignum_limbs, double_value, make_bignum_from_i128,
@@ -95,11 +90,8 @@ pub use roots::{
     with_heap_rooted_mut_slice, with_heap_rooted_slice, with_root, with_rooted_slice, with_roots,
 };
 pub use runtime::Runtime;
+pub use string::{make_string, string_length, string_ref, string_set};
 pub use scope::{Handle, HandleVec, Local, Scope};
-pub use specialized_array::{
-    make_specialized_array, specialized_array_element_type, specialized_array_ref,
-    specialized_array_set,
-};
 pub use structure::{
     StructureLayout, make_structure, structure_layout, structure_ref, structure_set,
 };

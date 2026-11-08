@@ -113,6 +113,7 @@ mod tests {
     #[test]
     fn vector_push_extend_roots_value_during_adjustment() {
         let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        crate::register_layouts(&runtime).unwrap_or_else(|error| panic!("layouts: {error:?}"));
         let mut ctx = ThreadContext::new();
         ctx.register(&runtime)
             .unwrap_or_else(|error| panic!("register: {error:?}"));
@@ -133,15 +134,15 @@ mod tests {
             },
         )
         .unwrap_or_else(|error| panic!("vector: {error:?}"));
-        let token = crate::push_root(&mut ctx, &mut vector);
-        let value = crate::make_string(&mut ctx, &runtime, &['v'])
+        let token = ncl_object::push_root(&mut ctx, &mut vector);
+        let value = ncl_object::make_string(&mut ctx, &runtime, &['v'])
             .unwrap_or_else(|error| panic!("value: {error:?}"));
 
         let (_, adjusted) = vector_push_extend(&mut ctx, &runtime, vector, value, 1)
             .unwrap_or_else(|error| panic!("push: {error:?}"));
         let stored = crate::array_row_major_ref(&ctx, adjusted, 1)
             .unwrap_or_else(|error| panic!("read: {error:?}"));
-        assert_eq!(crate::string_ref(&ctx, stored, 0), Ok('v'));
-        assert!(crate::pop_root(&mut ctx, token));
+        assert_eq!(ncl_object::string_ref(&ctx, stored, 0), Ok('v'));
+        assert!(ncl_object::pop_root(&mut ctx, token));
     }
 }

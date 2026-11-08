@@ -159,28 +159,30 @@ fn unwind_protect_runs_normal_cleanup_before_returning_protected_values() -> Tes
     // CLHS specifies that cleanup forms run on normal exit while UNWIND-PROTECT
     // returns the protected form's values.
     // https://www.lispworks.com/documentation/HyperSpec/Body/s_unwind.htm
-    let region = lowered
-        .entry
+    assert_normal_unwind_protect_flow(&lowered.entry)
+}
+
+fn assert_normal_unwind_protect_flow(function: &ncl_ir::Function) -> TestResult<()> {
+    let region = function
         .handler_regions
         .iter()
         .find(|region| region.kind == HandlerKind::UnwindProtect)
         .ok_or_else(|| std::io::Error::other("UNWIND-PROTECT region is missing"))?;
     let (cleanup_block_id, cleanup_position) =
-        named_call_position(&lowered.entry, "COMMON-LISP-USER", "CLEANUP", true)
+        named_call_position(function, "COMMON-LISP-USER", "CLEANUP", true)
             .ok_or_else(|| std::io::Error::other("normal cleanup call is missing"))?;
     assert!(region.protected.contains(&cleanup_block_id));
-    let body = lowered
-        .entry
+    let body = function
         .blocks
         .iter()
         .find(|block| block.id == cleanup_block_id)
         .ok_or_else(|| std::io::Error::other("normal cleanup block is missing"))?;
     let capture_position =
-        named_call_position(&lowered.entry, "NCL-EXT", "CAPTURE-MULTIPLE-VALUES", false)
+        named_call_position(function, "NCL-EXT", "CAPTURE-MULTIPLE-VALUES", false)
             .filter(|(block_id, _)| *block_id == body.id)
             .map(|(_, position)| position)
             .ok_or_else(|| std::io::Error::other("protected values are not captured"))?;
-    let restore_position = named_call_position(&lowered.entry, "COMMON-LISP", "VALUES-LIST", true)
+    let restore_position = named_call_position(function, "COMMON-LISP", "VALUES-LIST", true)
         .filter(|(block_id, _)| *block_id == body.id)
         .map(|(_, position)| position)
         .ok_or_else(|| std::io::Error::other("protected values are not restored"))?;
@@ -195,7 +197,7 @@ fn unwind_protect_runs_normal_cleanup_before_returning_protected_values() -> Tes
         .get(1)
         .ok_or_else(|| std::io::Error::other("protected value is not captured"))?;
     assert_eq!(
-        constant_for_value(&lowered.entry, protected_value),
+        constant_for_value(function, protected_value),
         Some(&Constant::Fixnum(19))
     );
     let captured_values = capture
@@ -235,8 +237,7 @@ fn unwind_protect_runs_normal_cleanup_before_returning_protected_values() -> Tes
         return Err(std::io::Error::other("normal UNWIND-PROTECT merge is missing").into());
     };
     assert_eq!(args.first(), Some(&restored_value));
-    let merge = lowered
-        .entry
+    let merge = function
         .blocks
         .iter()
         .find(|block| block.id == *target)
@@ -319,25 +320,27 @@ fn non_local_block_exit_runs_cleanup_before_transferring_values() -> TestResult<
     // https://www.lispworks.com/documentation/HyperSpec/Body/s_unwind.htm
     // https://www.lispworks.com/documentation/HyperSpec/Body/s_block.htm
     // https://www.lispworks.com/documentation/HyperSpec/Body/05_b.htm
-    let region = lowered
-        .entry
+    assert_non_local_block_exit_cleanup_flow(&lowered.entry)
+}
+
+fn assert_non_local_block_exit_cleanup_flow(function: &ncl_ir::Function) -> TestResult<()> {
+    let region = function
         .handler_regions
         .iter()
         .find(|region| region.kind == HandlerKind::UnwindProtect)
         .ok_or_else(|| std::io::Error::other("UNWIND-PROTECT region is missing"))?;
     let (cleanup_block_id, cleanup_position) =
-        named_call_position(&lowered.entry, "COMMON-LISP-USER", "CLEANUP", true)
+        named_call_position(function, "COMMON-LISP-USER", "CLEANUP", true)
             .ok_or_else(|| std::io::Error::other("non-local cleanup call is missing"))?;
     assert!(region.protected.contains(&cleanup_block_id));
     assert_ne!(Some(cleanup_block_id), region.cleanup);
-    let cleanup_block = lowered
-        .entry
+    let cleanup_block = function
         .blocks
         .iter()
         .find(|block| block.id == cleanup_block_id)
         .ok_or_else(|| std::io::Error::other("non-local cleanup block is missing"))?;
     let capture_position =
-        named_call_position(&lowered.entry, "NCL-EXT", "CAPTURE-MULTIPLE-VALUES", false)
+        named_call_position(function, "NCL-EXT", "CAPTURE-MULTIPLE-VALUES", false)
             .filter(|(block_id, _)| *block_id == cleanup_block.id)
             .map(|(_, position)| position)
             .ok_or_else(|| std::io::Error::other("non-local exit values are not captured"))?;
@@ -352,7 +355,7 @@ fn non_local_block_exit_runs_cleanup_before_transferring_values() -> TestResult<
         .get(1)
         .ok_or_else(|| std::io::Error::other("non-local exit value is missing"))?;
     assert_eq!(
-        constant_for_value(&lowered.entry, exit_value),
+        constant_for_value(function, exit_value),
         Some(&Constant::Fixnum(23))
     );
     let captured_values = capture
@@ -375,8 +378,7 @@ fn non_local_block_exit_runs_cleanup_before_transferring_values() -> TestResult<
     };
     assert_eq!(args.first(), Some(&captured_values));
     assert_ne!(args.first(), Some(&cleanup_result));
-    let destination = lowered
-        .entry
+    let destination = function
         .blocks
         .iter()
         .find(|block| block.id == *target)
@@ -386,7 +388,7 @@ fn non_local_block_exit_runs_cleanup_before_transferring_values() -> TestResult<
         .first()
         .map(|parameter| parameter.value)
         .ok_or_else(|| std::io::Error::other("non-local transfer value parameter is missing"))?;
-    let restore_position = named_call_position(&lowered.entry, "COMMON-LISP", "VALUES-LIST", true)
+    let restore_position = named_call_position(function, "COMMON-LISP", "VALUES-LIST", true)
         .filter(|(block_id, _)| *block_id == destination.id)
         .map(|(_, position)| position)
         .ok_or_else(|| std::io::Error::other("transferred values are not restored"))?;

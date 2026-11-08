@@ -133,7 +133,6 @@ where
         pass: pass_name.clone(),
         changed: did_change,
         elapsed,
-        allocated_bytes,
     });
     let changed = verify_and_notify(
         module,
@@ -175,7 +174,6 @@ fn rollback_function_pass(
         pass: invocation.pass.clone(),
         changed: false,
         elapsed: invocation.elapsed,
-        allocated_bytes: invocation.allocated_bytes,
     });
     observer(&PassEvent {
         iteration: invocation.iteration,
@@ -220,7 +218,6 @@ pub(super) fn run_module_pass(
                     pass: pass_name.clone(),
                     changed: false,
                     elapsed,
-                    allocated_bytes,
                 });
                 observer(&PassEvent {
                     iteration,
@@ -256,7 +253,6 @@ pub(super) fn run_module_pass(
             pass: pass_name.clone(),
             changed: false,
             elapsed,
-            allocated_bytes,
         });
         observer(&PassEvent {
             iteration,
@@ -274,7 +270,6 @@ pub(super) fn run_module_pass(
         pass: pass_name.clone(),
         changed: did_change,
         elapsed,
-        allocated_bytes,
     });
     let changed = verify_and_notify(
         module,

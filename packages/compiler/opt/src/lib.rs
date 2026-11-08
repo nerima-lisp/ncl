@@ -196,8 +196,6 @@ pub struct PassStat {
     pub changed: bool,
     /// Wall-clock time spent in the pass, in nanoseconds.
     pub elapsed: Duration,
-    /// Successful Rust allocator request bytes made while running the pass, when measured.
-    pub allocated_bytes: Option<u128>,
 }
 
 /// Results and statistics from a manager run.
@@ -207,7 +205,7 @@ pub struct PassReport {
     pub iterations: usize,
     /// Whether the iteration limit stopped the run before a fixed point.
     pub hit_iteration_limit: bool,
-    /// Per-invocation change, timing, and optional allocation statistics.
+    /// Per-invocation change and timing statistics.
     pub stats: Vec<PassStat>,
 }
 

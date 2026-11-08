@@ -47,10 +47,11 @@ fn allocation_snapshot_reports_a_valid_delta_and_omits_decreasing_values() {
             || snapshots.next().flatten(),
         )
         .fixture();
-    assert_eq!(report.stats[0].allocated_bytes, Some(44));
+    assert_eq!(report.stats.len(), 2);
+    assert_eq!(report.stats[0].pass, "unchanged");
+    assert_eq!(report.stats[1].pass, "unchanged-module");
     assert_eq!(events[0].allocated_bytes, Some(44));
     assert!(events[0].to_string().contains("allocated_bytes=44"));
-    assert_eq!(report.stats[1].allocated_bytes, Some(8));
     assert_eq!(events[1].allocated_bytes, Some(8));
 
     let mut manager = PassManager::with_options(PassManagerOptions {

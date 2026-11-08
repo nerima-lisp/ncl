@@ -55,5 +55,12 @@ fn new_runtime_error_variants_keep_their_display() -> Result<(), String> {
         failure.to_string(),
         format!("native failure {error:?}: {condition:?}")
     );
+
+    let io_error = RuntimeError::from(std::io::Error::other("source read failed"));
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        io_error.to_string(),
+        "cannot read <source>: source read failed"
+    );
     Ok(())
 }

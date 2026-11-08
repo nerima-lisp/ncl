@@ -103,6 +103,47 @@ fn r5_load_builtin_returns_true_after_a_source_load() {
 }
 
 #[test]
+fn r5_load_returns_nil_for_missing_file_when_suppressed() {
+    let missing = std::env::temp_dir().join(format!(
+        "ncl-r5-load-missing-suppressed-{}.lisp",
+        std::process::id()
+    ));
+    if missing.exists() {
+        fs::remove_file(&missing)
+            .unwrap_or_else(|error| panic!("stale LOAD fixture cleanup failed: {error}"));
+    }
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let form = format!("(load {} :if-does-not-exist nil)", lisp_string(&missing));
+    let loaded = runtime
+        .eval(&form)
+        .unwrap_or_else(|error| panic!("LOAD with suppressed missing file failed: {error}"));
+    assert_eq!(runtime.format_result(loaded), "NIL");
+}
+
+#[test]
+fn r5_load_signals_end_of_file_for_incomplete_source() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-r5-load-incomplete-source-{}.lisp",
+        std::process::id()
+    ));
+    fs::write(&source, "(")
+        .unwrap_or_else(|error| panic!("LOAD incomplete source fixture creation failed: {error}"));
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let form = format!(
+        "(handler-case (progn (load {}) :no-error) (end-of-file () :end-of-file))",
+        lisp_string(&source)
+    );
+    let loaded = runtime
+        .eval(&form)
+        .unwrap_or_else(|error| panic!("LOAD incomplete source handler failed: {error}"));
+    assert_eq!(runtime.format_result(loaded), ":END-OF-FILE");
+    fs::remove_file(&source)
+        .unwrap_or_else(|error| panic!("LOAD incomplete source fixture cleanup failed: {error}"));
+}
+
+#[test]
 fn r5_load_builtin_ignores_external_format_for_fasl_and_returns_true() {
     let source = std::env::temp_dir().join(format!(
         "ncl-r5-load-fasl-format-{}.lisp",

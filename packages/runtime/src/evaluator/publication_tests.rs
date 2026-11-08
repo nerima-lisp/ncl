@@ -187,6 +187,45 @@ fn multi_code_sealing_failure_removes_every_prepared_entry() -> Result<(), crate
     Ok(())
 }
 
+#[test]
+fn native_compilation_rejects_frame_words_that_exceed_metadata_capacity()
+-> Result<(), crate::RuntimeError> {
+    let compilation = native_compilation(0, (u32::from(u16::MAX) + 1) * 8)?;
+
+    // check-added-lines: allow(panic) test-only assertions
+    assert!(matches!(
+        compilation.into_metadata(),
+        Err(crate::RuntimeError::Native(message)) if message == "frame is too large"
+    ));
+    Ok(())
+}
+
+#[test]
+fn native_compilation_rejects_entry_address_overflow() -> Result<(), crate::RuntimeError> {
+    let compilation = native_compilation(usize::MAX, 0)?;
+
+    // check-added-lines: allow(panic) test-only assertions
+    assert!(matches!(
+        compilation.entry_address(),
+        Err(crate::RuntimeError::Code(CodeError::OutOfBounds))
+    ));
+    Ok(())
+}
+
+fn native_compilation(
+    entry_offset: usize,
+    frame_size: u32,
+) -> Result<NativeCompilation, crate::RuntimeError> {
+    Ok(NativeCompilation {
+        code: ncl_sys::alloc_code(8)?,
+        entry_offset,
+        size: 8,
+        frame_size,
+        function_name: "fixture".to_owned(),
+        safepoint_maps: Vec::new(),
+    })
+}
+
 fn empty_function(id: u32, name: &str) -> ncl_ir::Function {
     ncl_ir::Function {
         id: ncl_ir::FunctionId(id),

@@ -276,7 +276,9 @@ fn verify_handler_flow(
                 continue;
             }
             if enter {
-                if let Some(parent) = regions[&region].parent
+                if let Some(parent) = regions
+                    .get(&region)
+                    .and_then(|definition| definition.parent)
                     && stack.last().copied() != Some(parent)
                 {
                     errors.push(VerifyError::HandlerMismatch(block.id));

@@ -234,3 +234,94 @@ fn catch_throw_and_progv_retain_dynamic_control() -> TestResult<()> {
     lower_both_and_verify(&builder, &form, &expr)?;
     Ok(())
 }
+
+#[test]
+fn unwind_protect_runs_normal_cleanup_and_preserves_protected_values() -> TestResult<()> {
+    let (id, mut builder, mut fixture) = context(56);
+    let protected_name = fixture.user("PROTECTED");
+    let protected = fixture.list(&[protected_name]);
+    let cleanup_name = fixture.user("CLEANUP");
+    let cleanup = fixture.list(&[cleanup_name]);
+    let input = fixture.form("UNWIND-PROTECT", &[protected, cleanup]);
+    let expr = fixture.expand(input)?;
+    let form = super::common::build(
+        &mut builder,
+        id,
+        &expr,
+        "(unwind-protect (protected) (cleanup))",
+    )?;
+    let lowered = ncl_hir::lower::lower(&form, builder.symbols())?;
+    verify_ir(&lowered.entry, "verify normal unwind-protect MIR")?;
+
+    // CLHS requires cleanup forms to run on normal exit while preserving the protected form's values.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_unwind.htm
+    assert!(lowered.entry.handler_regions.iter().any(|region| {
+        region.kind == ncl_ir::HandlerKind::UnwindProtect
+            && region.cleanup.is_some()
+            && !region.protected.is_empty()
+    }));
+    assert!(emits_named_call(
+        &lowered.entry,
+        "COMMON-LISP-USER",
+        "PROTECTED",
+        true,
+    ));
+    assert!(emits_named_call(
+        &lowered.entry,
+        "COMMON-LISP-USER",
+        "CLEANUP",
+        true,
+    ));
+    assert!(emits_named_call(
+        &lowered.entry,
+        "NCL-EXT",
+        "CAPTURE-MULTIPLE-VALUES",
+        false,
+    ));
+    assert!(emits_named_call(
+        &lowered.entry,
+        "COMMON-LISP",
+        "VALUES-LIST",
+        true,
+    ));
+    Ok(())
+}
+
+#[test]
+fn unwind_protect_runs_cleanup_when_throw_crosses_a_catch() -> TestResult<()> {
+    let (id, mut builder, mut fixture) = context(57);
+    let tag = Word::fixnum(77);
+    let throw = fixture.form("THROW", &[tag, Word::fixnum(9)]);
+    let cleanup_name = fixture.user("CLEANUP");
+    let cleanup = fixture.list(&[cleanup_name]);
+    let protected = fixture.form("UNWIND-PROTECT", &[throw, cleanup]);
+    let input = fixture.form("CATCH", &[tag, protected]);
+    let expr = fixture.expand(input)?;
+    let form = super::common::build(
+        &mut builder,
+        id,
+        &expr,
+        "(catch 77 (unwind-protect (throw 77 9) (cleanup)))",
+    )?;
+    let lowered = ncl_hir::lower::lower(&form, builder.symbols())?;
+    verify_ir(&lowered.entry, "verify non-local unwind-protect MIR")?;
+
+    // CLHS specifies cleanup execution before a THROW completes its non-local transfer.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_unwind.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/05_b.htm
+    assert!(lowered.entry.handler_regions.iter().any(|region| {
+        region.kind == ncl_ir::HandlerKind::Catch && !region.protected.is_empty()
+    }));
+    assert!(lowered.entry.handler_regions.iter().any(|region| {
+        region.kind == ncl_ir::HandlerKind::UnwindProtect
+            && region.cleanup.is_some()
+            && !region.protected.is_empty()
+    }));
+    assert!(emits_named_call(
+        &lowered.entry,
+        "COMMON-LISP-USER",
+        "CLEANUP",
+        true,
+    ));
+    Ok(())
+}

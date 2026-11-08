@@ -181,9 +181,57 @@ class CorpusExtractionTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(extracted.stat().st_mode), 0o700)
             self.assertEqual(stat.S_IMODE((extracted / "source.lisp").stat().st_mode), 0o600)
 
+    def test_safe_archive_accepts_an_implicit_pinned_root(self):
+        payload = _archive([
+            ("root/source.lisp", b"file", b"(defun corpus-source () t)\n"),
+        ])
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "source"
+            extracted = _extract_tar(
+                payload,
+                destination,
+                top_level="root",
+                max_unpacked_bytes=1024,
+                expected_member_list_sha256=_member_hash(payload),
+            )
+            self.assertEqual((extracted / "source.lisp").read_text(), "(defun corpus-source () t)\n")
+
+    def test_archive_rejects_empty_archives(self):
+        payload = _archive([])
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "source"
+            with self.assertRaisesRegex(CorpusError, "archive is empty"):
+                _extract_tar(
+                    payload,
+                    destination,
+                    top_level="root",
+                    max_unpacked_bytes=1024,
+                    expected_member_list_sha256=_member_hash(payload),
+                )
+            self.assertFalse(destination.exists())
+
+    def test_archive_rejects_duplicated_root_directories(self):
+        payload = _archive([
+            ("root", None, None),
+            ("root", None, None),
+            ("root/source.lisp", b"file", b"safe"),
+        ])
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "source"
+            with self.assertRaisesRegex(CorpusError, "root member is invalid or duplicated"):
+                _extract_tar(
+                    payload,
+                    destination,
+                    top_level="root",
+                    max_unpacked_bytes=1024,
+                    expected_member_list_sha256=_member_hash(payload),
+                )
+            self.assertFalse(destination.exists())
+
     def test_archive_rejects_unsafe_members_before_writing_any_file(self):
         invalid_members = [
             ("/absolute/source.lisp", b"file", b"bad"),
+            ("outside/source.lisp", b"file", b"bad"),
             ("root/../escape.lisp", b"file", b"bad"),
             ("root/./source.lisp", b"file", b"bad"),
             ("root//empty-component.lisp", b"file", b"bad"),

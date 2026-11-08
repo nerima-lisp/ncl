@@ -202,6 +202,8 @@ def _extract_tar(
                 members.append(member)
                 if len(members) > MAX_ARCHIVE_MEMBERS:
                     raise CorpusError("corpus archive has too many entries")
+            if not members:
+                raise CorpusError("corpus archive is empty")
             seen: set[tuple[str, ...]] = set()
             total_declared = 0
             root_seen = False
@@ -238,8 +240,6 @@ def _extract_tar(
                     if total_declared > max_unpacked_bytes:
                         raise CorpusError("corpus archive exceeds the unpacked-size limit")
                 checked.append((member, relative))
-            if not root_seen:
-                raise CorpusError("archive is missing its expected root directory")
             if _member_list_sha256(members) != expected_member_list_sha256:
                 raise CorpusError("corpus archive member list does not match its pin")
             total_written = 0

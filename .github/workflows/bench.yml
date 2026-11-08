@@ -37,17 +37,23 @@ jobs:
         id: sbcl
         shell: bash
         run: |
-          install_root="$RUNNER_TEMP/sbcl-2.6.10"
-          python3 -B -m bench.corpus.extract_tar \
-            --url 'https://downloads.sourceforge.net/project/sbcl/sbcl/2.6.10/sbcl-2.6.10-x86-64-linux-binary.tar.bz2' \
-            --destination "$install_root" \
-            --sha256 '96e26b0be3aa6ca2a3f03dfd5fc117647fffb96790a9c235e8dcf27df2eba726' \
-            --member-list-sha256 '33cfe21b7e3e2052f955aba530387862bc8430ce9fea99998d3aecd668db3a16' \
-            --top-level 'sbcl-2.6.10-x86-64-linux' \
-            --max-unpacked-bytes 67108864 --max-file-bytes 41943040
-          chmod 700 "$install_root/run-sbcl.sh" "$install_root/src/runtime/sbcl"
-          sbcl_bin="$install_root/run-sbcl.sh"
-          "$sbcl_bin" --version
+          archive="$RUNNER_TEMP/sbcl-2.6.10-x86-64-linux-binary.tar.bz2"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            https://sourceforge.net/projects/sbcl/files/sbcl/2.6.10/sbcl-2.6.10-x86-64-linux-binary.tar.bz2/download
+          printf '%s  %s\n' \
+            96e26b0be3aa6ca2a3f03dfd5fc117647fffb96790a9c235e8dcf27df2eba726 \
+            "$archive" | sha256sum --check --strict
+          tar -xjf "$archive" -C "$RUNNER_TEMP"
+          sbcl_dir="$RUNNER_TEMP/sbcl-2.6.10-x86-64-linux"
+          sbcl_prefix="$RUNNER_TEMP/sbcl-2.6.10"
+          (
+            cd "$sbcl_dir"
+            sh ./install.sh --prefix="$sbcl_prefix"
+          )
+          sbcl_bin="$sbcl_prefix/bin/sbcl"
+          sbcl_version="$("$sbcl_bin" --version)"
+          test "$sbcl_version" = "SBCL 2.6.10"
           printf 'SBCL_BIN=%s\n' "$sbcl_bin" >> "$GITHUB_ENV"
       - name: Run cl-bench comparison
         id: cl_bench

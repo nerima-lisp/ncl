@@ -82,7 +82,7 @@ fn root_value_is_live(state: &State, value: Word) -> bool {
     if !is_list && !is_other_pointer {
         return false;
     }
-    let Some(index) = state.object_starts.get(&value.address()).copied() else {
+    let Some(index) = state.object_index_at(value.address()) else {
         return false;
     };
     let Some(object) = state.objects.get(index) else {

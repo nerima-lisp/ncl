@@ -2,12 +2,9 @@ use super::tests_text::{block, finish, op};
 use crate::*;
 
 fn verify_has(function: &Function, expected: &VerifyError) {
-    let errors = match verify(function) {
-        Ok(()) => {
-            panic!("invalid fixture was accepted");
-        }
-        Err(errors) => errors,
-    };
+    let result = verify(function);
+    assert!(result.is_err(), "invalid fixture was accepted");
+    let Err(errors) = result else { return };
     assert!(
         errors.contains(expected),
         "missing {expected:?} in {errors:?}"

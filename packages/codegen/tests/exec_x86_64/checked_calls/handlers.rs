@@ -165,7 +165,7 @@ fn enter_progv_error_stops_before_downstream_calls() {
     };
     let (code, entry) = compile_and_publish(&build_progv_handler_function(95), &abi);
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
 
     assert_eq!(ENTER_PROGV_CALLS.load(Ordering::SeqCst), 1);
     assert_eq!(HANDLER_OBSERVER_CALLS.load(Ordering::SeqCst), 0);
@@ -186,7 +186,7 @@ fn leave_progv_error_stops_before_downstream_call() {
     };
     let (code, entry) = compile_and_publish(&build_progv_handler_function(96), &abi);
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
 
     assert_eq!(ENTER_PROGV_CALLS.load(Ordering::SeqCst), 1);
     assert_eq!(HANDLER_OBSERVER_CALLS.load(Ordering::SeqCst), 1);
@@ -207,7 +207,7 @@ fn enter_catch_error_stops_before_downstream_calls() {
     };
     let (code, entry) = compile_and_publish(&build_catch_handler_function(98), &abi);
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
 
     assert_eq!(ENTER_CATCH_CALLS.load(Ordering::SeqCst), 1);
     assert_eq!(HANDLER_OBSERVER_CALLS.load(Ordering::SeqCst), 0);
@@ -228,7 +228,7 @@ fn leave_catch_error_stops_before_downstream_call() {
     };
     let (code, entry) = compile_and_publish(&build_catch_handler_function(99), &abi);
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
 
     assert_eq!(ENTER_CATCH_CALLS.load(Ordering::SeqCst), 1);
     assert_eq!(HANDLER_OBSERVER_CALLS.load(Ordering::SeqCst), 1);
@@ -249,7 +249,7 @@ fn leave_unwind_protect_error_stops_before_downstream_call() {
     };
     let (code, entry) = compile_and_publish(&build_unwind_protect_function(), &abi);
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
 
     assert_eq!(ENTER_UNWIND_PROTECT_CALLS.load(Ordering::SeqCst), 1);
     assert_eq!(HANDLER_OBSERVER_CALLS.load(Ordering::SeqCst), 1);
@@ -272,7 +272,7 @@ fn pending_dispatch_leave_catch_error_reaches_matching_outer_handler() {
     let (code, entry) = compile_and_publish(&build_pending_dispatch_function(), &abi);
     let mut thread = Thread::new();
     thread.set_multiple_value_area(&[Word::fixnum(2)]);
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
 
     assert_eq!(ENTER_CATCH_CALLS.load(Ordering::SeqCst), 2);
     assert_eq!(LEAVE_CATCH_CALLS.load(Ordering::SeqCst), 1);

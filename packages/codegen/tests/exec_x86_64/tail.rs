@@ -62,7 +62,7 @@ fn executes_tail_transfer_with_the_regular_callee_frame_abi() {
     let result = invoke_entry(
         &entry_code,
         entry.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         2,
         [target_code.address() as u64, value, 0, 0],
         0,

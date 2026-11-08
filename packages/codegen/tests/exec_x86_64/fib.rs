@@ -139,7 +139,7 @@ fn executes_recursive_fib_twenty_five() {
         let (value, count) = invoke_entry(
             &code,
             compiled.entry_offset as usize,
-            &mut thread,
+            &raw mut thread,
             2,
             [code.address() as u64, Word::fixnum(25).bits(), 0, 0],
             0,

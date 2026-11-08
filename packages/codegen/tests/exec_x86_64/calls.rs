@@ -140,7 +140,7 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
     let result = invoke_entry(
         &entry_code,
         entry.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         6,
         [
             target_code.address() as u64,
@@ -313,7 +313,7 @@ fn execute_checked_fixnum_builtin(
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         u64::try_from(args.len()).expect("fixture argument count"),
         arguments,
         0,
@@ -498,7 +498,7 @@ fn x86_64_type_hint_preserves_the_word_value() {
     let (result, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         1,
         [value.bits(), 0, 0, 0],
         0,

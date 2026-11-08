@@ -67,7 +67,7 @@ fn make_closure_error_stops_before_capture_stores() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         2,
         [Word::fixnum(9).bits(), Word::fixnum(37).bits(), 0, 0],
         0,
@@ -108,7 +108,7 @@ fn make_value_cell_error_returns_no_values() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         1,
         [Word::fixnum(37).bits(), 0, 0, 0],
         0,
@@ -170,7 +170,7 @@ fn builtin_error_skips_later_helper_calls() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         1,
         [Word::fixnum(23).bits(), 0, 0, 0],
         0,

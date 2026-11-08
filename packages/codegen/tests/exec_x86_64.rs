@@ -1,5 +1,8 @@
 //! Native `x86-64` execution tests for generated code.
-
+#![cfg_attr(
+    target_arch = "x86_64",
+    expect(clippy::expect_used, reason = "test invariants")
+)]
 #![cfg(target_arch = "x86_64")]
 
 use ncl_codegen::{ContextField, RuntimeAbi, RuntimeFunction, X86_64Abi, compile_function_x86_64};
@@ -214,7 +217,7 @@ fn executes_fixnum_add_of_two_arguments() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         2,
         [Word::fixnum(1).bits(), Word::fixnum(2).bits(), 0, 0],
         0,
@@ -274,7 +277,7 @@ fn preserves_arguments_across_entry_safepoint() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         2,
         [Word::fixnum(11).bits(), Word::fixnum(31).bits(), 0, 0],
         0,
@@ -332,7 +335,7 @@ fn executes_builtin_call_with_context_and_arguments() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         2,
         [Word::fixnum(4).bits(), Word::fixnum(5).bits(), 0, 0],
         0,
@@ -388,7 +391,7 @@ fn loads_fifth_argument_from_rest_storage() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         5,
         [1, 2, 3, 4],
         rest.as_ptr() as u64,
@@ -462,7 +465,7 @@ fn executes_both_branch_paths_with_block_arguments() {
         invoke_entry(
             &code,
             compiled.entry_offset as usize,
-            &mut thread,
+            &raw mut thread,
             1,
             [Word::fixnum(value).bits(), 0, 0, 0],
             0,
@@ -474,7 +477,6 @@ fn executes_both_branch_paths_with_block_arguments() {
 
 #[path = "exec_x86_64/cons.rs"]
 mod cons;
-
 #[path = "exec_x86_64/fib.rs"]
 mod fib;
 
@@ -492,9 +494,7 @@ mod tail;
 
 #[path = "exec_x86_64/checked_calls.rs"]
 mod checked_calls;
-
 #[path = "exec_x86_64/errors.rs"]
 mod errors;
-
 #[path = "exec_x86_64/relocations.rs"]
 mod relocations;

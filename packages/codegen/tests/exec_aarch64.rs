@@ -2,10 +2,13 @@
 
 // Keep crate documentation and lint expectations before the architecture gate:
 // on other targets, the inner cfg empties this crate and strips following items.
-#![expect(
-    clippy::cast_sign_loss,
-    clippy::expect_used,
-    reason = "The native test ABI requires callback addresses as unsigned machine words, and expect identifies invalid IR fixtures before execution."
+#![cfg_attr(
+    target_arch = "aarch64",
+    expect(
+        clippy::cast_sign_loss,
+        clippy::expect_used,
+        reason = "The native test ABI requires callback addresses as unsigned machine words, and expect identifies invalid IR fixtures before execution."
+    )
 )]
 #![cfg(target_arch = "aarch64")]
 

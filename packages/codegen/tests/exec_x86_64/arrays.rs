@@ -136,7 +136,7 @@ fn execute(function: &ncl_ir::Function, abi: &dyn RuntimeAbi, arguments: &[Word]
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         u64::try_from(arguments.len()).expect("argument count fits u64"),
         raw_arguments,
         0,

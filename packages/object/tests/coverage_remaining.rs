@@ -4,10 +4,11 @@ use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ArrayElementType, ArrayOptions, FindStatus, ObjectError, ObjectRef, Package, Runtime,
     ThreadContext, WordView, array_dimensions, array_row_major_ref, array_row_major_set, classify,
-    classify_object, code_slot, make_array, make_cons, make_instance, make_readtable, make_stream,
-    make_string, make_structure, readtable_slot, rplaca, rplacd, slot_ref, slot_set, stream_slot,
-    structure_layout, structure_ref, structure_set,
+    classify_object, code_slot, make_array, make_cons, make_instance, make_stream, make_string,
+    make_structure, rplaca, rplacd, slot_ref, slot_set, stream_slot, structure_layout,
+    structure_ref, structure_set,
 };
+use ncl_readtables::{make_readtable, readtable_slot};
 use ncl_sys::Word;
 
 fn setup() -> (Runtime, ThreadContext) {

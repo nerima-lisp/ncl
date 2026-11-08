@@ -389,14 +389,14 @@ fn remaining_object_kinds_round_trip() {
         .unwrap_or_else(|_| ncl_object::Ratio::from_word(Word::NIL));
     let complex = ncl_object::make_complex(&mut ctx, &runtime, ratio.into(), bignum.into())
         .unwrap_or_else(|_| ncl_object::Complex::from_word(Word::NIL));
-    let readtable = ncl_object::make_readtable(
+    let readtable = ncl_readtables::make_readtable(
         &mut ctx,
         &runtime,
         complex.into(),
         ratio.into(),
         Word::fixnum(2),
     )
-    .unwrap_or_else(|_| ncl_object::Readtable::from_word(Word::NIL));
+    .unwrap_or_else(|_| ncl_readtables::Readtable::from_word(Word::NIL));
     let mut roots = [
         structure,
         instance.into(),
@@ -491,7 +491,7 @@ fn remaining_object_kinds_round_trip() {
         Ok(roots[7])
     );
     assert_eq!(
-        ncl_object::readtable_syntax(&ctx, ncl_object::Readtable::from_word(roots[9])),
+        ncl_readtables::readtable_syntax(&ctx, ncl_readtables::Readtable::from_word(roots[9])),
         Ok(roots[8])
     );
     assert_eq!(

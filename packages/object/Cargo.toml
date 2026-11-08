@@ -10,6 +10,7 @@ ncl-sys = { path = "../sys" }
 
 [dev-dependencies]
 ncl-ownership = { path = "../ownership" }
+ncl-readtables = { path = "../readtables" }
 
 [lints]
 workspace = true

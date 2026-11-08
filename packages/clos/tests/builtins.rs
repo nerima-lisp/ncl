@@ -3,6 +3,7 @@
 #![expect(clippy::unwrap_used, reason = "Tests assert on builtin registration.")]
 
 use ncl_object::{BuiltinConvention, FunctionObject, Package, Runtime, ThreadContext, Word};
+use ncl_readtables::make_readtable;
 
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
@@ -142,7 +143,7 @@ fn standard_classes_have_registered_metaobjects_and_supported_precedence() {
         );
     }
 
-    let readtable = ncl_object::make_readtable(&mut ctx, &runtime, Word::NIL, Word::NIL, Word::NIL)
+    let readtable = make_readtable(&mut ctx, &runtime, Word::NIL, Word::NIL, Word::NIL)
         .unwrap()
         .as_word();
     assert_eq!(

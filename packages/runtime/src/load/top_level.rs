@@ -2,10 +2,11 @@ use crate::evalwhen::{TopLevelMode, eval_when_start};
 use crate::{Runtime, RuntimeError};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
-    HeapRootedWord, ObjectRef, Readtable as ObjectReadtable, Runtime as ObjectRuntime, Word,
-    classify_object, make_cons, symbol_name, symbol_package,
+    HeapRootedWord, ObjectRef, Runtime as ObjectRuntime, Word, classify_object, make_cons,
+    symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, Readtable};
+use ncl_readtables::Readtable as ObjectReadtable;
 
 pub(super) fn eval_top_level(
     runtime: &mut Runtime,

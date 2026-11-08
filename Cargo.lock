@@ -36,6 +36,7 @@ dependencies = [
  "ncl-lib-numbers",
  "ncl-lib-streams",
  "ncl-object",
+ "ncl-readtables",
  "ncl-types",
 ]
 
@@ -127,6 +128,7 @@ dependencies = [
  "ncl-object",
  "ncl-objfile",
  "ncl-ownership",
+ "ncl-readtables",
  "ncl-sys",
 ]
 
@@ -233,6 +235,7 @@ name = "ncl-object"
 version = "0.1.1"
 dependencies = [
  "ncl-ownership",
+ "ncl-readtables",
  "ncl-sys",
 ]
 
@@ -292,6 +295,14 @@ dependencies = [
  "ncl-lib-pathnames",
  "ncl-object",
  "ncl-ownership",
+ "ncl-readtables",
+]
+
+[[package]]
+name = "ncl-readtables"
+version = "0.1.1"
+dependencies = [
+ "ncl-object",
 ]
 
 [[package]]
@@ -312,6 +323,7 @@ dependencies = [
  "ncl-opt",
  "ncl-printer",
  "ncl-reader",
+ "ncl-readtables",
  "ncl-stdlib",
  "ncl-sys",
  "ncl-threads",

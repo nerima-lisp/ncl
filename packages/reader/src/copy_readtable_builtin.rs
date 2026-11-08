@@ -1,9 +1,9 @@
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, LambdaList, LispError, ObjectError, ObjectType, Package, Parameter,
-    ParameterType, Readtable as ObjectReadtable, Runtime, ThreadContext, Word, symbol_value,
-    with_heap_rooted_slice, with_root,
+    ParameterType, Runtime, ThreadContext, Word, symbol_value, with_heap_rooted_slice, with_root,
 };
+use ncl_readtables::Readtable as ObjectReadtable;
 
 use crate::{ReadError, Readtable, copy_readtable_to, readtablep, standard_readtable};
 

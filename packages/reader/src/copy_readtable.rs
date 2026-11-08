@@ -1,7 +1,10 @@
 use ncl_object::{
-    ObjectError, Readtable as ObjectReadtable, Runtime, ThreadContext, Word, make_readtable,
-    make_simple_vector, readtable_case as object_readtable_case, readtable_dispatch,
-    readtable_offset, readtable_syntax, simple_vector_ref, with_roots,
+    ObjectError, Runtime, ThreadContext, Word, make_simple_vector, readtable_offset,
+    simple_vector_ref, with_roots,
+};
+use ncl_readtables::{
+    Readtable as ObjectReadtable, make_readtable, readtable_case as object_readtable_case,
+    readtable_dispatch, readtable_syntax,
 };
 
 use crate::{ReadError, Readtable};
@@ -112,10 +115,10 @@ fn copy_vector(
 )]
 mod tests {
     use ncl_object::{
-        ObjectError, Readtable as ObjectReadtable, Runtime, ThreadContext, Word,
-        readtable_dispatch, readtable_offset, readtable_syntax, simple_vector_ref,
+        ObjectError, Runtime, ThreadContext, Word, readtable_offset, simple_vector_ref,
         simple_vector_set, with_heap_rooted_slice,
     };
+    use ncl_readtables::{Readtable as ObjectReadtable, readtable_dispatch, readtable_syntax};
 
     use super::copy_readtable_to;
     use crate::{ReadError, Readtable, ReadtableCase, standard_readtable};

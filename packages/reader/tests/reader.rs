@@ -996,7 +996,7 @@ fn bounded_heap_failure_propagates_from_read_eval_form() {
         let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
         assert!(root_count > 1);
         opts.set_readtable(ncl_reader::Readtable::from_object(
-            ncl_object::Readtable::from_word(
+            ncl_readtables::Readtable::from_word(
                 *roots.first().ok_or(ncl_object::ObjectError::Layout)?,
             ),
         ));
@@ -1033,7 +1033,7 @@ fn bounded_heap_failure_propagates_from_read_eval_symbol_lookup() {
         let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
         assert!(root_count > 1);
         opts.set_readtable(ncl_reader::Readtable::from_object(
-            ncl_object::Readtable::from_word(
+            ncl_readtables::Readtable::from_word(
                 *roots.first().ok_or(ncl_object::ObjectError::Layout)?,
             ),
         ));
@@ -1063,7 +1063,7 @@ fn bounded_heap_failure_propagates_from_dynamic_read_eval_lookup() {
         let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
         assert!(root_count > 1);
         opts.set_readtable(ncl_reader::Readtable::from_object(
-            ncl_object::Readtable::from_word(
+            ncl_readtables::Readtable::from_word(
                 *roots.first().ok_or(ncl_object::ObjectError::Layout)?,
             ),
         ));
@@ -1093,7 +1093,7 @@ fn bounded_heap_failure_propagates_from_dynamic_read_suppression_lookup() {
         let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
         assert!(root_count > 1);
         opts.set_readtable(ncl_reader::Readtable::from_object(
-            ncl_object::Readtable::from_word(
+            ncl_readtables::Readtable::from_word(
                 *roots.first().ok_or(ncl_object::ObjectError::Layout)?,
             ),
         ));
@@ -1123,7 +1123,7 @@ fn bounded_heap_failure_propagates_from_suppression_lookup_in_read_eval() {
         let root_count = fill_heap_with_rooted_objects(ctx, &runtime, roots)?;
         assert!(root_count > 1);
         opts.set_readtable(ncl_reader::Readtable::from_object(
-            ncl_object::Readtable::from_word(
+            ncl_readtables::Readtable::from_word(
                 *roots.first().ok_or(ncl_object::ObjectError::Layout)?,
             ),
         ));

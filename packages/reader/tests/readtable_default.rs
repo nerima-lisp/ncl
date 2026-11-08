@@ -28,7 +28,7 @@ fn registration_binds_the_standard_readtable() {
         panic!("*READTABLE* is not a readtable object");
     };
     let readtable =
-        ncl_reader::Readtable::from_object(ncl_object::Readtable::from_word(readtable_object));
+        ncl_reader::Readtable::from_object(ncl_readtables::Readtable::from_word(readtable_object));
     assert_eq!(
         ncl_reader::readtable_case(&ctx, readtable)
             .unwrap_or_else(|error| panic!("readtable case: {error}")),

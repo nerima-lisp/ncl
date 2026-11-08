@@ -1,10 +1,12 @@
 //! Readtables: syntax tables, dispatch tables, and case modes.
 
 use ncl_object::{
-    ObjectError, ObjectRef, Readtable as ObjectReadtable, Runtime, ThreadContext, Word,
-    classify_object, make_cons, make_readtable, make_simple_vector, pop_root, push_root,
-    readtable_case as object_readtable_case, readtable_dispatch, readtable_syntax,
-    simple_vector_ref, simple_vector_set,
+    ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object, make_cons,
+    make_simple_vector, pop_root, push_root, simple_vector_ref, simple_vector_set,
+};
+use ncl_readtables::{
+    Readtable as ObjectReadtable, make_readtable, readtable_case as object_readtable_case,
+    readtable_dispatch, readtable_syntax,
 };
 
 use crate::error::ReadError;

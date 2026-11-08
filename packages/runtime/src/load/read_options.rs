@@ -1,10 +1,11 @@
 use crate::{Runtime, RuntimeError};
 use ncl_compiler_front::form::word_string;
 use ncl_object::{
-    ObjectError, ObjectRef, Package, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
-    ThreadContext, Word, classify_object, symbol_name, symbol_value, with_root,
+    ObjectError, ObjectRef, Package, Runtime as ObjectRuntime, ThreadContext, Word,
+    classify_object, symbol_name, symbol_value, with_root,
 };
 use ncl_reader::{FloatFormat, ReadBase, ReadEvaluation, ReadOptions, ReadSuppression, Readtable};
+use ncl_readtables::Readtable as ObjectReadtable;
 
 pub fn current_read_options(
     runtime: &mut Runtime,

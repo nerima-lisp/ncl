@@ -6,11 +6,12 @@ use ncl_object::{
     ArrayElementType, ArrayOptions, CodeObject, Function, Runtime, ThreadContext, Word, car, cdr,
     code_constants, code_debug, code_stack_map, complex_imag, complex_real, function_code,
     function_lambda_list, function_name, make_array, make_closure, make_code_object, make_complex,
-    make_cons, make_instance, make_ratio, make_readtable, make_simple_fun, make_simple_vector,
-    make_stream, make_string, make_structure, make_symbol, ratio_denominator, ratio_numerator,
-    set_symbol_value, simple_vector_ref, simple_vector_set, slot_ref, stream_element_type,
-    stream_external_format, stream_implementation, stream_state, symbol_name,
+    make_cons, make_instance, make_ratio, make_simple_fun, make_simple_vector, make_stream,
+    make_string, make_structure, make_symbol, ratio_denominator, ratio_numerator, set_symbol_value,
+    simple_vector_ref, simple_vector_set, slot_ref, stream_element_type, stream_external_format,
+    stream_implementation, stream_state, symbol_name,
 };
+use ncl_readtables::{make_readtable, readtable_syntax};
 
 fn assert_symbol_name(ctx: &ThreadContext, symbol: Word) {
     let name = symbol_name(ctx, symbol).unwrap_or_else(|error| panic!("symbol name: {error:?}"));
@@ -241,7 +242,7 @@ fn constructors_and_registry_survive_gc_stress() {
     assert_eq!(complex_imag(&ctx, complex), Ok(lambda));
     let readtable = make_readtable(&mut ctx, &runtime, name, lambda, Word::fixnum(1))
         .unwrap_or_else(|error| panic!("readtable: {error:?}"));
-    assert_eq!(ncl_object::readtable_syntax(&ctx, readtable), Ok(name));
+    assert_eq!(readtable_syntax(&ctx, readtable), Ok(name));
     let stream = make_stream(
         &mut ctx,
         &runtime,

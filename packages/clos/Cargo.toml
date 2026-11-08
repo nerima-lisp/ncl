@@ -12,5 +12,8 @@ ncl-lib-streams = { path = "../lib/streams" }
 ncl-types = { path = "../types" }
 ncl-conditions = { path = "../conditions" }
 
+[dev-dependencies]
+ncl-readtables = { path = "../readtables" }
+
 [lints]
 workspace = true

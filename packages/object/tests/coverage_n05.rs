@@ -5,15 +5,15 @@ use ncl_object::{
     bignum_limbs, bignum_sign, code_constants, code_debug, code_entry, code_size, code_stack_map,
     complex_imag, complex_real, function_code, function_entry, function_lambda_list, function_name,
     instance_class, make_array, make_bignum_from_i128, make_code_object, make_complex, make_double,
-    make_instance, make_ratio, make_readtable, make_simple_fun, make_specialized_array,
-    make_stream, make_string, make_structure, ratio_denominator, ratio_numerator, readtable_case,
-    readtable_dispatch, readtable_syntax, set_symbol_constant, set_symbol_macro,
+    make_instance, make_ratio, make_simple_fun, make_specialized_array, make_stream, make_string,
+    make_structure, ratio_denominator, ratio_numerator, set_symbol_constant, set_symbol_macro,
     set_symbol_package_locked, set_symbol_special, set_symbol_value, slot_ref, slot_set,
     specialized_array_element_type, specialized_array_ref, specialized_array_set, stream_direction,
     stream_element_type, stream_external_format, stream_implementation, stream_state,
     structure_layout, structure_ref, structure_set, symbol_flags, symbol_is_constant,
     symbol_is_macro, symbol_is_package_locked, symbol_is_special, symbol_name, symbol_value,
 };
+use ncl_readtables::{make_readtable, readtable_case, readtable_dispatch, readtable_syntax};
 
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));

@@ -134,7 +134,7 @@ pub enum WordView {
     DoubleFloat(crate::DoubleFloat),
     Complex(crate::Complex),
     Package(crate::Package),
-    Readtable(crate::Readtable),
+    Readtable(Word),
     Stream(crate::Stream),
     Code(crate::CodeObject),
     Other { word: Word, widetag: u8 },
@@ -196,7 +196,7 @@ impl WordView {
             Self::DoubleFloat(value) => value.into(),
             Self::Complex(value) => value.into(),
             Self::Package(value) => value.into(),
-            Self::Readtable(value) => value.into(),
+            Self::Readtable(value) => value,
             Self::Stream(value) => value.into(),
             Self::Code(value) => value.into(),
             Self::Other { word, .. } | Self::Immediate(word) => word,
@@ -230,7 +230,7 @@ impl From<ObjectRef> for WordView {
             }
             ObjectRef::Complex(value) => Self::Complex(crate::Complex::from_word(value)),
             ObjectRef::Package(value) => Self::Package(crate::Package::from_word(value)),
-            ObjectRef::Readtable(value) => Self::Readtable(crate::Readtable::from_word(value)),
+            ObjectRef::Readtable(value) => Self::Readtable(value),
             ObjectRef::Stream(value) => Self::Stream(crate::Stream::from_word(value)),
             ObjectRef::Code(value) => Self::Code(crate::CodeObject::from_word(value)),
             ObjectRef::Other { word, widetag } if word == Word::TRUE && widetag == 0 => {

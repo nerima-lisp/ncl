@@ -1,8 +1,32 @@
-use crate::object_access::{get, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, readtable_offset, widetag, with_roots};
-use ncl_sys::Word;
+use ncl_object::{
+    ObjectError, Runtime, ThreadContext, Word, allocate, get, put, readtable_offset, widetag,
+    with_roots,
+};
 
-crate::word_newtype!(Readtable);
+/// A typed handle to a Lisp readtable object.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Readtable(Word);
+
+impl Readtable {
+    /// Construct a readtable handle from its tagged word.
+    #[must_use]
+    pub const fn from_word(value: Word) -> Self {
+        Self(value)
+    }
+
+    /// Return the tagged word represented by this handle.
+    #[must_use]
+    pub const fn as_word(self) -> Word {
+        self.0
+    }
+}
+
+impl From<Readtable> for Word {
+    fn from(value: Readtable) -> Self {
+        value.0
+    }
+}
 
 /// Allocate a readtable descriptor.
 ///

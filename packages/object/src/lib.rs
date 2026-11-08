@@ -30,7 +30,6 @@ mod object_error;
 pub mod package;
 pub mod place;
 mod primitives;
-mod readtable;
 mod registry_extensions;
 mod rooted_words;
 mod roots;
@@ -82,14 +81,11 @@ pub use number::{
     make_bignum_from_limbs, make_complex, make_double, make_ratio,
 };
 pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, ratio_numerator};
+pub use object_access::{get, put};
 pub use object_error::ObjectError;
 pub use package::{FindStatus, Package};
 pub use place::{PlaceExpander, SetfExpansion};
 pub use primitives::{allocate, car, cdr, make_cons, make_symbol};
-pub use readtable::readtable_slot;
-pub use readtable::{
-    Readtable, make_readtable, readtable_case, readtable_dispatch, readtable_syntax,
-};
 pub use rooted_words::HeapRootedWords;
 pub(crate) use roots::finish_root;
 pub use roots::{

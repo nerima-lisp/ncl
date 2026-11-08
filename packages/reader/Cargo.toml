@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 ncl-object = { path = "../object" }
+ncl-readtables = { path = "../readtables" }
 ncl-lib-pathnames = { path = "../lib/pathnames" }
 
 [dev-dependencies]

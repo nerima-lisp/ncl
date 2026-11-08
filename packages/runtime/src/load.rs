@@ -6,10 +6,11 @@ use ncl_compiler_front::form::word_string;
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, HeapRootedWord, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
-    Parameter, ParameterType, Readtable as ObjectReadtable, Runtime as ObjectRuntime,
-    ThreadContext, Word, classify_object, make_string, symbol_name, symbol_package,
+    Parameter, ParameterType, Runtime as ObjectRuntime, ThreadContext, Word, classify_object,
+    make_string, symbol_name, symbol_package,
 };
 use ncl_reader::{ReadOptions, Readtable, StringSource, read};
+use ncl_readtables::Readtable as ObjectReadtable;
 
 mod read_options;
 mod support;

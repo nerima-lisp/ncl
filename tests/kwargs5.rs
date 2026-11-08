@@ -1,9 +1,5 @@
 //! End-to-end tests for compiled functions with larger argument lists.
 
-#[expect(
-    dead_code,
-    reason = "This integration target uses only a subset of the shared test helpers."
-)]
 mod common;
 
 use common::run_ncl;

@@ -3,10 +3,6 @@
 
 // This file only needs `assert_eval_with_stress_on`; `common::run_ncl` is
 // used by other test binaries that share this module.
-#[expect(
-    dead_code,
-    reason = "This integration target imports only the GC-stress helper from the shared test module."
-)]
 mod common;
 
 use common::assert_eval_with_stress_on;

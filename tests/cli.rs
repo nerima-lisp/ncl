@@ -1,13 +1,11 @@
 //! End-to-end tests for the NCL command-line interface.
 
-use std::fs;
-use std::io::Write;
-use std::path::Path;
-use std::process::{Child, Command, Output, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+#[path = "common/mod.rs"]
+mod common;
 
-const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
+use std::fs;
+use std::path::Path;
+use std::process::{Command, Output, Stdio};
 
 #[path = "cli/setf.rs"]
 mod setf;
@@ -22,38 +20,7 @@ fn path_str(path: &Path) -> &str {
 }
 
 fn output(command: &mut Command) -> Output {
-    let child = match command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(error) => panic!("failed to run ncl: {error}"),
-    };
-    wait_with_timeout(child)
-}
-
-fn wait_with_timeout(mut child: Child) -> Output {
-    let deadline = Instant::now() + CHILD_TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return match child.wait_with_output() {
-                    Ok(output) => output,
-                    Err(error) => panic!("failed to collect ncl output: {error}"),
-                };
-            }
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-            Ok(None) => {
-                if let Err(error) = child.kill() {
-                    panic!("ncl timed out and could not be killed: {error}");
-                }
-                let _ = child.wait();
-                panic!("ncl did not exit within {CHILD_TIMEOUT:?}");
-            }
-            Err(error) => panic!("failed to poll ncl: {error}"),
-        }
-    }
+    common::run_command(command)
 }
 
 #[test]
@@ -84,19 +51,9 @@ fn eval_load_script_and_repl_use_runtime() {
     assert!(script.status.success());
     assert!(script.stdout.is_empty());
 
-    let repl = match ncl().stdin(Stdio::piped()).stdout(Stdio::piped()).spawn() {
-        Ok(repl) => repl,
-        Err(error) => panic!("failed to start ncl REPL: {error}"),
-    };
-    let mut repl = repl;
-    let Some(mut stdin) = repl.stdin.take() else {
-        panic!("REPL stdin unavailable");
-    };
-    if let Err(error) = stdin.write_all(b"44\n") {
-        panic!("failed to write REPL input: {error}");
-    }
-    drop(stdin);
-    let repl_output = wait_with_timeout(repl);
+    let mut repl = ncl();
+    repl.stdin(Stdio::piped()).stdout(Stdio::piped());
+    let repl_output = common::run_command_with_stdin(&mut repl, b"44\n");
     assert!(repl_output.status.success());
     assert!(String::from_utf8_lossy(&repl_output.stdout).contains("44"));
 
@@ -177,27 +134,11 @@ fn evals_internal_time_constant_and_functions() {
 
 #[test]
 fn repl_continues_forms_and_errors() {
-    let mut repl = match ncl()
-        .stdin(Stdio::piped())
+    let mut repl = ncl();
+    repl.stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Ok(repl) => repl,
-        Err(error) => panic!("failed to start ncl REPL: {error}"),
-    };
-    let Some(mut stdin) = repl.stdin.take() else {
-        panic!("REPL stdin unavailable");
-    };
-    if let Err(error) = stdin.write_all(b"(\n42)\n)\n7\n") {
-        panic!("failed to write REPL input: {error}");
-    }
-    drop(stdin);
-
-    let output = match repl.wait_with_output() {
-        Ok(output) => output,
-        Err(error) => panic!("failed to collect REPL output: {error}"),
-    };
+        .stderr(Stdio::piped());
+    let output = common::run_command_with_stdin(&mut repl, b"(\n42)\n)\n7\n");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains('7'));

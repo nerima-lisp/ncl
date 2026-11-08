@@ -116,6 +116,7 @@ ncl-runtime = { path = "packages/runtime" }
 
 [dev-dependencies]
 ncl-lib-streams = { path = "packages/lib/streams" }
+ncl-sys = { path = "packages/sys", features = ["test-support"] }
 
 [lints]
 workspace = true

@@ -1,8 +1,9 @@
 //! End-to-end tests for macro expansion and LOOP forms.
 
-use std::process::{Command, Output, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+#[path = "common/mod.rs"]
+mod common;
+
+use common::run_ncl;
 
 struct Probe {
     name: &'static str,
@@ -442,34 +443,6 @@ const ERROR_CASES: &[ErrorCase] = &[
         exit_code: 1,
     },
 ];
-
-fn run_ncl(source: &str) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ncl"))
-        .args(["--eval", source])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap_or_else(|error| panic!("{source}: {error}"));
-    let deadline = Instant::now() + Duration::from_secs(30);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .unwrap_or_else(|error| panic!("{source}: {error}"));
-            }
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-            Ok(None) => {
-                child
-                    .kill()
-                    .unwrap_or_else(|error| panic!("{source}: timeout kill failed: {error}"));
-                let _ = child.wait();
-                panic!("{source}: ncl did not exit within 30 seconds");
-            }
-            Err(error) => panic!("{source}: poll failed: {error}"),
-        }
-    }
-}
 
 #[test]
 fn standard_macro_probes_assert_compiled_results() {

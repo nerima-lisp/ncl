@@ -1,25 +1,14 @@
 //! End-to-end tests for escaped strings and characters in CLI output.
 
-use std::process::{Child, Command, Output, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+#[path = "common/mod.rs"]
+mod common;
 
-const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
+use common::run_ncl;
 
 struct Case {
     name: &'static str,
     source: &'static str,
     expected: &'static str,
-}
-
-fn run_ncl(source: &str) -> Output {
-    let child = Command::new(env!("CARGO_BIN_EXE_ncl"))
-        .args(["--eval", source])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap_or_else(|error| panic!("{source}: failed to run ncl: {error}"));
-    wait_with_timeout(child, source)
 }
 
 fn run_runtime(source: &str, compile: bool) -> Result<String, ncl_runtime::RuntimeError> {
@@ -30,28 +19,6 @@ fn run_runtime(source: &str, compile: bool) -> Result<String, ncl_runtime::Runti
         runtime.eval(source)?
     };
     Ok(runtime.format_result(value))
-}
-
-fn wait_with_timeout(mut child: Child, source: &str) -> Output {
-    let deadline = Instant::now() + CHILD_TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .unwrap_or_else(|error| panic!("{source}: failed to collect output: {error}"));
-            }
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-            Ok(None) => {
-                child
-                    .kill()
-                    .unwrap_or_else(|error| panic!("{source}: failed to stop timeout: {error}"));
-                let _ = child.wait();
-                panic!("{source}: ncl did not exit within {CHILD_TIMEOUT:?}");
-            }
-            Err(error) => panic!("{source}: failed to poll ncl: {error}"),
-        }
-    }
 }
 
 #[test]

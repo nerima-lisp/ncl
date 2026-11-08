@@ -1,9 +1,10 @@
 //! End-to-end tests for builtin coverage and numeric fast paths.
 
 use std::collections::BTreeSet;
-use std::process::{Command, Output, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+#[path = "common/mod.rs"]
+mod common;
+
+use common::run_ncl;
 
 fn assert_eval_with_stress(runtime: &mut ncl_runtime::Runtime, source: &str, expected: &str) {
     runtime.set_gc_stress(true);
@@ -13,8 +14,6 @@ fn assert_eval_with_stress(runtime: &mut ncl_runtime::Runtime, source: &str, exp
         .unwrap_or_else(|error| panic!("compile failed for {source}: {error:?}"));
     assert_eq!(runtime.format_result(value), expected, "{source}");
 }
-
-const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
 
 struct Probe(&'static str, &'static str);
 
@@ -156,34 +155,6 @@ fn expression(name: &str) -> String {
         "RANDOM-STATE-P" => "(random-state-p nil)".to_owned(),
         "FLOAT" => "(float 3 1.0)".to_owned(),
         _ => format!("({name} 1)"),
-    }
-}
-
-fn run_ncl(source: &str) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ncl"))
-        .args(["--eval", source])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap_or_else(|error| panic!("{source}: spawn failed: {error}"));
-    let deadline = Instant::now() + CHILD_TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .unwrap_or_else(|error| panic!("{source}: collect failed: {error}"));
-            }
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-            Ok(None) => {
-                child
-                    .kill()
-                    .unwrap_or_else(|error| panic!("{source}: timeout kill failed: {error}"));
-                let _ = child.wait();
-                panic!("{source}: ncl did not exit within {CHILD_TIMEOUT:?}");
-            }
-            Err(error) => panic!("{source}: poll failed: {error}"),
-        }
     }
 }
 

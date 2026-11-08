@@ -6,39 +6,10 @@
     reason = "Character cases use raw Lisp forms with embedded quotes and include a decomposed Unicode regression."
 )]
 
-use std::process::{Command, Output, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+#[path = "common/mod.rs"]
+mod common;
 
-const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
-
-fn run_ncl(source: &str) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ncl"))
-        .args(["--eval", source])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap_or_else(|error| panic!("{source}: spawn failed: {error}"));
-    let deadline = Instant::now() + CHILD_TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .unwrap_or_else(|error| panic!("{source}: collect failed: {error}"));
-            }
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-            Ok(None) => {
-                child
-                    .kill()
-                    .unwrap_or_else(|error| panic!("{source}: timeout kill failed: {error}"));
-                let _ = child.wait();
-                panic!("{source}: ncl did not exit within {CHILD_TIMEOUT:?}");
-            }
-            Err(error) => panic!("{source}: poll failed: {error}"),
-        }
-    }
-}
+use common::run_ncl;
 
 struct BuiltinEntry {
     builtin: &'static str,

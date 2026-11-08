@@ -112,13 +112,24 @@ pub const REGISTERED_BUILTINS: &[&str] = &[
 /// # Errors
 ///
 /// Returns an error when a builtin cannot be registered.
+pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
+    let mut ctx = ThreadContext::new();
+    ctx.register(runtime)?;
+    register_with_context(runtime, &mut ctx)
+}
+
+/// Register stream builtins using an existing registered context.
+///
+/// # Errors
+/// Returns an allocation, layout, or storage error from builtin registration.
 #[expect(
     clippy::too_many_lines,
     reason = "the function installs the complete file-stream and common stream builtin table"
 )]
-pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
-    let mut ctx = ThreadContext::new();
-    ctx.register(runtime)?;
+pub fn register_with_context(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
     let open = BuiltinImplementation::adapted(
         Builtin {
             lambda_list: LambdaList::with_rest(
@@ -134,7 +145,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         pass_arguments,
     );
     runtime.register_builtin(
-        &mut ctx,
+        ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(OPEN_NAME)),
         open,
     )?;
@@ -147,7 +158,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         pass_arguments,
     );
     runtime.register_builtin(
-        &mut ctx,
+        ctx,
         BuiltinIdentifier::new(
             BuiltinPackage::CommonLisp,
             BuiltinName::new(FILE_POSITION_NAME),
@@ -155,7 +166,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         position,
     )?;
     runtime.register_builtin(
-        &mut ctx,
+        ctx,
         BuiltinIdentifier::new(
             BuiltinPackage::CommonLisp,
             BuiltinName::new(FILE_LENGTH_NAME),
@@ -169,7 +180,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
     )?;
     runtime.register_builtin(
-        &mut ctx,
+        ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(CLOSE_NAME)),
         BuiltinImplementation::adapted(
             Builtin {
@@ -187,7 +198,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
     )?;
     runtime.register_builtin(
-        &mut ctx,
+        ctx,
         BuiltinIdentifier::new(
             BuiltinPackage::CommonLisp,
             BuiltinName::new(FILE_STRING_LENGTH_NAME),
@@ -201,7 +212,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
     )?;
     runtime.register_builtin(
-        &mut ctx,
+        ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(READ_BYTE_NAME)),
         BuiltinImplementation::adapted(
             Builtin {
@@ -231,7 +242,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
     ] {
         runtime.register_builtin(
-            &mut ctx,
+            ctx,
             BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
             BuiltinImplementation::direct(
                 Builtin {
@@ -242,8 +253,8 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ),
         )?;
     }
-    register_character_builtins(runtime, &mut ctx)?;
-    super::standard::register(runtime, &mut ctx)?;
+    register_character_builtins(runtime, ctx)?;
+    super::standard::register(runtime, ctx)?;
     Ok(())
 }
 

@@ -87,7 +87,12 @@ pub fn vector_push_extend(
     with_roots(ctx, &[value], |ctx, rooted_values| {
         let adjusted = adjust_array(ctx, runtime, object, &[new_length], Word::NIL)?;
         let index = fill_pointer(ctx, adjusted)?;
-        array_row_major_set(ctx, adjusted, index, *rooted_values[0])?;
+        array_row_major_set(
+            ctx,
+            adjusted,
+            index,
+            **rooted_values.first().ok_or(ObjectError::Layout)?,
+        )?;
         set_fill_pointer(ctx, adjusted, index + 1)?;
         Ok((index, adjusted))
     })

@@ -1,16 +1,21 @@
-use crate::heap_state::{Object, State};
+use crate::heap_state::{HeapWords, Object, PageMetadata, State};
 pub use crate::heap_types::{
     Finalizer, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
     Weakness,
 };
 use crate::{CodeError, CodeObjectMetadata, CodePtr, Thread, Word};
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex};
 #[path = "heap/allocation.rs"]
 mod allocation;
 #[path = "heap/collect.rs"]
 mod collect;
+#[path = "heap/pages.rs"]
+mod pages;
+pub use pages::{LOGICAL_PAGE_SIZE, PageError, PageRange};
+#[path = "heap/relocation.rs"]
+mod relocation;
 #[path = "heap/roots.rs"]
 mod roots;
 #[path = "heap/scan.rs"]
@@ -30,6 +35,8 @@ pub struct Heap {
     root_namespace: u64,
     config: HeapConfig,
     state: Mutex<State>,
+    available_bytes: AtomicUsize,
+    pending_page_error: AtomicBool,
     strict_forwarding: AtomicBool,
     #[cfg(feature = "test-support")]
     registered_root_slots_live_and_forwarded_for_test: AtomicBool,
@@ -51,6 +58,36 @@ impl Heap {
     #[must_use]
     /// Construct an empty heap with the supplied capacity policy.
     pub fn new(config: HeapConfig) -> Self {
+        let reserve_size = config
+            .dynamic_space_size
+            .checked_add(pages::LOGICAL_PAGE_SIZE - 1)
+            .map_or(0, |size| {
+                size / pages::LOGICAL_PAGE_SIZE * pages::LOGICAL_PAGE_SIZE
+            })
+            .max(if config.dynamic_space_size < pages::LOGICAL_PAGE_SIZE {
+                2 * pages::LOGICAL_PAGE_SIZE
+            } else {
+                pages::LOGICAL_PAGE_SIZE
+            });
+        let (page_range, page_error, mut pages) = match pages::PageRange::reserve(reserve_size) {
+            Ok(range) => {
+                let mut metadata = Vec::new();
+                if metadata.try_reserve_exact(range.page_count()).is_err() {
+                    (
+                        None,
+                        Some(pages::PageError::MetadataAllocationFailed),
+                        Vec::new(),
+                    )
+                } else {
+                    metadata.resize_with(range.page_count(), PageMetadata::default);
+                    (Some(range), None, metadata)
+                }
+            }
+            Err(error) => (None, Some(error), Vec::new()),
+        };
+        if page_range.is_none() {
+            pages.clear();
+        }
         Self {
             root_namespace: NEXT_HEAP_ID.fetch_add(1, Ordering::Relaxed),
             config,
@@ -58,7 +95,10 @@ impl Heap {
                 used: 0,
                 gc_epoch: 0,
                 objects: Vec::new(),
-                object_starts: HashMap::new(),
+                page_range,
+                page_error,
+                pending_page_error: None,
+                pages,
                 layouts: HashMap::new(),
                 threads: Vec::new(),
                 dirty_cards: HashSet::new(),
@@ -69,6 +109,8 @@ impl Heap {
                 after_gc_hooks: Vec::new(),
                 code_registry: crate::CodeRegistry::default(),
             }),
+            available_bytes: AtomicUsize::new(config.dynamic_space_size),
+            pending_page_error: AtomicBool::new(false),
             strict_forwarding: AtomicBool::new(false),
             #[cfg(feature = "test-support")]
             registered_root_slots_live_and_forwarded_for_test: AtomicBool::new(false),
@@ -137,7 +179,7 @@ impl Heap {
             x if x == crate::LowTag::OtherPointer as u8 => crate::LowTag::OtherPointer,
             _ => return None,
         };
-        let address = object.words.as_ptr() as usize;
+        let address = object.start;
         drop(state);
         Some(Word::pointer(address, tag))
     }
@@ -161,6 +203,9 @@ impl Heap {
                 .stop_world_ready
                 .wait(stop_world)
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        if !thread.initialize_allocation_log() {
+            return Err(StorageCondition::CapacityExceeded);
         }
         let mut state = self.lock_state();
         let pointer = std::ptr::from_mut(thread);
@@ -274,6 +319,12 @@ impl Heap {
         drop(stop_world);
 
         let mut state = self.lock_state();
+        let owner = pointer.addr();
+        for page in &mut state.pages {
+            if page.owner == Some(owner) {
+                page.owner = None;
+            }
+        }
         state.threads.retain(|item| *item != pointer);
         drop(state);
         self.stop_world_ready.notify_all();
@@ -300,7 +351,7 @@ impl Heap {
             return None;
         }
         let address = value.address();
-        let &index = state.object_starts.get(&address)?;
+        let index = state.object_index_at(address)?;
         let object = state.objects.get(index)?;
         (object.alive || object.forwarded_to.is_some()).then_some(index)
     }
@@ -334,7 +385,7 @@ impl Heap {
         } else {
             false
         };
-        (kind_matches && value.address() == object.words.as_ptr().addr()).then_some(index)
+        (kind_matches && value.address() == object.start).then_some(index)
     }
     pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
         let state = self.lock_state();
@@ -374,10 +425,13 @@ impl Heap {
     pub(crate) fn barrier(&self, object: Word, slot: usize) {
         let mut state = self.lock_state();
         if let Some(index) = self.find_for_mutator(&state, object)
-            && state.objects[index].generation > 0
-            && slot < state.objects[index].words.len()
+            && let Some(entry) = state.objects.get(index)
+            && entry.generation > 0
+            && slot < entry.words.len()
+            && let Some(address) = slot
+                .checked_mul(8)
+                .and_then(|offset| entry.start.checked_add(offset))
         {
-            let address = state.objects[index].words.as_ptr() as usize + slot * 8;
             state.dirty_cards.insert((index, address / CARD_SIZE));
         }
     }
@@ -412,29 +466,24 @@ impl Heap {
         self.lock_state().after_gc_hooks.push(hook);
     }
     fn lock_state(&self) -> std::sync::MutexGuard<'_, State> {
-        self.state
+        let mut state = self
+            .state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Err(error) = state.flush_pending_allocations() {
+            if state.pending_page_error.is_none() {
+                state.pending_page_error = Some(error);
+            }
+            self.pending_page_error.store(true, Ordering::Release);
+        }
+        state
     }
-    fn relocated_address(
-        state: &State,
-        moved: &HashMap<usize, usize>,
-        value: Word,
-    ) -> Option<usize> {
-        let index = Self::find_raw(state, value)?;
-        let object = &state.objects[index];
-        let new_base = moved.get(&(object.words.as_ptr() as usize))?;
-        Some(new_base + (value.address() - object.words.as_ptr() as usize))
-    }
-    const fn relocated_word(value: Word, address: usize) -> Word {
-        Word::pointer(
-            address,
-            if value.is_list() {
-                crate::LowTag::List
-            } else {
-                crate::LowTag::OtherPointer
-            },
-        )
+    pub(crate) fn take_pending_page_error(&self) -> Option<pages::PageError> {
+        let mut state = self.lock_state();
+        let error = state.pending_page_error.take();
+        self.pending_page_error.store(false, Ordering::Release);
+        drop(state);
+        error
     }
 }
 // SAFETY: State is accessed only while holding Heap::state; registered pointers are valid until unregistering.

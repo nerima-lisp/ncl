@@ -11,6 +11,8 @@ pub enum StorageCondition {
     ThreadNotRegistered,
     /// The allocator returned a heap address in the immediate-value range.
     HeapAddressTooLow,
+    /// A heap page operation failed while collecting or allocating.
+    PageOperationFailed,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// The storage class used to choose object layout and collection policy.

@@ -7,6 +7,7 @@ pub use context::{ConditionHandlerInvoker, PendingRuntimeErrors};
 pub use ncl_sys::Word;
 mod builtin;
 mod builtin_package;
+mod array_primitives;
 mod classify;
 mod code;
 pub mod cons;
@@ -46,6 +47,7 @@ pub use builtin::{
     NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
 };
 pub use builtin_package::BuiltinPackage;
+pub use array_primitives::{ArrayElementType, array_dimensions, specialized_array_element_type};
 pub use classify::{ObjectRef, classify, classify_object, object_widetag};
 pub use code::code_slot;
 pub use code::{

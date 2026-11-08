@@ -1,4 +1,5 @@
 use super::*;
+use ncl_object::make_simple_vector;
 
 #[test]
 fn multidimensional_displaced_and_adjusted_arrays_preserve_values() -> Result<(), ObjectError> {

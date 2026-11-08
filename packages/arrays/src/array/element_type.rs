@@ -1,37 +1,4 @@
-use ncl_object::{Bignum, ObjectError, ObjectRef, ThreadContext, Word, bignum_sign, classify_object};
-
-/// Element representations supported by the object layer.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u8)]
-pub enum ArrayElementType {
-    T = 0,
-    Bit = 1,
-    Character = 2,
-    BaseChar = 3,
-    Fixnum = 4,
-    Signed = 5,
-    Unsigned = 6,
-    SingleFloat = 7,
-    DoubleFloat = 8,
-}
-
-impl ArrayElementType {
-    pub(crate) fn from_word(word: Word) -> Result<Self, ObjectError> {
-        match word.as_fixnum().and_then(|n| u8::try_from(n).ok()) {
-            Some(0) => Ok(Self::T),
-            Some(1) => Ok(Self::Bit),
-            Some(2) => Ok(Self::Character),
-            Some(3) => Ok(Self::BaseChar),
-            Some(4) => Ok(Self::Fixnum),
-            Some(5) => Ok(Self::Signed),
-            Some(6) => Ok(Self::Unsigned),
-            Some(7) => Ok(Self::SingleFloat),
-            Some(8) => Ok(Self::DoubleFloat),
-            // check-added-lines: allow(wildcard) unsupported element type codes return a layout error
-            _ => Err(ObjectError::Layout),
-        }
-    }
-}
+use ncl_object::{ArrayElementType, Bignum, ObjectError, ObjectRef, ThreadContext, Word, bignum_sign, classify_object};
 
 pub fn validate_element(
     ctx: &ThreadContext,

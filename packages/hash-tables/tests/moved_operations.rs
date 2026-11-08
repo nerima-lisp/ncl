@@ -232,6 +232,15 @@ fn assert_capacity_options(runtime: &Runtime, context: &mut ThreadContext) {
         None,
         None
     ));
+    let zero_bignum = make_bignum_from_i128(context, runtime, 0)
+        .unwrap_or_else(|error| panic!("bignum: {error:?}"));
+    assert!(rejects_options(
+        context,
+        runtime,
+        zero_bignum.into(),
+        None,
+        None
+    ));
     let too_large = make_bignum_from_i128(context, runtime, i128::MAX)
         .unwrap_or_else(|error| panic!("bignum: {error:?}"));
     assert!(rejects_options(
@@ -314,6 +323,29 @@ fn assert_rehash_option_validation(runtime: &Runtime, context: &mut ThreadContex
         Word::fixnum(8),
         None,
         Some(negative_bignum.into())
+    ));
+    let positive_bignum = make_bignum_from_i128(context, runtime, 1)
+        .unwrap_or_else(|error| panic!("bignum: {error:?}"));
+    let positive_bignum_threshold = new_options(
+        context,
+        runtime,
+        Word::fixnum(8),
+        None,
+        Some(positive_bignum.into()),
+    )
+    .unwrap_or_else(|error| panic!("positive bignum threshold: {error:?}"));
+    assert_eq!(
+        positive_bignum_threshold.rehash_threshold(context),
+        Ok(positive_bignum.into())
+    );
+    let excessive_positive_bignum = make_bignum_from_i128(context, runtime, 1_i128 << 61)
+        .unwrap_or_else(|error| panic!("bignum: {error:?}"));
+    assert!(rejects_options(
+        context,
+        runtime,
+        Word::fixnum(8),
+        None,
+        Some(excessive_positive_bignum.into())
     ));
     let invalid_size =
         make_double(context, runtime, 1.0).unwrap_or_else(|error| panic!("double: {error:?}"));

@@ -1,8 +1,8 @@
 use super::call;
-use ncl_hash_tables::HashTable;
+use ncl_hash_tables::{HashTable, Weakness};
 use ncl_object::{
-    FunctionObject, ObjectError, Runtime, ThreadContext, Word, double_value, make_code_object,
-    make_double, make_simple_fun, pop_root, push_root,
+    FunctionObject, ObjectError, Package, Runtime, ThreadContext, Word, double_value,
+    make_bignum_from_i128, make_code_object, make_double, make_simple_fun, pop_root, push_root,
 };
 
 fn keyword(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
@@ -24,6 +24,8 @@ fn make_hash_table_accepts_size_and_rehash_options() -> Result<(), ObjectError> 
     let size_key = keyword(&runtime, &mut ctx, "SIZE")?;
     let rehash_size_key = keyword(&runtime, &mut ctx, "REHASH-SIZE")?;
     let threshold_key = keyword(&runtime, &mut ctx, "REHASH-THRESHOLD")?;
+    let weakness_key = keyword(&runtime, &mut ctx, "WEAKNESS")?;
+    let key_weakness = keyword(&runtime, &mut ctx, "KEY")?;
     let rehash_size = make_double(&mut ctx, &runtime, 2.0)?.as_word();
     let threshold = make_double(&mut ctx, &runtime, 0.5)?.as_word();
     let table = call(
@@ -37,6 +39,8 @@ fn make_hash_table_accepts_size_and_rehash_options() -> Result<(), ObjectError> 
             rehash_size,
             threshold_key,
             threshold,
+            weakness_key,
+            key_weakness,
         ],
     )?;
 
@@ -58,6 +62,29 @@ fn make_hash_table_accepts_size_and_rehash_options() -> Result<(), ObjectError> 
         (double_value(&ctx, ncl_object::DoubleFloat::from_word(returned_threshold))? - 0.5).abs()
             < f64::EPSILON
     );
+    assert_eq!(HashTable::from_word(table).weakness(&ctx)?, Weakness::Key);
+
+    let weakness_cases = [
+        (Word::NIL, Weakness::None),
+        (keyword(&runtime, &mut ctx, "VALUE")?, Weakness::Value),
+        (
+            keyword(&runtime, &mut ctx, "KEY-AND-VALUE")?,
+            Weakness::KeyAndValue,
+        ),
+        (
+            keyword(&runtime, &mut ctx, "KEY-OR-VALUE")?,
+            Weakness::KeyOrValue,
+        ),
+    ];
+    for (weakness, expected) in weakness_cases {
+        let weak_table = call(
+            &runtime,
+            &mut ctx,
+            "MAKE-HASH-TABLE",
+            &[weakness_key, weakness],
+        )?;
+        assert_eq!(HashTable::from_word(weak_table).weakness(&ctx)?, expected);
+    }
 
     for key in 0..9 {
         HashTable::from_word(table).insert(
@@ -96,6 +123,17 @@ fn make_hash_table_accepts_function_test_designator() -> Result<(), ObjectError>
         call(&runtime, &mut ctx, "HASH-TABLE-TEST", &[table])?,
         equal_symbol
     );
+    let symbol_test_names = ["EQ", "EQL", "EQUALP"];
+    for name in symbol_test_names {
+        let symbol = Package::from_word(common_lisp)
+            .intern(&mut ctx, &runtime, name)?
+            .0;
+        let symbol_table = call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[test_key, symbol])?;
+        assert_eq!(
+            call(&runtime, &mut ctx, "HASH-TABLE-TEST", &[symbol_table])?,
+            symbol
+        );
+    }
     Ok(())
 }
 
@@ -108,6 +146,11 @@ fn make_hash_table_rejects_invalid_size_and_rehash_options() -> Result<(), Objec
     let size_key = keyword(&runtime, &mut ctx, "SIZE")?;
     let rehash_size_key = keyword(&runtime, &mut ctx, "REHASH-SIZE")?;
     let threshold_key = keyword(&runtime, &mut ctx, "REHASH-THRESHOLD")?;
+    let test_key = keyword(&runtime, &mut ctx, "TEST")?;
+    let weakness_key = keyword(&runtime, &mut ctx, "WEAKNESS")?;
+    let unknown_key = keyword(&runtime, &mut ctx, "UNSUPPORTED")?;
+    let unknown_test = keyword(&runtime, &mut ctx, "NOT-A-HASH-TEST")?;
+    let unknown_weakness = keyword(&runtime, &mut ctx, "NOT-A-WEAKNESS")?;
 
     assert_eq!(
         call(
@@ -157,6 +200,47 @@ fn make_hash_table_rejects_invalid_size_and_rehash_options() -> Result<(), Objec
         ),
         Err(ObjectError::TypeError)
     );
+    let zero_bignum = make_bignum_from_i128(&mut ctx, &runtime, 0)?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-HASH-TABLE",
+            &[size_key, zero_bignum.into()],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[size_key]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-HASH-TABLE",
+            &[unknown_key, Word::NIL],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-HASH-TABLE",
+            &[test_key, unknown_test],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "MAKE-HASH-TABLE",
+            &[weakness_key, unknown_weakness],
+        ),
+        Err(ObjectError::TypeError)
+    );
     Ok(())
 }
 
@@ -173,9 +257,9 @@ fn hash_table_options_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
     let rehash_size_key_token = push_root(&mut ctx, &mut rehash_size_key);
     let mut threshold_key = keyword(&runtime, &mut ctx, "REHASH-THRESHOLD")?;
     let threshold_key_token = push_root(&mut ctx, &mut threshold_key);
-    let mut rehash_size = Word::fixnum(2);
+    let mut rehash_size = make_double(&mut ctx, &runtime, 2.0)?.as_word();
     let rehash_size_token = push_root(&mut ctx, &mut rehash_size);
-    let mut threshold = Word::fixnum(1);
+    let mut threshold = make_double(&mut ctx, &runtime, 1.0)?.as_word();
     let threshold_token = push_root(&mut ctx, &mut threshold);
     let mut make_hash_table = runtime
         .function(&mut ctx, "COMMON-LISP", "MAKE-HASH-TABLE")
@@ -197,13 +281,19 @@ fn hash_table_options_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
         ],
     )?;
     let table_token = push_root(&mut ctx, &mut table);
-    assert_eq!(
-        HashTable::from_word(table).rehash_size(&ctx)?,
-        Word::fixnum(2)
-    );
+    HashTable::from_word(table).insert(&mut ctx, &runtime, Word::fixnum(1), Word::TRUE)?;
+    assert_eq!(HashTable::from_word(table).rehash_size(&ctx)?, rehash_size);
     assert_eq!(
         HashTable::from_word(table).rehash_threshold(&ctx)?,
-        Word::fixnum(1)
+        threshold
+    );
+    assert!(
+        (double_value(&ctx, ncl_object::DoubleFloat::from_word(rehash_size))? - 2.0).abs()
+            < f64::EPSILON
+    );
+    assert!(
+        (double_value(&ctx, ncl_object::DoubleFloat::from_word(threshold))? - 1.0).abs()
+            < f64::EPSILON
     );
 
     assert!(pop_root(&mut ctx, table_token));

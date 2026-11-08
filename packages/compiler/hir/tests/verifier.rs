@@ -34,7 +34,7 @@ pub mod source;
 #[path = "../src/verify.rs"]
 pub mod verify;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 
 use binding::{BindingEnvironment, LocalFunctionKind, ScopeId};
@@ -71,6 +71,7 @@ struct Fixture {
     facts: FactStore,
     symbols: HashSet<SymbolId>,
     values: HashSet<ValueId>,
+    value_producers: HashMap<ValueId, NodeId>,
     constants: HashSet<TypeSpecConstId>,
 }
 
@@ -96,6 +97,7 @@ impl Fixture {
             facts: FactStore::new(form),
             symbols: HashSet::new(),
             values: HashSet::new(),
+            value_producers: HashMap::new(),
             constants: HashSet::new(),
         })
     }
@@ -143,6 +145,7 @@ impl Fixture {
                 self.form.compilation_unit(),
                 &self.symbols,
                 &self.values,
+                &self.value_producers,
                 &self.constants,
             ),
         })
@@ -162,12 +165,20 @@ fn conditional_cfg(
     function: NodeId,
     condition: NodeId,
     same_edge: bool,
+    operations: &[NodeId],
+    alternate_operations: &[NodeId],
 ) -> Result<ControlFlowGraph, ControlError> {
     let mut builder = ControlFlowBuilder::new(form);
     builder.begin_function(function)?;
     let entry = builder.create_block(function)?;
     let if_true = builder.create_block(function)?;
     let if_false = builder.create_block(function)?;
+    for operation in operations {
+        builder.append_operation(entry, *operation)?;
+    }
+    for operation in alternate_operations {
+        builder.append_operation(if_true, *operation)?;
+    }
     builder.set_terminator(
         entry,
         Terminator::Conditional {
@@ -186,7 +197,7 @@ fn ordinary_conditional_may_share_a_successor() -> Result<(), Box<dyn Error>> {
     let mut fixture = Fixture::new(0)?;
     let condition = fixture.add_node(fixture.root, NodeKind::Literal(node::Literal::True))?;
     let function = fixture.add_lambda(fixture.root)?;
-    let cfg = conditional_cfg(fixture.form, function, condition, true)?;
+    let cfg = conditional_cfg(fixture.form, function, condition, true, &[], &[])?;
     assert_eq!(fixture.verify(&cfg), Ok(()));
     Ok(())
 }
@@ -304,6 +315,7 @@ fn labels_definition_can_reference_its_local_function_binding() -> Result<(), Bo
 fn check_type_requires_distinct_success_and_failure_edges() -> Result<(), Box<dyn Error>> {
     let mut fixture = Fixture::new(4)?;
     let value = ValueId::try_from_index(fixture.form, 0)?;
+    let producer = fixture.add_node(fixture.root, NodeKind::Literal(node::Literal::Nil))?;
     let expected = TypeSpecConstId::try_from_index(fixture.form, 0)?;
     let _ = fixture.values.insert(value);
     let _ = fixture.constants.insert(expected);
@@ -317,12 +329,49 @@ fn check_type_requires_distinct_success_and_failure_edges() -> Result<(), Box<dy
         },
     )?;
     let function = fixture.add_lambda(fixture.root)?;
-    let same_edge = conditional_cfg(fixture.form, function, check, true)?;
+    let distinct_edges = conditional_cfg(fixture.form, function, check, false, &[], &[])?;
+    assert_eq!(
+        fixture.verify(&distinct_edges),
+        Err(VerifyError::MissingValueProducer(check))
+    );
+    let _ = fixture.value_producers.insert(value, check);
+    let self_produced = conditional_cfg(fixture.form, function, check, false, &[], &[])?;
+    assert_eq!(
+        fixture.verify(&self_produced),
+        Err(VerifyError::InvalidValueProducer {
+            check,
+            producer: check,
+        })
+    );
+    let _ = fixture.value_producers.insert(value, producer);
+    let missing_operation = conditional_cfg(fixture.form, function, check, false, &[], &[])?;
+    assert_eq!(
+        fixture.verify(&missing_operation),
+        Err(VerifyError::InvalidValueProducer { check, producer })
+    );
+    let same_edge = conditional_cfg(fixture.form, function, check, true, &[producer], &[])?;
     assert_eq!(
         fixture.verify(&same_edge),
         Err(VerifyError::InvalidCheckEdges(check))
     );
-    let distinct_edges = conditional_cfg(fixture.form, function, check, false)?;
+    let non_dominating = conditional_cfg(fixture.form, function, check, false, &[], &[producer])?;
+    assert_eq!(
+        fixture.verify(&non_dominating),
+        Err(VerifyError::InvalidValueProducer { check, producer })
+    );
+    let duplicate_producer = conditional_cfg(
+        fixture.form,
+        function,
+        check,
+        false,
+        &[producer, producer],
+        &[],
+    )?;
+    assert_eq!(
+        fixture.verify(&duplicate_producer),
+        Err(VerifyError::InvalidValueProducer { check, producer })
+    );
+    let distinct_edges = conditional_cfg(fixture.form, function, check, false, &[producer], &[])?;
     assert_eq!(fixture.verify(&distinct_edges), Ok(()));
     Ok(())
 }
@@ -434,6 +483,7 @@ fn stale_facts_are_rejected_after_declared_domain_invalidation() -> Result<(), B
             fixture.form.compilation_unit(),
             &fixture.symbols,
             &fixture.values,
+            &fixture.value_producers,
             &fixture.constants,
         ),
     };

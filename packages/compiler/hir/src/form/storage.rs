@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::arena::Arena;
 use crate::binding::{BindingEnvironment, ScopeId};
@@ -31,6 +31,7 @@ pub struct HirForm {
     pub(super) type_spec_constants: TypeSpecConstantArena,
     pub(super) symbol_ids: HashSet<SymbolId>,
     pub(super) value_ids: HashSet<ValueId>,
+    pub(super) value_producers: HashMap<ValueId, NodeId>,
     pub(super) type_spec_constant_ids: HashSet<TypeSpecConstId>,
     pub(super) metadata: FormMetadata,
 }
@@ -98,19 +99,25 @@ impl HirForm {
 
     /// Returns symbols directly referenced while building this form.
     #[must_use]
-    pub fn symbol_ids(&self) -> &HashSet<SymbolId> {
+    pub const fn symbol_ids(&self) -> &HashSet<SymbolId> {
         &self.symbol_ids
     }
 
     /// Returns SSA values directly referenced while building this form.
     #[must_use]
-    pub fn value_ids(&self) -> &HashSet<ValueId> {
+    pub const fn value_ids(&self) -> &HashSet<ValueId> {
         &self.value_ids
+    }
+
+    /// Returns the node producing an SSA value, when it is known.
+    #[must_use]
+    pub fn value_producer(&self, value: ValueId) -> Option<NodeId> {
+        self.value_producers.get(&value).copied()
     }
 
     /// Returns the dense set of type-specifier constants owned by this form.
     #[must_use]
-    pub fn type_spec_constant_ids(&self) -> &HashSet<TypeSpecConstId> {
+    pub const fn type_spec_constant_ids(&self) -> &HashSet<TypeSpecConstId> {
         &self.type_spec_constant_ids
     }
 
@@ -178,6 +185,7 @@ impl HirForm {
                 self.id.compilation_unit(),
                 &symbol_ids,
                 &self.value_ids,
+                &self.value_producers,
                 &self.type_spec_constant_ids,
             ),
         })

@@ -32,6 +32,7 @@ pub struct VerifyResources<'a> {
     compilation_unit: CompilationUnitId,
     symbols: &'a HashSet<SymbolId>,
     values: &'a HashSet<ValueId>,
+    value_producers: &'a HashMap<ValueId, NodeId>,
     type_spec_constants: &'a HashSet<TypeSpecConstId>,
 }
 
@@ -42,12 +43,14 @@ impl<'a> VerifyResources<'a> {
         compilation_unit: CompilationUnitId,
         symbols: &'a HashSet<SymbolId>,
         values: &'a HashSet<ValueId>,
+        value_producers: &'a HashMap<ValueId, NodeId>,
         type_spec_constants: &'a HashSet<TypeSpecConstId>,
     ) -> Self {
         Self {
             compilation_unit,
             symbols,
             values,
+            value_producers,
             type_spec_constants,
         }
     }
@@ -104,6 +107,15 @@ pub enum VerifyError {
     InvalidOrigin(SourceOriginId),
     /// An SSA value is outside the form-local table.
     InvalidValue(ValueId),
+    /// A `CheckType` value has no registered producer node.
+    MissingValueProducer(NodeId),
+    /// A `CheckType` producer does not execute earlier in the same lexical scope.
+    InvalidValueProducer {
+        /// The type-check node.
+        check: NodeId,
+        /// The mapped producer node.
+        producer: NodeId,
+    },
     /// A type-specifier constant is outside the form-local pool.
     InvalidTypeSpecConstant(TypeSpecConstId),
     /// A cleanup has no matching UNWIND-PROTECT node.
@@ -130,6 +142,8 @@ pub enum VerifyError {
     InvalidTagTarget(BlockId),
     /// A function flow or its entry declaration is inconsistent.
     InvalidFunctionFlow(NodeId),
+    /// A TAGBODY CFG returns values instead of completing the tagbody.
+    TagbodyReturnValues(BlockId),
     /// A block is duplicated or owned by another function.
     InvalidFunctionBlock(BlockId),
     /// A successor is absent or belongs to another function.
@@ -141,7 +155,7 @@ pub enum VerifyError {
     },
     /// A check has no unique success/failure conditional edge.
     InvalidCheckEdges(NodeId),
-    /// CheckType diagnostic origin differs from the node origin.
+    /// `CheckType` diagnostic origin differs from the node origin.
     CheckTypeOriginMismatch(NodeId),
     /// A cached fact was made against an older source epoch.
     StaleFact(FactId),
@@ -172,7 +186,7 @@ impl From<IdError> for VerifyError {
 /// Verifies identities, scopes, CFG edges, source origins, checks, and facts.
 ///
 /// Symbol, value, and type-specifier tables use dense append-only identities.
-/// A CheckType true edge is success; its false edge is the runtime type-error path.
+/// A `CheckType` true edge is success; its false edge is the runtime type-error path.
 ///
 /// # Errors
 ///

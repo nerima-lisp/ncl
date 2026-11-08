@@ -1,3 +1,4 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
 COMMON-LISP	CLRHASH	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
 COMMON-LISP	GETHASH	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
 COMMON-LISP	HASH-TABLE-COUNT	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation

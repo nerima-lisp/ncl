@@ -5,7 +5,8 @@
     reason = "package tests assert on valid fixture construction"
 )]
 
-use ncl_object::{FindStatus, Package, Runtime, ThreadContext, Word, car, cdr};
+use ncl_object::package::USED_BY;
+use ncl_object::{FindStatus, Package, Runtime, ThreadContext, Word, car, cdr, make_cons, put};
 use ncl_packages::PackageListOperations;
 
 fn setup() -> (Runtime, ThreadContext, Package) {
@@ -61,6 +62,27 @@ fn use_package_updates_both_lists_and_duplicate_removal_is_stable() {
     assert_eq!(package.unuse_package(&mut ctx, source.as_word()), Ok(false));
     assert_use_list(&ctx, package, &[]);
     assert_used_by_list(&ctx, source, &[]);
+
+    let asymmetric_source = Package::new(&mut ctx, &runtime, "ASYMMETRIC-SOURCE")
+        .unwrap_or_else(|error| panic!("asymmetric source: {error:?}"));
+    let unrelated = Package::new(&mut ctx, &runtime, "ASYMMETRIC-OTHER")
+        .unwrap_or_else(|error| panic!("unrelated package: {error:?}"));
+    let back_link = make_cons(&mut ctx, &runtime, package.as_word(), Word::NIL)
+        .unwrap_or_else(|error| panic!("back link: {error:?}"));
+    let used_by = make_cons(&mut ctx, &runtime, unrelated.as_word(), back_link)
+        .unwrap_or_else(|error| panic!("used-by list: {error:?}"));
+    put(&mut ctx, asymmetric_source.as_word(), USED_BY, used_by)
+        .unwrap_or_else(|error| panic!("used-by slot: {error:?}"));
+    assert_eq!(
+        package.use_package(&mut ctx, &runtime, asymmetric_source.as_word()),
+        Ok(true)
+    );
+    assert_use_list(&ctx, package, &[asymmetric_source.as_word()]);
+    assert_used_by_list(
+        &ctx,
+        asymmetric_source,
+        &[unrelated.as_word(), package.as_word()],
+    );
 }
 
 #[test]
@@ -76,6 +98,10 @@ fn shadow_and_shadowing_import_are_internal_idempotent_and_uninternable() {
         .expect("find shadow")
         .expect("shadow symbol");
     assert_eq!(status, FindStatus::Internal);
+    assert_eq!(
+        ncl_object::symbol_package(&ctx, shadow),
+        Ok(package.as_word())
+    );
     package
         .shadow(&mut ctx, &runtime, shadow_name)
         .expect("duplicate shadow");
@@ -97,6 +123,10 @@ fn shadow_and_shadowing_import_are_internal_idempotent_and_uninternable() {
     package
         .shadowing_import(&mut ctx, &runtime, symbol)
         .expect("shadowing import");
+    assert_eq!(
+        ncl_object::symbol_package(&ctx, symbol),
+        Ok(source.as_word())
+    );
     package
         .shadowing_import(&mut ctx, &runtime, symbol)
         .expect("duplicate import");

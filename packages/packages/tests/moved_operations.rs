@@ -1,8 +1,10 @@
 //! Package operations moved from kernel integration coverage.
 
-use ncl_object::Word;
-use ncl_object::package::{FindStatus, Package};
-use ncl_object::{ObjectError, Runtime, ThreadContext, make_string, make_symbol, symbol_name};
+use ncl_object::package::{FindStatus, INTERNAL, Package};
+use ncl_object::{
+    ObjectError, Runtime, ThreadContext, Word, make_cons, make_string, make_symbol, put, rplacd,
+    symbol_name,
+};
 use ncl_packages::{PackageListOperations, PackageOperations};
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -77,11 +79,39 @@ fn package_registry_and_visibility_operations_cover_all_statuses() {
     assert_package_registry(&runtime, &mut context, producer);
     assert_symbol_visibility(&runtime, &mut context, producer, consumer);
     assert_runtime_registry(&runtime, &mut context, producer);
+
+    let mut visited = Vec::new();
+    producer
+        .for_each_symbol(&context, |symbol| visited.push(symbol))
+        .unwrap_or_else(|error| panic!("visit package symbols: {error:?}"));
+    assert_eq!(visited.len(), 2);
+
+    let cyclic = Package::new(&mut context, &runtime, "CYCLIC-SYMBOLS")
+        .unwrap_or_else(|error| panic!("cyclic package: {error:?}"));
+    let name = make_string(&mut context, &runtime, &['C', 'Y', 'C'])
+        .unwrap_or_else(|error| panic!("cyclic symbol name: {error:?}"));
+    let symbol = make_symbol(&mut context, &runtime, name)
+        .unwrap_or_else(|error| panic!("cyclic symbol: {error:?}"));
+    let entries = make_cons(&mut context, &runtime, symbol, Word::NIL)
+        .unwrap_or_else(|error| panic!("cyclic entry: {error:?}"));
+    rplacd(&mut context, entries, entries).unwrap_or_else(|error| panic!("cyclic link: {error:?}"));
+    put(&mut context, cyclic.as_word(), INTERNAL, entries)
+        .unwrap_or_else(|error| panic!("cyclic package table: {error:?}"));
+    assert_eq!(
+        cyclic.for_each_symbol(&context, |_| {}),
+        Err(ObjectError::Layout)
+    );
 }
 
 fn assert_package_registry(runtime: &Runtime, context: &mut ThreadContext, producer: Package) {
     let nickname = make_string(context, runtime, &['P', 'R', 'O']).unwrap_or(Word::NIL);
     assert!(producer.add_nickname(context, runtime, nickname).is_ok());
+    let second_nickname = make_string(context, runtime, &['A', 'L', 'T']).unwrap_or(Word::NIL);
+    assert!(
+        producer
+            .add_nickname(context, runtime, second_nickname)
+            .unwrap_or(false)
+    );
     assert!(
         !producer
             .add_nickname(context, runtime, nickname)

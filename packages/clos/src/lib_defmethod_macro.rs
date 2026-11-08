@@ -1,7 +1,6 @@
 static METHOD_FUNCTION_COUNTER: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
-#[allow(clippy::too_many_lines)]
 fn defmethod_macro_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -14,7 +13,10 @@ fn defmethod_macro_builtin(
     Ok(scope.get(expansion).as_word())
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The method expansion preserves qualifiers, specializers, and body order in one pass."
+)]
 fn defmethod_macro_expansion<'ctx>(
     scope: &mut ncl_object::Scope<'ctx>,
     runtime: &Runtime,

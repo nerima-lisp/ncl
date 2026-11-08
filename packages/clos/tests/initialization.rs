@@ -1,5 +1,6 @@
-#![allow(missing_docs)]
-#![allow(
+//! Integration tests for CLOS instance initialization and slot setup.
+
+#![expect(
     clippy::unwrap_used,
     reason = "tests assert on initialization protocol"
 )]
@@ -9,6 +10,10 @@ use ncl_object::{
     push_root, slot_ref, slot_set,
 };
 
+#[expect(
+    dead_code,
+    reason = "Library package registration consumes aliases, but this path-included test compiles the module separately."
+)]
 #[path = "../src/initialization.rs"]
 mod initialization;
 

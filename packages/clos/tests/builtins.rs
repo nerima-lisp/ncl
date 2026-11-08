@@ -1,5 +1,6 @@
-#![allow(missing_docs)]
-#![allow(clippy::unwrap_used, reason = "tests assert on builtin registration")]
+//! Integration tests for CLOS builtin registration and invocation.
+
+#![expect(clippy::unwrap_used, reason = "Tests assert on builtin registration.")]
 
 use ncl_object::{BuiltinConvention, FunctionObject, Package, Runtime, ThreadContext, Word};
 

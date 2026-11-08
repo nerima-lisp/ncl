@@ -146,7 +146,10 @@ fn clos_add_method_builtin(
     Ok(scope.get(method).as_word())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The call keeps rooted arguments, continuation, caller, and result values explicit."
+)]
 fn call_method<'ctx, C: ncl_object::FunctionCaller>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,
@@ -292,7 +295,10 @@ fn invoke_continuation<'ctx, C: ncl_object::FunctionCaller>(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Method-combination dispatch needs each before, primary, after, and around sequence separately."
+)]
 fn invoke_dispatch<'ctx, C: ncl_object::FunctionCaller>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,

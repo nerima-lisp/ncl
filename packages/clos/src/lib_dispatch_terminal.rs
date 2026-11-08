@@ -106,7 +106,10 @@ fn find_class_builtin(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, reason = "test setup")]
+#[expect(
+    clippy::expect_used,
+    reason = "Test setup must stop immediately when runtime registration fails."
+)]
 mod tests {
     include!("dispatch_tests.rs");
 }

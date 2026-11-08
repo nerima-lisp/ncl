@@ -1,4 +1,7 @@
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The DEFCLASS expansion builds its class definition and registration forms together."
+)]
 fn defclass_macro_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

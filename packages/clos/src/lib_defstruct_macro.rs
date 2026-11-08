@@ -1,4 +1,7 @@
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The DEFSTRUCT expansion validates options and emits related accessors and constructors together."
+)]
 fn defstruct_macro_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

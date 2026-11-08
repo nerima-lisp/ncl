@@ -76,7 +76,6 @@ pub struct BuiltinDescriptor {
     /// Fixed arguments that precede the initialization argument pairs.
     pub initarg_layout: InitArgLayout,
     /// Additional packages that expose this same implementation.
-    #[allow(dead_code)]
     pub aliases: &'static [BuiltinPackage],
 }
 

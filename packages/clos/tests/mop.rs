@@ -1,7 +1,11 @@
-#![allow(missing_docs)]
-#![allow(clippy::unwrap_used, reason = "tests assert on MOP registration")]
+//! Integration tests for CLOS metaobject protocol registration and behavior.
 
-#[allow(clippy::redundant_pub_crate)]
+#![expect(clippy::unwrap_used, reason = "Tests assert on MOP registration.")]
+
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "The source module is path-included under tests and its crate-visible items are used by the parent test module."
+)]
 #[path = "../src/mop.rs"]
 mod mop;
 

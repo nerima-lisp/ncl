@@ -79,7 +79,10 @@ fn make_progn<'ctx>(
     scope.make_list(runtime, &values)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The registry entry serializes each distinct method descriptor field in order."
+)]
 fn method_registry_entry<'ctx>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,

@@ -3,7 +3,10 @@ use super::{
     dispatch_push_handle, symbol_function, tail_handles,
 };
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Standard method combination receives each method group and the active call state separately."
+)]
 pub fn invoke_standard_effective_method<'ctx, C: ncl_object::FunctionCaller>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,
@@ -73,7 +76,10 @@ pub fn invoke_standard_effective_method<'ctx, C: ncl_object::FunctionCaller>(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Short method combination receives its operator, name, primary methods, and active call state."
+)]
 pub fn invoke_short_effective_method<'ctx, C: ncl_object::FunctionCaller>(
     scope: &mut Scope<'ctx>,
     runtime: &Runtime,

@@ -1,10 +1,12 @@
 use ncl_hir::{LocalFunctionKind, NodeKind, VariableTarget};
 use ncl_object::Word;
 
-use super::common::{context, expand_build, fixture_text, has_node, lower_both_and_verify};
+use super::common::{
+    TestResult, context, expand_build, fixture_text, has_node, lower_both_and_verify,
+};
 
 #[test]
-fn labels_and_lexical_assignment_lower_to_mir() {
+fn labels_and_lexical_assignment_lower_to_mir() -> TestResult<()> {
     let (first_id, mut builder, mut fixture) = context(42);
     let function_name = fixture.user("COUNT-DOWN");
     let argument = fixture.user("N");
@@ -21,7 +23,7 @@ fn labels_and_lexical_assignment_lower_to_mir() {
         include_str!("../fixtures/hir-bridge/labels.lisp"),
         "(labels ((count-down (n) (if n (count-down nil) 7)))\n  (count-down t))\n",
     );
-    let (expr, form) = expand_build(&mut builder, &mut fixture, first_id, input, source);
+    let (expr, form) = expand_build(&mut builder, &mut fixture, first_id, input, source)?;
 
     assert!(has_node(&form, |node| matches!(
         node,
@@ -30,7 +32,7 @@ fn labels_and_lexical_assignment_lower_to_mir() {
             ..
         }
     )));
-    lower_both_and_verify(&builder, &form, &expr);
+    lower_both_and_verify(&builder, &form, &expr)?;
 
     let id = ncl_hir::FormId::new(first_id.compilation_unit(), 1);
     let x = fixture.user("X");
@@ -42,7 +44,7 @@ fn labels_and_lexical_assignment_lower_to_mir() {
         include_str!("../fixtures/hir-bridge/assignment.lisp"),
         "(let ((x 1))\n  (setq x 2)\n  x)\n",
     );
-    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source);
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
 
     assert!(has_node(&form, |node| matches!(
         node,
@@ -51,5 +53,6 @@ fn labels_and_lexical_assignment_lower_to_mir() {
             ..
         }
     )));
-    lower_both_and_verify(&builder, &form, &expr);
+    lower_both_and_verify(&builder, &form, &expr)?;
+    Ok(())
 }

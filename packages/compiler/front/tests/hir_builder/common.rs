@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use crate::forms::Fixture;
 use ncl_compiler_front::Expr;
 use ncl_compiler_front::hir_builder::HirBuilder;
@@ -5,15 +7,18 @@ use ncl_hir::{FormId, HirForm, NodeKind, SourceFiles, SourceOriginId, SourceOrig
 use ncl_ir::{Compare, Constant, OpKind, Terminator, ValueId};
 use ncl_object::Word;
 
-pub(super) fn source_origin(form: FormId, source: &str) -> (SourceOrigins, SourceOriginId) {
+pub(super) type TestResult<T> = Result<T, Box<dyn Error>>;
+
+pub(super) fn source_origin(
+    form: FormId,
+    source: &str,
+) -> TestResult<(SourceOrigins, SourceOriginId)> {
     let mut files = SourceFiles::new(form.compilation_unit());
-    let file = files.add("hir-bridge.lisp", source).expect("source file");
-    let span = files.span(file, 0, source.len()).expect("source span");
+    let file = files.add("hir-bridge.lisp", source)?;
+    let span = files.span(file, 0, source.len())?;
     let mut origins = SourceOrigins::new(form);
-    let origin = origins
-        .add_source(&files, file, span)
-        .expect("source origin");
-    (origins, origin)
+    let origin = origins.add_source(&files, file, span)?;
+    Ok((origins, origin))
 }
 
 pub(super) fn fixture_text(source: &'static str, expected: &str) -> &'static str {
@@ -28,14 +33,17 @@ pub(super) fn context(unit: u32) -> (FormId, HirBuilder, Fixture) {
     (id, HirBuilder::new(id.compilation_unit()), Fixture::new())
 }
 
-pub(super) fn build(builder: &mut HirBuilder, id: FormId, expr: &Expr, source: &str) -> HirForm {
-    let (origins, origin) = source_origin(id, source);
-    let form = builder
-        .build_form(id, expr, origins, origin)
-        .expect("build HIR");
-    form.verify(builder.symbols()).expect("verify HIR");
+pub(super) fn build(
+    builder: &mut HirBuilder,
+    id: FormId,
+    expr: &Expr,
+    source: &str,
+) -> TestResult<HirForm> {
+    let (origins, origin) = source_origin(id, source)?;
+    let form = builder.build_form(id, expr, origins, origin)?;
+    form.verify(builder.symbols())?;
     assert!(form.nodes().iter().all(|(_, node)| node.origin == origin));
-    form
+    Ok(form)
 }
 
 pub(super) fn expand_build(
@@ -44,10 +52,10 @@ pub(super) fn expand_build(
     id: FormId,
     input: Word,
     source: &str,
-) -> (Expr, HirForm) {
-    let expr = fixture.expand(input).expect("expand bridge fixture");
-    let form = build(builder, id, &expr, source);
-    (expr, form)
+) -> TestResult<(Expr, HirForm)> {
+    let expr = fixture.expand(input)?;
+    let form = build(builder, id, &expr, source)?;
+    Ok((expr, form))
 }
 
 pub(super) fn has_node(form: &HirForm, test: impl Fn(&NodeKind) -> bool) -> bool {
@@ -58,18 +66,24 @@ pub(super) fn lower_both_and_verify(
     builder: &HirBuilder,
     form: &HirForm,
     expr: &Expr,
-) -> (ncl_hir::lower::Lowered, ncl_compiler_front::Lowered) {
-    let hir = ncl_hir::lower::lower(form, builder.symbols()).expect("lower HIR");
-    let baseline = ncl_compiler_front::lower::lower_toplevel(expr).expect("lower baseline AST");
-    ncl_ir::verify(&hir.entry).expect("verify HIR MIR");
+) -> TestResult<(ncl_hir::lower::Lowered, ncl_compiler_front::Lowered)> {
+    let hir = ncl_hir::lower::lower(form, builder.symbols())?;
+    let baseline = ncl_compiler_front::lower::lower_toplevel(expr)?;
+    verify_ir(&hir.entry, "verify HIR MIR")?;
     for function in &hir.nested {
-        ncl_ir::verify(function).expect("verify nested HIR MIR");
+        verify_ir(function, "verify nested HIR MIR")?;
     }
-    ncl_ir::verify(&baseline.entry).expect("verify baseline MIR");
+    verify_ir(&baseline.entry, "verify baseline MIR")?;
     for function in &baseline.nested {
-        ncl_ir::verify(function).expect("verify nested baseline MIR");
+        verify_ir(function, "verify nested baseline MIR")?;
     }
-    (hir, baseline)
+    Ok((hir, baseline))
+}
+
+pub(super) fn verify_ir(function: &ncl_ir::Function, label: &str) -> TestResult<()> {
+    ncl_ir::verify(function)
+        .map_err(|errors| std::io::Error::other(format!("{label}: {errors:?}")))?;
+    Ok(())
 }
 
 pub(super) fn constant_conditional_signature(

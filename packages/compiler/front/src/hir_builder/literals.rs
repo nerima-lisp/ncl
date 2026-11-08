@@ -98,7 +98,7 @@ fn number_literal(number: &NumberLiteral) -> HirNumber {
     }
 }
 
-fn map_element_type(element_type: ncl_object::ArrayElementType) -> LiteralElementType {
+const fn map_element_type(element_type: ncl_object::ArrayElementType) -> LiteralElementType {
     match element_type {
         ncl_object::ArrayElementType::T => LiteralElementType::T,
         ncl_object::ArrayElementType::Bit => LiteralElementType::Bit,

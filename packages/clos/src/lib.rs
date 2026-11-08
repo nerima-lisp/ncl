@@ -23,6 +23,8 @@ const CLASS_KIND: usize = 3;
 const CLASS_EFFECTIVE_SLOTS: usize = 4;
 const METHOD_REGISTRY_KEY_NAME: &str = "%CLOS-METHODS";
 const METHOD_COMBINATION_KEY_NAME: &str = "%CLOS-METHOD-COMBINATION";
+const METHOD_COMBINATION_DEFINITION_KEY_NAME: &str = "%CLOS-METHOD-COMBINATION-DEFINITION";
+const METHOD_COMBINATION_FUNCTION_KEY_NAME: &str = "%CLOS-METHOD-COMBINATION-FUNCTION";
 
 const ARGUMENT: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("ARG"),
@@ -33,6 +35,7 @@ const ARGS_2: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT];
 const ARGS_3: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT, ARGUMENT];
 
 include!("lib_helpers.rs");
+mod lib_dispatch_custom;
 mod lib_dispatch_effective_methods;
 mod lib_dispatch_selection;
 include!("lib_dispatch.rs");

@@ -1,6 +1,6 @@
 use super::{
-    MethodCombination, ObjectError, Runtime, Scope, Word, dispatch_list_to_handles,
-    dispatch_method_match,
+    MethodCombination, MultipleValues, ObjectError, Runtime, Scope, Word, dispatch_list_to_handles,
+    dispatch_method_match, dispatch_push_handle, lisp_equal_word,
 };
 
 pub struct ApplicableMethods {
@@ -93,4 +93,78 @@ pub fn collect_applicable_methods<'ctx>(
         groups.primary.reverse();
     }
     Ok(groups)
+}
+
+pub fn collect_custom_method_groups<'ctx, C: ncl_object::FunctionCaller>(
+    scope: &mut Scope<'ctx>,
+    runtime: &Runtime,
+    group_specs: ncl_object::Handle<'ctx>,
+    arguments: &ncl_object::HandleVec<'ctx>,
+    entries: &ncl_object::HandleVec<'ctx>,
+    caller: &mut C,
+    values: &mut MultipleValues,
+) -> Result<ncl_object::HandleVec<'ctx>, ObjectError> {
+    let specs = dispatch_list_to_handles(scope, group_specs)?;
+    let argument_words = arguments
+        .iter()
+        .map(|argument| scope.get(*argument).as_word())
+        .collect::<Vec<_>>();
+    let mut groups = scope.root_many(&[]);
+    for spec in specs.iter().copied() {
+        let fields = dispatch_list_to_handles(scope, spec)?;
+        let pattern = fields.as_slice().get(1).copied();
+        let mut applicable = Vec::new();
+        for entry in entries.iter().copied() {
+            let method = dispatch_list_to_handles(scope, entry)?;
+            let specializers = scope
+                .get(*method.as_slice().first().ok_or(ObjectError::TypeError)?)
+                .as_word();
+            let qualifiers = *method.as_slice().get(4).ok_or(ObjectError::TypeError)?;
+            let Some(specificity) =
+                dispatch_method_match(scope.context_mut(), runtime, specializers, &argument_words)?
+            else {
+                continue;
+            };
+            if custom_qualifier_match(scope, runtime, pattern, qualifiers, caller, values)? {
+                applicable.push((specificity, entry));
+            }
+        }
+        applicable.sort_by(|left, right| right.0.cmp(&left.0));
+        let mut methods = scope.root_many(&[]);
+        for (_, method) in applicable {
+            dispatch_push_handle(scope, &mut methods, method);
+        }
+        let method_list = scope.make_list(runtime, &methods)?;
+        dispatch_push_handle(scope, &mut groups, method_list);
+    }
+    Ok(groups)
+}
+
+fn custom_qualifier_match<'ctx, C: ncl_object::FunctionCaller>(
+    scope: &mut Scope<'ctx>,
+    runtime: &Runtime,
+    pattern: Option<ncl_object::Handle<'ctx>>,
+    qualifiers: ncl_object::Handle<'ctx>,
+    caller: &mut C,
+    values: &mut MultipleValues,
+) -> Result<bool, ObjectError> {
+    let Some(pattern) = pattern else {
+        return Ok(scope.get(qualifiers).as_word() == Word::NIL);
+    };
+    let pattern_word = scope.get(pattern).as_word();
+    if pattern_word == Word::NIL || pattern_word.is_cons() {
+        return lisp_equal_word(
+            scope.context(),
+            pattern_word,
+            scope.get(qualifiers).as_word(),
+            0,
+        );
+    }
+    let function = super::symbol_function(scope.context(), pattern_word)?;
+    let function = scope.root(ncl_object::Local::from_word(function));
+    let args = scope.root_many(&[ncl_object::Local::from_word(
+        scope.get(qualifiers).as_word(),
+    )]);
+    let result = scope.call_function(runtime, function, &args, caller, values)?;
+    Ok(scope.get(result).as_word() != Word::NIL)
 }

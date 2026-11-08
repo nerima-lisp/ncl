@@ -370,6 +370,21 @@ fn clos_dispatch_builtin(
         return Err(ObjectError::UndefinedFunction);
     }
     let (combination, order) = generic_method_combination(&mut scope, runtime, name)?;
+    let combination_name = scope.root(Local::from_word(scope.get(combination).as_word()));
+    let custom_dispatch = lib_dispatch_custom::CustomMethodCombinationDispatch {
+        generic_name: name,
+        combination_name,
+        arguments: &arguments,
+        argument_list,
+    };
+    if let Some(result) = lib_dispatch_custom::dispatch_custom_method_combination(
+        &mut scope,
+        runtime,
+        &custom_dispatch,
+        values,
+    )? {
+        return Ok(scope.get(result).as_word());
+    }
     let combination_kind =
         method_combination_kind(scope.context(), scope.get(combination).as_word())?;
     let most_specific_first = scope.intern(runtime, "KEYWORD", "MOST-SPECIFIC-FIRST")?;

@@ -71,6 +71,79 @@ fn standardized_type_names_resolve_to_their_builtin_type_identities() {
 }
 
 #[test]
+fn builtin_type_relations_preserve_numeric_sequence_and_object_families()
+-> Result<(), Box<dyn Error>> {
+    let mut arena = TypeArena::new(form(108))?;
+    let subtype_edges = [
+        (BuiltinType::Real, BuiltinType::Number),
+        (BuiltinType::Rational, BuiltinType::Real),
+        (BuiltinType::Integer, BuiltinType::Rational),
+        (BuiltinType::Fixnum, BuiltinType::Integer),
+        (BuiltinType::Bignum, BuiltinType::Integer),
+        (BuiltinType::Ratio, BuiltinType::Rational),
+        (BuiltinType::Float, BuiltinType::Real),
+        (BuiltinType::ShortFloat, BuiltinType::Float),
+        (BuiltinType::SingleFloat, BuiltinType::Float),
+        (BuiltinType::DoubleFloat, BuiltinType::Float),
+        (BuiltinType::LongFloat, BuiltinType::Float),
+        (BuiltinType::Complex, BuiltinType::Number),
+        (BuiltinType::Cons, BuiltinType::List),
+        (BuiltinType::Null, BuiltinType::List),
+        (BuiltinType::List, BuiltinType::Sequence),
+        (BuiltinType::Vector, BuiltinType::Sequence),
+        (BuiltinType::SimpleVector, BuiltinType::Vector),
+        (BuiltinType::String, BuiltinType::Vector),
+        (BuiltinType::BaseString, BuiltinType::String),
+        (BuiltinType::SimpleString, BuiltinType::String),
+        (BuiltinType::SimpleBaseString, BuiltinType::SimpleString),
+        (BuiltinType::BitVector, BuiltinType::Vector),
+        (BuiltinType::SimpleBitVector, BuiltinType::BitVector),
+        (BuiltinType::SimpleArray, BuiltinType::Array),
+        (BuiltinType::CompiledFunction, BuiltinType::Function),
+        (BuiltinType::Keyword, BuiltinType::Symbol),
+        (BuiltinType::Boolean, BuiltinType::Symbol),
+        (BuiltinType::Null, BuiltinType::Boolean),
+        (BuiltinType::StandardChar, BuiltinType::BaseChar),
+        (BuiltinType::BaseChar, BuiltinType::Character),
+        (BuiltinType::ExtendedChar, BuiltinType::Character),
+    ];
+
+    // CLHS 4.2.3 defines the type-specifier families represented by these relations.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/04_bc.htm
+    for (sub_name, super_name) in subtype_edges {
+        let sub = named(&mut arena, sub_name)?;
+        let sup = named(&mut arena, super_name)?;
+        assert_eq!(arena.subtype(sub, sup)?, SubtypeRelation::Yes);
+        assert_eq!(arena.subtype(sup, sub)?, SubtypeRelation::No);
+    }
+
+    let disjoint_pairs = [
+        (BuiltinType::Integer, BuiltinType::Float),
+        (BuiltinType::Rational, BuiltinType::Complex),
+        (BuiltinType::Fixnum, BuiltinType::Ratio),
+        (BuiltinType::Number, BuiltinType::Character),
+        (BuiltinType::Cons, BuiltinType::Symbol),
+        (BuiltinType::Symbol, BuiltinType::String),
+        (BuiltinType::String, BuiltinType::Function),
+        (BuiltinType::Character, BuiltinType::Array),
+        (BuiltinType::Function, BuiltinType::List),
+        (BuiltinType::List, BuiltinType::Array),
+        (BuiltinType::Sequence, BuiltinType::Package),
+        (BuiltinType::Array, BuiltinType::Stream),
+        (BuiltinType::Package, BuiltinType::Cons),
+        (BuiltinType::Stream, BuiltinType::Cons),
+        (BuiltinType::Restart, BuiltinType::Cons),
+    ];
+    for (left_name, right_name) in disjoint_pairs {
+        let left = named(&mut arena, left_name)?;
+        let right = named(&mut arena, right_name)?;
+        assert_eq!(arena.subtype(left, right)?, SubtypeRelation::No);
+        assert_eq!(arena.subtype(right, left)?, SubtypeRelation::No);
+    }
+    Ok(())
+}
+
+#[test]
 fn named_subtypes_follow_numeric_sequence_and_character_relations() -> Result<(), Box<dyn Error>> {
     let mut arena = TypeArena::new(form(103))?;
     let cases = [

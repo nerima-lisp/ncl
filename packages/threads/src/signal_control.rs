@@ -3,10 +3,24 @@
 use std::cell::Cell;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 static CONTROL_THREAD_STARTED: Mutex<bool> = Mutex::new(false);
+
+pub(super) fn lock_signal_control_start_state<'a>(
+    result: Result<MutexGuard<'a, bool>, PoisonError<MutexGuard<'a, bool>>>,
+) -> Result<MutexGuard<'a, bool>, SignalControlError> {
+    result.map_err(|_| SignalControlError::StartStatePoisoned)
+}
+
+pub(super) fn map_signal_setup_result(result: io::Result<()>) -> Result<(), SignalControlError> {
+    result.map_err(SignalControlError::OperatingSystem)
+}
+
+pub(super) fn map_signal_worker_spawn(result: io::Result<()>) -> Result<(), SignalControlError> {
+    result.map_err(SignalControlError::ThreadSpawn)
+}
 
 /// A process signal observed by the dedicated sigwait thread.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -92,46 +106,41 @@ impl SignalControl {
     /// after one macOS worker starts is terminal; the caller must stop runtime startup and let
     /// the process exit.
     pub fn start() -> Result<Self, SignalControlError> {
-        let mut started = CONTROL_THREAD_STARTED
-            .lock()
-            .map_err(|_| SignalControlError::StartStatePoisoned)?;
+        let mut started = lock_signal_control_start_state(CONTROL_THREAD_STARTED.lock())?;
         if *started {
             return Err(SignalControlError::AlreadyStarted);
         }
 
-        ncl_sys::Thread::block_signal_control_set().map_err(SignalControlError::OperatingSystem)?;
-        ncl_sys::Thread::install_sigchld_wait_disposition()
-            .map_err(SignalControlError::OperatingSystem)?;
-        ncl_sys::Thread::ignore_sigpipe().map_err(SignalControlError::OperatingSystem)?;
-        ncl_sys::Thread::ensure_alt_signal_stack().map_err(SignalControlError::OperatingSystem)?;
+        map_signal_setup_result(ncl_sys::Thread::block_signal_control_set())?;
+        map_signal_setup_result(ncl_sys::Thread::install_sigchld_wait_disposition())?;
+        map_signal_setup_result(ncl_sys::Thread::ignore_sigpipe())?;
+        map_signal_setup_result(ncl_sys::Thread::ensure_alt_signal_stack().map(|_| ()))?;
         let (sender, receiver) = mpsc::channel();
         let worker_failed = Arc::new(AtomicBool::new(false));
         #[cfg(target_os = "linux")]
-        spawn_signal_worker(
+        map_signal_worker_spawn(spawn_signal_worker(
             "ncl-sigwait",
             sender,
             worker_failed,
             ncl_sys::Thread::wait_signal_control_set,
-        )
-        .map_err(SignalControlError::ThreadSpawn)?;
+        ))?;
         #[cfg(target_os = "macos")]
         {
-            spawn_signal_worker(
+            map_signal_worker_spawn(spawn_signal_worker(
                 "ncl-sigwait-process",
                 sender.clone(),
                 Arc::clone(&worker_failed),
                 ncl_sys::Thread::wait_process_signal,
-            )
-            .map_err(SignalControlError::ThreadSpawn)?;
+            ))?;
             *started = true;
-            if let Err(error) = spawn_signal_worker(
+            if let Err(error) = map_signal_worker_spawn(spawn_signal_worker(
                 "ncl-sigwait-children",
                 sender,
                 Arc::clone(&worker_failed),
                 ncl_sys::Thread::wait_child_signal,
-            ) {
+            )) {
                 worker_failed.store(true, Ordering::Release);
-                return Err(SignalControlError::ThreadSpawn(error));
+                return Err(error);
             }
         }
         #[cfg(target_os = "linux")]
@@ -139,10 +148,16 @@ impl SignalControl {
             *started = true;
         }
         drop(started);
-        Ok(Self {
+        Ok(Self::with_receiver(receiver))
+    }
+
+    pub(super) fn with_receiver(
+        receiver: mpsc::Receiver<Result<SignalEvent, SignalControlError>>,
+    ) -> Self {
+        Self {
             receiver,
             failed: Cell::new(false),
-        })
+        }
     }
 
     /// Prepare a runtime thread before Lisp execution.
@@ -223,8 +238,8 @@ impl SignalControl {
 }
 
 fn prepare_current_thread() -> Result<(), SignalControlError> {
-    ncl_sys::Thread::block_signal_control_set().map_err(SignalControlError::OperatingSystem)?;
-    ncl_sys::Thread::ensure_alt_signal_stack().map_err(SignalControlError::OperatingSystem)?;
+    map_signal_setup_result(ncl_sys::Thread::block_signal_control_set())?;
+    map_signal_setup_result(ncl_sys::Thread::ensure_alt_signal_stack().map(|_| ()))?;
     Ok(())
 }
 
@@ -240,10 +255,10 @@ fn spawn_signal_worker(
         .map(|_| ())
 }
 
-fn sigwait_loop(
+pub(super) fn sigwait_loop(
     sender: &mpsc::Sender<Result<SignalEvent, SignalControlError>>,
     worker_failed: &AtomicBool,
-    wait: fn() -> io::Result<i32>,
+    mut wait: impl FnMut() -> io::Result<i32>,
 ) {
     loop {
         if worker_failed.load(Ordering::Acquire) {
@@ -282,7 +297,7 @@ fn report_worker_failure(
     let _ = sender.send(Err(error));
 }
 
-const fn control_event(signal: i32) -> Option<SignalEvent> {
+pub(super) const fn control_event(signal: i32) -> Option<SignalEvent> {
     if signal == 2 {
         return Some(SignalEvent::Interrupt);
     }
@@ -298,52 +313,4 @@ const fn control_event(signal: i32) -> Option<SignalEvent> {
         return Some(SignalEvent::ChildrenChanged);
     }
     None
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn failed_wait() -> io::Result<i32> {
-        Err(io::Error::other("simulated sigwait failure"))
-    }
-
-    static SIBLING_WAIT_CALLED: AtomicBool = AtomicBool::new(false);
-
-    fn sibling_wait_must_not_start() -> io::Result<i32> {
-        if SIBLING_WAIT_CALLED.swap(true, Ordering::AcqRel) {
-            Err(io::Error::other("sibling wait was called repeatedly"))
-        } else {
-            Ok(2)
-        }
-    }
-
-    #[test]
-    fn worker_failure_stops_siblings_and_receiver() {
-        let worker_failed = Arc::new(AtomicBool::new(false));
-        let (sender, receiver) = mpsc::channel();
-        SIBLING_WAIT_CALLED.store(false, Ordering::Release);
-
-        sigwait_loop(&sender, &worker_failed, failed_wait);
-        assert!(worker_failed.load(Ordering::Acquire));
-        sigwait_loop(&sender, &worker_failed, sibling_wait_must_not_start);
-        assert!(!SIBLING_WAIT_CALLED.load(Ordering::Acquire));
-
-        let control = SignalControl {
-            receiver,
-            failed: Cell::new(false),
-        };
-        assert!(matches!(
-            control.receive(),
-            Err(SignalControlError::SignalWait(_))
-        ));
-        assert!(matches!(
-            control.receive_timeout(Duration::ZERO),
-            Err(SignalControlError::WorkerStopped)
-        ));
-        assert!(matches!(
-            control.try_receive(),
-            Err(SignalControlError::WorkerStopped)
-        ));
-    }
 }

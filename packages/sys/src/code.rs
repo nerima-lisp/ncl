@@ -357,6 +357,16 @@ pub fn seal_code(code: &mut CodePtr) -> Result<(), CodeError> {
 ///
 /// # Errors
 /// Returns an error when the range is not sealed or cache synchronization cannot be performed.
+#[cfg(target_arch = "x86_64")]
+pub const fn synchronize_code(code: &mut CodePtr) -> Result<(), CodeError> {
+    code.synchronize_cache()
+}
+
+/// Synchronize instruction caches after the final write and protection transition.
+///
+/// # Errors
+/// Returns an error when the range is not sealed or cache synchronization cannot be performed.
+#[cfg(not(target_arch = "x86_64"))]
 pub fn synchronize_code(code: &mut CodePtr) -> Result<(), CodeError> {
     code.synchronize_cache()
 }

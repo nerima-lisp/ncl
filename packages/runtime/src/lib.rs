@@ -38,6 +38,7 @@ use ncl_object::{
     function_code, make_simple_vector,
 };
 use ncl_printer::{PrintOptions, StringSink, write};
+pub use ncl_sys::{AllocationTrackingAllocator, AllocationTrackingScope};
 use ncl_sys::{
     CodeObjectMetadata, CodePtr, SafepointMap, SourceLocation, alloc_code,
     invoke_entry_with_function, publish_code, write_code,
@@ -477,6 +478,9 @@ impl Drop for Runtime {
         self.evaluator.clear_roots(&mut self.context);
     }
 }
+#[cfg(test)]
+#[path = "tests/condition_conversion.rs"]
+mod condition_conversion_tests;
 #[cfg(test)]
 mod tests_runtime;
 #[cfg(test)]

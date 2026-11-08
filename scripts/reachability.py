@@ -50,12 +50,18 @@ def strip_line_comments(src: str) -> str:
     return "".join(out)
 
 
+def entry_points(src_root: Path) -> list[Path]:
+    entries = [p for p in (src_root / "lib.rs", src_root / "main.rs") if p.exists()]
+    bin_root = src_root / "bin"
+    entries.extend(sorted(bin_root.glob("*.rs")))
+    entries.extend(sorted(bin_root.glob("*/main.rs")))
+    return entries
+
+
 def scan_crate(src_root: Path):
     """Returns (reached: set[Path], all_rs: set[Path])."""
-    # Cargo's default target discovery treats src/lib.rs AND src/main.rs
-    # as separate compiled entry points when both exist and neither is
-    # overridden by an explicit [lib]/[[bin]] path in Cargo.toml.
-    entries = [p for p in (src_root / "lib.rs", src_root / "main.rs") if p.exists()]
+    # Cargo discovers the library, root binary, and binaries under src/bin.
+    entries = entry_points(src_root)
     if not entries:
         return set(), set()
 
@@ -162,6 +168,10 @@ def self_test():
             "", encoding="utf-8"
         )
         (src_root / "orphan.rs").write_text("", encoding="utf-8")
+        bin_root = src_root / "bin"
+        bin_root.mkdir()
+        profiler_bin = bin_root / "profiler.rs"
+        profiler_bin.write_text("fn main() {}\n", encoding="utf-8")
         (src_root / "lib.rs").write_text(
             'mod r#live;\nmod thread;\nconst ITEMS: &[&str] = &[include!("piece.rs"),];\n',
             encoding="utf-8",
@@ -171,6 +181,8 @@ def self_test():
             raise AssertionError("comma-terminated include was not reached")
         if (src_root / "thread" / "tests" / "coverage.rs").resolve() not in reached:
             raise AssertionError("path module fixture was not reached")
+        if profiler_bin not in reached:
+            raise AssertionError("src/bin entry point was not reached")
         if not all_rs - reached:
             raise AssertionError("orphan fixture was not detected")
 
@@ -185,7 +197,7 @@ def main():
     skipped = 0
     for crate_root in workspace_members():
         src_root = crate_root / "src"
-        if not (src_root / "lib.rs").exists() and not (src_root / "main.rs").exists():
+        if not entry_points(src_root):
             skipped += 1
             continue
         scanned += 1

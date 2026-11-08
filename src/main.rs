@@ -17,9 +17,9 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some("--eval") => {
-            let Some(source) = arguments.next() else {
-                eprintln!("--eval requires a source string");
-                return std::process::ExitCode::from(2);
+            let source = match required_eval_source(&mut arguments) {
+                Ok(source) => source,
+                Err(code) => return code,
             };
             if arguments.next().is_some() {
                 eprintln!("--eval accepts exactly one source string");
@@ -85,6 +85,15 @@ fn main() -> std::process::ExitCode {
         }
         None => repl(runtime_options),
     }
+}
+
+fn required_eval_source(
+    arguments: &mut impl Iterator<Item = String>,
+) -> Result<String, std::process::ExitCode> {
+    arguments.next().ok_or_else(|| {
+        eprintln!("--eval requires a source string");
+        std::process::ExitCode::from(2)
+    })
 }
 
 fn parse_runtime_options(
@@ -157,4 +166,32 @@ fn repl(options: ncl_runtime::RuntimeOptions) -> std::process::ExitCode {
         }
     }
     std::process::ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_runtime_options, required_eval_source};
+
+    #[test]
+    fn eval_without_source_returns_the_usage_error() {
+        let mut arguments = std::iter::empty::<String>();
+
+        assert_eq!(
+            required_eval_source(&mut arguments),
+            Err(std::process::ExitCode::from(2))
+        );
+    }
+
+    #[test]
+    fn regular_ncl_diagnostics_do_not_enable_allocator_tracking() {
+        let (options, arguments) = parse_runtime_options(
+            ["--opt-diagnostics", "--script", "driver.lisp"]
+                .into_iter()
+                .map(str::to_owned),
+        )
+        .unwrap_or_else(|error| panic!("options: {error}"));
+        assert!(options.opt_diagnostics);
+        assert!(!options.pass_allocation_diagnostics);
+        assert_eq!(arguments, ["--script", "driver.lisp"]);
+    }
 }

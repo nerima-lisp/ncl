@@ -1,10 +1,44 @@
 use ncl_ir::{OpKind, Prim, Terminator, Ty, ValueId};
 
 use crate::ids::{NodeId, TypeSpecConstId};
+use crate::node::Literal;
 
 use super::{FunctionLowerer, LowerError};
 
 impl FunctionLowerer<'_> {
+    pub(super) fn check_type(
+        &mut self,
+        node: NodeId,
+        value: crate::ids::ValueId,
+        expected_type: TypeSpecConstId,
+    ) -> Result<ValueId, LowerError> {
+        let producer = self
+            .form
+            .value_producer(value)
+            .ok_or(LowerError::UnmappedHirValue { node, value })?;
+        let block = self
+            .hir_block
+            .ok_or(LowerError::UnmappedHirValue { node, value })?;
+        let definition_block = self.node_blocks.get(&producer).copied();
+        if !self.node_available_in_block(Some(block), definition_block) {
+            return Err(LowerError::NodeValueNotAvailableInBlock {
+                node: producer,
+                use_block: Some(block),
+                definition_block,
+            });
+        }
+        let datum = self
+            .values
+            .get(&producer)
+            .copied()
+            .ok_or(LowerError::UnmappedHirValue { node, value })?;
+        let _ = self.type_assertion(node, producer, expected_type)?;
+        if self.is_terminated() {
+            return Ok(datum);
+        }
+        self.literal(node, &Literal::True)
+    }
+
     pub(super) fn type_assertion(
         &mut self,
         node: NodeId,

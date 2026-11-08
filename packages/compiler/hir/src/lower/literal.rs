@@ -16,7 +16,7 @@ impl FunctionLowerer<'_> {
         let constant = self.literal_value(node, literal)?;
         let ty = literal_type(&constant);
         let value = self.push_constant(constant, ty)?;
-        self.to_word(value, ty)
+        self.coerce_to_word(value, ty)
     }
 
     fn literal_value(&mut self, node: NodeId, literal: &Literal) -> Result<Constant, LowerError> {
@@ -24,10 +24,10 @@ impl FunctionLowerer<'_> {
             Literal::Nil => Constant::Nil,
             Literal::True => Constant::T,
             Literal::Symbol(symbol) => self.symbol_constant(*symbol)?,
-            Literal::Number(number) => self.number_constant(node, number)?,
+            Literal::Number(number) => self.number_constant(number)?,
             Literal::Character(character) => Constant::Character(*character),
             Literal::String(characters) => Constant::StringBytes(encode_utf8(characters)),
-            Literal::Pathname(_) => return self.unsupported(node, "pathname-literal"),
+            Literal::Pathname(_) => return Self::unsupported(node, "pathname-literal"),
             Literal::Cons(_, _) | Literal::Vector(_) => self.structure_constant(node, literal)?,
             Literal::Array { identity, .. } | Literal::SpecializedArray { identity, .. } => {
                 Constant::Object(self.array_constant(node, literal, *identity)?)
@@ -35,11 +35,7 @@ impl FunctionLowerer<'_> {
         })
     }
 
-    fn number_constant(
-        &mut self,
-        node: NodeId,
-        number: &NumberLiteral,
-    ) -> Result<Constant, LowerError> {
+    fn number_constant(&mut self, number: &NumberLiteral) -> Result<Constant, LowerError> {
         Ok(match number {
             NumberLiteral::Fixnum(value) => Constant::Fixnum(*value),
             NumberLiteral::Bignum { negative, limbs } => Constant::Bignum {
@@ -52,9 +48,9 @@ impl FunctionLowerer<'_> {
                 numerator,
                 denominator,
             } => {
-                let numerator = self.number_constant(node, numerator)?;
+                let numerator = self.number_constant(numerator)?;
                 let numerator = self.add_constant(numerator)?;
-                let denominator = self.number_constant(node, denominator)?;
+                let denominator = self.number_constant(denominator)?;
                 let denominator = self.add_constant(denominator)?;
                 Constant::Ratio {
                     numerator,
@@ -62,9 +58,9 @@ impl FunctionLowerer<'_> {
                 }
             }
             NumberLiteral::Complex { real, imaginary } => {
-                let real = self.number_constant(node, real)?;
+                let real = self.number_constant(real)?;
                 let real = self.add_constant(real)?;
-                let imaginary = self.number_constant(node, imaginary)?;
+                let imaginary = self.number_constant(imaginary)?;
                 let imaginary = self.add_constant(imaginary)?;
                 Constant::Complex { real, imaginary }
             }
@@ -92,16 +88,34 @@ impl FunctionLowerer<'_> {
                 elements.iter().collect(),
             ),
             Literal::SpecializedArray {
+                element_type: LiteralElementType::T,
+                elements,
+                ..
+            } => (
+                StructureKind::Array {
+                    dimensions: vec![elements.len()],
+                    element_type: ArrayElementType::T,
+                },
+                elements.iter().collect(),
+            ),
+            Literal::SpecializedArray {
                 element_type,
                 elements,
                 ..
             } => (
                 StructureKind::SpecializedArray {
-                    element_type: ir_specialized_array_element_type(node, *element_type)?,
+                    element_type: ir_specialized_array_element_type(*element_type)
+                        .ok_or(LowerError::InvalidSpecializedArray(node))?,
                 },
                 elements.iter().collect(),
             ),
-            _ => return self.unsupported(node, "quoted-structure"),
+            Literal::Nil
+            | Literal::True
+            | Literal::Symbol(_)
+            | Literal::Number(_)
+            | Literal::Character(_)
+            | Literal::String(_)
+            | Literal::Pathname(_) => return Self::unsupported(node, "quoted-structure"),
         };
         let elements = children
             .into_iter()
@@ -178,21 +192,17 @@ const fn ir_array_element_type(element_type: LiteralElementType) -> ArrayElement
 }
 
 const fn ir_specialized_array_element_type(
-    node: NodeId,
     element_type: LiteralElementType,
-) -> Result<SpecializedArrayElementType, LowerError> {
+) -> Option<SpecializedArrayElementType> {
     match element_type {
-        LiteralElementType::Bit => Ok(SpecializedArrayElementType::Bit),
-        LiteralElementType::Character => Ok(SpecializedArrayElementType::Character),
-        LiteralElementType::BaseChar => Ok(SpecializedArrayElementType::BaseChar),
-        LiteralElementType::Fixnum => Ok(SpecializedArrayElementType::Fixnum),
-        LiteralElementType::Signed => Ok(SpecializedArrayElementType::Signed),
-        LiteralElementType::Unsigned => Ok(SpecializedArrayElementType::Unsigned),
-        LiteralElementType::SingleFloat => Ok(SpecializedArrayElementType::SingleFloat),
-        LiteralElementType::DoubleFloat => Ok(SpecializedArrayElementType::DoubleFloat),
-        LiteralElementType::T => Err(LowerError::Unsupported {
-            node,
-            operation: "specialized-array-with-general-element-type",
-        }),
+        LiteralElementType::Bit => Some(SpecializedArrayElementType::Bit),
+        LiteralElementType::Character => Some(SpecializedArrayElementType::Character),
+        LiteralElementType::BaseChar => Some(SpecializedArrayElementType::BaseChar),
+        LiteralElementType::Fixnum => Some(SpecializedArrayElementType::Fixnum),
+        LiteralElementType::Signed => Some(SpecializedArrayElementType::Signed),
+        LiteralElementType::Unsigned => Some(SpecializedArrayElementType::Unsigned),
+        LiteralElementType::SingleFloat => Some(SpecializedArrayElementType::SingleFloat),
+        LiteralElementType::DoubleFloat => Some(SpecializedArrayElementType::DoubleFloat),
+        LiteralElementType::T => None,
     }
 }

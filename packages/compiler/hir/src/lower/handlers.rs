@@ -227,7 +227,7 @@ impl FunctionLowerer<'_> {
         match target {
             ExitTarget::Block(block) => {
                 let Some(target) = self.block_targets.get(&block).copied() else {
-                    return self.unsupported(node, "non-local-exit-cross-function-block");
+                    return Self::unsupported(node, "non-local-exit-cross-function-block");
                 };
                 let value = self.exit_value(values)?;
                 let saved = self.capture_multiple_values(value)?;
@@ -243,7 +243,7 @@ impl FunctionLowerer<'_> {
             }
             ExitTarget::Tag(block) => {
                 let Some((target, active_depth)) = self.tag_targets.get(&block).copied() else {
-                    return self.unsupported(node, "non-local-exit-outside-lowered-tagbody");
+                    return Self::unsupported(node, "non-local-exit-outside-lowered-tagbody");
                 };
                 let _ = self.exit_value(values)?;
                 self.run_cleanups(node, cleanups)?;
@@ -266,8 +266,8 @@ impl FunctionLowerer<'_> {
                 }
                 Ok(value)
             }
-            ExitTarget::Catch(_) => self.unsupported(node, "non-local-exit-catch-target"),
-            ExitTarget::Function(_) => self.unsupported(node, "non-local-function-return"),
+            ExitTarget::Catch(_) => Self::unsupported(node, "non-local-exit-catch-target"),
+            ExitTarget::Function(_) => Self::unsupported(node, "non-local-function-return"),
         }
     }
 
@@ -281,7 +281,7 @@ impl FunctionLowerer<'_> {
     fn run_cleanups(&mut self, node: NodeId, cleanups: &[CleanupId]) -> Result<(), LowerError> {
         for cleanup in cleanups {
             let Some(forms) = self.cleanup_forms.get(cleanup).cloned() else {
-                return self.unsupported(node, "non-local-exit-cleanup-not-in-active-scope");
+                return Self::unsupported(node, "non-local-exit-cleanup-not-in-active-scope");
             };
             let _ = self.sequence(&forms)?;
             if self.is_terminated() {

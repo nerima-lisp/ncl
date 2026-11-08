@@ -3,6 +3,7 @@
 
 #[cfg(all(feature = "test-support", unix))]
 mod child_process;
+mod allocation_tracking;
 mod code;
 mod codegen;
 pub mod foreign;
@@ -25,6 +26,9 @@ mod native_word_tests;
 
 #[cfg(all(feature = "test-support", unix))]
 pub use child_process::set_child_cpu_time_limit;
+pub use allocation_tracking::{
+    AllocationTrackingAllocator, AllocationTrackingError, AllocationTrackingScope,
+};
 pub use code::{
     CodeError, CodeObjectMetadata, CodePtr, CodeRegistry, FrameHeader, Safepoint, SafepointMap,
     SourceLocation, alloc_code, free_code, publish_code, scan_frame, scan_frame_chain,

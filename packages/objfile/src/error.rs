@@ -183,7 +183,25 @@ impl std::error::Error for ObjectError {}
 
 #[cfg(test)]
 mod private_tests {
+    use std::fmt;
+
     use super::{FaslError, FaslRejectReason};
+
+    struct FailsAtWrite {
+        call: usize,
+        fail_at: usize,
+    }
+
+    impl fmt::Write for FailsAtWrite {
+        fn write_str(&mut self, _: &str) -> fmt::Result {
+            self.call += 1;
+            if self.call == self.fail_at {
+                Err(fmt::Error)
+            } else {
+                Ok(())
+            }
+        }
+    }
 
     #[test]
     fn fasl_error_formats_keyword_with_optional_offset() {
@@ -194,6 +212,29 @@ mod private_tests {
         assert_eq!(
             FaslError::at(FaslRejectReason::MalformedMetadata, 12).to_string(),
             ":INVALID-METADATA at byte 12"
+        );
+    }
+
+    #[test]
+    fn fasl_error_propagates_formatter_failures() {
+        let no_offset = FaslError::new(FaslRejectReason::BadMagic);
+        let mut fail_keyword = FailsAtWrite {
+            call: 0,
+            fail_at: 1,
+        };
+        assert_eq!(
+            fmt::write(&mut fail_keyword, format_args!("{no_offset}")),
+            Err(fmt::Error)
+        );
+
+        let with_offset = FaslError::at(FaslRejectReason::BadMagic, 7);
+        let mut fail_offset = FailsAtWrite {
+            call: 0,
+            fail_at: 2,
+        };
+        assert_eq!(
+            fmt::write(&mut fail_offset, format_args!("{with_offset}")),
+            Err(fmt::Error)
         );
     }
 }

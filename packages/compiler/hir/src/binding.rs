@@ -362,7 +362,6 @@ impl BindingEnvironment {
     }
 
     /// Iterates over bindings in allocation order.
-    #[must_use]
     pub fn iter(&self) -> impl Iterator<Item = &Binding> {
         self.bindings.iter().map(|(_, binding)| binding)
     }

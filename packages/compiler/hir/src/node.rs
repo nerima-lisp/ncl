@@ -8,6 +8,10 @@ use crate::ids::{
     ValueId,
 };
 
+#[path = "node/multiple_values.rs"]
+mod multiple_values;
+pub use multiple_values::MultipleValueOperation;
+
 /// Storage for nodes in one top-level form.
 pub type NodeArena = Arena<Node, NodeId>;
 
@@ -110,6 +114,13 @@ pub enum NodeKind {
         /// The false branch, absent when it produces NIL.
         else_branch: Option<NodeId>,
     },
+    /// A sequence that returns the values of its final form.
+    Sequence {
+        /// The scope in which the forms are evaluated.
+        body_scope: ScopeId,
+        /// The forms evaluated in source order.
+        forms: Vec<NodeId>,
+    },
     /// A named non-local return target.
     Block {
         /// The interned block name.
@@ -176,6 +187,8 @@ pub enum NodeKind {
         value: NodeId,
         /// The asserted Common Lisp type.
         asserted_type: TypeId,
+        /// The complete source type specifier used by runtime diagnostics.
+        expected_type: TypeSpecConstId,
     },
     /// A recognized operation that still retains its function identity.
     KnownFunctionOperation {
@@ -231,6 +244,13 @@ pub enum NodeKind {
         situations: Vec<CompileTimeSituation>,
         /// The contained form.
         form: NodeId,
+    },
+    /// A load-time value expression whose read-only contract is retained.
+    LoadTimeValue {
+        /// The form evaluated when the compiled unit is loaded.
+        form: NodeId,
+        /// Whether the value is promised not to be modified.
+        read_only: bool,
     },
 }
 
@@ -404,40 +424,6 @@ pub enum LetKind {
     Sequential,
 }
 
-/// Multiple-value operations preserved until a calling convention is chosen.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum MultipleValueOperation {
-    /// Produce values in the listed order.
-    Produce {
-        /// Values in source order.
-        values: Vec<NodeId>,
-    },
-    /// Bind the returned values to lexical bindings for a body.
-    Bind {
-        /// The form producing the values.
-        value: NodeId,
-        /// Bindings receiving the values, in order.
-        bindings: Vec<BindingId>,
-        /// Scope containing these bindings and the body.
-        body_scope: ScopeId,
-        /// The body evaluated with the bindings.
-        body: Vec<NodeId>,
-    },
-    /// Return values in order.
-    Return {
-        /// Values in source order.
-        values: Vec<NodeId>,
-    },
-    /// Call a function with values from each argument form.
-    Call {
-        /// The function form.
-        function: NodeId,
-        /// Argument forms evaluated for their values.
-        arguments: Vec<NodeId>,
-    },
-}
-
 /// A runtime check introduced by lowering or optimization.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -476,4 +462,6 @@ pub enum CompileTimeSituation {
     LoadToplevel,
     /// Process during ordinary evaluation.
     Execute,
+    /// Process during direct `EVAL` evaluation.
+    Eval,
 }

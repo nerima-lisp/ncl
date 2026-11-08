@@ -120,40 +120,46 @@ fn hash_modes_cover_numeric_string_cons_and_iteration_contracts() {
     }
 }
 
-#[test]
-fn malformed_metadata_and_recursive_equal_values_return_domain_errors() {
-    let (runtime, mut context) = setup();
-    let table = HashTable::new(&mut context, &runtime, HashTest::Eq, Weakness::None)
+fn new_options(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    size: Word,
+    rehash_size: Option<Word>,
+    rehash_threshold: Option<Word>,
+) -> Result<HashTable, ObjectError> {
+    HashTable::new_with_options(
+        ctx,
+        runtime,
+        HashTest::Eq,
+        Weakness::None,
+        size,
+        rehash_size,
+        rehash_threshold,
+    )
+}
+
+fn rejects_options(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    size: Word,
+    rehash_size: Option<Word>,
+    rehash_threshold: Option<Word>,
+) -> bool {
+    matches!(
+        new_options(ctx, runtime, size, rehash_size, rehash_threshold),
+        Err(ObjectError::TypeError)
+    )
+}
+
+fn assert_malformed_metadata(runtime: &Runtime, context: &mut ThreadContext) {
+    let table = HashTable::new(context, runtime, HashTest::Eq, Weakness::None)
         .unwrap_or_else(|error| panic!("table: {error:?}"));
-    let new_options = |ctx: &mut ThreadContext,
-                       size: Word,
-                       rehash_size: Option<Word>,
-                       rehash_threshold: Option<Word>| {
-        HashTable::new_with_options(
-            ctx,
-            &runtime,
-            HashTest::Eq,
-            Weakness::None,
-            size,
-            rehash_size,
-            rehash_threshold,
-        )
-    };
-    let rejects_options = |ctx: &mut ThreadContext,
-                           size: Word,
-                           rehash_size: Option<Word>,
-                           rehash_threshold: Option<Word>| {
-        matches!(
-            new_options(ctx, size, rehash_size, rehash_threshold),
-            Err(ObjectError::TypeError)
-        )
-    };
     assert!(
         context
             .write_object_slot(table.into(), 0, Word::fixnum(99))
             .is_ok()
     );
-    assert_eq!(table.test(&context), Err(ObjectError::Layout));
+    assert_eq!(table.test(context), Err(ObjectError::Layout));
     assert!(
         context
             .write_object_slot(table.into(), 0, Word::fixnum(0))
@@ -164,7 +170,7 @@ fn malformed_metadata_and_recursive_equal_values_return_domain_errors() {
             .write_object_slot(table.into(), 0, Word::NIL)
             .is_ok()
     );
-    assert_eq!(table.test(&context), Err(ObjectError::Layout));
+    assert_eq!(table.test(context), Err(ObjectError::Layout));
     assert!(
         context
             .write_object_slot(table.into(), 0, Word::fixnum(0))
@@ -175,90 +181,112 @@ fn malformed_metadata_and_recursive_equal_values_return_domain_errors() {
             .write_object_slot(table.into(), 1, Word::fixnum(99))
             .is_ok()
     );
-    assert_eq!(table.weakness(&context), Err(ObjectError::Layout));
+    assert_eq!(table.weakness(context), Err(ObjectError::Layout));
     assert!(
         context
             .write_object_slot(table.into(), 1, Word::NIL)
             .is_ok()
     );
-    assert_eq!(table.weakness(&context), Err(ObjectError::Layout));
+    assert_eq!(table.weakness(context), Err(ObjectError::Layout));
     let specialized = ncl_object::allocate(
-        &mut context,
-        &runtime,
+        context,
+        runtime,
         ncl_object::layout::widetag::SPECIALIZED_ARRAY,
         3,
     )
     .unwrap_or(Word::NIL);
-    assert!(ncl_object::put(&mut context, specialized, 0, Word::fixnum(99)).is_ok());
-    assert!(ncl_object::put(&mut context, specialized, 1, Word::fixnum(1)).is_ok());
-    assert!(ncl_object::put(&mut context, specialized, 2, Word::fixnum(1)).is_ok());
+    assert!(ncl_object::put(context, specialized, 0, Word::fixnum(99)).is_ok());
+    assert!(ncl_object::put(context, specialized, 1, Word::fixnum(1)).is_ok());
+    assert!(ncl_object::put(context, specialized, 2, Word::fixnum(1)).is_ok());
     assert_eq!(
-        ncl_object::specialized_array_element_type(&context, specialized),
+        ncl_object::specialized_array_element_type(context, specialized),
         Err(ObjectError::Layout)
     );
-    let string = make_string(&mut context, &runtime, &['x']).unwrap_or(Word::NIL);
+    let string = make_string(context, runtime, &['x']).unwrap_or(Word::NIL);
     assert_eq!(
-        ncl_object::string_ref(&context, string, 2),
+        ncl_object::string_ref(context, string, 2),
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        ncl_object::simple_vector_ref(&context, Word::NIL, 0),
+        ncl_object::simple_vector_ref(context, Word::NIL, 0),
         Err(ObjectError::TypeError)
     );
+}
 
-    assert!(rejects_options(&mut context, Word::NIL, None, None));
+fn assert_capacity_options(runtime: &Runtime, context: &mut ThreadContext) {
+    assert!(rejects_options(context, runtime, Word::NIL, None, None));
     let non_power_of_two_over_capacity =
-        make_bignum_from_i128(&mut context, &runtime, (1_i128 << 63) + 1)
+        make_bignum_from_i128(context, runtime, (1_i128 << 63) + 1)
             .unwrap_or_else(|error| panic!("bignum: {error:?}"));
     assert!(rejects_options(
-        &mut context,
+        context,
+        runtime,
         non_power_of_two_over_capacity.into(),
         None,
         None
     ));
-    assert!(rejects_options(&mut context, Word::fixnum(0), None, None));
-    let too_large = make_bignum_from_i128(&mut context, &runtime, i128::MAX)
-        .unwrap_or_else(|error| panic!("bignum: {error:?}"));
-    assert!(rejects_options(&mut context, too_large.into(), None, None));
-    let over_capacity = make_bignum_from_i128(&mut context, &runtime, 1_i128 << 63)
+    assert!(rejects_options(
+        context,
+        runtime,
+        Word::fixnum(0),
+        None,
+        None
+    ));
+    let too_large = make_bignum_from_i128(context, runtime, i128::MAX)
         .unwrap_or_else(|error| panic!("bignum: {error:?}"));
     assert!(rejects_options(
-        &mut context,
+        context,
+        runtime,
+        too_large.into(),
+        None,
+        None
+    ));
+    let over_capacity = make_bignum_from_i128(context, runtime, 1_i128 << 63)
+        .unwrap_or_else(|error| panic!("bignum: {error:?}"));
+    assert!(rejects_options(
+        context,
+        runtime,
         over_capacity.into(),
         None,
         None
     ));
 
-    let half = ncl_object::make_ratio(&mut context, &runtime, Word::fixnum(1), Word::fixnum(2))
+    let half = ncl_object::make_ratio(context, runtime, Word::fixnum(1), Word::fixnum(2))
         .unwrap_or_else(|error| panic!("ratio: {error:?}"));
-    let positive_bignum = make_bignum_from_i128(&mut context, &runtime, 1_i128 << 61)
+    let positive_bignum = make_bignum_from_i128(context, runtime, 1_i128 << 61)
         .unwrap_or_else(|error| panic!("bignum: {error:?}"));
     let configured = new_options(
-        &mut context,
+        context,
+        runtime,
         Word::fixnum(9),
         Some(positive_bignum.into()),
         Some(half.into()),
     )
     .unwrap_or_else(|error| panic!("configured table: {error:?}"));
-    assert_eq!(configured.capacity(&context), Ok(16));
-    let mut double_rehash = make_double(&mut context, &runtime, 1.5)
+    assert_eq!(configured.capacity(context), Ok(16));
+    let mut double_rehash = make_double(context, runtime, 1.5)
         .unwrap_or_else(|error| panic!("double: {error:?}"))
         .as_word();
-    let double_rehash_token = ncl_object::push_root(&mut context, &mut double_rehash);
-    let double_threshold = make_double(&mut context, &runtime, 0.5)
-        .unwrap_or_else(|error| panic!("double: {error:?}"));
+    let double_rehash_token = ncl_object::push_root(context, &mut double_rehash);
+    let double_threshold =
+        make_double(context, runtime, 0.5).unwrap_or_else(|error| panic!("double: {error:?}"));
     let double_options = new_options(
-        &mut context,
+        context,
+        runtime,
         Word::fixnum(8),
         Some(double_rehash),
         Some(double_threshold.into()),
     )
     .unwrap_or_else(|error| panic!("double options: {error:?}"));
-    assert_eq!(double_options.capacity(&context), Ok(8));
+    assert_eq!(double_options.capacity(context), Ok(8));
+    assert!(ncl_object::pop_root(context, double_rehash_token));
+}
 
+fn assert_rehash_option_validation(runtime: &Runtime, context: &mut ThreadContext) {
     for invalid_rehash_size in [Word::fixnum(-1), Word::fixnum(0), Word::NIL] {
         assert!(rejects_options(
-            &mut context,
+            context,
+            runtime,
             Word::fixnum(8),
             Some(invalid_rehash_size),
             None
@@ -271,192 +299,213 @@ fn malformed_metadata_and_recursive_equal_values_return_domain_errors() {
         Word::NIL,
     ] {
         assert!(rejects_options(
-            &mut context,
+            context,
+            runtime,
             Word::fixnum(8),
             None,
             Some(invalid_threshold)
         ));
     }
-    let negative_bignum = make_bignum_from_i128(&mut context, &runtime, -(1_i128 << 61))
+    let negative_bignum = make_bignum_from_i128(context, runtime, -(1_i128 << 61))
         .unwrap_or_else(|error| panic!("bignum: {error:?}"));
     assert!(rejects_options(
-        &mut context,
+        context,
+        runtime,
         Word::fixnum(8),
         None,
         Some(negative_bignum.into())
     ));
-    let invalid_size = make_double(&mut context, &runtime, 1.0)
-        .unwrap_or_else(|error| panic!("double: {error:?}"));
+    let invalid_size =
+        make_double(context, runtime, 1.0).unwrap_or_else(|error| panic!("double: {error:?}"));
     assert!(rejects_options(
-        &mut context,
+        context,
+        runtime,
         Word::fixnum(8),
         Some(invalid_size.into()),
         None
     ));
-    let invalid_threshold = make_double(&mut context, &runtime, f64::NAN)
-        .unwrap_or_else(|error| panic!("double: {error:?}"));
+    let invalid_threshold =
+        make_double(context, runtime, f64::NAN).unwrap_or_else(|error| panic!("double: {error:?}"));
     assert!(rejects_options(
-        &mut context,
+        context,
+        runtime,
         Word::fixnum(8),
         None,
         Some(invalid_threshold.into())
     ));
+}
 
+fn assert_growth_modes(runtime: &Runtime, context: &mut ThreadContext) {
     let mut additive = new_options(
-        &mut context,
+        context,
+        runtime,
         Word::fixnum(8),
         Some(Word::fixnum(2)),
         Some(Word::fixnum(1)),
     )
     .unwrap_or_else(|error| panic!("additive table: {error:?}"))
     .as_word();
-    let additive_token = ncl_object::push_root(&mut context, &mut additive);
+    let additive_token = ncl_object::push_root(context, &mut additive);
     for key in 0..9 {
         HashTable::from_word(additive)
-            .insert(&mut context, &runtime, Word::fixnum(key), Word::fixnum(key))
+            .insert(context, runtime, Word::fixnum(key), Word::fixnum(key))
             .unwrap_or_else(|error| panic!("additive insert: {error:?}"));
     }
-    assert_eq!(HashTable::from_word(additive).capacity(&context), Ok(16));
-    assert!(ncl_object::pop_root(&mut context, additive_token));
+    assert_eq!(HashTable::from_word(additive).capacity(context), Ok(16));
+    assert!(ncl_object::pop_root(context, additive_token));
 
+    let mut double_rehash = make_double(context, runtime, 1.5)
+        .unwrap_or_else(|error| panic!("double: {error:?}"))
+        .as_word();
+    let double_rehash_token = ncl_object::push_root(context, &mut double_rehash);
     let mut multiplicative = new_options(
-        &mut context,
+        context,
+        runtime,
         Word::fixnum(8),
         Some(double_rehash),
         Some(Word::fixnum(1)),
     )
     .unwrap_or_else(|error| panic!("multiplicative table: {error:?}"))
     .as_word();
-    let multiplicative_token = ncl_object::push_root(&mut context, &mut multiplicative);
+    let multiplicative_token = ncl_object::push_root(context, &mut multiplicative);
     for key in 0..9 {
         HashTable::from_word(multiplicative)
-            .insert(&mut context, &runtime, Word::fixnum(key), Word::fixnum(key))
+            .insert(context, runtime, Word::fixnum(key), Word::fixnum(key))
             .unwrap_or_else(|error| panic!("multiplicative insert: {error:?}"));
     }
     assert_eq!(
-        HashTable::from_word(multiplicative).capacity(&context),
+        HashTable::from_word(multiplicative).capacity(context),
         Ok(16)
     );
-    assert!(ncl_object::pop_root(&mut context, multiplicative_token));
+    assert!(ncl_object::pop_root(context, multiplicative_token));
+    assert!(ncl_object::pop_root(context, double_rehash_token));
+}
 
-    let mut early_threshold = make_double(&mut context, &runtime, 0.1)
+fn assert_growth_overflow(runtime: &Runtime, context: &mut ThreadContext) {
+    let mut early_threshold = make_double(context, runtime, 0.1)
         .unwrap_or_else(|error| panic!("double: {error:?}"))
         .as_word();
-    let early_threshold_token = ncl_object::push_root(&mut context, &mut early_threshold);
-    let huge_rehash = make_double(&mut context, &runtime, 1.0e100)
-        .unwrap_or_else(|error| panic!("double: {error:?}"));
+    let early_threshold_token = ncl_object::push_root(context, &mut early_threshold);
+    let huge_rehash =
+        make_double(context, runtime, 1.0e100).unwrap_or_else(|error| panic!("double: {error:?}"));
     let mut overflowing_growth = new_options(
-        &mut context,
+        context,
+        runtime,
         Word::fixnum(8),
         Some(huge_rehash.into()),
         Some(early_threshold),
     )
     .unwrap_or_else(|error| panic!("overflowing table: {error:?}"))
     .as_word();
-    let overflowing_growth_token = ncl_object::push_root(&mut context, &mut overflowing_growth);
+    let overflowing_growth_token = ncl_object::push_root(context, &mut overflowing_growth);
     assert_eq!(
         HashTable::from_word(overflowing_growth).insert(
-            &mut context,
-            &runtime,
+            context,
+            runtime,
             Word::fixnum(1),
             Word::TRUE,
         ),
         Err(ObjectError::Layout)
     );
-    assert!(ncl_object::pop_root(&mut context, overflowing_growth_token));
+    assert!(ncl_object::pop_root(context, overflowing_growth_token));
+    assert!(ncl_object::pop_root(context, early_threshold_token));
+}
 
+fn assert_malformed_rehash_values(runtime: &Runtime, context: &mut ThreadContext) {
+    let mut double_rehash = make_double(context, runtime, 1.5)
+        .unwrap_or_else(|error| panic!("double: {error:?}"))
+        .as_word();
+    let double_rehash_token = ncl_object::push_root(context, &mut double_rehash);
+    let mut early_threshold = make_double(context, runtime, 0.1)
+        .unwrap_or_else(|error| panic!("double: {error:?}"))
+        .as_word();
+    let early_threshold_token = ncl_object::push_root(context, &mut early_threshold);
     let mut corrupt_options = new_options(
-        &mut context,
+        context,
+        runtime,
         Word::fixnum(8),
         Some(double_rehash),
         Some(early_threshold),
     )
     .unwrap_or_else(|error| panic!("corruptible table: {error:?}"))
     .as_word();
-    let corrupt_options_token = ncl_object::push_root(&mut context, &mut corrupt_options);
-    let invalid_object_rehash = make_string(&mut context, &runtime, &['x'])
-        .unwrap_or_else(|error| panic!("string: {error:?}"));
-    assert!(ncl_object::put(&mut context, corrupt_options, 8, invalid_object_rehash,).is_ok());
+    let corrupt_options_token = ncl_object::push_root(context, &mut corrupt_options);
+    let invalid_object_rehash =
+        make_string(context, runtime, &['x']).unwrap_or_else(|error| panic!("string: {error:?}"));
+    assert!(ncl_object::put(context, corrupt_options, 8, invalid_object_rehash,).is_ok());
     assert_eq!(
-        HashTable::from_word(corrupt_options).insert(
-            &mut context,
-            &runtime,
-            Word::fixnum(1),
-            Word::TRUE,
-        ),
+        HashTable::from_word(corrupt_options)
+            .insert(context, runtime, Word::fixnum(1), Word::TRUE,),
         Err(ObjectError::Layout)
     );
-    let invalid_double_rehash = make_double(&mut context, &runtime, 0.5)
-        .unwrap_or_else(|error| panic!("double: {error:?}"));
-    assert!(
-        ncl_object::put(
-            &mut context,
-            corrupt_options,
-            8,
-            invalid_double_rehash.into(),
-        )
-        .is_ok()
-    );
+    let invalid_double_rehash =
+        make_double(context, runtime, 0.5).unwrap_or_else(|error| panic!("double: {error:?}"));
+    assert!(ncl_object::put(context, corrupt_options, 8, invalid_double_rehash.into(),).is_ok());
     assert_eq!(
-        HashTable::from_word(corrupt_options).insert(
-            &mut context,
-            &runtime,
-            Word::fixnum(1),
-            Word::TRUE,
-        ),
+        HashTable::from_word(corrupt_options)
+            .insert(context, runtime, Word::fixnum(1), Word::TRUE,),
         Err(ObjectError::Layout)
     );
-    let negative_rehash = make_bignum_from_i128(&mut context, &runtime, -(1_i128 << 61))
+    let negative_rehash = make_bignum_from_i128(context, runtime, -(1_i128 << 61))
         .unwrap_or_else(|error| panic!("bignum: {error:?}"));
-    assert!(ncl_object::put(&mut context, corrupt_options, 8, negative_rehash.into(),).is_ok());
+    assert!(ncl_object::put(context, corrupt_options, 8, negative_rehash.into(),).is_ok());
     assert_eq!(
-        HashTable::from_word(corrupt_options).insert(
-            &mut context,
-            &runtime,
-            Word::fixnum(1),
-            Word::TRUE,
-        ),
+        HashTable::from_word(corrupt_options)
+            .insert(context, runtime, Word::fixnum(1), Word::TRUE,),
         Err(ObjectError::TypeError)
     );
-    assert!(ncl_object::pop_root(&mut context, corrupt_options_token));
-    assert!(ncl_object::pop_root(&mut context, early_threshold_token));
-    assert!(ncl_object::pop_root(&mut context, double_rehash_token));
+    assert!(ncl_object::pop_root(context, corrupt_options_token));
+    assert!(ncl_object::pop_root(context, early_threshold_token));
+    assert!(ncl_object::pop_root(context, double_rehash_token));
+}
 
-    let full = HashTable::new(&mut context, &runtime, HashTest::Eq, Weakness::None)
+fn assert_full_index_probe(runtime: &Runtime, context: &mut ThreadContext) {
+    let full = HashTable::new(context, runtime, HashTest::Eq, Weakness::None)
         .unwrap_or_else(|error| panic!("full table: {error:?}"));
     assert!(
-        full.insert(&mut context, &runtime, Word::fixnum(100), Word::TRUE)
+        full.insert(context, runtime, Word::fixnum(100), Word::TRUE)
             .is_ok()
     );
-    let index = ncl_object::get(
-        &context,
-        full.as_word(),
-        ncl_object::widetag::HASH_TABLE,
-        12,
-    )
-    .unwrap_or(Word::NIL);
-    let capacity = ncl_object::simple_vector_length(&context, index).unwrap_or(0);
+    let index = ncl_object::get(context, full.as_word(), ncl_object::widetag::HASH_TABLE, 12)
+        .unwrap_or(Word::NIL);
+    let capacity = ncl_object::simple_vector_length(context, index).unwrap_or(0);
     for slot in 0..capacity {
-        assert!(ncl_object::simple_vector_set(&mut context, index, slot, Word::fixnum(0)).is_ok());
+        assert!(ncl_object::simple_vector_set(context, index, slot, Word::fixnum(0)).is_ok());
     }
-    assert_eq!(full.get(&mut context, Word::fixnum(101)), Ok(None));
+    assert_eq!(full.get(context, Word::fixnum(101)), Ok(None));
     assert_eq!(
-        full.insert(&mut context, &runtime, Word::fixnum(101), Word::TRUE),
+        full.insert(context, runtime, Word::fixnum(101), Word::TRUE),
         Err(ObjectError::Layout)
     );
-    let cycle = make_cons(&mut context, &runtime, Word::fixnum(1), Word::NIL).unwrap_or(Word::NIL);
-    assert!(ncl_object::rplacd(&mut context, cycle, cycle).is_ok());
-    let recursive = HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)
+}
+
+fn assert_recursive_equal_key(runtime: &Runtime, context: &mut ThreadContext) {
+    let cycle = make_cons(context, runtime, Word::fixnum(1), Word::NIL).unwrap_or(Word::NIL);
+    assert!(ncl_object::rplacd(context, cycle, cycle).is_ok());
+    let recursive = HashTable::new(context, runtime, HashTest::Equal, Weakness::None)
         .unwrap_or_else(|error| panic!("table: {error:?}"));
     // A circular cons key is not malformed metadata: EQUAL's content hash and
     // comparison both bound their recursion at a fixed depth (see
-    // `hash_table/equality.rs`) and return a value rather than an error once
-    // the bound is hit, so insertion succeeds instead of failing.
+    // `hash_table/equality.rs`) and return a value rather than an error once the
+    // bound is hit, so insertion succeeds instead of failing.
     assert!(
         recursive
-            .insert(&mut context, &runtime, cycle, Word::TRUE)
+            .insert(context, runtime, cycle, Word::TRUE)
             .is_ok()
     );
+}
+
+#[test]
+fn malformed_metadata_and_recursive_equal_values_return_domain_errors() {
+    let (runtime, mut context) = setup();
+    assert_malformed_metadata(&runtime, &mut context);
+    assert_capacity_options(&runtime, &mut context);
+    assert_rehash_option_validation(&runtime, &mut context);
+    assert_growth_modes(&runtime, &mut context);
+    assert_growth_overflow(&runtime, &mut context);
+    assert_malformed_rehash_values(&runtime, &mut context);
+    assert_full_index_probe(&runtime, &mut context);
+    assert_recursive_equal_key(&runtime, &mut context);
 }
 
 #[test]

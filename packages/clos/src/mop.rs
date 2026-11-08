@@ -44,7 +44,7 @@ pub const fn builtin_descriptors() -> &'static [MopBuiltinDescriptor] {
     &BUILTINS
 }
 
-const BUILTINS: [MopBuiltinDescriptor; 11] = [
+const BUILTINS: [MopBuiltinDescriptor; 12] = [
     descriptor(
         "CLASS-PRECEDENCE-LIST",
         fixed(A1, Arity::exact(1)),
@@ -100,7 +100,29 @@ const BUILTINS: [MopBuiltinDescriptor; 11] = [
         fixed(A1, Arity::exact(1)),
         eql_specializer_object_builtin,
     ),
+    descriptor(
+        "METHOD-QUALIFIERS",
+        fixed(A1, Arity::exact(1)),
+        method_qualifiers_builtin,
+    ),
 ];
+
+pub(super) fn method_qualifiers_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let mut scope = Scope::new(ctx);
+    let method: ncl_object::Handle<'_, Word> = scope.root(Local::from_word(args.required(0)?));
+    let fields = scope.list_to_handle_vec(Local::from_word(scope.get(method).as_word()))?;
+    if fields.len() != 6 {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(scope
+        .get(*fields.as_slice().get(4).ok_or(ObjectError::TypeError)?)
+        .as_word())
+}
 
 const fn descriptor(
     name: &'static str,

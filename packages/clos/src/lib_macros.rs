@@ -163,17 +163,22 @@ fn defgeneric_method_combination<'ctx>(
         let name = symbol_name_string(scope.context(), scope.get(combination_name).as_word())?;
         let normalized = name.to_ascii_uppercase();
         let is_standard = normalized == "STANDARD";
-        if !is_standard
-            && !matches!(
+        let is_builtin = is_standard
+            || matches!(
                 normalized.as_str(),
                 "+" | "AND" | "APPEND" | "LIST" | "MAX" | "MIN" | "NCONC" | "OR" | "PROGN"
-            )
-        {
-            return Err(ObjectError::TypeError);
-        }
-        let canonical_name = scope.intern(runtime, COMMON_LISP, &normalized)?;
-        if scope.get(canonical_name).as_word() != scope.get(combination_name).as_word() {
-            return Err(ObjectError::TypeError);
+            );
+        if is_builtin {
+            let canonical_name = scope.intern(runtime, COMMON_LISP, &normalized)?;
+            if scope.get(canonical_name).as_word() != scope.get(combination_name).as_word() {
+                return Err(ObjectError::TypeError);
+            }
+        } else {
+            let definition_key =
+                scope.intern(runtime, "NCL", METHOD_COMBINATION_DEFINITION_KEY_NAME)?;
+            if symbol_plist_property(scope, combination_name, definition_key)?.is_none() {
+                return Err(ObjectError::TypeError);
+            }
         }
         let order = match fields.as_slice().get(2).copied() {
             None => most_specific_first,
@@ -182,6 +187,12 @@ fn defgeneric_method_combination<'ctx>(
                     && scope.get(order).as_word() == scope.get(most_specific_last).as_word() =>
             {
                 most_specific_last
+            }
+            Some(order)
+                if !is_builtin
+                    && scope.get(order).as_word() == scope.get(most_specific_first).as_word() =>
+            {
+                most_specific_first
             }
             Some(_) => return Err(ObjectError::TypeError),
         };

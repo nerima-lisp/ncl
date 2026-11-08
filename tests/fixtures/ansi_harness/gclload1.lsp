@@ -1,0 +1,10 @@
+(progn
+  (defun positive-integer-qualifier-p (qualifiers)
+    (typep qualifiers '(cons (integer 1) null)))
+  (define-method-combination randomized nil ((method-list positive-integer-qualifier-p))
+    (assert method-list)
+    (let ((clauses (mapcar #'(lambda (method)
+                               (let ((weight (car (method-qualifiers method))))
+                                 `(,weight (call-method ,method))))
+                           method-list)))
+    `(loop (catch 'fail (return (rcase ,@clauses)))))))

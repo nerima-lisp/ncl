@@ -46,6 +46,10 @@ pub struct FaslSymbol {
 }
 
 /// Encodes the canonical symbol section.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "symbol count is bounded by MAX_RECORDS before encoding"
+)]
 pub fn encode(symbols: &[FaslSymbol]) -> Result<Vec<u8>, FaslError> {
     check_record_count(symbols.len())?;
     validate_order(symbols)?;
@@ -58,6 +62,7 @@ pub fn encode(symbols: &[FaslSymbol]) -> Result<Vec<u8>, FaslError> {
         check_section_size(section_size, None)?;
     }
 
+    // check-added-lines: allow(as-cast) the symbol count is bounded by MAX_RECORDS.
     let count = symbols.len() as u32;
     let mut output = SectionWriter::new();
     output.put_u32(count);
@@ -77,7 +82,8 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslSymbol>, FaslE
     check_section_size(bytes.len(), Some(base_offset))?;
     let mut reader = SectionReader::new(bytes, base_offset, FaslRejectReason::InvalidReference);
     let count_offset = reader.absolute_position();
-    let count = reader.u32()? as usize;
+    let count = usize::try_from(reader.u32()?)
+        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, count_offset))?;
     if count > MAX_RECORDS {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
@@ -185,7 +191,12 @@ fn check_section_size(size: usize, offset: Option<usize>) -> Result<(), FaslErro
     ))
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "text is validated before encoding"
+)]
 fn write_text(output: &mut SectionWriter, value: &str) {
+    // check-added-lines: allow(as-cast) the string length is bounded by MAX_STRING_BYTES.
     let length = value.len() as u32;
     output.put_u32(length);
     output.put_bytes(value.as_bytes());
@@ -193,7 +204,8 @@ fn write_text(output: &mut SectionWriter, value: &str) {
 
 fn read_text(reader: &mut SectionReader<'_>) -> Result<String, FaslError> {
     let length_offset = reader.absolute_position();
-    let length = reader.u32()? as usize;
+    let length = usize::try_from(reader.u32()?)
+        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, length_offset))?;
     if length > MAX_STRING_BYTES {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
@@ -218,5 +230,5 @@ fn read_text(reader: &mut SectionReader<'_>) -> Result<String, FaslError> {
 }
 
 #[cfg(test)]
-#[path = "fasl_symbols_tests.rs"]
+#[path = "tests/fasl_symbols.rs"]
 mod tests;

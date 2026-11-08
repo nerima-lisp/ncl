@@ -63,7 +63,7 @@ fn code_section_round_trips_multiple_dense_objects_at_aligned_boundaries() {
     assert_eq!(&encoded[76..80], &[0; 4]);
     assert_eq!(decode(&encoded, 400), Ok(objects.to_vec()));
 
-    let mut bad_second_flags = encoded.clone();
+    let mut bad_second_flags = encoded;
     bad_second_flags[54..56].copy_from_slice(&1_u16.to_le_bytes());
     assert_eq!(
         decode(&bad_second_flags, 400).map(|_| ()),

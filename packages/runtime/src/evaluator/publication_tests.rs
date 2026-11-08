@@ -1,6 +1,51 @@
 use super::*;
 use ncl_object::{make_code_object, make_simple_fun, make_string, make_symbol, symbol_function};
-use ncl_sys::{CodeError, CodeObjectMetadata, SafepointMap, seal_code};
+use ncl_sys::{CodeError, CodeObjectMetadata, SafepointMap, activate_code_registry, seal_code};
+
+#[test]
+fn successful_multi_code_publication_publishes_code_and_activates_registry()
+-> Result<(), crate::RuntimeError> {
+    let mut runtime = crate::Runtime::new()?;
+    let first_function = empty_function(10, "first-published");
+    let second_function = empty_function(11, "second-published");
+    let first = ncl_sys::alloc_code(8)?;
+    let second = ncl_sys::alloc_code(8)?;
+    let mut batch = [
+        (&first_function, (first, metadata("first-published", 8))),
+        (&second_function, (second, metadata("second-published", 8))),
+    ];
+
+    runtime.publish_native(&mut batch)?;
+
+    for (_, (code, _)) in &batch {
+        // check-added-lines: allow(panic) test-only assertions
+        assert!(code.is_published());
+        // check-added-lines: allow(panic) test-only assertions
+        assert_eq!(
+            activate_code_registry(code),
+            Err(CodeError::AlreadyActivated)
+        );
+    }
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        runtime
+            .context
+            .thread_access()
+            .unregister_code(&batch[0].1.0)
+            .map(|metadata| metadata.function_name),
+        Some("first-published".to_owned())
+    );
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        runtime
+            .context
+            .thread_access()
+            .unregister_code(&batch[1].1.0)
+            .map(|metadata| metadata.function_name),
+        Some("second-published".to_owned())
+    );
+    Ok(())
+}
 
 #[test]
 fn sealing_failure_cleanup_preserves_symbol_function() -> Result<(), crate::RuntimeError> {

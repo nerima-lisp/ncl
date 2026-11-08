@@ -12,7 +12,7 @@ use ncl_object::{
     ArrayElementType, HeapRootedWord, Word, array_dimensions, array_row_major_ref, double_value,
     simple_vector_ref, specialized_array_element_type, specialized_array_ref,
 };
-use ncl_sys::{CodeError, SafepointMapError};
+use ncl_sys::{CodeError, NativeError, NativeOperation, SafepointMapError};
 #[test]
 fn constant_object_aliases_survive_gc_stress_and_strict_forwarding() -> Result<(), String> {
     let mut runtime = Runtime::new().map_err(|error| format!("runtime: {error:?}"))?;
@@ -438,7 +438,7 @@ fn malformed_array_constants_return_errors() -> Result<(), String> {
 }
 
 #[test]
-fn typed_runtime_errors_keep_their_display_and_incomplete_read_contract() {
+fn typed_runtime_errors_keep_their_display_and_incomplete_read_contract() -> Result<(), String> {
     let code_error = RuntimeError::from(CodeError::OutOfBounds);
     assert_eq!(
         code_error.to_string(),
@@ -456,8 +456,60 @@ fn typed_runtime_errors_keep_their_display_and_incomplete_read_contract() {
         RuntimeError::SafepointMap(SafepointMapError::InvalidPc)
     ));
 
+    let runtime = Runtime::new().map_err(|error| format!("runtime: {error:?}"))?;
+    let condition = HeapRootedWord::new(&runtime.context, Word::NIL)
+        .map_err(|error| format!("root condition: {error:?}"))?;
+    let pending_with_report = RuntimeError::PendingCondition {
+        condition,
+        report: Some("native condition report".to_owned()),
+    };
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        pending_with_report.to_string(),
+        "native error: native condition report"
+    );
+    drop(pending_with_report);
+
+    let condition = HeapRootedWord::new(&runtime.context, Word::NIL)
+        .map_err(|error| format!("root condition: {error:?}"))?;
+    let pending_without_report = RuntimeError::PendingCondition {
+        condition,
+        report: None,
+    };
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        pending_without_report.to_string(),
+        "pending SIMPLE-ERROR condition"
+    );
+    drop(pending_without_report);
+
+    let undefined = RuntimeError::UndefinedFunction {
+        name: "LIST".to_owned(),
+    };
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        undefined.to_string(),
+        "undefined function UNDEFINED-FUNCTION: LIST"
+    );
+
+    let failure = crate::native_error::native_failure(NativeError::TypeMismatch {
+        operation: NativeOperation::Car,
+        operand: 0,
+        value: Word::fixnum(7),
+    });
+    let RuntimeError::NativeFailure { error, condition } = failure else {
+        return Err("native_failure did not create NativeFailure".to_owned());
+    };
+    let failure = RuntimeError::NativeFailure { error, condition };
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        failure.to_string(),
+        format!("native failure {error:?}: {condition:?}")
+    );
+
     assert!(RuntimeError::Read(ncl_reader::ReadError::UnexpectedEof).is_incomplete_read());
     assert!(!RuntimeError::Native("failure".to_owned()).is_incomplete_read());
+    Ok(())
 }
 
 #[test]

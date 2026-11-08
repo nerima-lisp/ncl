@@ -16,6 +16,23 @@ fn code_lifecycle_and_write_bounds() {
 }
 
 #[test]
+fn cache_synchronization_requires_sealing_and_runs_once() -> Result<(), CodeError> {
+    let mut code = alloc_code(1)?;
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(synchronize_code(&mut code), Err(CodeError::NotSealed));
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(seal_code(&mut code), Ok(()));
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(synchronize_code(&mut code), Ok(()));
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        synchronize_code(&mut code),
+        Err(CodeError::AlreadySynchronized)
+    );
+    Ok(())
+}
+
+#[test]
 fn code_allocation_boundaries_and_metadata_accessors() {
     assert!(matches!(alloc_code(0), Err(CodeError::EmptyAllocation)));
     let Ok(mut code) = alloc_code(1) else { return };
@@ -74,6 +91,29 @@ fn frame_walk_and_scan_reject_invalid_ranges() {
         scan_frame_chain(&mut frame, 0, 0, &SafepointMap::default(), |word| word),
         None
     );
+
+    let unmapped_function_slot = Safepoint {
+        pc_offset: 0,
+        frame_words: 5,
+        slot_words: 5,
+        word_slot_count: 5,
+        register_mask: 0,
+        map_flags: 0,
+        slot_bitmap: vec![0b0000_0011],
+        register_ids: Vec::new(),
+    };
+    let mut full_frame = [Word::NIL; 5];
+    let mut forwarded = false;
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        scan_frame(&mut full_frame, 0, &unmapped_function_slot, |word| {
+            forwarded = true;
+            word
+        }),
+        None
+    );
+    // check-added-lines: allow(panic) test-only assertions
+    assert!(!forwarded);
 }
 
 #[test]

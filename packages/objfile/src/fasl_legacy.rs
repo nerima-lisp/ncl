@@ -7,7 +7,7 @@ use relocation_wire::{decode as decode_relocations, encode as encode_relocations
 mod coverage_tests;
 
 #[cfg(test)]
-#[path = "fasl_legacy_edge_tests.rs"]
+#[path = "tests/fasl_legacy_edge.rs"]
 mod edge_tests;
 
 /// Architecture encoded by NCL binary formats.
@@ -78,10 +78,14 @@ impl FaslWriter {
     /// Returns an error when a section or relocation exceeds the wire limits.
     pub fn write(fasl: &Fasl) -> Result<Vec<u8>, ObjectError> {
         let mut header = [0; 64];
-        header[..8].copy_from_slice(b"NCLFASL\0");
-        header[8..10].copy_from_slice(&2u16.to_le_bytes());
-        header[10..14].copy_from_slice(&[fasl.header.architecture.wire_tag(), 8, 1, 64]);
-        header[16..24].copy_from_slice(&fasl.header.features.to_le_bytes());
+        write_at(&mut header, 0, b"NCLFASL\0")?;
+        write_at(&mut header, 8, &2u16.to_le_bytes())?;
+        write_at(
+            &mut header,
+            10,
+            &[fasl.header.architecture.wire_tag(), 8, 1, 64],
+        )?;
+        write_at(&mut header, 16, &fasl.header.features.to_le_bytes())?;
         let reloc_bytes = encode_relocations(&fasl.sections.relocations)?;
         let sections = [
             fasl.sections.code.as_slice(),
@@ -93,14 +97,22 @@ impl FaslWriter {
         ];
         let mut file_size = 64_u64;
         for section in &sections {
-            let size = section.len() as u64;
+            let size = u64::try_from(section.len()).map_err(|_| ObjectError::InvalidField {
+                field: "section size",
+                value: u64::MAX,
+            })?;
             if size > u64::from(u32::MAX) {
                 return Err(ObjectError::InvalidField {
                     field: "section size",
                     value: size,
                 });
             }
-            file_size += size;
+            file_size = file_size
+                .checked_add(size)
+                .ok_or(ObjectError::InvalidField {
+                    field: "file size",
+                    value: u64::MAX,
+                })?;
             if file_size > u64::from(u32::MAX) {
                 return Err(ObjectError::InvalidField {
                     field: "file size",
@@ -110,8 +122,16 @@ impl FaslWriter {
         }
         let mut out = header.to_vec();
         let mut ranges = [(0_u32, 0_u32); 6];
-        for (index, section) in sections.iter().enumerate() {
-            ranges[index] = (out.len() as u32, section.len() as u32);
+        for (range, section) in ranges.iter_mut().zip(&sections) {
+            let offset = u32::try_from(out.len()).map_err(|_| ObjectError::InvalidField {
+                field: "section offset",
+                value: u64::MAX,
+            })?;
+            let size = u32::try_from(section.len()).map_err(|_| ObjectError::InvalidField {
+                field: "section size",
+                value: u64::MAX,
+            })?;
+            *range = (offset, size);
             out.extend_from_slice(section);
         }
         let [
@@ -133,10 +153,15 @@ impl FaslWriter {
             (56, stack_offset),
             (60, stack_size),
         ] {
-            out[at..at + 4].copy_from_slice(&value.to_le_bytes());
+            write_at(&mut out, at, &value.to_le_bytes())?;
         }
-        let relocation_count = fasl.sections.relocations.len() as u32;
-        out[36..40].copy_from_slice(&relocation_count.to_le_bytes());
+        let relocation_count = u32::try_from(fasl.sections.relocations.len()).map_err(|_| {
+            ObjectError::InvalidField {
+                field: "relocation count",
+                value: u64::MAX,
+            }
+        })?;
+        write_at(&mut out, 36, &relocation_count.to_le_bytes())?;
         Ok(out)
     }
 }
@@ -163,26 +188,36 @@ impl FaslReader {
             constants,
             symbols,
             stack,
-            debug_start,
+            debug,
         } = read_fasl_ranges(bytes, version)?;
-        let relocations = decode_relocations(reloc, version, u32_at(bytes, 36))?;
+        let relocations = decode_relocations(reloc, version, u32_at(bytes, 36)?)?;
         for relocation in &relocations {
             if relocation.section.0 != 0 {
-                let index = relocation.section.0 as usize;
+                let Ok(index) = usize::try_from(relocation.section.0) else {
+                    return Err(ObjectError::InvalidField {
+                        field: "relocation section",
+                        value: u64::from(relocation.section.0),
+                    });
+                };
                 return Err(ObjectError::InvalidReference {
                     kind: "FASL relocation section",
                     index,
                 });
             }
-            let relocation_width = width(relocation.kind);
-            let offset = relocation.offset as usize;
-            let end = offset + relocation_width as usize;
+            let wire_width = width(relocation.kind);
+            let out_of_bounds = || ObjectError::OutOfBounds {
+                section: "FASL relocation",
+                offset: u64::from(relocation.offset),
+                size: u64::from(wire_width),
+            };
+            // check-added-lines: allow(as-cast) the relocation enum defines widths no greater than eight bytes.
+            let relocation_width = wire_width as usize;
+            let offset = usize::try_from(relocation.offset).map_err(|_| out_of_bounds())?;
+            let end = offset
+                .checked_add(relocation_width)
+                .ok_or_else(&out_of_bounds)?;
             if end > code.len() {
-                return Err(ObjectError::OutOfBounds {
-                    section: "FASL relocation",
-                    offset: u64::from(relocation.offset),
-                    size: u64::from(relocation_width),
-                });
+                return Err(out_of_bounds());
             }
         }
         Ok(Fasl {
@@ -196,7 +231,7 @@ impl FaslReader {
                 constants: constants.to_vec(),
                 symbols: symbols.to_vec(),
                 stack_maps: stack.to_vec(),
-                debug: bytes[debug_start as usize..].to_vec(),
+                debug: debug.to_vec(),
             },
         })
     }
@@ -219,42 +254,43 @@ fn validate_fasl_header(
             value: 0,
         });
     }
-    let version = u16_at(bytes, 8);
+    let version = u16_at(bytes, 8)?;
     if !matches!(version, 1 | 2) {
         return Err(ObjectError::InvalidField {
             field: "version",
             value: u64::from(version),
         });
     }
-    let actual_architecture = bytes[10];
+    let actual_architecture = byte_at(bytes, 10)?;
     if actual_architecture != architecture.wire_tag() {
         return Err(ObjectError::InvalidField {
             field: "architecture",
             value: u64::from(actual_architecture),
         });
     }
-    let pointer_width = bytes[11];
+    let pointer_width = byte_at(bytes, 11)?;
     if pointer_width != 8 {
         return Err(ObjectError::InvalidField {
             field: "pointer width",
             value: u64::from(pointer_width),
         });
     }
-    let endianness = bytes[12];
-    let header_size = bytes[13];
+    let endianness = byte_at(bytes, 12)?;
+    let header_size = byte_at(bytes, 13)?;
     if endianness != 1 || header_size != 64 {
         return Err(ObjectError::InvalidField {
             field: "header",
             value: u64::from(header_size),
         });
     }
-    if u16_at(bytes, 14) != 0 {
+    let reserved = u16_at(bytes, 14)?;
+    if reserved != 0 {
         return Err(ObjectError::InvalidField {
             field: "reserved",
-            value: u64::from(u16_at(bytes, 14)),
+            value: u64::from(reserved),
         });
     }
-    let actual_features = u64_at(bytes, 16);
+    let actual_features = u64_at(bytes, 16)?;
     if actual_features != features {
         return Err(ObjectError::InvalidField {
             field: "feature bitmap",
@@ -270,14 +306,16 @@ struct FaslRanges<'a> {
     constants: &'a [u8],
     symbols: &'a [u8],
     stack: &'a [u8],
-    debug_start: u32,
+    debug: &'a [u8],
 }
 
 fn read_fasl_ranges(bytes: &[u8], version: u16) -> Result<FaslRanges<'_>, ObjectError> {
-    let code = range(bytes, "code", u32_at(bytes, 24), u32_at(bytes, 28))?;
-    let reloc_offset = u32_at(bytes, 32);
-    let reloc_count = u32_at(bytes, 36);
-    let constant_offset = u32_at(bytes, 40);
+    let code_offset = u32_at(bytes, 24)?;
+    let code_size = u32_at(bytes, 28)?;
+    let code = range(bytes, "code", code_offset, code_size)?;
+    let reloc_offset = u32_at(bytes, 32)?;
+    let reloc_count = u32_at(bytes, 36)?;
+    let constant_offset = u32_at(bytes, 40)?;
     let reloc_size = if version == 1 {
         reloc_count
             .checked_mul(16)
@@ -294,12 +332,15 @@ fn read_fasl_ranges(bytes: &[u8], version: u16) -> Result<FaslRanges<'_>, Object
             })?
     };
     let reloc = range(bytes, "relocation", reloc_offset, reloc_size)?;
-    let constants = range(bytes, "constant", u32_at(bytes, 40), u32_at(bytes, 44))?;
-    let symbols = range(bytes, "symbol", u32_at(bytes, 48), u32_at(bytes, 52))?;
-    let stack_offset = u32_at(bytes, 56);
-    let stack_size = u32_at(bytes, 60);
+    let constant_size = u32_at(bytes, 44)?;
+    let constants = range(bytes, "constant", constant_offset, constant_size)?;
+    let symbol_offset = u32_at(bytes, 48)?;
+    let symbol_size = u32_at(bytes, 52)?;
+    let symbols = range(bytes, "symbol", symbol_offset, symbol_size)?;
+    let stack_offset = u32_at(bytes, 56)?;
+    let stack_size = u32_at(bytes, 60)?;
     let stack = range(bytes, "stack map", stack_offset, stack_size)?;
-    let debug_start =
+    let debug_offset =
         stack_offset
             .checked_add(stack_size)
             .ok_or_else(|| ObjectError::OutOfBounds {
@@ -307,11 +348,18 @@ fn read_fasl_ranges(bytes: &[u8], version: u16) -> Result<FaslRanges<'_>, Object
                 offset: u64::from(stack_offset),
                 size: u64::from(stack_size),
             })?;
+    let bad_debug_offset = || ObjectError::OutOfBounds {
+        section: "debug",
+        offset: u64::from(debug_offset),
+        size: 0,
+    };
+    let debug_start = usize::try_from(debug_offset).map_err(|_| bad_debug_offset())?;
+    let debug = bytes.get(debug_start..).ok_or_else(bad_debug_offset)?;
     validate_section_order(&[
-        ("code", u32_at(bytes, 24), u32_at(bytes, 28)),
+        ("code", code_offset, code_size),
         ("relocation", reloc_offset, reloc_size),
-        ("constant", u32_at(bytes, 40), u32_at(bytes, 44)),
-        ("symbol", u32_at(bytes, 48), u32_at(bytes, 52)),
+        ("constant", constant_offset, constant_size),
+        ("symbol", symbol_offset, symbol_size),
         ("stack map", stack_offset, stack_size),
     ])?;
     Ok(FaslRanges {
@@ -320,50 +368,76 @@ fn read_fasl_ranges(bytes: &[u8], version: u16) -> Result<FaslRanges<'_>, Object
         constants,
         symbols,
         stack,
-        debug_start,
+        debug,
     })
 }
 
-fn u16_at(b: &[u8], p: usize) -> u16 {
-    u16::from_le_bytes([b[p], b[p + 1]])
+fn write_at(bytes: &mut [u8], offset: usize, value: &[u8]) -> Result<(), ObjectError> {
+    let end = offset
+        .checked_add(value.len())
+        .ok_or(ObjectError::Truncated {
+            offset,
+            needed: usize::MAX,
+        })?;
+    let destination = bytes.get_mut(offset..end).ok_or(ObjectError::Truncated {
+        offset,
+        needed: end,
+    })?;
+    destination.copy_from_slice(value);
+    Ok(())
 }
-fn u32_at(b: &[u8], p: usize) -> u32 {
-    u32::from_le_bytes([b[p], b[p + 1], b[p + 2], b[p + 3]])
+
+fn byte_at(bytes: &[u8], offset: usize) -> Result<u8, ObjectError> {
+    bytes
+        .get(offset)
+        .copied()
+        .ok_or_else(|| ObjectError::Truncated {
+            offset,
+            needed: offset.saturating_add(1),
+        })
 }
-fn u64_at(b: &[u8], p: usize) -> u64 {
-    u64::from_le_bytes([
-        b[p],
-        b[p + 1],
-        b[p + 2],
-        b[p + 3],
-        b[p + 4],
-        b[p + 5],
-        b[p + 6],
-        b[p + 7],
-    ])
+
+fn array_at<const N: usize>(bytes: &[u8], offset: usize) -> Result<[u8; N], ObjectError> {
+    let end = offset.checked_add(N).ok_or(ObjectError::Truncated {
+        offset,
+        needed: usize::MAX,
+    })?;
+    bytes
+        .get(offset..end)
+        .and_then(|slice| slice.try_into().ok())
+        .ok_or(ObjectError::Truncated {
+            offset,
+            needed: end,
+        })
 }
+
+fn u16_at(bytes: &[u8], offset: usize) -> Result<u16, ObjectError> {
+    Ok(u16::from_le_bytes(array_at(bytes, offset)?))
+}
+
+fn u32_at(bytes: &[u8], offset: usize) -> Result<u32, ObjectError> {
+    Ok(u32::from_le_bytes(array_at(bytes, offset)?))
+}
+
+fn u64_at(bytes: &[u8], offset: usize) -> Result<u64, ObjectError> {
+    Ok(u64::from_le_bytes(array_at(bytes, offset)?))
+}
+
 fn range<'a>(
     bytes: &'a [u8],
     name: &'static str,
     offset: u32,
     size: u32,
 ) -> Result<&'a [u8], ObjectError> {
-    let end = offset
-        .checked_add(size)
-        .ok_or_else(|| ObjectError::OutOfBounds {
-            section: name,
-            offset: u64::from(offset),
-            size: u64::from(size),
-        })?;
-    let start = offset as usize;
-    let end = end as usize;
-    bytes
-        .get(start..end)
-        .ok_or_else(|| ObjectError::OutOfBounds {
-            section: name,
-            offset: u64::from(offset),
-            size: u64::from(size),
-        })
+    let out_of_bounds = || ObjectError::OutOfBounds {
+        section: name,
+        offset: u64::from(offset),
+        size: u64::from(size),
+    };
+    let end = offset.checked_add(size).ok_or_else(&out_of_bounds)?;
+    let start = usize::try_from(offset).map_err(|_| out_of_bounds())?;
+    let end = usize::try_from(end).map_err(|_| out_of_bounds())?;
+    bytes.get(start..end).ok_or_else(&out_of_bounds)
 }
 
 fn validate_section_order(sections: &[(&'static str, u32, u32)]) -> Result<(), ObjectError> {

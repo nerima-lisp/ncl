@@ -157,10 +157,7 @@ fn private_fasl_helpers_round_trip_payload_and_relocations() {
     assert_eq!(ranges.constants, &[3]);
     assert_eq!(ranges.symbols, &[4]);
     assert_eq!(ranges.stack, &[5]);
-    assert_eq!(
-        &bytes[usize::try_from(ranges.debug_start).unwrap_or(0)..],
-        &[6]
-    );
+    assert_eq!(ranges.debug, &[6]);
     assert_eq!(
         decode_relocations(ranges.reloc, 2, 1).map_or(0, |relocations| relocations.len()),
         1
@@ -325,10 +322,10 @@ fn legacy_writer_and_reader_accept_empty_sections_at_the_header_end() {
     let bytes = legacy_bytes(&value);
     assert_eq!(bytes.len(), 64);
     for offset in [24, 32, 40, 48, 56] {
-        assert_eq!(u32_at(&bytes, offset), 64, "section offset at {offset}");
+        assert_eq!(u32_at(&bytes, offset), Ok(64), "section offset at {offset}");
     }
     for offset in [28, 36, 44, 52, 60] {
-        assert_eq!(u32_at(&bytes, offset), 0, "section size at {offset}");
+        assert_eq!(u32_at(&bytes, offset), Ok(0), "section size at {offset}");
     }
     assert_eq!(FaslReader::read(&bytes, Architecture::X86_64, 0), Ok(value));
 }
@@ -343,8 +340,8 @@ fn legacy_v1_reader_decodes_a_fixed_core_relocation() {
         addend: -9,
     }]);
     let mut bytes = legacy_bytes(&value);
-    assert_eq!(u32_at(&bytes, 32), 72);
-    assert_eq!(u32_at(&bytes, 40), 96);
+    assert_eq!(u32_at(&bytes, 32), Ok(72));
+    assert_eq!(u32_at(&bytes, 40), Ok(96));
 
     assert_eq!(bytes.drain(88..96).count(), 8);
     bytes[8..10].copy_from_slice(&1_u16.to_le_bytes());
@@ -403,6 +400,66 @@ fn legacy_reader_rejects_invalid_external_relocation_payloads() {
         Err(ObjectError::Truncated {
             offset: 24,
             needed: 2,
+        })
+    );
+}
+
+#[test]
+fn legacy_byte_and_range_helpers_reject_overflow_and_short_slices() {
+    assert_eq!(
+        byte_at(&[], 0),
+        Err(ObjectError::Truncated {
+            offset: 0,
+            needed: 1
+        })
+    );
+    assert_eq!(
+        array_at::<2>(&[], usize::MAX),
+        Err(ObjectError::Truncated {
+            offset: usize::MAX,
+            needed: usize::MAX,
+        })
+    );
+    assert_eq!(
+        array_at::<2>(&[], 0),
+        Err(ObjectError::Truncated {
+            offset: 0,
+            needed: 2,
+        })
+    );
+    assert_eq!(
+        range(&[], "overflow", u32::MAX, 1),
+        Err(ObjectError::OutOfBounds {
+            section: "overflow",
+            offset: u64::from(u32::MAX),
+            size: 1,
+        })
+    );
+    assert_eq!(
+        range(&[], "missing", 0, 1),
+        Err(ObjectError::OutOfBounds {
+            section: "missing",
+            offset: 0,
+            size: 1,
+        })
+    );
+}
+
+#[test]
+fn legacy_writer_rejects_overflow_and_out_of_bounds_header_writes() {
+    let overflow = write_at(&mut [], usize::MAX, &[1]);
+    assert_eq!(
+        overflow,
+        Err(ObjectError::Truncated {
+            offset: usize::MAX,
+            needed: usize::MAX,
+        })
+    );
+    assert_eq!(
+        write_at(&mut [], 0, &[1]),
+        Err(ObjectError::Truncated {
+            offset: 0,
+            needed: 1,
         })
     );
 }

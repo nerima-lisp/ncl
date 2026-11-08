@@ -7,9 +7,9 @@ use super::node;
 use super::node::MultipleValueOperation;
 use super::source;
 use super::{
-    conditional_cfg, form, return_cfg, CleanupId, CompilationUnitId, FactAuthorization,
-    FactCertainty, FactDomain, FactProvenance, FactRecord, Fixture, Node, NodeId, NodeKind,
-    ScopeId, SourceOriginId, SymbolId, TypeSpecConstId, ValueId, VerifyError,
+    CleanupId, CompilationUnitId, FactAuthorization, FactCertainty, FactDomain, FactProvenance,
+    FactRecord, Fixture, Node, NodeId, NodeKind, ScopeId, SourceOriginId, SymbolId,
+    TypeSpecConstId, ValueId, VerifyError, conditional_cfg, form, return_cfg,
 };
 
 fn add_expansion_origin(

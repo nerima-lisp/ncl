@@ -32,7 +32,10 @@ fn registers_every_owned_symbol() {
         &"*POSIX-ARGV*".chars().collect::<Vec<_>>(),
     )
     .unwrap();
-    let (argv, _) = package.find_symbol(&mut ctx, argv_name).unwrap().unwrap();
+    let (argv, _) = package
+        .find_symbol(&mut ctx, &runtime, argv_name)
+        .unwrap()
+        .unwrap();
     assert!(symbol_is_special(&ctx, argv).unwrap());
 
     for name in FUNCTIONS {

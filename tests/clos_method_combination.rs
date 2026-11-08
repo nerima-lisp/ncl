@@ -1,12 +1,14 @@
 //! End-to-end tests for long-form custom method combinations.
 
-#[path = "common/process.rs"]
-mod process;
+#[path = "common/mod.rs"]
+mod common;
 
 use std::process::{Command, Output};
 
 fn run_eval(source: &str) -> Output {
-    process::output(Command::new(env!("CARGO_BIN_EXE_ncl")).args(["--eval", source]))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ncl"));
+    command.args(["--eval", source]);
+    common::run_command(&mut command)
 }
 
 #[test]

@@ -1,7 +1,7 @@
 //! End-to-end regression test for ANSI fixture loading and custom method combinations.
 
-#[path = "common/process.rs"]
-mod process;
+#[path = "common/mod.rs"]
+mod common;
 
 use std::path::Path;
 use std::process::Command;
@@ -26,11 +26,9 @@ fn ansi_harness_fixture_loads_and_dispatches_custom_method_combination() {
           (format t "PASS ansi-harness-smoke~%")
           t)
     "#;
-    let result = process::output(
-        Command::new(env!("CARGO_BIN_EXE_ncl"))
-            .current_dir(fixture_dir)
-            .args(["--eval", source]),
-    );
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ncl"));
+    command.current_dir(fixture_dir).args(["--eval", source]);
+    let result = common::run_command(&mut command);
     assert!(result.status.success(), "{result:?}");
     let stdout = String::from_utf8_lossy(&result.stdout);
     assert!(stdout.contains("BEGIN ansi-harness-smoke"), "{stdout}");

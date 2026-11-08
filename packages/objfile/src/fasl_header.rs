@@ -98,6 +98,7 @@ fn fixed_field<const N: usize>(bytes: &[u8], offset: usize) -> [u8; N] {
     field
 }
 
+#[cfg(test)]
 fn read_array<const N: usize>(bytes: &[u8], offset: usize) -> Result<[u8; N], FaslError> {
     let end = offset
         .checked_add(N)
@@ -110,6 +111,7 @@ fn read_array<const N: usize>(bytes: &[u8], offset: usize) -> Result<[u8; N], Fa
     Ok(value)
 }
 
+#[cfg(test)]
 fn read_u8(bytes: &[u8], offset: usize) -> Result<u8, FaslError> {
     bytes
         .get(offset)
@@ -117,10 +119,12 @@ fn read_u8(bytes: &[u8], offset: usize) -> Result<u8, FaslError> {
         .ok_or_else(|| FaslError::at(FaslRejectReason::MalformedDirectory, offset))
 }
 
+#[cfg(test)]
 fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, FaslError> {
     read_array(bytes, offset).map(u16::from_le_bytes)
 }
 
+#[cfg(test)]
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, FaslError> {
     read_array(bytes, offset).map(u32::from_le_bytes)
 }

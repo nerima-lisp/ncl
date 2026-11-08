@@ -78,6 +78,150 @@ fn assert_rejected_element_type(runtime: &Runtime, ctx: &mut ThreadContext, elem
     );
 }
 
+fn assert_fill_pointer_vector_builtins(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
+    let keyword_package = runtime
+        .find_package(ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    let keyword = |ctx: &mut ThreadContext, name: &str| {
+        ncl_object::Package::from_word(keyword_package)
+            .intern(ctx, runtime, name)
+            .map(|(symbol, _)| symbol)
+    };
+    let fill_pointer_key = keyword(ctx, "FILL-POINTER")?;
+    let adjustable_key = keyword(ctx, "ADJUSTABLE")?;
+    let vector = call(
+        runtime,
+        ctx,
+        "MAKE-ARRAY",
+        &[
+            Word::fixnum(2),
+            fill_pointer_key,
+            Word::fixnum(0),
+            adjustable_key,
+            Word::TRUE,
+        ],
+    )?;
+    assert_eq!(
+        call(runtime, ctx, "ARRAY-HAS-FILL-POINTER-P", &[vector])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(runtime, ctx, "FILL-POINTER", &[vector])?,
+        Word::fixnum(0)
+    );
+    assert_eq!(
+        call(runtime, ctx, "VECTOR-PUSH", &[Word::fixnum(17), vector])?,
+        Word::fixnum(0)
+    );
+    assert_eq!(
+        call(runtime, ctx, "VECTOR-PUSH", &[Word::fixnum(18), vector])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(runtime, ctx, "VECTOR-PUSH", &[Word::fixnum(19), vector])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "VECTOR-PUSH-EXTEND",
+            &[Word::fixnum(19), vector, Word::fixnum(1)],
+        )?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(runtime, ctx, "ARRAY-TOTAL-SIZE", &[vector])?,
+        Word::fixnum(3)
+    );
+    assert_eq!(
+        call(runtime, ctx, "VECTOR-POP", &[vector])?,
+        Word::fixnum(19)
+    );
+    assert_eq!(
+        call(runtime, ctx, "FILL-POINTER", &[vector])?,
+        Word::fixnum(2)
+    );
+    assert_eq!(
+        call(runtime, ctx, "VECTOR-POP", &[vector])?,
+        Word::fixnum(18)
+    );
+    assert_eq!(
+        call(runtime, ctx, "VECTOR-POP", &[vector])?,
+        Word::fixnum(17)
+    );
+    assert_eq!(
+        call(runtime, ctx, "VECTOR-POP", &[vector]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+fn assert_nested_initial_contents(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
+    let keyword_package = runtime
+        .find_package(ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    let keyword = |ctx: &mut ThreadContext, name: &str| {
+        ncl_object::Package::from_word(keyword_package)
+            .intern(ctx, runtime, name)
+            .map(|(symbol, _)| symbol)
+    };
+    let initial_contents_key = keyword(ctx, "INITIAL-CONTENTS")?;
+    let dimensions_tail = make_cons(ctx, runtime, Word::fixnum(2), Word::NIL)?;
+    let dimensions = make_cons(ctx, runtime, Word::fixnum(2), dimensions_tail)?;
+    let first_row_tail = make_cons(ctx, runtime, Word::fixnum(2), Word::NIL)?;
+    let first_row = make_cons(ctx, runtime, Word::fixnum(1), first_row_tail)?;
+    let second_row_tail = make_cons(ctx, runtime, Word::fixnum(4), Word::NIL)?;
+    let second_row = make_cons(ctx, runtime, Word::fixnum(3), second_row_tail)?;
+    let contents_tail = make_cons(ctx, runtime, second_row, Word::NIL)?;
+    let nested_contents = make_cons(ctx, runtime, first_row, contents_tail)?;
+    let nested = call(
+        runtime,
+        ctx,
+        "MAKE-ARRAY",
+        &[dimensions, initial_contents_key, nested_contents],
+    )?;
+    for (index, value) in [1, 2, 3, 4].into_iter().enumerate() {
+        assert_eq!(
+            array_row_major_ref(ctx, nested, index)?,
+            Word::fixnum(value)
+        );
+    }
+
+    let initial_element_key = keyword(ctx, "INITIAL-ELEMENT")?;
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "MAKE-ARRAY",
+            &[
+                Word::fixnum(1),
+                initial_element_key,
+                Word::fixnum(0),
+                initial_contents_key,
+                nested_contents,
+            ],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "MAKE-ARRAY",
+            &[Word::fixnum(1), initial_contents_key, Word::fixnum(9)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
 #[test]
 fn vector_builtins_cover_simple_and_bit_vectors() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = setup()?;
@@ -113,96 +257,7 @@ fn vector_builtins_cover_simple_and_bit_vectors() -> Result<(), ObjectError> {
         Word::TRUE
     );
 
-    let keyword_package = runtime
-        .find_package(&ctx, "KEYWORD")
-        .ok_or(ObjectError::PackageConflict)?;
-    let keyword = |ctx: &mut ThreadContext, name: &str| {
-        ncl_object::Package::from_word(keyword_package)
-            .intern(ctx, &runtime, name)
-            .map(|(symbol, _)| symbol)
-    };
-    let fill_pointer_key = keyword(&mut ctx, "FILL-POINTER")?;
-    let adjustable_key = keyword(&mut ctx, "ADJUSTABLE")?;
-    let vector = call(
-        &runtime,
-        &mut ctx,
-        "MAKE-ARRAY",
-        &[
-            Word::fixnum(2),
-            fill_pointer_key,
-            Word::fixnum(0),
-            adjustable_key,
-            Word::TRUE,
-        ],
-    )?;
-    assert_eq!(
-        call(&runtime, &mut ctx, "ARRAY-HAS-FILL-POINTER-P", &[vector])?,
-        Word::TRUE
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "FILL-POINTER", &[vector])?,
-        Word::fixnum(0)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "VECTOR-PUSH",
-            &[Word::fixnum(17), vector]
-        )?,
-        Word::fixnum(0)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "VECTOR-PUSH",
-            &[Word::fixnum(18), vector]
-        )?,
-        Word::fixnum(1)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "VECTOR-PUSH",
-            &[Word::fixnum(19), vector]
-        )?,
-        Word::NIL
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "VECTOR-PUSH-EXTEND",
-            &[Word::fixnum(19), vector, Word::fixnum(1)],
-        )?,
-        Word::fixnum(2)
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "ARRAY-TOTAL-SIZE", &[vector])?,
-        Word::fixnum(3)
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "VECTOR-POP", &[vector])?,
-        Word::fixnum(19)
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "FILL-POINTER", &[vector])?,
-        Word::fixnum(2)
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "VECTOR-POP", &[vector])?,
-        Word::fixnum(18)
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "VECTOR-POP", &[vector])?,
-        Word::fixnum(17)
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "VECTOR-POP", &[vector]),
-        Err(ObjectError::TypeError)
-    );
+    assert_fill_pointer_vector_builtins(&runtime, &mut ctx)?;
     Ok(())
 }
 
@@ -448,53 +503,7 @@ fn make_array_character_initial_contents_displacement() -> Result<(), ObjectErro
         Word::character('z' as u32)
     );
 
-    let initial_contents_key = keyword(&mut ctx, "INITIAL-CONTENTS")?;
-    let dimensions_tail = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL)?;
-    let dimensions = make_cons(&mut ctx, &runtime, Word::fixnum(2), dimensions_tail)?;
-    let first_row_tail = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL)?;
-    let first_row = make_cons(&mut ctx, &runtime, Word::fixnum(1), first_row_tail)?;
-    let second_row_tail = make_cons(&mut ctx, &runtime, Word::fixnum(4), Word::NIL)?;
-    let second_row = make_cons(&mut ctx, &runtime, Word::fixnum(3), second_row_tail)?;
-    let contents_tail = make_cons(&mut ctx, &runtime, second_row, Word::NIL)?;
-    let nested_contents = make_cons(&mut ctx, &runtime, first_row, contents_tail)?;
-    let nested = call(
-        &runtime,
-        &mut ctx,
-        "MAKE-ARRAY",
-        &[dimensions, initial_contents_key, nested_contents],
-    )?;
-    for (index, value) in [1, 2, 3, 4].into_iter().enumerate() {
-        assert_eq!(
-            array_row_major_ref(&ctx, nested, index)?,
-            Word::fixnum(value)
-        );
-    }
-
-    let initial_element_key = keyword(&mut ctx, "INITIAL-ELEMENT")?;
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-ARRAY",
-            &[
-                Word::fixnum(1),
-                initial_element_key,
-                Word::fixnum(0),
-                initial_contents_key,
-                nested_contents,
-            ],
-        ),
-        Err(ObjectError::TypeError)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-ARRAY",
-            &[Word::fixnum(1), initial_contents_key, Word::fixnum(9)],
-        ),
-        Err(ObjectError::TypeError)
-    );
+    assert_nested_initial_contents(&runtime, &mut ctx)?;
     Ok(())
 }
 

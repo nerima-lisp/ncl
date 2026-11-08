@@ -15,6 +15,7 @@ mod hir_builder {
     mod identities;
     mod literal_lowering;
     mod literals;
+    mod multiple_values;
     mod types;
     mod unsupported;
 }

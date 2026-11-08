@@ -3,16 +3,13 @@
 //! Both predicates are pure and read-only: they never allocate, so no
 //! GC rooting is required around the comparisons themselves.
 
-use ncl_arrays::{
-    array_element_type, array_has_fill_pointer_p, array_row_major_ref, fill_pointer,
-};
+use ncl_arrays::{array_element_type, array_has_fill_pointer_p, array_row_major_ref, fill_pointer};
 use ncl_hash_tables::HashTable;
 use ncl_object::{
     ArrayElementType, Bignum, Complex, DoubleFloat, LispError, ObjectError, ObjectRef, Ratio,
-    Runtime, ThreadContext, Word, array_dimensions, bignum_limbs, bignum_sign,
-    car, cdr, classify_object, complex_imag, complex_real, double_value, ratio_denominator,
-    ratio_numerator, simple_vector_length, simple_vector_ref, specialized_array_ref, string_length,
-    string_ref,
+    Runtime, ThreadContext, Word, array_dimensions, bignum_limbs, bignum_sign, car, cdr,
+    classify_object, complex_imag, complex_real, double_value, ratio_denominator, ratio_numerator,
+    simple_vector_length, simple_vector_ref, specialized_array_ref, string_length, string_ref,
 };
 
 /// Recursion depth limit shared with the hash-table content-equality helper,

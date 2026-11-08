@@ -59,6 +59,7 @@ version = "0.1.1"
 dependencies = [
  "ncl-clos",
  "ncl-conditions",
+ "ncl-hir",
  "ncl-ir",
  "ncl-object",
  "ncl-ownership",
@@ -124,6 +125,9 @@ dependencies = [
 [[package]]
 name = "ncl-hir"
 version = "0.1.1"
+dependencies = [
+ "ncl-ir",
+]
 
 [[package]]
 name = "ncl-image"

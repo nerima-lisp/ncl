@@ -345,3 +345,104 @@ fn legacy_writer_and_ranges_reject_unrepresentable_values() {
         })
     ));
 }
+
+#[test]
+fn legacy_writer_and_reader_accept_empty_sections_at_the_header_end() {
+    let value = Fasl {
+        header: FaslHeader {
+            architecture: Architecture::X86_64,
+            features: 0,
+        },
+        sections: FaslSection {
+            code: Vec::new(),
+            relocations: Vec::new(),
+            constants: Vec::new(),
+            symbols: Vec::new(),
+            stack_maps: Vec::new(),
+            debug: Vec::new(),
+        },
+    };
+    let bytes = legacy_bytes(&value);
+    assert_eq!(bytes.len(), 64);
+    for offset in [24, 32, 40, 48, 56] {
+        assert_eq!(u32_at(&bytes, offset), Ok(64), "section offset at {offset}");
+    }
+    for offset in [28, 36, 44, 52, 60] {
+        assert_eq!(u32_at(&bytes, offset), Ok(0), "section size at {offset}");
+    }
+    assert_eq!(FaslReader::read(&bytes, Architecture::X86_64, 0), Ok(value));
+}
+
+#[test]
+fn legacy_v1_reader_decodes_a_fixed_core_relocation() {
+    let value = legacy_value(vec![Relocation {
+        section: SectionId(0),
+        offset: 0,
+        kind: RelocKind::Abs64,
+        symbol: SymbolRef::Local(0),
+        addend: -9,
+    }]);
+    let mut bytes = legacy_bytes(&value);
+    assert_eq!(u32_at(&bytes, 32), Ok(72));
+    assert_eq!(u32_at(&bytes, 40), Ok(96));
+
+    assert_eq!(bytes.drain(88..96).count(), 8);
+    bytes[8..10].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[40..44].copy_from_slice(&88_u32.to_le_bytes());
+    bytes[48..52].copy_from_slice(&89_u32.to_le_bytes());
+    bytes[56..60].copy_from_slice(&90_u32.to_le_bytes());
+
+    assert_eq!(FaslReader::read(&bytes, Architecture::X86_64, 0), Ok(value));
+}
+
+#[test]
+fn legacy_v2_writer_and_reader_round_trip_external_relocations() {
+    let value = legacy_value(vec![Relocation {
+        section: SectionId(0),
+        offset: 0,
+        kind: RelocKind::ExternalSymbol,
+        symbol: SymbolRef::External("native_entry".to_owned()),
+        addend: -7,
+    }]);
+    let bytes = legacy_bytes(&value);
+    assert_eq!(FaslReader::read(&bytes, Architecture::X86_64, 0), Ok(value));
+}
+
+#[test]
+fn legacy_reader_rejects_invalid_external_relocation_payloads() {
+    let value = legacy_value(vec![Relocation {
+        section: SectionId(0),
+        offset: 0,
+        kind: RelocKind::ExternalSymbol,
+        symbol: SymbolRef::External("x".to_owned()),
+        addend: 0,
+    }]);
+    let valid = legacy_bytes(&value);
+
+    let mut bad_symbol_kind = valid.clone();
+    bad_symbol_kind[88..92].copy_from_slice(&9_u32.to_le_bytes());
+    assert!(matches!(
+        FaslReader::read(&bad_symbol_kind, Architecture::X86_64, 0),
+        Err(ObjectError::InvalidField {
+            field: "relocation symbol kind",
+            value: 9,
+        })
+    ));
+
+    let mut invalid_utf8 = valid.clone();
+    invalid_utf8[96] = 0xff;
+    assert_eq!(
+        FaslReader::read(&invalid_utf8, Architecture::X86_64, 0),
+        Err(ObjectError::InvalidName)
+    );
+
+    let mut truncated_name = valid;
+    truncated_name[92..96].copy_from_slice(&2_u32.to_le_bytes());
+    assert_eq!(
+        FaslReader::read(&truncated_name, Architecture::X86_64, 0),
+        Err(ObjectError::Truncated {
+            offset: 24,
+            needed: 2,
+        })
+    );
+}

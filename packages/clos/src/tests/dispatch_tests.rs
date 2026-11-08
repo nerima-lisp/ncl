@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod included_tests {
-    use super::super::{COMMON_LISP, METHOD_COMBINATION_KEY_NAME};
+    use super::super::{BuiltinFunctionCaller, COMMON_LISP, METHOD_COMBINATION_KEY_NAME};
     use ncl_object::{
         Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
         BuiltinName, BuiltinPackage, FunctionObject, LambdaList, Local, MultipleValues, Package,
@@ -12,6 +12,7 @@ mod included_tests {
         name: BuiltinName::new("VALUE"),
         ty: ParameterType::Any,
     };
+    const WEIGHTED_BUILDER_ARGUMENTS: &[Parameter] = &[TRACE_ARGUMENT, TRACE_ARGUMENT];
     static TRACE_TEST_LOCK: Mutex<()> = Mutex::new(());
     static METHOD_LOG: Mutex<Vec<i64>> = Mutex::new(Vec::new());
 
@@ -245,6 +246,131 @@ mod included_tests {
         test_list_operator(ctx, runtime, args, values, false)
     }
 
+    fn weighted_combination_form(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        args: &BuiltinArgs<'_>,
+        values: &mut MultipleValues,
+    ) -> Result<Word, ncl_object::ObjectError> {
+        let mut scope = ncl_object::Scope::new(ctx);
+        let groups: ncl_object::Handle<'_, Word> =
+            scope.root(Local::from_word(args.required(0)?));
+        let groups_word = scope.get(groups).as_word();
+        let groups = scope.list_to_handle_vec(Local::from_word(groups_word))?;
+        let method_qualifiers = scope.intern(runtime, "NCL-MOP", "METHOD-QUALIFIERS")?;
+        let method_qualifiers = super::super::symbol_function(
+            scope.context(),
+            scope.get(method_qualifiers).as_word(),
+        )?;
+        let method_qualifiers = scope.root(Local::from_word(method_qualifiers));
+        let mut caller = BuiltinFunctionCaller;
+        let mut clauses = scope.root_many(&[]);
+        let fast_qualifier = scope.intern(runtime, "KEYWORD", "FAST")?;
+        for (group_index, group) in groups.iter().copied().enumerate() {
+            let group_word = scope.get(group).as_word();
+            let methods = scope.list_to_handle_vec(Local::from_word(group_word))?;
+            for method in methods.iter().copied() {
+                let method_word = scope.get(method).as_word();
+                let method_args = scope.root_many(&[Local::from_word(method_word)]);
+                let qualifiers = scope.call_function(
+                    runtime,
+                    method_qualifiers,
+                    &method_args,
+                    &mut caller,
+                    values,
+                )?;
+                let qualifiers_word = scope.get(qualifiers).as_word();
+                let qualifiers = scope.list_to_handle_vec(Local::from_word(qualifiers_word))?;
+                if group_index == 0
+                    && (qualifiers.len() != 2
+                        || scope.get(*qualifiers.as_slice().get(1).ok_or(ncl_object::ObjectError::Layout)?).as_word()
+                            != scope.get(fast_qualifier).as_word())
+                {
+                    return Err(ncl_object::ObjectError::TypeError);
+                }
+                if group_index == 1 && qualifiers.len() != 1 {
+                    return Err(ncl_object::ObjectError::TypeError);
+                }
+                let weight = *qualifiers.as_slice().first().ok_or(ncl_object::ObjectError::TypeError)?;
+                let call = scope.intern(runtime, COMMON_LISP, "CALL-METHOD")?;
+                let call_word = scope.get(call).as_word();
+                let call_fields = scope.root_many(&[
+                    Local::from_word(call_word),
+                    Local::from_word(method_word),
+                ]);
+                let call_form = scope.make_list(runtime, &call_fields)?;
+                let weight_word = scope.get(weight).as_word();
+                let call_form_word = scope.get(call_form).as_word();
+                let clause_fields = scope.root_many(&[
+                    Local::from_word(weight_word),
+                    Local::from_word(call_form_word),
+                ]);
+                let clause = scope.make_list(runtime, &clause_fields)?;
+                super::super::dispatch_push_handle(&mut scope, &mut clauses, clause);
+            }
+        }
+
+        let rcase = scope.intern(runtime, COMMON_LISP, "RCASE")?;
+        let mut rcase_fields = scope.root_many(&[]);
+        super::super::dispatch_push_handle(&mut scope, &mut rcase_fields, rcase);
+        for clause in clauses.iter().copied() {
+            super::super::dispatch_push_handle(&mut scope, &mut rcase_fields, clause);
+        }
+        let rcase_form = scope.make_list(runtime, &rcase_fields)?;
+        let return_form = {
+            let return_symbol = scope.intern(runtime, COMMON_LISP, "RETURN")?;
+            let return_word = scope.get(return_symbol).as_word();
+            let rcase_word = scope.get(rcase_form).as_word();
+            let fields = scope.root_many(&[
+                Local::from_word(return_word),
+                Local::from_word(rcase_word),
+            ]);
+            scope.make_list(runtime, &fields)?
+        };
+        let catch_form = {
+            let catch = scope.intern(runtime, COMMON_LISP, "CATCH")?;
+            let catch_word = scope.get(catch).as_word();
+            let return_word = scope.get(return_form).as_word();
+            let fields = scope.root_many(&[
+                Local::from_word(catch_word),
+                Local::from_word(Word::NIL),
+                Local::from_word(return_word),
+            ]);
+            scope.make_list(runtime, &fields)?
+        };
+        let loop_symbol = scope.intern(runtime, COMMON_LISP, "LOOP")?;
+        let loop_word = scope.get(loop_symbol).as_word();
+        let catch_word = scope.get(catch_form).as_word();
+        let loop_fields = scope.root_many(&[
+            Local::from_word(loop_word),
+            Local::from_word(catch_word),
+        ]);
+        let effective_form = scope.make_list(runtime, &loop_fields)?;
+        let result = scope.get(effective_form).as_word();
+        values.set(&[result]);
+        Ok(result)
+    }
+
+    fn register_weighted_combination_builder(runtime: &Runtime, context: &mut ThreadContext) {
+        let implementation = BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::fixed(WEIGHTED_BUILDER_ARGUMENTS),
+                convention: BuiltinConvention::Direct(Arity::exact(2)),
+            },
+            weighted_combination_form,
+        );
+        runtime
+            .register_builtin(
+                context,
+                BuiltinIdentifier::new(
+                    BuiltinPackage::NclTest,
+                    BuiltinName::new("WEIGHTED-COMBINATION-FORM"),
+                ),
+                implementation,
+            )
+            .expect("weighted combination builder");
+    }
+
     fn register_trace_methods(runtime: &Runtime, context: &mut ThreadContext) {
         let callbacks: [(&str, ncl_object::RustBuiltin); 16] = [
             ("TRACE-SPECIFIC-TWO", trace_specific_two),
@@ -364,6 +490,92 @@ mod included_tests {
             key,
             descriptor,
         )
+    }
+
+    fn install_weighted_method_combination(
+        runtime: &Runtime,
+        context: &mut ThreadContext,
+        generic: Word,
+        positive_weight: i64,
+    ) -> Result<(), ncl_object::ObjectError> {
+        let mut scope = ncl_object::Scope::new(context);
+        let combination = scope.intern(runtime, COMMON_LISP, "RANDOMIZED")?;
+        let helper = scope.intern(runtime, "NCL-TEST", "WEIGHTED-COMBINATION-FORM")?;
+        let positive_variable = scope.intern(runtime, "NCL", "POSITIVE-METHODS")?;
+        let zero_variable = scope.intern(runtime, "NCL", "ZERO-METHODS")?;
+        let fast_qualifier = scope.intern(runtime, "KEYWORD", "FAST")?;
+        let fast_qualifier_word = scope.get(fast_qualifier).as_word();
+        let positive_pattern = {
+            let values = scope.root_many(&[
+                Local::from_word(Word::fixnum(positive_weight)),
+                Local::from_word(fast_qualifier_word),
+            ]);
+            scope.make_list(runtime, &values)?
+        };
+        let zero_pattern_values =
+            scope.root_many(&[Local::from_word(Word::fixnum(1 - positive_weight))]);
+        let zero_pattern = scope.make_list(runtime, &zero_pattern_values)?;
+        let positive_spec = {
+            let variable = scope.get(positive_variable).as_word();
+            let pattern = scope.get(positive_pattern).as_word();
+            let values = scope.root_many(&[
+                Local::from_word(variable),
+                Local::from_word(pattern),
+            ]);
+            scope.make_list(runtime, &values)?
+        };
+        let zero_spec = {
+            let variable = scope.get(zero_variable).as_word();
+            let pattern = scope.get(zero_pattern).as_word();
+            let values = scope.root_many(&[
+                Local::from_word(variable),
+                Local::from_word(pattern),
+            ]);
+            scope.make_list(runtime, &values)?
+        };
+        let group_specs = {
+            let positive = scope.get(positive_spec).as_word();
+            let zero = scope.get(zero_spec).as_word();
+            let values = scope.root_many(&[
+                Local::from_word(positive),
+                Local::from_word(zero),
+            ]);
+            scope.make_list(runtime, &values)?
+        };
+        let definition = {
+            let define = scope.intern(runtime, COMMON_LISP, "DEFINE-METHOD-COMBINATION")?;
+            let define_word = scope.get(define).as_word();
+            let combination_word = scope.get(combination).as_word();
+            let group_specs_word = scope.get(group_specs).as_word();
+            let values = scope.root_many(&[
+                Local::from_word(define_word),
+                Local::from_word(combination_word),
+                Local::from_word(Word::NIL),
+                Local::from_word(group_specs_word),
+                Local::from_word(Word::NIL),
+            ]);
+            scope.make_list(runtime, &values)?
+        };
+        let definition_key =
+            scope.intern(runtime, "NCL", super::super::METHOD_COMBINATION_DEFINITION_KEY_NAME)?;
+        let function_key =
+            scope.intern(runtime, "NCL", super::super::METHOD_COMBINATION_FUNCTION_KEY_NAME)?;
+        super::super::set_symbol_plist_property(
+            &mut scope,
+            runtime,
+            combination,
+            definition_key,
+            definition,
+        )?;
+        super::super::set_symbol_plist_property(
+            &mut scope,
+            runtime,
+            combination,
+            function_key,
+            helper,
+        )?;
+        drop(scope);
+        set_test_method_combination(runtime, context, generic, "RANDOMIZED", "MOST-SPECIFIC-FIRST")
     }
 
     fn add_test_method(
@@ -567,6 +779,65 @@ mod included_tests {
         set_test_method_combination(runtime, context, generic, combination, order)
             .expect("method combination");
         generic
+    }
+
+    fn assert_weighted_dispatch_result(
+        positive_specific_method: bool,
+        expected_result: i64,
+        expected_method: i64,
+    ) {
+        let (runtime, mut context) = setup();
+        if runtime.function(&mut context, COMMON_LISP, "+").is_none() {
+            ncl_lib_numbers::register(&runtime).expect("numeric functions");
+        }
+        register_trace_methods(&runtime, &mut context);
+        register_weighted_combination_builder(&runtime, &mut context);
+        let generic = define_test_generic(&runtime, &mut context);
+        install_weighted_method_combination(&runtime, &mut context, generic, 1)
+            .expect("weighted method combination");
+
+        let integer = class_symbol(&runtime, &mut context, "INTEGER");
+        let t = class_symbol(&runtime, &mut context, "T");
+        let fast = scope_intern(&runtime, &mut context, "KEYWORD", "FAST");
+        let (specific_qualifiers, general_qualifiers) = if positive_specific_method {
+            (vec![Word::fixnum(1), fast], vec![Word::fixnum(0)])
+        } else {
+            (vec![Word::fixnum(0)], vec![Word::fixnum(1), fast])
+        };
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            integer,
+            &specific_qualifiers,
+            "TRACE-SPECIFIC-TWO",
+        )
+        .expect("positive specific method");
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            t,
+            &general_qualifiers,
+            "TRACE-GENERAL-THREE",
+        )
+        .expect("general method");
+
+        reset_method_log();
+        let (result, values) =
+            dispatch_with_values(&runtime, &mut context, generic).expect("weighted result");
+        assert_eq!(result, Word::fixnum(expected_result));
+        assert_eq!(values, [Word::fixnum(expected_result)]);
+        assert_eq!(method_log(), [expected_method]);
+    }
+
+    #[test]
+    fn weighted_custom_dispatch_selects_the_positive_method_group() {
+        let _lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_weighted_dispatch_result(true, 2, 1);
+        assert_weighted_dispatch_result(false, 3, 2);
     }
 
     #[test]

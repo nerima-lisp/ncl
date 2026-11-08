@@ -161,6 +161,220 @@ fn defmethod_macro_preserves_non_symbol_and_multiple_qualifiers() -> Result<(), 
 }
 
 #[test]
+fn method_body_rewriting_preserves_quoted_forms_and_local_functions() -> Result<(), ObjectError> {
+    let (runtime, mut context) = setup()?;
+    let mut scope = Scope::new(&mut context);
+    let call_next = scope.intern(&runtime, COMMON_LISP, "CALL-NEXT-METHOD")?;
+    let next_method_p = scope.intern(&runtime, COMMON_LISP, "NEXT-METHOD-P")?;
+    let quote = scope.intern(&runtime, COMMON_LISP, "QUOTE")?;
+    let lambda = scope.intern(&runtime, COMMON_LISP, "LAMBDA")?;
+    let defun = scope.intern(&runtime, COMMON_LISP, "DEFUN")?;
+    let value = scope.intern(&runtime, "NCL", "VALUE")?;
+    let local_helper = scope.intern(&runtime, "NCL", "LOCAL-HELPER")?;
+    let next_methods = scope.intern(&runtime, "NCL", "NEXT-METHODS")?;
+    let current_arguments = scope.intern(&runtime, "NCL", "CURRENT-ARGUMENTS")?;
+    let call_next_word = scope.get(call_next).as_word();
+    let next_method_p_word = scope.get(next_method_p).as_word();
+    let quote_word = scope.get(quote).as_word();
+    let lambda_word = scope.get(lambda).as_word();
+    let defun_word = scope.get(defun).as_word();
+    let value_word = scope.get(value).as_word();
+    let local_helper_word = scope.get(local_helper).as_word();
+
+    let call_without_arguments = make_list(&mut scope, &runtime, &[call_next_word])?;
+    let call_with_argument = make_list(&mut scope, &runtime, &[call_next_word, value_word])?;
+    let next_method_p_form = make_list(&mut scope, &runtime, &[next_method_p_word])?;
+    let next_method_p_form_word = scope.get(next_method_p_form).as_word();
+    let call_without_arguments_word = scope.get(call_without_arguments).as_word();
+    let quoted_form = make_list(&mut scope, &runtime, &[quote_word, call_without_arguments_word])?;
+    let quoted_form_word = scope.get(quoted_form).as_word();
+    let lambda_form = make_list(
+        &mut scope,
+        &runtime,
+        &[lambda_word, Word::NIL, next_method_p_form_word],
+    )?;
+    let lambda_form_word = scope.get(lambda_form).as_word();
+    let defun_form = make_list(
+        &mut scope,
+        &runtime,
+        &[defun_word, local_helper_word, Word::NIL, call_without_arguments_word],
+    )?;
+    let defun_form_word = scope.get(defun_form).as_word();
+    let call_with_argument_word = scope.get(call_with_argument).as_word();
+    let source_forms = make_list(
+        &mut scope,
+        &runtime,
+        &[
+            call_without_arguments_word,
+            call_with_argument_word,
+            next_method_p_form_word,
+            quoted_form_word,
+            lambda_form_word,
+            defun_form_word,
+            Word::fixnum(19),
+        ],
+    )?;
+    let source_forms = scope.list_to_handle_vec(Local::from_word(scope.get(source_forms).as_word()))?;
+    let rewritten = rewrite_method_body(
+        &mut scope,
+        &runtime,
+        &source_forms,
+        next_methods,
+        current_arguments,
+    )?;
+    let rewritten_word = scope.get(rewritten).as_word();
+    let forms = list_words(&mut scope, rewritten_word)?;
+    assert_eq!(symbol_name_string(scope.context(), forms[0])?, "PROGN");
+
+    let no_argument_call = list_words(&mut scope, forms[1])?;
+    assert_eq!(
+        symbol_name_string(scope.context(), no_argument_call[0])?,
+        "%CLOS-CALL-NEXT-METHOD"
+    );
+    assert_eq!(no_argument_call[1], scope.get(next_methods).as_word());
+    assert_eq!(no_argument_call[2], scope.get(current_arguments).as_word());
+
+    let explicit_argument_call = list_words(&mut scope, forms[2])?;
+    assert_eq!(
+        symbol_name_string(scope.context(), explicit_argument_call[0])?,
+        "%CLOS-CALL-NEXT-METHOD"
+    );
+    let supplied_arguments = list_words(&mut scope, explicit_argument_call[2])?;
+    assert_eq!(symbol_name_string(scope.context(), supplied_arguments[0])?, "LIST");
+    assert_eq!(supplied_arguments[1], scope.get(value).as_word());
+
+    let next_method_p_call = list_words(&mut scope, forms[3])?;
+    assert_eq!(
+        symbol_name_string(scope.context(), next_method_p_call[0])?,
+        "%CLOS-NEXT-METHOD-P"
+    );
+    assert_eq!(next_method_p_call[1], scope.get(next_methods).as_word());
+    assert_eq!(forms[4], scope.get(quoted_form).as_word());
+    assert_eq!(forms[5], scope.get(lambda_form).as_word());
+    assert_eq!(forms[6], scope.get(defun_form).as_word());
+    assert_eq!(forms[7], Word::fixnum(19));
+    Ok(())
+}
+
+#[test]
+fn initialization_method_expansion_installs_the_base_generic() -> Result<(), ObjectError> {
+    let (runtime, mut context) = setup()?;
+    let mut scope = Scope::new(&mut context);
+    let defmethod = scope.intern(&runtime, COMMON_LISP, "DEFMETHOD")?;
+    let initialize_instance = scope.intern(&runtime, COMMON_LISP, "INITIALIZE-INSTANCE")?;
+    let instance = scope.intern(&runtime, "NCL", "INSTANCE")?;
+    let t = scope.intern(&runtime, COMMON_LISP, "T")?;
+    let defmethod_word = scope.get(defmethod).as_word();
+    let initialize_instance_word = scope.get(initialize_instance).as_word();
+    let specializer_words = [scope.get(instance).as_word(), scope.get(t).as_word()];
+    let specializer = make_list(&mut scope, &runtime, &specializer_words)?;
+    let specializer_word = scope.get(specializer).as_word();
+    let lambda_list = make_list(&mut scope, &runtime, &[specializer_word])?;
+    let lambda_list_word = scope.get(lambda_list).as_word();
+    let form = make_list(
+        &mut scope,
+        &runtime,
+        &[
+            defmethod_word,
+            initialize_instance_word,
+            lambda_list_word,
+            Word::NIL,
+        ],
+    )?;
+    let expansion = defmethod_macro_expansion(&mut scope, &runtime, form, false)?;
+    let expansion_word = scope.get(expansion).as_word();
+    let forms = list_words(&mut scope, expansion_word)?;
+    let base_registration = list_words(&mut scope, forms[2])?;
+    assert_eq!(
+        symbol_name_string(scope.context(), base_registration[0])?,
+        "%CLOS-ENSURE-INITIALIZATION-BASE"
+    );
+    Ok(())
+}
+
+#[test]
+fn long_form_method_combination_expansion_stores_definition_and_builder() -> Result<(), ObjectError>
+{
+    let (runtime, mut context) = setup()?;
+    let mut scope = Scope::new(&mut context);
+    let define = scope.intern(&runtime, COMMON_LISP, "DEFINE-METHOD-COMBINATION")?;
+    let name = scope.intern(&runtime, "NCL", "WEIGHTED-PROBE")?;
+    let group = scope.intern(&runtime, "NCL", "POSITIVE-METHODS")?;
+    let qualifier = scope.intern(&runtime, "KEYWORD", "POSITIVE")?;
+    let define_word = scope.get(define).as_word();
+    let name_word = scope.get(name).as_word();
+    let group_word = scope.get(group).as_word();
+    let qualifier_word = scope.get(qualifier).as_word();
+    let group_pattern = make_list(&mut scope, &runtime, &[qualifier_word])?;
+    let group_pattern_word = scope.get(group_pattern).as_word();
+    let group_spec = make_list(&mut scope, &runtime, &[group_word, group_pattern_word])?;
+    let group_spec_word = scope.get(group_spec).as_word();
+    let group_specs = make_list(&mut scope, &runtime, &[group_spec_word])?;
+    let group_specs_word = scope.get(group_specs).as_word();
+    let form = make_list(
+        &mut scope,
+        &runtime,
+        &[
+            define_word,
+            name_word,
+            Word::NIL,
+            group_specs_word,
+            Word::fixnum(23),
+        ],
+    )?;
+    let mut form_word = scope.get(form).as_word();
+    let _form_root = ncl_object::push_heap_root(&runtime, &mut form_word);
+    drop(scope);
+
+    let input = [form_word];
+    let args = BuiltinArgs::new(&input);
+    let mut values = MultipleValues::new();
+    let mut expansion_word =
+        define_method_combination_macro_builtin(&mut context, &runtime, &args, &mut values)?;
+    let _expansion_root = ncl_object::push_heap_root(&runtime, &mut expansion_word);
+    let mut scope = Scope::new(&mut context);
+    let expansion = list_words(&mut scope, expansion_word)?;
+    assert_eq!(symbol_name_string(scope.context(), expansion[0])?, "PROGN");
+    assert_eq!(expansion.len(), 5);
+
+    let helper = list_words(&mut scope, expansion[1])?;
+    assert_eq!(symbol_name_string(scope.context(), helper[0])?, "DEFUN");
+    assert!(symbol_name_string(scope.context(), helper[1])?.starts_with("%CLOS-METHOD-COMBINATION-"));
+    let helper_arguments = list_words(&mut scope, helper[2])?;
+    assert_eq!(symbol_name_string(scope.context(), helper_arguments[0])?, "GROUPS");
+    assert_eq!(symbol_name_string(scope.context(), helper_arguments[1])?, "OPTIONS");
+    let helper_body = list_words(&mut scope, helper[3])?;
+    assert_eq!(symbol_name_string(scope.context(), helper_body[0])?, "LET");
+    let bindings = list_words(&mut scope, helper_body[1])?;
+    let binding = list_words(&mut scope, bindings[0])?;
+    let positive_methods = scope.intern(&runtime, "NCL", "POSITIVE-METHODS")?;
+    assert_eq!(binding[0], scope.get(positive_methods).as_word());
+    let nth_form = list_words(&mut scope, binding[1])?;
+    assert_eq!(symbol_name_string(scope.context(), nth_form[0])?, "NTH");
+    assert_eq!(nth_form[1], Word::fixnum(0));
+    assert_eq!(symbol_name_string(scope.context(), nth_form[2])?, "GROUPS");
+
+    let body = list_words(&mut scope, helper_body[2])?;
+    assert_eq!(symbol_name_string(scope.context(), body[0])?, "APPLY");
+    let function_form = list_words(&mut scope, body[1])?;
+    assert_eq!(symbol_name_string(scope.context(), function_form[0])?, "FUNCTION");
+    let lambda_form = list_words(&mut scope, function_form[1])?;
+    assert_eq!(symbol_name_string(scope.context(), lambda_form[0])?, "LAMBDA");
+    assert_eq!(lambda_form[1], Word::NIL);
+    assert_eq!(lambda_form[2], Word::fixnum(23));
+    assert_eq!(symbol_name_string(scope.context(), body[2])?, "OPTIONS");
+
+    let stored_definition = list_words(&mut scope, expansion[2])?;
+    assert_eq!(symbol_name_string(scope.context(), stored_definition[0])?, "SETF");
+    let stored_function = list_words(&mut scope, expansion[3])?;
+    assert_eq!(symbol_name_string(scope.context(), stored_function[0])?, "SETF");
+    let result_name = list_words(&mut scope, expansion[4])?;
+    assert_eq!(symbol_name_string(scope.context(), result_name[0])?, "QUOTE");
+    assert_eq!(symbol_name_string(scope.context(), result_name[1])?, "WEIGHTED-PROBE");
+    Ok(())
+}
+
+#[test]
 fn defgeneric_macroexpansion_records_most_specific_last() -> Result<(), ObjectError> {
     let (runtime, mut context) = setup()?;
     let mut scope = Scope::new(&mut context);

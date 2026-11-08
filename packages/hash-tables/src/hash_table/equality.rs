@@ -1,8 +1,6 @@
 use super::HashTest;
 use ncl_object::{
-    ObjectError, ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr, complex_imag,
-    complex_real, double_value, object_widetag,
-    ratio_denominator, ratio_numerator, string_length, string_ref, widetag,
+    ObjectError, ThreadContext, Word, car, cdr, object_widetag, string_length, string_ref, widetag,
 };
 
 pub(super) fn equal(
@@ -84,18 +82,22 @@ fn numeric_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, O
     if tag != object_widetag(ctx, right) {
         return Ok(false);
     }
-    Ok(match tag {
-        Some(widetag::BIGNUM) => {
+    if tag == Some(widetag::BIGNUM) {
+        return Ok(
             ncl_object::bignum_sign(ctx, ncl_object::Bignum::from_word(left))?
                 == ncl_object::bignum_sign(ctx, ncl_object::Bignum::from_word(right))?
                 && ncl_object::bignum_limbs(ctx, ncl_object::Bignum::from_word(left))?
-                    == ncl_object::bignum_limbs(ctx, ncl_object::Bignum::from_word(right))?
-        }
-        Some(widetag::DOUBLE_FLOAT) => {
+                    == ncl_object::bignum_limbs(ctx, ncl_object::Bignum::from_word(right))?,
+        );
+    }
+    if tag == Some(widetag::DOUBLE_FLOAT) {
+        return Ok(
             ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(left))?.to_bits()
-                == ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(right))?.to_bits()
-        }
-        Some(widetag::RATIO) => {
+                == ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(right))?.to_bits(),
+        );
+    }
+    if tag == Some(widetag::RATIO) {
+        return Ok(
             numeric_equal(
                 ctx,
                 ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(left))?,
@@ -104,9 +106,11 @@ fn numeric_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, O
                 ctx,
                 ncl_object::ratio_denominator(ctx, ncl_object::Ratio::from_word(left))?,
                 ncl_object::ratio_denominator(ctx, ncl_object::Ratio::from_word(right))?,
-            )?
-        }
-        Some(widetag::COMPLEX) => {
+            )?,
+        );
+    }
+    if tag == Some(widetag::COMPLEX) {
+        return Ok(
             numeric_equal(
                 ctx,
                 ncl_object::complex_real(ctx, ncl_object::Complex::from_word(left))?,
@@ -115,10 +119,10 @@ fn numeric_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, O
                 ctx,
                 ncl_object::complex_imag(ctx, ncl_object::Complex::from_word(left))?,
                 ncl_object::complex_imag(ctx, ncl_object::Complex::from_word(right))?,
-            )?
-        }
-        _ => false,
-    })
+            )?,
+        );
+    }
+    Ok(false)
 }
 
 pub(super) fn hash_key(
@@ -128,9 +132,10 @@ pub(super) fn hash_key(
 ) -> Result<u64, ObjectError> {
     match test {
         HashTest::Eq => Ok(super::sxhash(word)),
-        HashTest::Eql => {
-            Ok(numeric_hash(ctx, word)?.unwrap_or_else(|| super::sxhash(word)))
-        }
+        HashTest::Eql => match numeric_hash(ctx, word)? {
+            Some(hash) => Ok(hash),
+            None => Ok(super::sxhash(word)),
+        },
         HashTest::Equal => content_hash(ctx, word, false, 0),
         HashTest::Equalp => content_hash(ctx, word, true, 0),
     }
@@ -154,7 +159,7 @@ fn content_hash(
             } else {
                 character
             };
-            hash = (hash ^ u64::from(character as u32)).wrapping_mul(0x0100_0000_01b3);
+            hash = (hash ^ u64::from(u32::from(character))).wrapping_mul(0x0100_0000_01b3);
         }
         return Ok(hash);
     }
@@ -164,31 +169,41 @@ fn content_hash(
                 ^ content_hash(ctx, cons_part(ctx, word, 1)?, fold, depth + 1)?,
         );
     }
-    Ok(numeric_hash(ctx, word)?.unwrap_or_else(|| super::sxhash(word)))
+    match numeric_hash(ctx, word)? {
+        Some(hash) => Ok(hash),
+        None => Ok(super::sxhash(word)),
+    }
 }
 
 fn cons_part(ctx: &ThreadContext, word: Word, slot: usize) -> Result<Word, ObjectError> {
-    match slot {
-        0 => car(ctx, word),
-        1 => cdr(ctx, word),
-        _ => Err(ObjectError::TypeError),
+    if slot == 0 {
+        car(ctx, word)
+    } else if slot == 1 {
+        cdr(ctx, word)
+    } else {
+        Err(ObjectError::TypeError)
     }
 }
 
 fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectError> {
-    Ok(match object_widetag(ctx, word) {
-        Some(widetag::BIGNUM) => Some(
+    let tag = object_widetag(ctx, word);
+    if tag == Some(widetag::BIGNUM) {
+        return Ok(Some(
             ncl_object::bignum_limbs(ctx, ncl_object::Bignum::from_word(word))?
                 .into_iter()
                 .fold(
                     u64::from(ncl_object::bignum_sign(ctx, ncl_object::Bignum::from_word(word))?),
                     |hash, limb| hash.rotate_left(5) ^ u64::from(limb),
                 ),
-        ),
-        Some(widetag::DOUBLE_FLOAT) => {
-            Some(ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(word))?.to_bits())
-        }
-        Some(widetag::RATIO) => Some(
+        ));
+    }
+    if tag == Some(widetag::DOUBLE_FLOAT) {
+        return Ok(Some(
+            ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(word))?.to_bits(),
+        ));
+    }
+    if tag == Some(widetag::RATIO) {
+        return Ok(Some(
             content_hash(
                 ctx,
                 ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(word))?,
@@ -201,8 +216,10 @@ fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectEr
                 0,
             )?
             .rotate_left(11),
-        ),
-        Some(widetag::COMPLEX) => Some(
+        ));
+    }
+    if tag == Some(widetag::COMPLEX) {
+        return Ok(Some(
             content_hash(
                 ctx,
                 ncl_object::complex_real(ctx, ncl_object::Complex::from_word(word))?,
@@ -215,9 +232,9 @@ fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectEr
                 0,
             )?
             .rotate_left(11),
-        ),
-        _ => None,
-    })
+        ));
+    }
+    Ok(None)
 }
 
 #[cfg(test)]

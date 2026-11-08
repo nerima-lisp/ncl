@@ -142,7 +142,7 @@ fn executes_builtin_call_with_context_and_arguments() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         2,
         [Word::fixnum(4).bits(), Word::fixnum(5).bits(), 0, 0],
         0,
@@ -190,7 +190,7 @@ fn make_closure_error_is_checked_before_capture_store() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         1,
         [Word::fixnum(23).bits(), 0, 0, 0],
         0,
@@ -251,7 +251,7 @@ fn make_value_cell_error_stops_before_downstream_builtin() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         1,
         [Word::fixnum(23).bits(), 0, 0, 0],
         0,
@@ -317,7 +317,7 @@ fn builtin_error_stops_before_downstream_builtin() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         1,
         [Word::fixnum(23).bits(), 0, 0, 0],
         0,

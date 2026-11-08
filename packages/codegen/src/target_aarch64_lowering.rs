@@ -6,7 +6,10 @@ use crate::{
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::ValueId;
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "The lowering boundary accepts a fresh one-use instruction value so callers can pass constructed instructions directly before the assembler borrows it."
+)]
 pub(super) fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
     assembler
         .emit(&instruction)

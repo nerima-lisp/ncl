@@ -1,11 +1,11 @@
-// The lint allow must precede the architecture gate: on other targets the
-// `#![cfg]` empties the crate, and a following allow would be stripped with it.
-#![allow(
-    missing_docs,
-    clippy::borrow_as_ptr,
+//! Native `AArch64` execution tests for generated code.
+
+// Keep crate documentation and lint expectations before the architecture gate:
+// on other targets, the inner cfg empties this crate and strips following items.
+#![expect(
     clippy::cast_sign_loss,
-    clippy::fn_to_numeric_cast,
-    clippy::expect_used
+    clippy::expect_used,
+    reason = "The native test ABI requires callback addresses as unsigned machine words, and expect identifies invalid IR fixtures before execution."
 )]
 #![cfg(target_arch = "aarch64")]
 
@@ -287,7 +287,7 @@ fn executes_fixnum_add_of_two_arguments() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         2,
         [Word::fixnum(1).bits(), Word::fixnum(2).bits(), 0, 0],
         0,
@@ -330,7 +330,7 @@ fn eval_return_preserves_an_explicit_zero_value_count() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         0,
         [0; 4],
         0,
@@ -391,7 +391,7 @@ fn preserves_arguments_across_entry_safepoint() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         2,
         [Word::fixnum(11).bits(), Word::fixnum(31).bits(), 0, 0],
         0,
@@ -451,7 +451,7 @@ fn loads_fifth_argument_from_rest_storage() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         5,
         [1, 2, 3, 4],
         rest.as_ptr() as u64,

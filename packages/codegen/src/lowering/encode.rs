@@ -7,7 +7,10 @@ use std::collections::HashMap;
 
 use super::ops::{SafepointOutput, add_map, emit, emit_return, load, lower_op};
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The lowering routine emits one IR operation's ordered instruction sequence, keeping its register and stack effects reviewable together."
+)]
 pub(super) fn encode(
     function: &Function,
     mut machine: MachineFunction,

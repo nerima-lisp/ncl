@@ -23,7 +23,10 @@ pub(super) const REST_ARGUMENT: Reg = Reg::R9;
 /// Bytes reserved below `rsp` before a call so the callee can write frame header words 2 and 3.
 const CALLEE_HEADER_RESERVE: i32 = 16;
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "The lowering boundary accepts a fresh one-use instruction value so callers can pass constructed instructions directly before the assembler borrows it."
+)]
 pub(super) fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
     assembler
         .emit(&instruction)

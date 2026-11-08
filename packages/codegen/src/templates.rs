@@ -1,4 +1,7 @@
-#![allow(dead_code, missing_docs)]
+#![expect(
+    missing_docs,
+    reason = "TemplateKind is the closed backend dispatch vocabulary; its variants name the IR operations encoded by each target."
+)]
 
 /// The fixed-template vocabulary consumed by a target backend.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

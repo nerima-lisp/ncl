@@ -218,7 +218,7 @@ fn generated_entry_preserves_aarch64_callee_saved_registers() {
     let result = invoke_entry(
         &probe_code,
         0,
-        &mut thread,
+        &raw mut thread,
         1,
         [target_entry as u64, 0, 0, 0],
         0,

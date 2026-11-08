@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-
 use crate::{ContextField, RuntimeAbi, RuntimeFunction};
 
 pub struct X86_64FixtureAbi;

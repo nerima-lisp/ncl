@@ -1,5 +1,3 @@
-#![allow(missing_docs, clippy::unwrap_used)]
-
 use super::{Aarch64FixtureAbi, AllocationTarget, allocate, decoded_text};
 use crate::compile_function_aarch64;
 use ncl_ir::{FunctionBuilder, Terminator, Ty};

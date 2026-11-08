@@ -65,7 +65,7 @@ fn executes_both_branch_paths_with_block_arguments() {
         invoke_entry(
             &code,
             compiled.entry_offset as usize,
-            &mut thread,
+            &raw mut thread,
             1,
             [Word::fixnum(value).bits(), 0, 0, 0],
             0,

@@ -27,7 +27,6 @@ use lowering::{
 ///
 /// Returns [`CodegenError`] when the function cannot be represented by the
 /// fixed frame and instruction templates.
-#[allow(clippy::too_many_lines)]
 pub fn compile_function_aarch64(
     function: &Function,
     abi: &dyn RuntimeAbi,
@@ -48,7 +47,10 @@ pub fn compile_function_aarch64_preserving_multiple_values(
     compile_function_aarch64_with_multiple_values(function, abi, true)
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The lowering routine emits one IR operation's ordered instruction sequence, keeping its register and stack effects reviewable together."
+)]
 fn compile_function_aarch64_with_multiple_values(
     function: &Function,
     abi: &dyn RuntimeAbi,

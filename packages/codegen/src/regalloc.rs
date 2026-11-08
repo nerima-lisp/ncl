@@ -1,6 +1,9 @@
 //! Target-independent linear-scan allocation for the native backends.
 
-#![allow(missing_docs)]
+#![expect(
+    missing_docs,
+    reason = "Allocation records are compiler-internal reports; their typed fields carry the contract used by code generation."
+)]
 
 use crate::SafepointMap;
 use ncl_ir::{Function, HandlerRegionId, OpKind, Terminator, Ty, ValueId};
@@ -75,7 +78,10 @@ impl Allocation {
 
 /// Computes intervals and performs linear-scan allocation without external crates.
 #[must_use]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The lowering routine emits one IR operation's ordered instruction sequence, keeping its register and stack effects reviewable together."
+)]
 pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
     let mut definitions = HashMap::<ValueId, (u32, Ty)>::new();
     let mut last_use = HashMap::<ValueId, u32>::new();

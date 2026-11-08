@@ -1,4 +1,7 @@
-#![allow(missing_docs)]
+#![expect(
+    missing_docs,
+    reason = "Relocation records mirror the object writer's offset, target, and addend fields."
+)]
 
 use ncl_asm_x86_64::{Fixup, FixupKind, Label};
 
@@ -160,7 +163,10 @@ pub fn relocations_from_fixups(fixups: &[Fixup]) -> Result<Vec<Relocation>, Relo
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "The codegen tests construct valid IR and machine-code fixtures, so unwrap and expect failures identify a broken case."
+)]
 mod tests {
     use super::*;
     use ncl_asm_x86_64::{Assembler, Inst};

@@ -286,7 +286,10 @@ fn try_dispatch_candidates(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The lowering operation receives the assembler, allocation, ABI, and operand state it independently needs at this call site."
+)]
 pub fn lower_return_or_throw(
     assembler: &mut Assembler,
     function: &Function,

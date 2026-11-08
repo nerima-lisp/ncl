@@ -148,7 +148,7 @@ fn executes_generated_call_with_fifth_argument_from_rest_area() {
     let result = invoke_entry(
         &invoker_code,
         invoker_function.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         6,
         [
             target_code.address() as u64,
@@ -229,7 +229,7 @@ fn executes_switch_with_negative_and_wide_i64_cases_and_default() {
         invoke_entry(
             &code,
             compiled.entry_offset as usize,
-            &mut thread,
+            &raw mut thread,
             1,
             [selector, 0, 0, 0],
             0,

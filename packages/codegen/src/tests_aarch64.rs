@@ -1,4 +1,7 @@
-#![allow(missing_docs, clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "The codegen tests construct valid IR and machine-code fixtures, so unwrap and expect failures identify a broken case."
+)]
 
 use crate::{
     AllocationTarget, ContextField, RuntimeAbi, RuntimeFunction, allocate, compile_function_aarch64,
@@ -681,7 +684,6 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
 }
 
 #[test]
-#[allow(clippy::chunks_exact_to_as_chunks)]
 fn golden_aarch64_prologue_spills_register_arguments() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(28),
@@ -712,13 +714,10 @@ fn golden_aarch64_prologue_spills_register_arguments() {
     };
     let instructions = compiled
         .code
-        .chunks_exact(4)
-        .map(|bytes| {
-            decoded_text(
-                bytes.try_into().unwrap_or([0; 4]),
-                "decode argument initialization",
-            )
-        })
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|bytes| decoded_text(*bytes, "decode argument initialization"))
         .collect::<Vec<_>>();
     assert!(
         instructions
@@ -733,7 +732,6 @@ fn golden_aarch64_prologue_spills_register_arguments() {
 }
 
 #[test]
-#[allow(clippy::chunks_exact_to_as_chunks)]
 fn golden_aarch64_tail_call_restores_frame_and_branches() -> Result<(), String> {
     let mut builder =
         FunctionBuilder::new(ncl_ir::FunctionId(30), "tail-call", Vec::new(), Vec::new());
@@ -782,8 +780,10 @@ fn golden_aarch64_tail_call_restores_frame_and_branches() -> Result<(), String> 
     };
     let instructions = compiled
         .code
-        .chunks_exact(4)
-        .map(|bytes| decoded_text(bytes.try_into().unwrap_or([0; 4]), "decode tail call"))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|bytes| decoded_text(*bytes, "decode tail call"))
         .collect::<Vec<_>>();
     assert_eq!(instructions.last().map(String::as_str), Some("br x17"));
     assert!(
@@ -797,7 +797,6 @@ fn golden_aarch64_tail_call_restores_frame_and_branches() -> Result<(), String> 
 }
 
 #[test]
-#[allow(clippy::chunks_exact_to_as_chunks)]
 fn golden_aarch64_parallel_copy_swaps_register_arguments() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(32),
@@ -865,8 +864,10 @@ fn golden_aarch64_parallel_copy_swaps_register_arguments() {
     };
     let instructions = compiled
         .code
-        .chunks_exact(4)
-        .map(|bytes| decoded_text(bytes.try_into().unwrap_or([0; 4]), "decode parallel copy"))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|bytes| decoded_text(*bytes, "decode parallel copy"))
         .collect::<Vec<_>>();
     assert!(
         instructions.iter().any(|text| text == "sub sp, sp, #16"),
@@ -879,7 +880,6 @@ fn golden_aarch64_parallel_copy_swaps_register_arguments() {
 }
 
 #[test]
-#[allow(clippy::chunks_exact_to_as_chunks)]
 fn golden_aarch64_generated_lambda_saves_argc_from_x0() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(31),
@@ -909,15 +909,16 @@ fn golden_aarch64_generated_lambda_saves_argc_from_x0() {
     };
     let instructions = compiled
         .code
-        .chunks_exact(4)
-        .map(|bytes| decoded_text(bytes.try_into().unwrap_or([0; 4]), "decode argc prologue"))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|bytes| decoded_text(*bytes, "decode argc prologue"))
         .collect::<Vec<_>>();
     assert!(instructions.iter().any(|text| text.ends_with("x0, lsl #0")));
     assert!(instructions.iter().any(|text| text.ends_with("x1, lsl #0")));
 }
 
 #[test]
-#[allow(clippy::chunks_exact_to_as_chunks)]
 fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(29),

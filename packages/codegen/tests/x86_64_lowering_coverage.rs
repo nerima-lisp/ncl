@@ -1,4 +1,9 @@
-#![allow(missing_docs, clippy::expect_used)]
+//! Tests for `x86-64` lowering across representative IR operations.
+
+#![expect(
+    clippy::expect_used,
+    reason = "The codegen tests construct valid IR and machine-code fixtures, so unwrap and expect failures identify a broken case."
+)]
 
 #[path = "x86_64_lowering_coverage/fixture.rs"]
 mod fixture;

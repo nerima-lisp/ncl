@@ -160,7 +160,10 @@ fn lower_fixnum_specialization(
     Ok(site)
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The lowering routine emits one IR operation's ordered instruction sequence, keeping its register and stack effects reviewable together."
+)]
 pub(super) fn lower_checked_ops(
     assembler: &mut Assembler,
     op: &OpKind,

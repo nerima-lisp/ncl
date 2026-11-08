@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-
 use crate::{Allocation, AllocationTarget, CodegenError, FrameLayout, Location, allocate};
 use ncl_ir::{Function, Ty, ValueId, VerifyError};
 use std::collections::HashSet;

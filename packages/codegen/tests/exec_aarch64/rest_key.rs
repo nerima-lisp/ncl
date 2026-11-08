@@ -56,7 +56,7 @@ fn generated_lambda_loads_rest_after_four_declared_arguments() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         6,
         [
             Word::fixnum(10).bits(),

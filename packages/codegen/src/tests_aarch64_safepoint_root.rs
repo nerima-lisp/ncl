@@ -1,4 +1,7 @@
-#![allow(missing_docs, clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "The codegen tests construct valid IR and machine-code fixtures, so unwrap and expect failures identify a broken case."
+)]
 
 use super::{Aarch64FixtureAbi, AllocationTarget, allocate, compile_function_aarch64};
 use ncl_ir::{Constant, Convert, FunctionBuilder, OpKind, Terminator, Ty};

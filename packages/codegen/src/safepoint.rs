@@ -1,4 +1,7 @@
-#![allow(missing_docs)]
+#![expect(
+    missing_docs,
+    reason = "Safepoint maps describe compiler-produced stack locations in the machine-code representation."
+)]
 
 use core::fmt;
 

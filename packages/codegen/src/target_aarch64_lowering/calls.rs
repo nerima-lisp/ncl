@@ -3,9 +3,14 @@ use crate::{Allocation, CodegenError, RuntimeAbi, RuntimeFunction};
 use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};
 use ncl_ir::ValueId;
 
-#[allow(clippy::redundant_pub_crate)]
-#[allow(clippy::similar_names)]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::similar_names,
+    reason = "The similarly named values represent distinct roles in the same instruction or call lowering, so their paired names prevent mixing those roles."
+)]
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "The parent module re-exports this helper to sibling codegen modules, so crate visibility is required."
+)]
 pub(crate) fn lower_call(
     assembler: &mut Assembler,
     callee: ValueId,
@@ -103,7 +108,10 @@ pub(crate) fn lower_call(
     Ok(())
 }
 
-#[allow(clippy::redundant_pub_crate)]
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "The parent module re-exports this helper to sibling codegen modules, so crate visibility is required."
+)]
 pub(crate) fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,
@@ -130,7 +138,6 @@ pub(crate) fn lower_closure_call(
     primitives::decode_function_entry(assembler, Reg(17))
 }
 
-#[allow(clippy::similar_names)]
 fn lower_named_global_call(
     assembler: &mut Assembler,
     closure: ValueId,

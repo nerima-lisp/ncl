@@ -258,7 +258,7 @@ fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         0,
         [0; 4],
         0,
@@ -292,7 +292,7 @@ fn executes_cons_stores_and_loads_for_word_argument() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         3,
         [
             object.bits(),
@@ -335,7 +335,7 @@ fn executes_cons_allocation_on_slow_path() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         0,
         [0; 4],
         0,
@@ -372,7 +372,7 @@ fn executes_safepoint_poll_without_and_with_request() {
     let native_no_request = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         0,
         [0; 4],
         0,
@@ -383,7 +383,7 @@ fn executes_safepoint_poll_without_and_with_request() {
     let no_request = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         0,
         [0; 4],
         0,
@@ -394,7 +394,7 @@ fn executes_safepoint_poll_without_and_with_request() {
     let requested = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         0,
         [0; 4],
         0,

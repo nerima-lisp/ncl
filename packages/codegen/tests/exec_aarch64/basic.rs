@@ -23,7 +23,7 @@ fn executes_constant_return_in_published_code() {
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         0,
         [0; 4],
         0,
@@ -67,7 +67,7 @@ fn executes_immediate_constants_as_words() {
         let (value, count) = invoke_entry(
             &code,
             compiled.entry_offset as usize,
-            &mut thread,
+            &raw mut thread,
             0,
             [0; 4],
             0,

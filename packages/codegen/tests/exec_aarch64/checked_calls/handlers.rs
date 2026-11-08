@@ -290,7 +290,7 @@ fn enter_handler_error_stops_before_downstream_builtin() {
     HANDLER_DOWNSTREAM_CALLS.store(0, Ordering::SeqCst);
     let (code, entry) = compile_and_publish(&build_handler_failure_function(95, false));
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
     ENTER_CATCH_ERROR.store(false, Ordering::SeqCst);
 
     assert_eq!(ENTER_CATCH_CALLS.load(Ordering::SeqCst), 1);
@@ -313,7 +313,7 @@ fn leave_handler_error_stops_before_downstream_builtin() {
     HANDLER_DOWNSTREAM_CALLS.store(0, Ordering::SeqCst);
     let (code, entry) = compile_and_publish(&build_handler_failure_function(96, true));
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
     LEAVE_CATCH_ERROR.store(false, Ordering::SeqCst);
 
     assert_eq!(ENTER_CATCH_CALLS.load(Ordering::SeqCst), 1);
@@ -338,7 +338,7 @@ fn pending_dispatch_leave_catch_error_stops_before_downstream_builtin() {
     HANDLER_DOWNSTREAM_CALLS.store(0, Ordering::SeqCst);
     let (code, entry) = compile_and_publish(&build_pending_dispatch_function());
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
     LEAVE_CATCH_ERROR.store(false, Ordering::SeqCst);
 
     assert_eq!(ENTER_CATCH_CALLS.load(Ordering::SeqCst), 1);
@@ -362,7 +362,7 @@ fn enter_progv_error_stops_before_downstream_builtin() {
     HANDLER_DOWNSTREAM_CALLS.store(0, Ordering::SeqCst);
     let (code, entry) = compile_and_publish(&build_progv_failure_function(97, false));
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
     ENTER_PROGV_ERROR.store(false, Ordering::SeqCst);
 
     assert_eq!(ENTER_PROGV_CALLS.load(Ordering::SeqCst), 1);
@@ -384,7 +384,7 @@ fn leave_progv_error_stops_before_downstream_builtin() {
     HANDLER_DOWNSTREAM_CALLS.store(0, Ordering::SeqCst);
     let (code, entry) = compile_and_publish(&build_progv_failure_function(98, true));
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
     LEAVE_PROGV_ERROR.store(false, Ordering::SeqCst);
 
     assert_eq!(ENTER_PROGV_CALLS.load(Ordering::SeqCst), 1);
@@ -405,7 +405,7 @@ fn leave_unwind_protect_error_stops_before_downstream_builtin() {
     HANDLER_DOWNSTREAM_CALLS.store(0, Ordering::SeqCst);
     let (code, entry) = compile_and_publish(&build_unwind_protect_failure_function());
     let mut thread = Thread::new();
-    let (value, count) = invoke_entry(&code, entry, &mut thread, 0, [0; 4], 0);
+    let (value, count) = invoke_entry(&code, entry, &raw mut thread, 0, [0; 4], 0);
     LEAVE_UNWIND_PROTECT_ERROR.store(false, Ordering::SeqCst);
 
     assert_eq!(ENTER_UNWIND_PROTECT_CALLS.load(Ordering::SeqCst), 1);

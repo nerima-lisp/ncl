@@ -1,4 +1,7 @@
-#![allow(missing_docs, clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "The codegen tests construct valid IR and machine-code fixtures, so unwrap and expect failures identify a broken case."
+)]
 
 use crate::{
     AbiError, Allocation, AllocationTarget, Block, CodegenError, ContextField, FrameLayout,

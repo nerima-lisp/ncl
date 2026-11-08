@@ -153,7 +153,7 @@ fn call_and_call_indirect_errors_stop_before_downstream_builtin() {
         let (value, count) = invoke_entry(
             &outer_code,
             outer_entry,
-            &mut thread,
+            &raw mut thread,
             2,
             [inner_address, Word::fixnum(23).bits(), 0, 0],
             0,
@@ -188,7 +188,7 @@ fn call_closure_error_stops_before_downstream_builtin() {
     let (value, count) = invoke_entry(
         &wrapper_code,
         wrapper_entry,
-        &mut thread,
+        &raw mut thread,
         2,
         [closure_address, Word::fixnum(23).bits(), 0, 0],
         0,

@@ -1,4 +1,9 @@
-#![allow(clippy::expect_used, missing_docs)]
+//! Coverage tests for backend instruction templates.
+
+#![expect(
+    clippy::expect_used,
+    reason = "The codegen tests construct valid IR and machine-code fixtures, so unwrap and expect failures identify a broken case."
+)]
 
 use ncl_codegen::{
     AArch64TargetIsa, Aarch64Abi, CodegenError, FRAME_HEADER_WORDS, FrameLayout, TargetIsa,

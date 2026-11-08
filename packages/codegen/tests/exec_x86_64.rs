@@ -1,12 +1,5 @@
-// The lint allow must precede the architecture gate: on other targets the
-// `#![cfg]` empties the crate, and a following allow would be stripped with it.
-#![allow(
-    missing_docs,
-    clippy::borrow_as_ptr,
-    clippy::cast_sign_loss,
-    clippy::fn_to_numeric_cast,
-    clippy::expect_used
-)]
+//! Native `x86-64` execution tests for generated code.
+
 #![cfg(target_arch = "x86_64")]
 
 use ncl_codegen::{ContextField, RuntimeAbi, RuntimeFunction, X86_64Abi, compile_function_x86_64};

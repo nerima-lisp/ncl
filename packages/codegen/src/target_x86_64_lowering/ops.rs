@@ -88,7 +88,10 @@ pub(super) fn lower_write_barrier(
     emit_call(assembler).map(|_| ())
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The lowering routine emits one IR operation's ordered instruction sequence, keeping its register and stack effects reviewable together."
+)]
 pub fn lower_op(
     assembler: &mut Assembler,
     op: &Op,

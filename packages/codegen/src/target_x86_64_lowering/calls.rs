@@ -42,7 +42,10 @@ pub fn lower_load_capture(
 
 // `argc`/`args` mirror the calling convention's own argument-count/argument-
 // list naming; that pairing is clearer here than any alternative spelling.
-#[allow(clippy::similar_names)]
+#[expect(
+    clippy::similar_names,
+    reason = "The similarly named values represent distinct roles in the same instruction or call lowering, so their paired names prevent mixing those roles."
+)]
 pub fn lower_call(
     assembler: &mut Assembler,
     callee: ValueId,
@@ -117,8 +120,14 @@ pub fn lower_call(
 
 // `argc`/`args` mirror the calling convention's own argument-count/argument-
 // list naming; that pairing is clearer here than any alternative spelling.
-#[allow(clippy::similar_names)]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::similar_names,
+    reason = "The similarly named values represent distinct roles in the same instruction or call lowering, so their paired names prevent mixing those roles."
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The lowering routine emits one IR operation's ordered instruction sequence, keeping its register and stack effects reviewable together."
+)]
 pub fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,

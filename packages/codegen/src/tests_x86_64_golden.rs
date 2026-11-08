@@ -1,4 +1,7 @@
-#![allow(missing_docs, clippy::expect_used, clippy::unwrap_used)]
+#![expect(
+    clippy::expect_used,
+    reason = "The golden tests use expect to identify invalid codegen fixtures before checking exact instruction bytes."
+)]
 
 use crate::tests_x86_64_fixture::X86_64FixtureAbi;
 use crate::{AllocationTarget, FLAG_CALL, Location, allocate, compile_function_x86_64};

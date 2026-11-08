@@ -1,7 +1,10 @@
 use super::*;
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The function keeps one focused coverage matrix together so related fixtures and assertions remain reviewable as a unit."
+)]
 fn executes_recursive_fib_twenty_five() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(3),

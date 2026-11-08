@@ -180,7 +180,7 @@ fn executes_one_million_mutual_tail_calls_under_gc_stress() {
     let result = invoke_entry(
         &first_code,
         first.entry_offset as usize,
-        &mut thread,
+        &raw mut thread,
         3,
         [
             first_code.address() as u64,

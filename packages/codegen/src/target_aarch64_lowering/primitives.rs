@@ -167,8 +167,6 @@ fn emit_lisp_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), C
 
 // `argc`/`args` mirror the calling convention's own argument-count/argument-
 // list naming; that pairing is clearer here than any alternative spelling.
-#[allow(clippy::similar_names)]
-#[allow(clippy::too_many_lines)]
 pub(super) fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,
@@ -180,7 +178,10 @@ pub(super) fn lower_closure_call(
     super::lower_closure_call(assembler, closure, args, allocation, named_symbol, abi)
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The lowering routine emits one IR operation's ordered instruction sequence, keeping its register and stack effects reviewable together."
+)]
 pub(super) fn lower_prim(
     assembler: &mut Assembler,
     prim: &Prim,

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use ncl_asm_x86_64::Reg;
 
 pub const THREAD_CONTEXT: Reg = Reg::R15;

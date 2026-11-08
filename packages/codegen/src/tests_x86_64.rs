@@ -1,8 +1,8 @@
-#![allow(
-    missing_docs,
+#![expect(
     clippy::expect_used,
     clippy::too_many_lines,
-    clippy::unwrap_used
+    clippy::unwrap_used,
+    reason = "The x86-64 tests keep one lowering coverage matrix together and use expect or unwrap to expose invalid fixtures at the failing case."
 )]
 
 use crate::tests_x86_64_fixture::X86_64FixtureAbi;

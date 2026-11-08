@@ -181,7 +181,6 @@ pub(super) fn lower_safepoint(
     Ok(site)
 }
 
-#[allow(clippy::similar_names)]
 pub(super) fn lower_builtin(
     assembler: &mut Assembler,
     name: &str,

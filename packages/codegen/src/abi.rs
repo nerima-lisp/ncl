@@ -216,17 +216,14 @@ impl core::fmt::Display for AbiError {
 impl std::error::Error for AbiError {}
 
 /// Supplies stable addresses for generated builtin calls without exposing target details.
-#[allow(dead_code)]
 pub trait BuiltinAddressProvider {
     /// Return the process address for a typed builtin identifier.
     fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Option<u64>;
 }
 
 /// Small deterministic address table suitable for embedders and tests.
-#[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
 pub struct BuiltinAddressTable(Vec<(ncl_object::BuiltinIdentifier, u64)>);
-#[allow(dead_code)]
 impl BuiltinAddressTable {
     /// Create an empty address table.
     #[must_use]

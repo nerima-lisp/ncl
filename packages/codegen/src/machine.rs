@@ -1,7 +1,5 @@
 //! Machine-level containers and emitted function metadata.
 
-#![allow(missing_docs)]
-
 use crate::{FrameLayout, Relocation, SafepointMap};
 use ncl_ir::{BlockId, DebugLocationId, ValueId};
 
@@ -9,7 +7,12 @@ use ncl_ir::{BlockId, DebugLocationId, ValueId};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MachineOp {
     /// Move a value between frame slots.
-    Move { source: u32, destination: u32 },
+    Move {
+        /// Frame-slot value read by the operation.
+        source: u32,
+        /// Frame slot that receives the value.
+        destination: u32,
+    },
     /// Return from the function.
     Return,
 }
@@ -96,7 +99,6 @@ pub struct MachineFunction {
 impl MachineFunction {
     /// Creates a lowered machine function.
     #[must_use]
-    #[allow(clippy::too_many_arguments)]
     pub const fn new(
         entry: BlockId,
         blocks: Vec<Block>,

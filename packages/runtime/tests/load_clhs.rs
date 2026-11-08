@@ -732,6 +732,34 @@ fn load_builtin_classifies_errors_in_eval_and_compile_paths() {
 }
 
 #[test]
+fn load_signals_undefined_function_with_its_cell_error_name() {
+    let source = std::env::temp_dir().join(format!(
+        "ncl-r5-load-undefined-function-{}.lisp",
+        std::process::id()
+    ));
+    fs::write(&source, "(ncl-r5-load-missing-function)")
+        .unwrap_or_else(|error| panic!("LOAD undefined-function fixture creation failed: {error}"));
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let form = format!(
+        concat!(
+            "(handler-case (progn (load {}) :no-error) ",
+            "(undefined-function (condition) ",
+            "(and (typep condition 'undefined-function) ",
+            "(eq (cell-error-name condition) 'ncl-r5-load-missing-function))))"
+        ),
+        lisp_string(&source),
+    );
+    let result = runtime
+        .eval(&form)
+        .unwrap_or_else(|error| panic!("LOAD undefined-function handler failed: {error}"));
+    fs::remove_file(&source)
+        .unwrap_or_else(|error| panic!("LOAD undefined-function fixture cleanup failed: {error}"));
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(runtime.format_result(result), "T");
+}
+
+#[test]
 fn load_uses_dynamic_read_base_and_float_format() {
     let source = std::env::temp_dir().join(format!(
         "ncl-load-dynamic-read-options-{}.lisp",

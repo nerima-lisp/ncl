@@ -41,6 +41,13 @@ fn new_runtime_error_variants_keep_their_display() -> Result<(), String> {
         "undefined function UNDEFINED-FUNCTION: LIST"
     );
 
+    let native = RuntimeError::Native("backend rejected the frame".to_owned());
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        native.to_string(),
+        "native error: backend rejected the frame"
+    );
+
     let failure = crate::native_error::native_failure(NativeError::TypeMismatch {
         operation: NativeOperation::Car,
         operand: 0,

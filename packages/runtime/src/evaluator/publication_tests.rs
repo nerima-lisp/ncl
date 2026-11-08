@@ -201,6 +201,29 @@ fn native_compilation_rejects_frame_words_that_exceed_metadata_capacity()
 }
 
 #[test]
+fn native_compilation_reports_too_small_safepoint_map_frame() -> Result<(), crate::RuntimeError> {
+    let mut compilation = native_compilation(0, 32)?;
+    compilation.safepoint_maps.push(ncl_codegen::SafepointMap {
+        pc_offset: 0,
+        frame_words: 3,
+        slot_words: 4,
+        word_slot_count: 4,
+        register_mask: 0,
+        map_flags: 0,
+        bitmap: vec![0b0000_0100],
+        registers: Vec::new(),
+    });
+
+    // check-added-lines: allow(panic) test-only assertions
+    assert!(matches!(
+        compilation.into_metadata(),
+        Err(crate::RuntimeError::Native(message))
+            if message == "frame must contain the four-word header"
+    ));
+    Ok(())
+}
+
+#[test]
 fn native_compilation_rejects_entry_address_overflow() -> Result<(), crate::RuntimeError> {
     let compilation = native_compilation(usize::MAX, 0)?;
 

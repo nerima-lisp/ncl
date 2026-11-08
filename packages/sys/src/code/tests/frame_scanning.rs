@@ -69,6 +69,26 @@ fn frame_walkers_reject_checked_add_overflow() {
 }
 
 #[test]
+fn frame_header_walk_stops_on_a_self_link() {
+    let mut words = [Word::NIL; 12];
+    words[8] = Word::from_bits(8);
+    words[9] = Word::from_bits(0x1234);
+    words[10] = Word::fixnum(10);
+    words[11] = Word::from_bits(3);
+
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        walk_frame_headers(&words, 8, 2),
+        [FrameHeader {
+            previous: 8,
+            return_pc: 0x1234,
+            function: Word::fixnum(10),
+            flags: 3,
+        }]
+    );
+}
+
+#[test]
 fn scan_frame_with_registers_rejects_an_in_range_register_outside_the_mask() {
     let map = Safepoint {
         pc_offset: 0,
@@ -156,4 +176,53 @@ fn frame_chain_with_registry_rejects_an_unknown_return_pc() {
         scan_frame_chain_with_registry(&mut frame, 0, &registry, &mut registers, |word| word,),
         None
     );
+}
+
+#[test]
+fn frame_chain_with_registry_rejects_a_registered_pc_without_a_map() -> Result<(), CodeError> {
+    let mut code = alloc_code(8)?;
+    publish_code(&mut code)?;
+    let mut registry = CodeRegistry::default();
+    registry.register(
+        &code,
+        CodeObjectMetadata {
+            entry_offset: 0,
+            size: code.len(),
+            frame_words: 4,
+            function_name: "empty-safepoint-map".to_owned(),
+            source_locations: Vec::new(),
+            constant_slots: Vec::new(),
+            safepoint_map: SafepointMap::default(),
+            debug_table: Vec::new(),
+        },
+    )?;
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        registry.find(code.address()).map(|(_, offset)| offset),
+        Some(0)
+    );
+
+    let mut frame = [
+        Word::from_bits(0),
+        Word::from_bits(code.address() as u64),
+        Word::fixnum(7),
+        Word::NIL,
+    ];
+    let original_frame = frame;
+    let mut registers: [Word; 0] = [];
+    let mut forwarded = false;
+
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        scan_frame_chain_with_registry(&mut frame, 0, &registry, &mut registers, |word| {
+            forwarded = true;
+            word
+        }),
+        None
+    );
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(frame, original_frame);
+    // check-added-lines: allow(panic) test-only assertions
+    assert!(!forwarded);
+    Ok(())
 }

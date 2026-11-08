@@ -29,7 +29,13 @@ impl FunctionLowerer<'_> {
             .form
             .lambda_signature_for_lambda(node)
             .map_or_else(|| required_signature(parameters), Clone::clone);
-        let captures = capture_bindings(self.form, body_scope)?;
+        let definition_scope = self
+            .form
+            .nodes()
+            .get(node)
+            .ok_or(LowerError::InvalidNode(node))?
+            .scope;
+        let captures = capture_bindings(self.form, definition_scope, body_scope)?;
         let id = self.pool.allocate()?;
         let params = lambda_params(&signature)?;
         let closure = {
@@ -70,12 +76,12 @@ impl FunctionLowerer<'_> {
 
 pub(super) fn capture_bindings(
     form: &crate::form::HirForm,
+    definition_scope: ScopeId,
     body_scope: ScopeId,
 ) -> Result<Vec<CaptureBinding>, LowerError> {
     let mut captures = Vec::new();
     for binding in form.bindings().iter() {
-        let outer =
-            binding.scope() != body_scope && scope_is_ancestor(form, binding.scope(), body_scope)?;
+        let outer = scope_is_ancestor(form, binding.scope(), definition_scope)?;
         if !outer {
             continue;
         }

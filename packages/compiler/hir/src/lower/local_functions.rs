@@ -23,8 +23,12 @@ impl FunctionLowerer<'_> {
         let captures = definitions
             .iter()
             .map(|definition| {
-                capture_bindings(self.form, definition.body_scope)
-                    .map(|captures| (definition.binding, definition, captures))
+                capture_bindings(
+                    self.form,
+                    definition.definition_scope,
+                    definition.body_scope,
+                )
+                .map(|captures| (definition.binding, definition, captures))
             })
             .collect::<Result<Vec<_>, _>>()?;
         if kind == LocalFunctionKind::Labels {

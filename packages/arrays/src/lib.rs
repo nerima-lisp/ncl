@@ -1,31 +1,38 @@
+//! Common Lisp array model and operations.
+
 use ncl_object::{
-    Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, Word, allocate, classify_object,
-    layout, simple_vector_length, simple_vector_ref, simple_vector_set, string_length,
-    string_ref, with_roots,
+    ObjectError, ObjectRef, Runtime, ThreadContext, Word, allocate, classify_object, layout,
+    simple_vector_ref, simple_vector_set, string_ref, string_set, with_roots,
 };
 /// Options for constructing a non-simple array.
 #[derive(Clone, Copy, Debug)]
 pub struct ArrayOptions {
+    /// Element representation for this array.
     pub element_type: ArrayElementType,
+    /// Value used to initialize all elements.
     pub initial_element: Word,
+    /// Whether the array may be resized.
     pub adjustable: bool,
+    /// Optional logical length for a vector with fill pointer.
     pub fill_pointer: Option<usize>,
+    /// Optional array whose storage is shared with this array.
     pub displaced_to: Option<Word>,
+    /// Element offset into the displaced-to array.
     pub displaced_index_offset: usize,
 }
+#[path = "array/element_type.rs"]
 mod element_type;
-pub use element_type::ArrayElementType;
+pub use ncl_object::{ArrayElementType, array_dimensions, specialized_array_element_type};
 pub(crate) use element_type::validate_element;
 
+#[path = "array/construction.rs"]
 mod construction;
 pub use construction::make_array;
 
 mod specialized_array;
-pub use specialized_array::{
-    make_specialized_array, specialized_array_element_type, specialized_array_ref,
-    specialized_array_set,
-};
+pub use specialized_array::{make_specialized_array, specialized_array_ref, specialized_array_set};
 
+#[path = "array/vector_ops.rs"]
 mod vector_ops;
 pub use vector_ops::{vector_pop, vector_push, vector_push_extend};
 
@@ -254,34 +261,6 @@ pub fn set_fill_pointer(
 /// # Errors
 ///
 /// Returns [`ObjectError`] for a non-array or malformed metadata.
-pub fn array_dimensions(ctx: &ThreadContext, object: Word) -> Result<Vec<usize>, ObjectError> {
-    if widetag(ctx, object) == Some(layout::widetag::SIMPLE_VECTOR) {
-        return Ok(vec![simple_vector_length(ctx, object)?]);
-    }
-    if widetag(ctx, object) == Some(layout::widetag::STRING) {
-        return Ok(vec![string_length(ctx, object)?]);
-    }
-    if widetag(ctx, object) == Some(layout::widetag::SPECIALIZED_ARRAY) {
-        return Ok(vec![length(
-            ctx,
-            object,
-            layout::widetag::SPECIALIZED_ARRAY,
-            1,
-        )?]);
-    }
-    let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
-    (0..rank)
-        .map(|index| {
-            length(
-                ctx,
-                object,
-                layout::widetag::NON_SIMPLE_ARRAY,
-                layout::array_offset::DYNAMIC_BASE + index,
-            )
-        })
-        .collect()
-}
-
 /// Read a row-major element from a general array.
 ///
 /// # Errors
@@ -475,9 +454,6 @@ pub fn adjust_array(
         Ok(adjusted)
     })
 }
-
-mod vector_ops;
-pub use vector_ops::{vector_pop, vector_push, vector_push_extend};
 
 #[cfg(test)]
 #[path = "array_coverage_tests.rs"]

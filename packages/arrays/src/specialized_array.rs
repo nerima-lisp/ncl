@@ -60,18 +60,6 @@ pub fn make_specialized_array(
     })
 }
 
-/// Return a specialized array's element type.
-///
-/// # Errors
-///
-/// Returns [`ObjectError`] for a non-specialized array or malformed metadata.
-pub fn specialized_array_element_type(
-    ctx: &ThreadContext,
-    object: Word,
-) -> Result<ArrayElementType, ObjectError> {
-    kind(ctx, object)
-}
-
 /// Read a specialized array element after validating its representation.
 ///
 /// # Errors

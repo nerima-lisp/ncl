@@ -8,6 +8,7 @@ use ncl_object::{
     BuiltinPackage, FromLispArg, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
     Package, PackageError, Parameter, ParameterType, Runtime, StringObject, ThreadContext, Word,
 };
+use ncl_packages::PackageOperations;
 
 const PACKAGE: Parameter = Parameter {
     name: BuiltinName::new("PACKAGE"),

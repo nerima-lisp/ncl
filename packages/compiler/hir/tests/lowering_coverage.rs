@@ -304,3 +304,50 @@ fn runtime_check_fails_closed_when_used_as_a_control_flow_condition() -> TestRes
     assert_eq!(form.id(), form_id);
     Ok(())
 }
+
+#[test]
+fn go_outside_its_lowered_tagbody_fails_closed() -> TestResult<()> {
+    let (form_id, mut builder, mut symbols) = context(9, "(go target)")?;
+    let scope = builder.root_scope();
+    let tag_name = symbols.intern(form_id, Some("COMMON-LISP-USER"), "TARGET", None)?;
+    builder.register_symbol(tag_name)?;
+    let tagbody = builder.alloc_node(
+        scope,
+        NodeKind::Tagbody {
+            tags: Vec::new(),
+            forms: Vec::new(),
+        },
+    )?;
+    let flow = builder.control_flow_mut();
+    flow.begin_function(tagbody)?;
+    let entry = flow.create_block(tagbody)?;
+    let target = flow.create_block(tagbody)?;
+    let go = builder.alloc_node(scope, NodeKind::Go { target })?;
+    let tagbody_node = builder
+        .nodes_mut()
+        .get_mut(tagbody)
+        .ok_or_else(|| std::io::Error::other("TAGBODY node is missing"))?;
+    let NodeKind::Tagbody { tags, .. } = &mut tagbody_node.kind else {
+        return Err(std::io::Error::other("TAGBODY node changed kind").into());
+    };
+    tags.push(ncl_hir::TagbodyTag {
+        name: tag_name,
+        block: target,
+    });
+    let flow = builder.control_flow_mut();
+    flow.set_terminator(entry, ncl_hir::Terminator::Return { values: Vec::new() })?;
+    flow.set_terminator(target, ncl_hir::Terminator::Return { values: Vec::new() })?;
+    builder.add_root(go)?;
+    builder.add_root(tagbody)?;
+
+    let form = builder.finish()?;
+    form.verify(&symbols)?;
+    assert!(matches!(
+        ncl_hir::lower::lower(&form, &symbols),
+        Err(ncl_hir::lower::LowerError::Unrepresentable {
+            node,
+            operation: "go-outside-lowered-tagbody",
+        }) if node == go
+    ));
+    Ok(())
+}

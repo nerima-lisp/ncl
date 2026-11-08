@@ -43,8 +43,11 @@ pub fn make_array(
         .iter()
         .try_fold(1_usize, |size, dimension| size.checked_mul(*dimension))
         .ok_or(ObjectError::Layout)?;
-    if fill_pointer.is_some_and(|value| value > dimensions[0]) {
-        return Err(ObjectError::TypeError);
+    if let Some(value) = fill_pointer {
+        let dimension = dimensions.first().ok_or(ObjectError::TypeError)?;
+        if value > *dimension {
+            return Err(ObjectError::TypeError);
+        }
     }
     if displaced_to.is_some() && total.checked_add(displaced_index_offset).is_none() {
         return Err(ObjectError::Layout);
@@ -67,6 +70,8 @@ pub fn make_array(
     let displaced = displaced_to.is_some();
     let displaced_to = displaced_to.unwrap_or(Word::NIL);
     with_roots(ctx, &[initial_element, displaced_to], |ctx, rooted| {
+        let initial_element = **rooted.first().ok_or(ObjectError::Layout)?;
+        let displaced_to = **rooted.get(1).ok_or(ObjectError::Layout)?;
         let object = allocate(
             ctx,
             runtime,
@@ -96,7 +101,7 @@ pub fn make_array(
             None => -1,
         };
         write_meta(ctx, metadata_offset(rank, 0), Word::fixnum(fp))?;
-        write_meta(ctx, metadata_offset(rank, 1), *rooted[1])?;
+        write_meta(ctx, metadata_offset(rank, 1), displaced_to)?;
         write_meta(
             ctx,
             metadata_offset(rank, 2),
@@ -123,7 +128,7 @@ pub fn make_array(
             Word::fixnum(i64::try_from(capacity).map_err(|_| ObjectError::Layout)?),
         )?;
         for index in 0..capacity {
-            write_meta(ctx, data_offset + index, *rooted[0])?;
+            write_meta(ctx, data_offset + index, initial_element)?;
         }
         Ok(object)
     })

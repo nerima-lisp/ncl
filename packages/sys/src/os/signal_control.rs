@@ -193,26 +193,24 @@ fn ensure_alt_signal_stack() -> io::Result<usize> {
         SS_DISABLE,
         SS_ONSTACK,
         |required| {
-            alternate_stack::map_alternate_signal_stack_tls(ALT_SIGNAL_STACK.try_with(
-                |owner| {
-                    alternate_stack::register_alternate_signal_stack(
-                        owner,
-                        required,
-                        |pointer, size| {
-                            let stack = AltSignalStack {
-                                sp: pointer.cast(),
-                                size,
-                                flags: 0,
-                            };
-                            // SAFETY: memory remains owned by thread-local storage for the stack's lifetime.
-                            alternate_stack::query_alternate_signal_stack(
-                                unsafe { sigaltstack(&raw const stack, core::ptr::null_mut()) },
-                                io::Error::last_os_error,
-                            )
-                        },
-                    )
-                },
-            ))
+            alternate_stack::map_alternate_signal_stack_tls(ALT_SIGNAL_STACK.try_with(|owner| {
+                alternate_stack::register_alternate_signal_stack(
+                    owner,
+                    required,
+                    |pointer, size| {
+                        let stack = AltSignalStack {
+                            sp: pointer.cast(),
+                            size,
+                            flags: 0,
+                        };
+                        // SAFETY: memory remains owned by thread-local storage for the stack's lifetime.
+                        alternate_stack::query_alternate_signal_stack(
+                            unsafe { sigaltstack(&raw const stack, core::ptr::null_mut()) },
+                            io::Error::last_os_error,
+                        )
+                    },
+                )
+            }))
         },
     )
 }
@@ -260,8 +258,7 @@ impl crate::Thread {
     pub fn block_signal_control_set() -> io::Result<()> {
         let set = signal_set(&[SIG_INT, SIG_TERM, SIG_CHLD])?;
         // SAFETY: set is initialized and old_set is null because its prior value is unused.
-        let result =
-            unsafe { pthread_sigmask(SIG_BLOCK, &raw const set, core::ptr::null_mut()) };
+        let result = unsafe { pthread_sigmask(SIG_BLOCK, &raw const set, core::ptr::null_mut()) };
         disposition::block_control_signal_mask(result)
     }
     /// Wait for one blocked control signal.

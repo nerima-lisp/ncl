@@ -1,9 +1,7 @@
 use crate::PackageOperations;
-use ncl_object::{
-    ObjectError, Package, Runtime, ThreadContext, Word, get, make_cons, put,
-};
 use ncl_object::package::{EXTERNAL, INTERNAL, NICKNAMES};
 use ncl_object::widetag;
+use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, get, make_cons, put};
 use std::collections::HashSet;
 
 impl PackageOperations for Package {
@@ -11,7 +9,7 @@ impl PackageOperations for Package {
     where
         F: FnMut(Word),
     {
-        for slot in [INTERNAL, EXTERNAL] {
+        for slot in std::iter::once(INTERNAL).chain(std::iter::once(EXTERNAL)) {
             let mut entries = get(ctx, self.as_word(), widetag::PACKAGE, slot)?;
             let mut seen = HashSet::new();
             while entries != Word::NIL {
@@ -66,8 +64,8 @@ impl PackageOperations for Package {
             Package::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             ncl_object::with_root(ctx, &mut name, |ctx, name| {
-                let mut symbol = if let Some(symbol) = Package::from_word(*package)
-                    .remove_table_symbol(ctx, runtime, false, *name)?
+                let mut symbol = if let Some(symbol) =
+                    Package::from_word(*package).remove_table_symbol(ctx, runtime, false, *name)?
                 {
                     symbol
                 } else {

@@ -22,7 +22,7 @@ pub struct Runtime {
     pub(crate) heap: Arc<Heap>,
     functions: Mutex<HashMap<String, RootedWord>>,
     pub(crate) packages: Mutex<HashMap<String, RootedWord>>,
-    package_symbols: Mutex<HashMap<Word, PackageSymbols>>,
+    package_symbols: Mutex<Vec<PackageSymbols>>,
     pub(crate) classes: Mutex<HashMap<String, RootedWord>>,
     pub(crate) features: Mutex<Vec<String>>,
     pub(crate) layouts: Mutex<HashMap<u32, usize>>,
@@ -39,8 +39,9 @@ pub struct Runtime {
     generic_builtin_entry: AtomicUsize,
     load_port: Mutex<Option<std::sync::Arc<dyn crate::LoadPort>>>,
 }
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct PackageSymbols {
+    package: RootedWord,
     internal: HashMap<String, RootedWord>,
     external: HashMap<String, RootedWord>,
 }
@@ -82,7 +83,7 @@ impl Runtime {
     pub(crate) fn package_is_registered(&self, package: Word) -> bool {
         self.package_symbols
             .lock()
-            .is_ok_and(|packages| packages.contains_key(&package))
+            .is_ok_and(|packages| packages.iter().any(|entry| entry.package.get() == package))
     }
 
     pub(crate) fn register_package_symbols(
@@ -90,16 +91,19 @@ impl Runtime {
         ctx: &ThreadContext,
         package: Word,
     ) -> Result<(), ObjectError> {
-        if self
+        let mut packages = self
             .package_symbols
             .lock()
-            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?
-            .contains_key(&package)
-        {
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
+        if packages.iter().any(|entry| entry.package.get() == package) {
             return Ok(());
         }
 
-        let mut symbols = PackageSymbols::default();
+        let mut symbols = PackageSymbols {
+            package: RootedWord::new(&self.heap, package),
+            internal: HashMap::new(),
+            external: HashMap::new(),
+        };
         for (slot, table) in [
             (crate::package::INTERNAL, &mut symbols.internal),
             (crate::package::EXTERNAL, &mut symbols.external),
@@ -108,10 +112,7 @@ impl Runtime {
                 table.insert(name, RootedWord::new(&self.heap, symbol));
             }
         }
-        self.package_symbols
-            .lock()
-            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?
-            .insert(package, symbols);
+        packages.push(symbols);
         Ok(())
     }
 
@@ -125,7 +126,7 @@ impl Runtime {
             .package_symbols
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
-        let Some(tables) = tables.get(&package) else {
+        let Some(tables) = tables.iter().find(|entry| entry.package.get() == package) else {
             return Ok(None);
         };
         let table = if external {
@@ -139,7 +140,7 @@ impl Runtime {
     pub(crate) fn package_symbols_indexed(&self, package: Word) -> bool {
         self.package_symbols
             .lock()
-            .is_ok_and(|symbols| symbols.contains_key(&package))
+            .is_ok_and(|symbols| symbols.iter().any(|entry| entry.package.get() == package))
     }
 
     pub(crate) fn insert_package_symbol(
@@ -156,7 +157,10 @@ impl Runtime {
             .package_symbols
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
-        let tables = tables.get_mut(&package).ok_or(ObjectError::Layout)?;
+        let tables = tables
+            .iter_mut()
+            .find(|entry| entry.package.get() == package)
+            .ok_or(ObjectError::Layout)?;
         let table = if external {
             &mut tables.external
         } else {
@@ -179,7 +183,10 @@ impl Runtime {
             .package_symbols
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
-        let tables = tables.get_mut(&package).ok_or(ObjectError::Layout)?;
+        let tables = tables
+            .iter_mut()
+            .find(|entry| entry.package.get() == package)
+            .ok_or(ObjectError::Layout)?;
         let table = if external {
             &mut tables.external
         } else {
@@ -190,10 +197,11 @@ impl Runtime {
     }
 
     pub fn release_package_symbols(&self, package: Word) -> Result<(), ObjectError> {
-        self.package_symbols
+        let mut packages = self
+            .package_symbols
             .lock()
-            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?
-            .remove(&package);
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
+        packages.retain(|entry| entry.package.get() != package);
         Ok(())
     }
 
@@ -214,7 +222,7 @@ impl Runtime {
             heap: Arc::new(Heap::new(config)),
             functions: Mutex::new(HashMap::new()),
             packages: Mutex::new(HashMap::new()),
-            package_symbols: Mutex::new(HashMap::new()),
+            package_symbols: Mutex::new(Vec::new()),
             classes: Mutex::new(HashMap::new()),
             features: Mutex::new(Vec::new()),
             layouts: Mutex::new(HashMap::new()),

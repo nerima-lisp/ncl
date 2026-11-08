@@ -1,7 +1,9 @@
 //! Heap-resident package namespaces.
 use crate::object_access::{get, put};
 use crate::widetag;
-use crate::{ObjectError, Runtime, ThreadContext, make_cons, make_string, make_symbol, rplacd, symbol_name};
+use crate::{
+    ObjectError, Runtime, ThreadContext, make_cons, make_string, make_symbol, rplacd, symbol_name,
+};
 use ncl_sys::Word;
 use std::collections::HashSet;
 mod metadata;
@@ -168,9 +170,9 @@ impl Package {
     ) -> Result<(), ObjectError> {
         let mut roots = [self.0, name, symbol];
         crate::with_rooted_slice(ctx, &mut roots, |ctx, roots| {
-            let package = roots[0];
-            let name = roots[1];
-            let symbol = roots[2];
+            let package = roots.first().copied().ok_or(ObjectError::Layout)?;
+            let name = roots.get(1).copied().ok_or(ObjectError::Layout)?;
+            let symbol = roots.get(2).copied().ok_or(ObjectError::Layout)?;
             let key = string_text(ctx, name)?;
             let slot = if external { EXTERNAL } else { INTERNAL };
             Self::from_word(package).remove_table_symbol(ctx, runtime, external, name)?;
@@ -190,8 +192,8 @@ impl Package {
     ) -> Result<Option<Word>, ObjectError> {
         let mut roots = [self.0, name];
         crate::with_rooted_slice(ctx, &mut roots, |ctx, roots| {
-            let package = roots[0];
-            let name = roots[1];
+            let package = roots.first().copied().ok_or(ObjectError::Layout)?;
+            let name = roots.get(1).copied().ok_or(ObjectError::Layout)?;
             let key = string_text(ctx, name)?;
             let slot = if external { EXTERNAL } else { INTERNAL };
             let indexed_symbol = if runtime.package_symbols_indexed(package) {
@@ -318,7 +320,9 @@ impl Package {
             Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
             crate::with_root(ctx, &mut name_word, |ctx, name_word| {
-                if let Some(found) = Self::from_word(*package).find_symbol(ctx, runtime, *name_word)? {
+                if let Some(found) =
+                    Self::from_word(*package).find_symbol(ctx, runtime, *name_word)?
+                {
                     return Ok(found);
                 }
                 let mut symbol = make_symbol(ctx, runtime, *name_word)?;
@@ -330,23 +334,14 @@ impl Package {
                         *package,
                     )?;
                     let external = runtime.find_package(ctx, "COMMON-LISP") == Some(*package);
-                    let table_slot = if external {
-                        EXTERNAL
-                    } else {
-                        INTERNAL
-                    };
+                    let table_slot = if external { EXTERNAL } else { INTERNAL };
                     let status = if table_slot == EXTERNAL {
                         FindStatus::External
                     } else {
                         FindStatus::Internal
                     };
-                    Self::from_word(*package).insert_table_symbol(
-                        ctx,
-                        runtime,
-                        external,
-                        *name_word,
-                        *symbol,
-                    )?;
+                    Self::from_word(*package)
+                        .insert_table_symbol(ctx, runtime, external, *name_word, *symbol)?;
                     Ok((*symbol, status))
                 })
             })
@@ -384,4 +379,3 @@ pub const fn nil() -> Word {
 pub const fn truth() -> Word {
     Word::TRUE
 }
-

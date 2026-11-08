@@ -5,9 +5,9 @@
 )]
 pub use context::{ConditionHandlerInvoker, PendingRuntimeErrors};
 pub use ncl_sys::Word;
+mod array_primitives;
 mod builtin;
 mod builtin_package;
-mod array_primitives;
 mod classify;
 mod code;
 pub mod cons;
@@ -32,25 +32,25 @@ mod primitives;
 mod registry_extensions;
 mod rooted_words;
 mod roots;
-mod simple_vector;
 mod runtime;
 mod runtime_sb_symbols;
 pub mod scope;
+mod simple_vector;
+mod string;
 mod structure;
 mod structure_registry;
 mod symbol_extensions;
-mod string;
 pub mod typed;
+pub use array_primitives::{
+    ArrayElementType, array_dimensions, make_specialized_array, specialized_array_element_type,
+    specialized_array_ref, specialized_array_set, validate_array_element,
+};
 pub use builtin::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, FunctionObject, KeywordAdapter, LambdaList, LispErrorConverter, MultipleValues,
     NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
 };
 pub use builtin_package::BuiltinPackage;
-pub use array_primitives::{
-    ArrayElementType, array_dimensions, make_specialized_array, specialized_array_element_type,
-    specialized_array_ref, specialized_array_set, validate_array_element,
-};
 pub use classify::{ObjectRef, classify, classify_object, object_widetag};
 pub use code::code_slot;
 pub use code::{
@@ -72,8 +72,8 @@ pub use layout::{
     symbol_flag, symbol_offset, value_cell_offset, widetag,
 };
 pub use load::LoadPort;
-pub use ncl_sys::RootSlot;
 pub use ncl_sys::ReferenceLayout;
+pub use ncl_sys::RootSlot;
 pub use ncl_sys::{ThreadLayout, thread_layout};
 pub use number::{
     Bignum, Complex, DoubleFloat, Ratio, bignum_limbs, double_value, make_bignum_from_i128,
@@ -94,12 +94,12 @@ pub use roots::{
 pub use roots::{
     with_heap_rooted_mut_slice, with_heap_rooted_slice, with_root, with_rooted_slice, with_roots,
 };
+pub use runtime::Runtime;
+pub use scope::{Handle, HandleVec, Local, Scope};
 pub use simple_vector::{
     make_simple_vector, simple_vector_length, simple_vector_ref, simple_vector_set,
 };
-pub use runtime::Runtime;
 pub use string::{make_string, string_length, string_ref, string_set};
-pub use scope::{Handle, HandleVec, Local, Scope};
 pub use structure::{
     StructureLayout, make_structure, structure_layout, structure_ref, structure_set,
 };

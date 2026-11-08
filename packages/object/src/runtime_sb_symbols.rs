@@ -49,18 +49,9 @@ impl Runtime {
                             }
                             if status != crate::FindStatus::Inherited {
                                 if external && status == crate::FindStatus::Internal {
-                                    package.remove_table_symbol(
-                                        ctx,
-                                        self,
-                                        false,
-                                        *name_word,
-                                    )?;
+                                    package.remove_table_symbol(ctx, self, false, *name_word)?;
                                     package.insert_table_symbol(
-                                        ctx,
-                                        self,
-                                        true,
-                                        *name_word,
-                                        *symbol,
+                                        ctx, self, true, *name_word, *symbol,
                                     )?;
                                 }
                                 return Ok(());

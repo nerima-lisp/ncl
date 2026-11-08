@@ -476,4 +476,8 @@ mod private_tests {
             );
         }
     }
+
+    #[cfg(test)]
+    #[path = "fasl_constant_payload_tests.rs"]
+    mod payload_tests;
 }

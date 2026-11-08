@@ -76,9 +76,11 @@ fn multiple_value_call_passes_each_returned_value_to_its_function() -> TestResul
         .ops
         .get(capture_index)
         .ok_or_else(|| std::io::Error::other("capture operation is missing"))?;
-    let capture_args = match &capture_operation.kind {
-        OpKind::CallClosure { args, .. } => args,
-        _ => return Err(std::io::Error::other("capture is not a closure call").into()),
+    let OpKind::CallClosure {
+        args: capture_args, ..
+    } = &capture_operation.kind
+    else {
+        return Err(std::io::Error::other("capture is not a closure call").into());
     };
     assert_eq!(capture_args.get(1), Some(&first_value));
     let captured_values = capture_operation
@@ -86,14 +88,15 @@ fn multiple_value_call_passes_each_returned_value_to_its_function() -> TestResul
         .first()
         .map(|(value, _)| *value)
         .ok_or_else(|| std::io::Error::other("captured value list is missing"))?;
-    let call_args = match &block
+    let OpKind::CallClosure {
+        args: call_args, ..
+    } = &block
         .ops
         .get(call_index)
         .ok_or_else(|| std::io::Error::other("multiple-value call is missing"))?
         .kind
-    {
-        OpKind::CallClosure { args, .. } => args,
-        _ => return Err(std::io::Error::other("multiple-value call is not a closure call").into()),
+    else {
+        return Err(std::io::Error::other("multiple-value call is not a closure call").into());
     };
     assert_eq!(call_args.get(2), Some(&captured_values));
     Ok(())

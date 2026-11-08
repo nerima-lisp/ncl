@@ -307,10 +307,8 @@ fn unwind_protect_runs_normal_cleanup_and_preserves_protected_values() -> TestRe
             matches!(&operation.kind, OpKind::LeaveHandler { region: id } if *id == region.id)
         })
         .ok_or_else(|| std::io::Error::other("normal path does not leave UNWIND-PROTECT"))?;
-    assert!(protected_call < capture_call);
-    assert!(leave_handler < capture_call);
-    assert!(leave_handler < cleanup_call);
-    assert!(cleanup_call < restore_call);
+    assert!(protected_call < leave_handler && leave_handler < capture_call);
+    assert!(leave_handler < cleanup_call && cleanup_call < restore_call);
     let ncl_ir::Terminator::Jump { target, args } = &body_block.terminator else {
         return Err(std::io::Error::other("normal UNWIND-PROTECT merge is missing").into());
     };

@@ -150,7 +150,7 @@ fn member_integer_and_cons_specifiers_preserve_members_and_bounds() -> TestResul
         builder
             .symbols()
             .get(*member_symbol)
-            .map(|item| item.name()),
+            .map(ncl_hir::HirSymbol::name),
         Some("VALUE")
     );
     assert_eq!(at(&actual, 1)?.1, ClTypeKind::Named(BuiltinType::Integer));
@@ -159,7 +159,9 @@ fn member_integer_and_cons_specifiers_preserve_members_and_bounds() -> TestResul
     };
     assert_eq!(lower_bounded.lower(), None);
     assert_eq!(
-        lower_bounded.upper().map(|bound| bound.value()),
+        lower_bounded
+            .upper()
+            .map(ncl_hir::cl_type::NumericBound::value),
         Some(NumericValue::Integer(10))
     );
     let ClTypeKind::NumericRange(upper_bounded) = &at(&actual, 3)?.1 else {
@@ -168,7 +170,9 @@ fn member_integer_and_cons_specifiers_preserve_members_and_bounds() -> TestResul
         );
     };
     assert_eq!(
-        upper_bounded.lower().map(|bound| bound.value()),
+        upper_bounded
+            .lower()
+            .map(ncl_hir::cl_type::NumericBound::value),
         Some(NumericValue::Integer(-2))
     );
     assert_eq!(upper_bounded.upper(), None);

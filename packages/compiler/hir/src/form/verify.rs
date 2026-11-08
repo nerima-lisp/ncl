@@ -91,14 +91,13 @@ impl HirForm {
                 let scopes = self
                     .nodes
                     .iter()
-                    .flat_map(|(_, node)| match &node.kind {
+                    .find_map(|(_, node)| match &node.kind {
                         NodeKind::LocalFunctions { definitions, .. } => definitions
                             .iter()
                             .find(|definition| definition.binding == binding)
                             .map(|definition| (definition.definition_scope, definition.body_scope)),
-                        _ => None,
+                        _ => None, // check-added-lines: allow(wildcard) only local-function nodes own these signatures
                     })
-                    .next()
                     .ok_or(VerifyError::InvalidBinding(binding))?;
                 self.verify_scope(scopes.0)?;
                 self.verify_scope(scopes.1)?;
@@ -157,7 +156,7 @@ impl HirForm {
             let binding_scope = self
                 .bindings
                 .binding(binding)
-                .map(|info| info.scope())
+                .map(crate::binding::Binding::scope)
                 .ok_or(VerifyError::InvalidBinding(binding))?;
             if binding_scope == definition_scope
                 || !self.scope_is_ancestor(visible_scope, binding_scope)

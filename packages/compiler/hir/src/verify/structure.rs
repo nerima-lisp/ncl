@@ -3,8 +3,8 @@
 use super::{Verifier, VerifyError};
 use crate::binding::{BindingKind, LocalFunctionKind, ScopeId};
 use crate::cl_type::{ClTypeKind, FunctionParameters, MemberValue, OpaqueOperand};
-use crate::ids::{NodeId, TypeId};
-use crate::node::{LetBinding, LetKind, Node, NodeKind};
+use crate::ids::{BindingId, NodeId, SourceOriginId, TypeId, TypeSpecConstId, ValueId};
+use crate::node::{LetKind, LocalFunctionDefinition, Node, NodeKind};
 use crate::source::SourceOriginKind;
 
 impl Verifier<'_> {
@@ -12,10 +12,10 @@ impl Verifier<'_> {
         let nodes = self.input.nodes;
         let (cleanups, tag_blocks) = (&mut self.cleanups, &mut self.tag_blocks);
         for (_, node) in nodes.iter() {
-            if let NodeKind::UnwindProtect { cleanup, .. } = &node.kind {
-                if cleanup.form() != self.input.form || !cleanups.insert(*cleanup) {
-                    return Err(VerifyError::InvalidCleanup(*cleanup));
-                }
+            if let NodeKind::UnwindProtect { cleanup, .. } = &node.kind
+                && (cleanup.form() != self.input.form || !cleanups.insert(*cleanup))
+            {
+                return Err(VerifyError::InvalidCleanup(*cleanup));
             }
             if let NodeKind::Tagbody { tags, .. } = &node.kind {
                 tag_blocks.extend(tags.iter().map(|tag| tag.block));
@@ -69,6 +69,12 @@ impl Verifier<'_> {
             if index >= resources.values.len() {
                 return Err(VerifyError::InvalidValue(*id));
             }
+        }
+        for (value, producer) in resources.value_producers {
+            if !resources.values.contains(value) {
+                return Err(VerifyError::InvalidValue(*value));
+            }
+            self.node(*producer)?;
         }
         for id in resources.type_spec_constants {
             let index = usize::try_from(id.index())
@@ -173,11 +179,6 @@ impl Verifier<'_> {
         for (index, node) in nodes.iter() {
             let id = NodeId::try_from_index(self.input.form, index)?;
             self.node_kind(id, node)?;
-            if let NodeKind::Go { target } = &node.kind {
-                if !self.tag_blocks.contains(target) {
-                    return Err(VerifyError::InvalidTagTarget(*target));
-                }
-            }
         }
         Ok(())
     }
@@ -186,32 +187,17 @@ impl Verifier<'_> {
         self.origin(node.origin)?;
         match &node.kind {
             NodeKind::Literal(value) => self.literal(value)?,
-            NodeKind::VariableReference { target } => self.variable(id, node.scope, *target)?,
-            NodeKind::FunctionReference { target } => self.call_target(id, node.scope, *target)?,
-            NodeKind::ClosureReference { function } => self.child(node.scope, *function)?,
-            NodeKind::Assignment { target, value } => {
-                self.variable(id, node.scope, *target)?;
-                self.child(node.scope, *value)?;
-            }
-            NodeKind::Let {
-                kind,
-                bindings,
-                initializer_scopes,
-                binding_scopes,
-                body_scope,
-                body,
-            } => {
-                self.let_scopes(
-                    id,
-                    node.scope,
-                    *kind,
-                    bindings,
-                    initializer_scopes,
-                    binding_scopes,
-                    *body_scope,
-                    body,
-                )?;
-            }
+            NodeKind::VariableReference { .. }
+            | NodeKind::FunctionReference { .. }
+            | NodeKind::ClosureReference { .. }
+            | NodeKind::Assignment { .. }
+            | NodeKind::Call { .. }
+            | NodeKind::KnownFunctionOperation { .. }
+            | NodeKind::SequenceOperation { .. }
+            | NodeKind::ArrayOperation { .. }
+            | NodeKind::RuntimeCheck { .. }
+            | NodeKind::TopLevelDefinition { .. } => self.node_references(id, node)?,
+            NodeKind::Let { .. } => self.let_scopes(id, node)?,
             NodeKind::DynamicBinding {
                 symbols,
                 values,
@@ -225,50 +211,14 @@ impl Verifier<'_> {
                 parameters,
                 body_scope,
                 body,
-            } => {
-                self.scope_descendant(node.scope, *body_scope)?;
-                if !parameters.is_empty() && *body_scope == node.scope {
-                    return Err(VerifyError::InvalidBindingScopes(id));
-                }
-                self.parameters(id, *body_scope, parameters)?;
-                self.body_scope(*body_scope, body)?;
-            }
+            } => self.lambda_node(id, node.scope, parameters, *body_scope, body)?,
             NodeKind::LocalFunctions {
                 kind,
                 body_scope,
                 definitions,
                 body,
             } => {
-                self.scope_descendant(node.scope, *body_scope)?;
-                if !definitions.is_empty() && *body_scope == node.scope {
-                    return Err(VerifyError::InvalidBindingScopes(id));
-                }
-                for definition in definitions {
-                    let binding = self.binding(definition.binding)?;
-                    let definition_scope = match kind {
-                        LocalFunctionKind::Flet => node.scope,
-                        LocalFunctionKind::Labels => *body_scope,
-                    };
-                    if binding.kind() != BindingKind::LocalFunction
-                        || binding.scope() != *body_scope
-                        || definition.definition_scope != definition_scope
-                    {
-                        return Err(VerifyError::InvalidBindingScopes(id));
-                    }
-                    self.scope_descendant(definition.definition_scope, definition.body_scope)?;
-                    if !definition.parameters.is_empty()
-                        && definition.body_scope == definition.definition_scope
-                    {
-                        return Err(VerifyError::InvalidBindingScopes(id));
-                    }
-                    self.parameters(id, definition.body_scope, &definition.parameters)?;
-                    self.body_scope(definition.body_scope, &definition.body)?;
-                }
-                self.body_scope(*body_scope, body)?;
-            }
-            NodeKind::Call { target, arguments } => {
-                self.call_target(id, node.scope, *target)?;
-                self.children(node.scope, arguments)?;
+                self.local_function_nodes(id, node.scope, *kind, *body_scope, definitions, body)?;
             }
             NodeKind::If {
                 test,
@@ -285,121 +235,148 @@ impl Verifier<'_> {
                 self.scope_descendant(node.scope, *body_scope)?;
                 self.body_scope(*body_scope, forms)?;
             }
-            NodeKind::Block { name, body } => {
-                self.symbol(*name)?;
-                self.children(node.scope, body)?;
-            }
-            NodeKind::ReturnFrom { target, value } => {
-                self.node(*target)?;
-                if !matches!(&self.node_ref(*target)?.kind, NodeKind::Block { .. }) {
-                    return Err(VerifyError::InvalidExitTarget(*target));
-                }
-                if let Some(value) = value {
-                    self.child(node.scope, *value)?;
-                }
-            }
-            NodeKind::Tagbody { tags, forms } => {
-                for tag in tags {
-                    self.symbol(tag.name)?;
-                    self.block(tag.block)?;
-                }
-                self.children(node.scope, forms)?;
-            }
-            NodeKind::Go { target } => self.block(*target)?,
-            NodeKind::Catch { tag, body } => {
-                self.child(node.scope, *tag)?;
-                self.children(node.scope, body)?;
-            }
-            NodeKind::Throw { tag, value } => {
-                self.child(node.scope, *tag)?;
-                self.child(node.scope, *value)?;
-            }
-            NodeKind::UnwindProtect {
-                cleanup,
-                protected,
-                cleanup_forms,
-            } => {
-                if cleanup.form() != self.input.form {
-                    return Err(VerifyError::InvalidCleanup(*cleanup));
-                }
-                if !self.cleanups.contains(cleanup) {
-                    return Err(VerifyError::InvalidCleanup(*cleanup));
-                }
-                self.child(node.scope, *protected)?;
-                self.children(node.scope, cleanup_forms)?;
-            }
-            NodeKind::NonLocalExit {
-                target,
-                values,
-                cleanups,
-            } => {
-                self.exit_target(*target)?;
-                self.children(node.scope, values)?;
-                self.cleanups_ref(cleanups)?;
-            }
+            NodeKind::Block { .. }
+            | NodeKind::ReturnFrom { .. }
+            | NodeKind::Tagbody { .. }
+            | NodeKind::Go { .. }
+            | NodeKind::Catch { .. }
+            | NodeKind::Throw { .. }
+            | NodeKind::UnwindProtect { .. }
+            | NodeKind::NonLocalExit { .. } => self.node_control(id, node)?,
             NodeKind::MultipleValues(operation) => {
-                self.multiple_values(id, node.scope, operation)?
+                self.multiple_values(id, node.scope, operation)?;
             }
             NodeKind::TypeAssertion {
                 value,
                 asserted_type,
                 expected_type,
-            } => {
-                self.child(node.scope, *value)?;
-                self.ty(*asserted_type)?;
-                self.type_constant(*expected_type)?;
-            }
-            NodeKind::KnownFunctionOperation {
-                function,
-                arguments,
-            }
-            | NodeKind::SequenceOperation {
-                function,
-                arguments,
-            }
-            | NodeKind::ArrayOperation {
-                function,
-                arguments,
-            } => {
-                self.symbol(*function)?;
-                self.children(node.scope, arguments)?;
-            }
-            NodeKind::RuntimeCheck { value, .. } => self.child(node.scope, *value)?,
+            } => self.type_assertion_node(node.scope, *value, *asserted_type, *expected_type)?,
             NodeKind::CheckType {
                 value,
                 accepted_type,
                 expected_type,
                 source_origin,
-            } => {
-                self.value(*value)?;
-                self.ty(*accepted_type)?;
-                self.type_constant(*expected_type)?;
-                self.origin(*source_origin)?;
-                if *source_origin != node.origin {
-                    return Err(VerifyError::CheckTypeOriginMismatch(id));
-                }
-            }
-            NodeKind::TopLevelDefinition { name, value, .. } => {
-                self.symbol(*name)?;
-                self.child(node.scope, *value)?;
-            }
+            } => self.check_type_node(
+                id,
+                node,
+                *value,
+                *accepted_type,
+                *expected_type,
+                *source_origin,
+            )?,
             NodeKind::CompileTimeForm { form, .. } | NodeKind::LoadTimeValue { form, .. } => {
                 self.child(node.scope, *form)?;
             }
         }
         Ok(())
     }
-    pub(super) fn let_scopes(
+    fn lambda_node(
         &self,
         id: NodeId,
-        parent: ScopeId,
-        kind: LetKind,
-        bindings: &[LetBinding],
-        inits: &[ScopeId],
-        scopes: &[ScopeId],
+        scope: ScopeId,
+        parameters: &[BindingId],
         body_scope: ScopeId,
         body: &[NodeId],
     ) -> Result<(), VerifyError> {
+        self.scope_descendant(scope, body_scope)?;
+        if !parameters.is_empty() && body_scope == scope {
+            return Err(VerifyError::InvalidBindingScopes(id));
+        }
+        self.parameters(id, body_scope, parameters)?;
+        self.body_scope(body_scope, body)
+    }
+
+    fn local_function_nodes(
+        &self,
+        id: NodeId,
+        scope: ScopeId,
+        kind: LocalFunctionKind,
+        body_scope: ScopeId,
+        definitions: &[LocalFunctionDefinition],
+        body: &[NodeId],
+    ) -> Result<(), VerifyError> {
+        self.scope_descendant(scope, body_scope)?;
+        if !definitions.is_empty() && body_scope == scope {
+            return Err(VerifyError::InvalidBindingScopes(id));
+        }
+        for definition in definitions {
+            let binding = self.binding(definition.binding)?;
+            let definition_scope = match kind {
+                LocalFunctionKind::Flet => scope,
+                LocalFunctionKind::Labels => body_scope,
+            };
+            if binding.kind() != BindingKind::LocalFunction
+                || binding.scope() != body_scope
+                || definition.definition_scope != definition_scope
+            {
+                return Err(VerifyError::InvalidBindingScopes(id));
+            }
+            self.scope_descendant(definition.definition_scope, definition.body_scope)?;
+            if !definition.parameters.is_empty()
+                && definition.body_scope == definition.definition_scope
+            {
+                return Err(VerifyError::InvalidBindingScopes(id));
+            }
+            self.parameters(id, definition.body_scope, &definition.parameters)?;
+            self.body_scope(definition.body_scope, &definition.body)?;
+        }
+        self.body_scope(body_scope, body)
+    }
+
+    fn type_assertion_node(
+        &self,
+        scope: ScopeId,
+        value: NodeId,
+        asserted_type: TypeId,
+        expected_type: TypeSpecConstId,
+    ) -> Result<(), VerifyError> {
+        self.child(scope, value)?;
+        self.ty(asserted_type)?;
+        self.type_constant(expected_type)
+    }
+
+    fn check_type_node(
+        &self,
+        id: NodeId,
+        node: &Node,
+        value: ValueId,
+        accepted_type: TypeId,
+        expected_type: TypeSpecConstId,
+        source_origin: SourceOriginId,
+    ) -> Result<(), VerifyError> {
+        self.value(value)?;
+        let producer = self
+            .input
+            .resources
+            .value_producers
+            .get(&value)
+            .copied()
+            .ok_or(VerifyError::MissingValueProducer(id))?;
+        self.node(producer)?;
+        self.ty(accepted_type)?;
+        self.type_constant(expected_type)?;
+        self.origin(source_origin)?;
+        if source_origin != node.origin {
+            return Err(VerifyError::CheckTypeOriginMismatch(id));
+        }
+        Ok(())
+    }
+
+    pub(super) fn let_scopes(&self, id: NodeId, node: &Node) -> Result<(), VerifyError> {
+        let NodeKind::Let {
+            kind,
+            bindings,
+            initializer_scopes: inits,
+            binding_scopes: scopes,
+            body_scope,
+            body,
+        } = &node.kind
+        else {
+            return Err(VerifyError::InvalidNode(id));
+        };
+        let parent = node.scope;
+        let kind = *kind;
+        let body_scope = *body_scope;
         if bindings.len() != inits.len() || bindings.len() != scopes.len() {
             return Err(VerifyError::InvalidBindingScopes(id));
         }
@@ -414,14 +391,12 @@ impl Verifier<'_> {
                 .ok_or(VerifyError::InvalidBindingScopes(id))?;
             self.scope(init)?;
             self.scope(scope)?;
-            match kind {
-                LetKind::Parallel if init != parent || scope != body_scope => {
-                    return Err(VerifyError::InvalidBindingScopes(id));
-                }
-                LetKind::Sequential if init != previous => {
-                    return Err(VerifyError::InvalidBindingScopes(id));
-                }
-                _ => {}
+            let invalid_scope = match kind {
+                LetKind::Parallel => init != parent || scope != body_scope,
+                LetKind::Sequential => init != previous,
+            };
+            if invalid_scope {
+                return Err(VerifyError::InvalidBindingScopes(id));
             }
             if let Some(initializer) = binding.initializer {
                 self.node(initializer)?;

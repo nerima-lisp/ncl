@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 
 use ncl_image::{load, save};
-use ncl_object::hash_table::{HashTable, HashTest, Weakness};
+use ncl_hash_tables::{HashTable, HashTest, Weakness};
 use ncl_object::{
     BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, CodeObject, Function,
     FunctionObject, ObjectRef, Package, Runtime, ThreadContext, Word, car, cdr, classify_object,

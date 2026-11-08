@@ -14,7 +14,6 @@ use ncl_object::{
     ratio_numerator, slot_ref, specialized_array_element_type, specialized_array_ref,
     structure_ref,
 };
-
 #[test]
 #[expect(clippy::too_many_lines, reason = "one flat round-trip per kind")]
 fn remaining_object_kinds_round_trip() {

@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use ncl_object::hash_table::HashTable;
+use ncl_hash_tables::HashTable;
 use ncl_object::{
     Bignum, CodeObject, Complex, DoubleFloat, Function, FunctionObject, Instance, ObjectError,
     ObjectRef, Package, Ratio, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr,

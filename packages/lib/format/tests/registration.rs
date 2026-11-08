@@ -1,4 +1,8 @@
-#![allow(missing_docs, clippy::expect_used, clippy::unwrap_used)]
+#![expect(
+    clippy::expect_used,
+    reason = "tests assert on registered FORMAT builtin results from valid fixtures"
+)]
+//! Tests for registered FORMAT builtins and their runtime behavior.
 
 use ncl_lib_format::register;
 use ncl_object::{

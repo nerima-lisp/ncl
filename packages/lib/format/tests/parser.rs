@@ -1,4 +1,8 @@
-#![allow(missing_docs, clippy::expect_used)]
+#![expect(
+    clippy::expect_used,
+    reason = "the parser test uses a known-valid FORMAT control string and asserts its parsed parts"
+)]
+//! Tests for parsing Common Lisp FORMAT control strings.
 
 use ncl_lib_format::{ControlPart, DirectiveKind, Parameter, UnsupportedDirectiveKind, parse};
 

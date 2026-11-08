@@ -1,4 +1,8 @@
-#![allow(missing_docs, clippy::expect_used, clippy::unwrap_used)]
+#![expect(
+    clippy::expect_used,
+    reason = "tests assert on valid FORMAT controls and the expected printer output"
+)]
+//! Tests for FORMAT directive execution and printer output.
 
 use ncl_lib_format::{FormatError, execute, parse};
 use ncl_object::{Runtime, ThreadContext, Word, make_string};

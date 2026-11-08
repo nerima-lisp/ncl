@@ -1,5 +1,8 @@
 //! Typed parsing primitives for the FORMAT directive set.
-#![allow(missing_docs)]
+#![expect(
+    missing_docs,
+    reason = "the public FORMAT AST mirrors the Common Lisp directive grammar consumed by Lisp FORMAT builtins"
+)]
 
 mod executor;
 mod registration;
@@ -96,7 +99,10 @@ pub enum ParseErrorKind {
 ///
 /// Returns the byte-independent character offset and reason when the control
 /// string contains an incomplete, malformed, or unknown directive.
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the FORMAT parser is one cursor-driven state machine that preserves directive order"
+)]
 pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
     let chars: Vec<char> = control.chars().collect();
     let mut parts = Vec::new();

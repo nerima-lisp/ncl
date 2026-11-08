@@ -1,4 +1,8 @@
-#![allow(missing_docs, clippy::expect_used, clippy::unwrap_used)]
+#![expect(
+    clippy::expect_used,
+    reason = "tests assert on valid FORMAT fixtures after forced collection and forwarding"
+)]
+//! Tests for FORMAT execution while the garbage collector is stressed.
 
 use ncl_lib_format::register;
 use ncl_object::{FunctionObject, Runtime, ThreadContext, Word, make_string, string_ref};

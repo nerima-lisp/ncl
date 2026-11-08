@@ -83,8 +83,9 @@ impl PackageListOperations for Package {
                     .remove_table_symbol(ctx, runtime, false, *name)?
                 {
                     Some(symbol) => Some(symbol),
-                    None => Self::from_word(*package)
-                        .remove_table_symbol(ctx, runtime, true, *name)?,
+                    None => {
+                        Self::from_word(*package).remove_table_symbol(ctx, runtime, true, *name)?
+                    }
                 };
                 let Some(mut symbol) = symbol else {
                     return Ok(false);

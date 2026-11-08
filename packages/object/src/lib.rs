@@ -49,7 +49,7 @@ pub use builtin::{
 pub use builtin_package::BuiltinPackage;
 pub use array_primitives::{
     ArrayElementType, array_dimensions, make_specialized_array, specialized_array_element_type,
-    validate_array_element,
+    specialized_array_ref, specialized_array_set, validate_array_element,
 };
 pub use classify::{ObjectRef, classify, classify_object, object_widetag};
 pub use code::code_slot;

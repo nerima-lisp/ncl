@@ -113,6 +113,61 @@ pub fn make_specialized_array(
     })
 }
 
+/// Read one specialized array element from its object representation.
+///
+/// # Errors
+/// Returns [`ObjectError`] for an invalid array, element, or index.
+pub fn specialized_array_ref(
+    ctx: &ThreadContext,
+    object: Word,
+    index: usize,
+) -> Result<Word, ObjectError> {
+    let len = length(
+        ctx,
+        object,
+        layout::widetag::SPECIALIZED_ARRAY,
+        layout::specialized_array_offset::LENGTH,
+    )?;
+    if index >= len {
+        return Err(ObjectError::TypeError);
+    }
+    validate_array_element(
+        ctx,
+        specialized_array_element_type(ctx, object)?,
+        get(
+            ctx,
+            object,
+            layout::widetag::SPECIALIZED_ARRAY,
+            layout::specialized_array_offset::DATA + index,
+        )?,
+    )
+}
+
+/// Write one specialized array element in its object representation.
+///
+/// # Errors
+/// Returns [`ObjectError`] for an invalid array, element, or index.
+pub fn specialized_array_set(
+    ctx: &mut ThreadContext,
+    object: Word,
+    index: usize,
+    value: Word,
+) -> Result<(), ObjectError> {
+    let len = length(
+        ctx,
+        object,
+        layout::widetag::SPECIALIZED_ARRAY,
+        layout::specialized_array_offset::LENGTH,
+    )?;
+    if index >= len {
+        return Err(ObjectError::TypeError);
+    }
+    let value = validate_array_element(ctx, specialized_array_element_type(ctx, object)?, value)?;
+    let slot = layout::specialized_array_offset::DATA + index;
+    get(ctx, object, layout::widetag::SPECIALIZED_ARRAY, slot)?;
+    put(ctx, object, slot, value)
+}
+
 /// Return the dimensions encoded in an array object's representation.
 ///
 /// # Errors

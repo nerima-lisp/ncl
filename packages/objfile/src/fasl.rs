@@ -69,8 +69,6 @@ impl FaslV1Writer {
     ///
     /// Returns a typed error when a record, cross-reference, or section exceeds the wire contract.
     pub fn write(fasl: &FaslV1<'_>) -> Result<Vec<u8>, FaslError> {
-        fasl_validate::validate_sections(fasl, None)?;
-
         let metadata = fasl_metadata::encode(&fasl.metadata)?;
         let symbols = fasl_symbols::encode(&fasl.symbols)?;
         let constants = fasl_constants::encode(&fasl.constants)?;
@@ -89,6 +87,7 @@ impl FaslV1Writer {
             debug,
             top_level,
         ];
+        fasl_validate::validate_sections(fasl, None)?;
         let lengths = std::array::from_fn(|index| sections[index].len() as u64);
         let directory = Directory::from_lengths(lengths)?;
         let final_entry = directory.entries()[fasl_directory::SECTION_COUNT - 1];
@@ -139,28 +138,28 @@ impl FaslV1Reader {
         let directory = Directory::decode(directory_bytes)?;
         directory.validate_file(bytes)?;
 
-        let (metadata_bytes, metadata_offset) = section(&directory, bytes, SectionId::Metadata)?;
+        let (metadata_bytes, metadata_offset) = section(&directory, bytes, SectionId::Metadata);
         let metadata = fasl_metadata::decode(metadata_bytes, metadata_offset)?;
         validate_compatibility(&header, &metadata, expected)?;
 
-        let (symbol_bytes, symbol_offset) = section(&directory, bytes, SectionId::Symbols)?;
+        let (symbol_bytes, symbol_offset) = section(&directory, bytes, SectionId::Symbols);
         let symbols = fasl_symbols::decode(symbol_bytes, symbol_offset)?;
-        let (constant_bytes, constant_offset) = section(&directory, bytes, SectionId::Constants)?;
+        let (constant_bytes, constant_offset) = section(&directory, bytes, SectionId::Constants);
         let constants = fasl_constants::decode(constant_bytes, constant_offset)?;
-        let (code_bytes, code_offset) = section(&directory, bytes, SectionId::Code)?;
+        let (code_bytes, code_offset) = section(&directory, bytes, SectionId::Code);
         let code = fasl_code::decode(code_bytes, code_offset)?;
         let layouts = code_layouts(&code);
         let (relocation_bytes, relocation_offset) =
-            section(&directory, bytes, SectionId::Relocations)?;
+            section(&directory, bytes, SectionId::Relocations);
         let relocations = fasl_relocation::decode_v1_section(relocation_bytes, relocation_offset)?;
-        let (stack_map_bytes, stack_map_offset) = section(&directory, bytes, SectionId::StackMaps)?;
+        let (stack_map_bytes, stack_map_offset) = section(&directory, bytes, SectionId::StackMaps);
         let stack_maps =
             fasl_stack_map::decode_section(stack_map_bytes, stack_map_offset, &layouts)?;
-        let (debug_bytes, debug_offset) = section(&directory, bytes, SectionId::DebugRecords)?;
+        let (debug_bytes, debug_offset) = section(&directory, bytes, SectionId::DebugRecords);
         let (debug_files, debug_records) =
             fasl_debug::decode_section(debug_bytes, debug_offset, &layouts)?;
         let (top_level_bytes, top_level_offset) =
-            section(&directory, bytes, SectionId::TopLevelRecords)?;
+            section(&directory, bytes, SectionId::TopLevelRecords);
         let top_level = fasl_top_level::decode(top_level_bytes, top_level_offset, &code)?;
         let fasl = FaslV1 {
             architecture: header.architecture,
@@ -187,14 +186,11 @@ fn validate_file_size(file_size: usize) -> Result<(), FaslError> {
     Ok(())
 }
 
-fn section<'a>(
-    directory: &Directory,
-    file: &'a [u8],
-    id: SectionId,
-) -> Result<(&'a [u8], usize), FaslError> {
+fn section<'a>(directory: &Directory, file: &'a [u8], id: SectionId) -> (&'a [u8], usize) {
     let entry = directory.entries()[id.index()];
     let offset = entry.file_offset as usize;
-    Ok((directory.section(file, id)?, offset))
+    let end = offset + entry.byte_length as usize;
+    (&file[offset..end], offset)
 }
 
 fn validate_compatibility(

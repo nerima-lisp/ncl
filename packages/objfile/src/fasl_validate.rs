@@ -44,8 +44,7 @@ pub fn validate_references(
     symbols: &[FaslSymbol],
 ) -> Result<(), FaslError> {
     for group in groups {
-        let count = u32::try_from(group.constants.len())
-            .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
+        let count = group.constants.len() as u32;
         for constant in &group.constants {
             match constant {
                 FaslConstant::SymbolReference(symbol_id) => {
@@ -118,8 +117,7 @@ fn validate_record_counts(
     }
     let mut debug_counts = vec![0_u32; code.len()];
     for record in debug_records {
-        let index = usize::try_from(record.code_object_id)
-            .map_err(|_| FaslError::new(FaslRejectReason::InvalidReference))?;
+        let index = record.code_object_id as usize;
         let count = debug_counts
             .get_mut(index)
             .ok_or_else(|| FaslError::new(FaslRejectReason::InvalidReference))?;
@@ -128,7 +126,7 @@ fn validate_record_counts(
     for (index, object) in code.iter().enumerate() {
         let constant_group = &constants[index];
         let stack_group = &stack_maps[index];
-        if usize::try_from(object.id).ok() != Some(index)
+        if object.id as usize != index
             || constant_group.code_object_id != object.id
             || u32::try_from(constant_group.constants.len()).ok() != Some(object.constant_count)
             || stack_group.code_object_id != object.id
@@ -152,9 +150,7 @@ fn validate_stack_maps(
     }
     for (index, group) in groups.iter().enumerate() {
         let layout = &layouts[index];
-        if usize::try_from(group.code_object_id).ok() != Some(index)
-            || group.code_object_id != layout.id
-        {
+        if group.code_object_id as usize != index || group.code_object_id != layout.id {
             return Err(FaslError::new(FaslRejectReason::InvalidSafepointMap));
         }
         let code_length = u32::try_from(layout.code.len())
@@ -218,10 +214,8 @@ fn validate_relocations(
             FaslRejectReason::InvalidReference,
         )
         .map_err(|_| rejection(FaslRejectReason::InvalidReference, record_offset))?;
-        let width = usize::try_from(relocation.kind.width())
-            .map_err(|_| rejection(FaslRejectReason::InvalidRelocation, record_offset))?;
-        let offset = usize::try_from(relocation.write_offset)
-            .map_err(|_| rejection(FaslRejectReason::InvalidRelocation, record_offset))?;
+        let width = relocation.kind.width() as usize;
+        let offset = relocation.write_offset as usize;
         let end = offset
             .checked_add(width)
             .ok_or_else(|| rejection(FaslRejectReason::InvalidRelocation, record_offset))?;
@@ -307,8 +301,7 @@ fn validate_target(
 ) -> Result<(), FaslError> {
     match relocation.target_kind {
         FaslRelocationTarget::CodeObject => {
-            let index = usize::try_from(relocation.target_index)
-                .map_err(|_| rejection(FaslRejectReason::InvalidReference, record_offset))?;
+            let index = relocation.target_index as usize;
             let target = layouts
                 .get(index)
                 .ok_or_else(|| rejection(FaslRejectReason::InvalidReference, record_offset))?;
@@ -427,7 +420,7 @@ fn pair_immediates_are_zero(
 }
 
 fn instruction_word(code: &[u8], offset: u32) -> Option<u32> {
-    let start = usize::try_from(offset).ok()?;
+    let start = offset as usize;
     let end = start.checked_add(4)?;
     let bytes = code.get(start..end)?;
     let mut word = [0; 4];
@@ -440,7 +433,7 @@ fn code_layout<'a, 'b>(
     id: u32,
     reason: FaslRejectReason,
 ) -> Result<&'a FaslCodeLayout<'b>, FaslError> {
-    let index = usize::try_from(id).map_err(|_| FaslError::new(reason))?;
+    let index = id as usize;
     layouts
         .get(index)
         .filter(|layout| layout.id == id)

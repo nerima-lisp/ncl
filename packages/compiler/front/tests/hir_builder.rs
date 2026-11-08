@@ -5,6 +5,7 @@ mod forms;
 
 mod hir_builder {
     mod basic;
+    mod bindings;
     mod closures;
     mod common;
     mod control;

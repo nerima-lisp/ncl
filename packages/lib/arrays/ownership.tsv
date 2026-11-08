@@ -1,4 +1,4 @@
-package	symbol	kind	ncl-lib-arrays	phase	direct-expansion	notes
+package	symbol	kind	crate	phase	direct-expansion	notes
 COMMON-LISP	ADJUST-ARRAY	function	ncl-lib-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	ADJUSTABLE-ARRAY-P	function	ncl-lib-arrays	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	AREF	function	ncl-lib-arrays	1	yes	array/vector/bit/hash operation

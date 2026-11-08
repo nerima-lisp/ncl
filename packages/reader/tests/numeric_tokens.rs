@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on reader behavior")]
+#![expect(clippy::unwrap_used, reason = "Tests assert on reader behavior.")]
 
 //! Reader regressions for tokens that resemble incomplete numbers.
 

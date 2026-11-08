@@ -106,10 +106,9 @@ fn copy_vector(
 }
 
 #[cfg(test)]
-#[allow(
+#[expect(
     clippy::panic,
-    clippy::unwrap_used,
-    reason = "test assertions fail on reader errors"
+    reason = "Reader test setup and assertions fail with context when an operation returns an error."
 )]
 mod tests {
     use ncl_object::{

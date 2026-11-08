@@ -12,19 +12,10 @@
 //! settings pass through [`ReadOptions`]; dynamic `*readtable*` rebinding is not
 //! wired into lower-level reader calls.
 
-#![allow(
-    clippy::cast_possible_truncation,
-    reason = "character codes are checked against the 256-entry table before indexing, and i128 values are range-checked against the fixnum range before the i64 cast"
-)]
-#![allow(
+#![expect(
     clippy::too_many_arguments,
     reason = "the reader threads ctx, runtime, source, options, and its rooted slots"
 )]
-#![allow(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "rooted Word slots are passed by reference so each read re-reads the collector-updated value; a by-value copy would be stale after GC"
-)]
-
 mod copy_readtable;
 mod copy_readtable_builtin;
 mod dispatch;

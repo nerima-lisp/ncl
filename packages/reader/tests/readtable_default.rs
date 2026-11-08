@@ -1,5 +1,6 @@
-#![allow(missing_docs)]
-#![allow(
+//! Integration tests for the default readtable and its registered symbols.
+
+#![expect(
     clippy::panic,
     reason = "test setup failures should include their context"
 )]

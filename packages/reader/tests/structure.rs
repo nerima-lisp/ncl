@@ -1,5 +1,6 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on reader behavior")]
-#![allow(missing_docs)]
+//! Integration tests for reading structure dispatch literals.
+
+#![expect(clippy::unwrap_used, reason = "Tests assert on reader behavior.")]
 
 use ncl_object::{
     Package, Runtime, ThreadContext, Word, make_simple_vector, simple_vector_ref, structure_ref,

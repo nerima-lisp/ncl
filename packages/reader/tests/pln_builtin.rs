@@ -1,5 +1,6 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on reader behavior")]
-#![allow(missing_docs)]
+//! Integration tests for reader builtin registration and symbol behavior.
+
+#![expect(clippy::unwrap_used, reason = "Tests assert on reader behavior.")]
 
 use ncl_object::{
     FunctionObject, Runtime, ThreadContext, make_string, symbol_name, symbol_package,

@@ -1,4 +1,7 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on coverage failures")]
+#![expect(
+    clippy::unwrap_used,
+    reason = "Tests assert on ownership coverage failures."
+)]
 
 //! Acceptance test for the ownership gate: `ncl-reader` must register every
 //! Phase 1 symbol the reader ownership table assigns to it.

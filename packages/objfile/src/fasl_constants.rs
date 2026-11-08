@@ -94,13 +94,11 @@ pub fn encode(groups: &[FaslConstantGroup]) -> Result<Vec<u8>, FaslError> {
     let mut total_constants = 0_usize;
     let mut section_size = 4_usize;
     for (index, group) in groups.iter().enumerate() {
-        if usize::try_from(group.code_object_id).ok() != Some(index) {
+        if group.code_object_id as usize != index {
             return Err(FaslError::new(FaslRejectReason::InvalidCodeObject));
         }
         check_record_count(group.constants.len())?;
-        total_constants = total_constants
-            .checked_add(group.constants.len())
-            .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
+        total_constants += group.constants.len();
         if total_constants > MAX_RECORDS {
             return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
         }
@@ -108,26 +106,17 @@ pub fn encode(groups: &[FaslConstantGroup]) -> Result<Vec<u8>, FaslError> {
         for constant in &group.constants {
             validate_constant(constant)?;
             let (_, payload_length) = tag_and_payload_length(constant)?;
-            let record_length = usize::try_from(payload_length)
-                .ok()
-                .and_then(|length| length.checked_add(8))
-                .and_then(|length| length.checked_add(3))
-                .map(|length| length & !3)
-                .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
+            let record_length = (payload_length as usize + 11) & !3;
             section_size = checked_section_growth(section_size, record_length)?;
         }
     }
 
-    let group_count = u32::try_from(groups.len())
-        .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
+    let group_count = groups.len() as u32;
     let mut output = SectionWriter::new();
     output.put_u32(group_count);
     for group in groups {
         output.put_u32(group.code_object_id);
-        output.put_u32(
-            u32::try_from(group.constants.len())
-                .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?,
-        );
+        output.put_u32(group.constants.len() as u32);
         for constant in &group.constants {
             encode_constant(constant, &mut output)?;
             output.zero_padding(4);
@@ -150,7 +139,7 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslConstantGroup>
     for expected_id in 0..group_count {
         let group_offset = reader.absolute_position();
         let code_object_id = reader.u32()?;
-        if usize::try_from(code_object_id).ok() != Some(expected_id) {
+        if code_object_id as usize != expected_id {
             return Err(FaslError::at(
                 FaslRejectReason::InvalidCodeObject,
                 group_offset,
@@ -158,9 +147,7 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslConstantGroup>
         }
         let count_offset = reader.absolute_position();
         let constant_count = reader.count(MAX_RECORDS, 8)?;
-        total_constants = total_constants
-            .checked_add(constant_count)
-            .ok_or_else(|| FaslError::at(FaslRejectReason::ResourceLimitExceeded, count_offset))?;
+        total_constants += constant_count;
         if total_constants > MAX_RECORDS {
             return Err(FaslError::at(
                 FaslRejectReason::ResourceLimitExceeded,
@@ -183,13 +170,10 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslConstantGroup>
 }
 
 fn checked_section_growth(current: usize, added: usize) -> Result<usize, FaslError> {
-    let size = current
-        .checked_add(added)
-        .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
-    if section_size_exceeds_limit(size) {
+    if current > MAX_SECTION_BYTES || added > MAX_SECTION_BYTES - current {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
-    Ok(size)
+    Ok(current + added)
 }
 
 const fn section_size_exceeds_limit(size: usize) -> bool {
@@ -262,10 +246,7 @@ fn encode_constant(constant: &FaslConstant, output: &mut SectionWriter) -> Resul
             output.put_u32(*cdr);
         }
         FaslConstant::SimpleVector(indices) => {
-            output.put_u32(
-                u32::try_from(indices.len())
-                    .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?,
-            );
+            output.put_u32(indices.len() as u32);
             for index in indices {
                 output.put_u32(*index);
             }
@@ -273,10 +254,7 @@ fn encode_constant(constant: &FaslConstant, output: &mut SectionWriter) -> Resul
         FaslConstant::Bignum { negative, limbs } => {
             output.put_u8(u8::from(*negative));
             output.put_bytes(&[0; 3]);
-            output.put_u32(
-                u32::try_from(limbs.len())
-                    .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?,
-            );
+            output.put_u32(limbs.len() as u32);
             for limb in limbs {
                 output.put_u32(*limb);
             }
@@ -307,27 +285,12 @@ fn tag_and_payload_length(constant: &FaslConstant) -> Result<(u16, u32), FaslErr
         FaslConstant::String(value) => (6, value.len()),
         FaslConstant::SymbolReference(_) => (7, 4),
         FaslConstant::Cons { .. } => (8, 8),
-        FaslConstant::SimpleVector(indices) => (
-            9,
-            indices
-                .len()
-                .checked_mul(4)
-                .and_then(|length| length.checked_add(4))
-                .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?,
-        ),
-        FaslConstant::Bignum { limbs, .. } => (
-            10,
-            limbs
-                .len()
-                .checked_mul(4)
-                .and_then(|length| length.checked_add(8))
-                .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?,
-        ),
+        FaslConstant::SimpleVector(indices) => (9, indices.len() * 4 + 4),
+        FaslConstant::Bignum { limbs, .. } => (10, limbs.len() * 4 + 8),
         FaslConstant::Ratio { .. } => (11, 8),
         FaslConstant::Complex { .. } => (12, 8),
     };
-    let length = u32::try_from(length)
-        .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
+    let length = length as u32;
     Ok((tag, length))
 }
 
@@ -342,8 +305,7 @@ fn decode_constant(reader: &mut SectionReader<'_>) -> Result<FaslConstant, FaslE
         ));
     }
     let length_offset = reader.absolute_position();
-    let payload_length = usize::try_from(reader.u32()?)
-        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, length_offset))?;
+    let payload_length = reader.u32()? as usize;
     let payload_offset = reader.absolute_position();
     let payload = reader.take(payload_length)?;
     decode_constant_payload(&ConstantPayload {

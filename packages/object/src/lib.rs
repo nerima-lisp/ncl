@@ -31,6 +31,7 @@ mod primitives;
 mod registry_extensions;
 mod rooted_words;
 mod roots;
+mod simple_vector;
 mod runtime;
 mod runtime_sb_symbols;
 pub mod scope;
@@ -87,6 +88,9 @@ pub use roots::{
 };
 pub use roots::{
     with_heap_rooted_mut_slice, with_heap_rooted_slice, with_root, with_rooted_slice, with_roots,
+};
+pub use simple_vector::{
+    make_simple_vector, simple_vector_length, simple_vector_ref, simple_vector_set,
 };
 pub use runtime::Runtime;
 pub use string::{make_string, string_length, string_ref, string_set};

@@ -1,6 +1,6 @@
 //! Fill restored object payloads and resolve serialized references.
 
-use ncl_object::hash_table::HashTable;
+use ncl_hash_tables::HashTable;
 use ncl_object::{
     ObjectError, Runtime, ThreadContext, Word, code_offset, function_offset, instance_offset,
     make_simple_vector, number_offset, rplaca, rplacd, simple_vector_offset, simple_vector_set,

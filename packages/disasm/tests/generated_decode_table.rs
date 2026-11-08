@@ -1,6 +1,9 @@
 //! ISA-derived instruction vectors for both supported decoders.
 
-#![allow(clippy::panic)]
+#![expect(
+    clippy::panic,
+    reason = "The decoder tests use fixed valid byte sequences, so unwrap and expect failures identify a malformed fixture."
+)]
 
 use ncl_disasm::{Architecture, DecodedInstruction, decode};
 

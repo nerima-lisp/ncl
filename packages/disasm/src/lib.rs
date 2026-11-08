@@ -1,6 +1,10 @@
 //! Native instruction decoding for NCL development tools.
 
-#![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
+#![expect(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    reason = "DecodeError carries the shared decode failure cases; label resolution is a best-effort diagnostic helper whose result callers may ignore."
+)]
 
 mod aarch64;
 mod x86_64;
@@ -98,7 +102,10 @@ pub fn resolve_labels(instructions: &[DecodedInstruction]) -> Vec<Option<String>
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::unwrap_used)]
+    #![expect(
+        clippy::expect_used,
+        reason = "The decoder tests use fixed valid byte sequences, so unwrap and expect failures identify a malformed fixture."
+    )]
 
     use super::{Architecture, decode, resolve_labels};
 

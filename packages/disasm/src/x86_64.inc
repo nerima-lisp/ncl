@@ -620,6 +620,10 @@ pub fn decode(bytes: &[u8], base: u64) -> Result<Vec<DecodedInstruction>, Decode
 mod tests {
     use super::*;
     #[test]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "This test decodes a fixed valid branch byte sequence before checking its absolute target.",
+    )]
     fn branches_are_absolute() {
         let x = decode(&[0xe9, 1, 0, 0, 0, 0xc3], 0x1000).unwrap();
         assert_eq!(x[0].branch_target, Some(0x1006));

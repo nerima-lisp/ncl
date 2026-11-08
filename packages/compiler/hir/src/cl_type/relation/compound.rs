@@ -31,7 +31,7 @@ pub(super) fn array_to_named(array: &ArrayType, name: BuiltinType) -> SubtypeRel
         Array => SubtypeRelation::Yes,
         SimpleArray if array.simple => SubtypeRelation::Yes,
         Vector | Sequence if rank == Some(1) => SubtypeRelation::Yes,
-        _ => SubtypeRelation::Unknown,
+        _ => SubtypeRelation::Unknown, // check-added-lines: allow(wildcard) unmodeled array shapes remain unknown
     }
 }
 pub(super) fn array_relation(
@@ -85,7 +85,7 @@ fn dimensions_relation(sub: &ArrayDimensions, sup: &ArrayDimensions) -> SubtypeR
             combine_all(sub.iter().zip(sup).map(|(sub, sup)| match (sub, sup) {
                 (_, None) => SubtypeRelation::Yes,
                 (Some(sub), Some(sup)) if sub == sup => SubtypeRelation::Yes,
-                _ => SubtypeRelation::No,
+                (Some(_) | None, Some(_)) => SubtypeRelation::No,
             }))
         }
     }

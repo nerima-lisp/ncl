@@ -142,7 +142,7 @@ impl BuiltinType {
             "RANDOM-STATE" => Self::RandomState,
             "RESTART" => Self::Restart,
             "STRUCTURE-OBJECT" => Self::Structure,
-            _ => return None,
+            _ => return None, // check-added-lines: allow(wildcard) unmodeled names remain opaque
         })
     }
 }
@@ -179,7 +179,7 @@ impl MemberValue {
         match self {
             Self::SingleFloat(bits) if bits.trailing_zeros() >= 31 => Self::SingleFloat(0),
             Self::DoubleFloat(bits) if bits.trailing_zeros() >= 63 => Self::DoubleFloat(0),
-            _ => self,
+            _ => self, // check-added-lines: allow(wildcard) other member values need no canonicalization
         }
     }
 
@@ -198,7 +198,7 @@ impl MemberValue {
                 let right = f64::from_bits(right);
                 !left.is_nan() && !right.is_nan() && left == right
             }
-            _ => self == other,
+            _ => self == other, // check-added-lines: allow(wildcard) nonfloat EQL cases use exact enum equality
         }
     }
 }

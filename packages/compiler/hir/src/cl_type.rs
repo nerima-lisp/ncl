@@ -150,8 +150,13 @@ impl TypeArena {
         self.nodes.len()
     }
 
-    /// Iterates over type indices and nodes in allocation order.
+    /// Returns whether the arena contains no interned types.
     #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    /// Iterates over type indices and nodes in allocation order.
     pub fn iter(&self) -> impl Iterator<Item = (usize, &ClType)> {
         self.nodes.iter()
     }
@@ -442,7 +447,13 @@ impl TypeArena {
             {
                 Err(ClTypeError::ForeignObject(owner))
             }
-            _ => Ok(()),
+            MemberValue::OpaqueObject { .. }
+            | MemberValue::Nil
+            | MemberValue::True
+            | MemberValue::Integer(_)
+            | MemberValue::Character(_)
+            | MemberValue::SingleFloat(_)
+            | MemberValue::DoubleFloat(_) => Ok(()),
         }
     }
 }

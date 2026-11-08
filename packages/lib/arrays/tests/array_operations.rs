@@ -1,10 +1,5 @@
 //! CLHS array and vector builtin integration tests.
 
-#![expect(
-    clippy::unwrap_used,
-    reason = "fixtures unwrap setup and registration errors"
-)]
-
 use ncl_arrays::{ArrayOptions, array_row_major_ref, array_row_major_set, make_array};
 use ncl_object::{
     ArrayElementType, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, car,

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use ncl_hir::form::{HirDeclaration, HirQuality, OptimizationSetting, ScopeMetadata};
-use ncl_hir::{OptimizationPolicy, OptimizationQuality, ScopeId, SymbolId};
+use ncl_hir::{OptimizationQuality, ScopeId, SymbolId};
 
 use super::HirBuildError;
 use super::context::BuildContext;
@@ -14,19 +14,12 @@ impl BuildContext<'_> {
         declarations: &[Declaration],
     ) -> Result<(), HirBuildError> {
         let mut hir_declarations = Vec::with_capacity(declarations.len());
-        let mut policy = self
-            .policies
-            .last()
-            .copied()
-            .unwrap_or_else(OptimizationPolicy::default);
+        let mut policy = self.policies.last().copied().unwrap_or_default();
 
         for declaration in declarations {
             let hir_declaration = match declaration {
                 Declaration::Special(names) => {
-                    let names = names
-                        .iter()
-                        .map(|name| self.intern(name))
-                        .collect::<Result<Vec<_>, _>>()?;
+                    let names = self.intern_names(names)?;
                     for name in &names {
                         self.add_special(scope, *name);
                     }
@@ -37,10 +30,7 @@ impl BuildContext<'_> {
                     names,
                 } => {
                     let (type_id, source_specifier) = self.type_specifier(type_specifier)?;
-                    let names = names
-                        .iter()
-                        .map(|name| self.intern(name))
-                        .collect::<Result<Vec<_>, _>>()?;
+                    let names = self.intern_names(names)?;
                     HirDeclaration::Type {
                         type_id,
                         source_specifier,
@@ -59,74 +49,20 @@ impl BuildContext<'_> {
                     }
                 }
                 Declaration::Inline(names) => HirDeclaration::Inline {
-                    names: names
-                        .iter()
-                        .map(|name| self.intern(name))
-                        .collect::<Result<Vec<_>, _>>()?,
+                    names: self.intern_names(names)?,
                 },
                 Declaration::Notinline(names) => HirDeclaration::Notinline {
-                    names: names
-                        .iter()
-                        .map(|name| self.intern(name))
-                        .collect::<Result<Vec<_>, _>>()?,
+                    names: self.intern_names(names)?,
                 },
-                Declaration::Optimize(settings) => {
-                    let mut hir_settings = Vec::with_capacity(settings.len());
-                    for setting in settings {
-                        let quality = match setting.quality {
-                            Quality::Speed => {
-                                policy =
-                                    policy.with_speed(OptimizationQuality::new(setting.value)?);
-                                HirQuality::Speed
-                            }
-                            Quality::Space => {
-                                policy =
-                                    policy.with_space(OptimizationQuality::new(setting.value)?);
-                                HirQuality::Space
-                            }
-                            Quality::Safety => {
-                                policy =
-                                    policy.with_safety(OptimizationQuality::new(setting.value)?);
-                                HirQuality::Safety
-                            }
-                            Quality::Debug => {
-                                policy =
-                                    policy.with_debug(OptimizationQuality::new(setting.value)?);
-                                HirQuality::Debug
-                            }
-                            Quality::CompilationSpeed => HirQuality::CompilationSpeed,
-                            Quality::Unknown => {
-                                return Err(HirBuildError::Unsupported(
-                                    super::UnsupportedHirForm::UnknownOptimizationQuality,
-                                ));
-                            }
-                        };
-                        hir_settings.push(OptimizationSetting {
-                            quality,
-                            value: setting.value,
-                        });
-                    }
-                    HirDeclaration::Optimize {
-                        settings: hir_settings,
-                    }
-                }
+                Declaration::Optimize(settings) => Self::lower_optimization(settings, &mut policy)?,
                 Declaration::DynamicExtent(names) => HirDeclaration::DynamicExtent {
-                    names: names
-                        .iter()
-                        .map(|name| self.intern(name))
-                        .collect::<Result<Vec<_>, _>>()?,
+                    names: self.intern_names(names)?,
                 },
                 Declaration::Ignore(names) => HirDeclaration::Ignore {
-                    names: names
-                        .iter()
-                        .map(|name| self.intern(name))
-                        .collect::<Result<Vec<_>, _>>()?,
+                    names: self.intern_names(names)?,
                 },
                 Declaration::Ignorable(names) => HirDeclaration::Ignorable {
-                    names: names
-                        .iter()
-                        .map(|name| self.intern(name))
-                        .collect::<Result<Vec<_>, _>>()?,
+                    names: self.intern_names(names)?,
                 },
                 Declaration::Unknown { name, arguments } => HirDeclaration::Unknown {
                     name: self.intern(name)?,
@@ -155,6 +91,53 @@ impl BuildContext<'_> {
         Ok(())
     }
 
+    fn intern_names(
+        &mut self,
+        names: &[crate::symbols::SymbolRef],
+    ) -> Result<Vec<SymbolId>, HirBuildError> {
+        names.iter().map(|name| self.intern(name)).collect()
+    }
+
+    fn lower_optimization(
+        settings: &[crate::declaration::OptimizeQuality],
+        policy: &mut ncl_hir::OptimizationPolicy,
+    ) -> Result<HirDeclaration, HirBuildError> {
+        let mut hir_settings = Vec::with_capacity(settings.len());
+        for setting in settings {
+            let quality = match setting.quality {
+                Quality::Speed => {
+                    *policy = policy.with_speed(OptimizationQuality::new(setting.value)?);
+                    HirQuality::Speed
+                }
+                Quality::Space => {
+                    *policy = policy.with_space(OptimizationQuality::new(setting.value)?);
+                    HirQuality::Space
+                }
+                Quality::Safety => {
+                    *policy = policy.with_safety(OptimizationQuality::new(setting.value)?);
+                    HirQuality::Safety
+                }
+                Quality::Debug => {
+                    *policy = policy.with_debug(OptimizationQuality::new(setting.value)?);
+                    HirQuality::Debug
+                }
+                Quality::CompilationSpeed => HirQuality::CompilationSpeed,
+                Quality::Unknown => {
+                    return Err(HirBuildError::Unrepresentable(
+                        super::UnsupportedHirForm::UnknownOptimizationQuality,
+                    ));
+                }
+            };
+            hir_settings.push(OptimizationSetting {
+                quality,
+                value: setting.value,
+            });
+        }
+        Ok(HirDeclaration::Optimize {
+            settings: hir_settings,
+        })
+    }
+
     pub(super) fn special_declarations(
         &mut self,
         declarations: &[Declaration],
@@ -163,7 +146,7 @@ impl BuildContext<'_> {
             .iter()
             .filter_map(|declaration| match declaration {
                 Declaration::Special(names) => Some(names.as_slice()),
-                _ => None,
+                _ => None, // check-added-lines: allow(wildcard) this scan collects SPECIAL names only
             })
             .flatten()
             .map(|name| self.intern(name))

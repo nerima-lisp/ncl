@@ -28,10 +28,6 @@ pub enum UnsupportedHirForm {
     DuplicateTag,
     /// The frozen front AST lost an unknown optimization-quality name.
     UnknownOptimizationQuality,
-    /// `FUNCALL` has no function designator argument.
-    MalformedCall,
-    /// A function reference resolves to a non-function lexical binding.
-    FunctionBinding,
 }
 
 /// A typed failure while building HIR from a front AST.
@@ -55,7 +51,9 @@ pub enum HirBuildError {
     /// A typed identity index overflowed.
     Id(IdError),
     /// The current HIR schema cannot preserve this source form.
-    Unsupported(UnsupportedHirForm),
+    Unrepresentable(UnsupportedHirForm),
+    /// Function lookup returned an identity outside the function namespace.
+    InvalidFunctionBinding(ncl_hir::BindingId),
 }
 
 impl Display for HirBuildError {

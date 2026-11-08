@@ -26,17 +26,17 @@ impl BuildContext<'_> {
                     );
                 }
                 if name.is_common_lisp("FUNCALL") && matches!(target, CallTarget::Global(_)) {
-                    let Some((function, arguments)) = arguments.split_first() else {
-                        return Err(HirBuildError::Unsupported(
-                            super::UnsupportedHirForm::MalformedCall,
-                        ));
-                    };
-                    let function = self.lower_expr(function, scope)?;
-                    let arguments = arguments
-                        .iter()
-                        .map(|argument| self.lower_expr(argument, scope))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    (CallTarget::Value(function), arguments)
+                    match arguments.split_first() {
+                        Some((function, arguments)) => {
+                            let function = self.lower_expr(function, scope)?;
+                            let arguments = arguments
+                                .iter()
+                                .map(|argument| self.lower_expr(argument, scope))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            (CallTarget::Value(function), arguments)
+                        }
+                        None => (target, Vec::new()),
+                    }
                 } else {
                     let arguments = arguments
                         .iter()

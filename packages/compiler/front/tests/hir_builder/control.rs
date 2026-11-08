@@ -1,10 +1,12 @@
-use super::common::{context, expand_build, fixture_text, has_node, lower_both_and_verify};
+use super::common::{
+    TestResult, context, expand_build, fixture_text, has_node, lower_both_and_verify, verify_ir,
+};
 use ncl_hir::{MultipleValueOperation, NodeId, NodeKind, Terminator};
 use ncl_ir::{Constant, OpKind};
 use ncl_object::Word;
 
 #[test]
-fn cleanup_and_multiple_value_non_local_exit_are_explicit() {
+fn cleanup_and_multiple_value_non_local_exit_are_explicit() -> TestResult<()> {
     let (id, mut builder, mut fixture) = context(36);
     let done = fixture.user("DONE");
     let values = fixture.form("VALUES", &[Word::fixnum(1), Word::fixnum(2)]);
@@ -16,7 +18,7 @@ fn cleanup_and_multiple_value_non_local_exit_are_explicit() {
         include_str!("../fixtures/hir-bridge/control.lisp"),
         "(block done\n  (unwind-protect\n      (return-from done (multiple-value-prog1 (values 1 2) 3))\n    4))\n",
     );
-    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source);
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
 
     assert!(has_node(&form, |node| matches!(
         node,
@@ -34,10 +36,10 @@ fn cleanup_and_multiple_value_non_local_exit_are_explicit() {
         &node.kind,
         NodeKind::NonLocalExit { target: ncl_hir::ExitTarget::Block(_), cleanups, .. } if cleanups.len() == 1
     )));
-    let hir = ncl_hir::lower::lower(&form, builder.symbols()).expect("lower HIR");
-    let baseline = ncl_compiler_front::lower::lower_toplevel(&expr).expect("lower baseline");
-    ncl_ir::verify(&hir.entry).expect("verify HIR MIR");
-    ncl_ir::verify(&baseline.entry).expect("verify baseline MIR");
+    let hir = ncl_hir::lower::lower(&form, builder.symbols())?;
+    let baseline = ncl_compiler_front::lower::lower_toplevel(&expr)?;
+    verify_ir(&hir.entry, "verify HIR MIR")?;
+    verify_ir(&baseline.entry, "verify baseline MIR")?;
     assert!(emits_named_call(
         &hir.entry,
         "NCL-EXT",
@@ -50,6 +52,7 @@ fn cleanup_and_multiple_value_non_local_exit_are_explicit() {
         "VALUES-LIST",
         true,
     ));
+    Ok(())
 }
 
 fn emits_named_call(
@@ -117,7 +120,7 @@ fn emits_named_call(
 }
 
 #[test]
-fn forward_go_and_setq_form_a_verified_tagbody_cfg() {
+fn forward_go_and_setq_form_a_verified_tagbody_cfg() -> TestResult<()> {
     let (id, mut builder, mut fixture) = context(37);
     let done = fixture.user("DONE");
     let go = fixture.form("GO", &[done]);
@@ -128,36 +131,39 @@ fn forward_go_and_setq_form_a_verified_tagbody_cfg() {
         include_str!("../fixtures/hir-bridge/tagbody.lisp"),
         "(tagbody\n  (go done)\n  (setq x 1)\n  done)\n",
     );
-    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source);
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
     let (tagbody, target) = form
         .nodes()
         .iter()
         .find_map(|(index, node)| match &node.kind {
-            NodeKind::Tagbody { tags, .. } => tags.first().map(|tag| {
-                (
-                    NodeId::try_from_index(id, index).expect("tagbody ID"),
-                    tag.block,
-                )
-            }),
+            NodeKind::Tagbody { tags, .. } => {
+                let tag = tags.first()?;
+                let node = NodeId::try_from_index(id, index).ok()?;
+                Some((node, tag.block))
+            }
             _ => None,
         })
-        .expect("tagbody and forward target");
-    let flow = form.control_flow().function(tagbody).expect("tagbody flow");
+        .ok_or_else(|| std::io::Error::other("tagbody and forward target are missing"))?;
+    let flow = form
+        .control_flow()
+        .function(tagbody)
+        .ok_or_else(|| std::io::Error::other("tagbody flow is missing"))?;
     let entry = form
         .control_flow()
         .block(flow.entry())
-        .expect("tagbody entry");
+        .ok_or_else(|| std::io::Error::other("tagbody entry is missing"))?;
 
     assert!(matches!(entry.terminator(), Terminator::Jump(block) if *block == target));
     assert!(has_node(&form, |node| matches!(
         node,
         NodeKind::Assignment { .. }
     )));
-    lower_both_and_verify(&builder, &form, &expr);
+    lower_both_and_verify(&builder, &form, &expr)?;
+    Ok(())
 }
 
 #[test]
-fn eval_extension_and_load_time_value_are_retained() {
+fn eval_extension_and_load_time_value_are_retained() -> TestResult<()> {
     let (id, mut builder, mut fixture) = context(38);
     let situation = fixture.keyword("EVAL");
     let situations = fixture.list(&[situation]);
@@ -168,7 +174,7 @@ fn eval_extension_and_load_time_value_are_retained() {
         include_str!("../fixtures/hir-bridge/eval.lisp"),
         "(eval-when (:eval)\n  (load-time-value 3 t))\n",
     );
-    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source);
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
 
     assert!(has_node(
         &form,
@@ -181,11 +187,12 @@ fn eval_extension_and_load_time_value_are_retained() {
             ..
         }
     )));
-    lower_both_and_verify(&builder, &form, &expr);
+    lower_both_and_verify(&builder, &form, &expr)?;
+    Ok(())
 }
 
 #[test]
-fn catch_throw_and_progv_retain_dynamic_control() {
+fn catch_throw_and_progv_retain_dynamic_control() -> TestResult<()> {
     let (id, mut builder, mut fixture) = context(39);
     let tag = fixture.keyword("TAG");
     let throw = fixture.form("THROW", &[tag, Word::fixnum(5)]);
@@ -206,7 +213,7 @@ fn catch_throw_and_progv_retain_dynamic_control() {
         include_str!("../fixtures/hir-bridge/dynamic-control.lisp"),
         "(progn\n  (catch :tag (throw :tag 5))\n  (progv '(special) '(5) special)\n  (multiple-value-call #'list (values 1 2)))\n",
     );
-    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source);
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
 
     assert!(has_node(&form, |node| matches!(
         node,
@@ -224,5 +231,6 @@ fn catch_throw_and_progv_retain_dynamic_control() {
         node,
         NodeKind::MultipleValues(MultipleValueOperation::Call { .. })
     )));
-    lower_both_and_verify(&builder, &form, &expr);
+    lower_both_and_verify(&builder, &form, &expr)?;
+    Ok(())
 }

@@ -149,7 +149,7 @@ fn subtype_inner(
                 SubtypeRelation::Unknown
             }
         }
-        _ => SubtypeRelation::Unknown,
+        _ => SubtypeRelation::Unknown, // check-added-lines: allow(wildcard) unmodeled type pairs remain unknown
     };
     cache.insert((sub, sup), result);
     result

@@ -56,7 +56,7 @@ impl NumericValue {
             (Self::DoubleFloat(left), Self::DoubleFloat(right)) => {
                 f64::from_bits(left).partial_cmp(&f64::from_bits(right))
             }
-            _ => None,
+            _ => None, // check-added-lines: allow(wildcard) mixed numeric domains are incomparable
         }
     }
 }
@@ -107,7 +107,7 @@ impl NumericBound {
             NumericValue::DoubleFloat(bits) if bits.trailing_zeros() >= 63 => {
                 NumericValue::DoubleFloat(0)
             }
-            _ => self.value,
+            _ => self.value, // check-added-lines: allow(wildcard) integers and nonzero floats remain unchanged
         };
         Self {
             value,
@@ -328,7 +328,7 @@ fn integer_interval_is_empty(lower: Option<NumericBound>, upper: Option<NumericB
     let (lower, upper) = integer_range_bounds(lower, upper);
     match (lower, upper) {
         (Some(lower), Some(upper)) => lower > upper,
-        _ => false,
+        _ => false, // check-added-lines: allow(wildcard) missing endpoints cannot prove emptiness
     }
 }
 
@@ -338,11 +338,11 @@ fn integer_range_bounds(
 ) -> (Option<i128>, Option<i128>) {
     let lower = lower.and_then(|bound| match bound.value {
         NumericValue::Integer(value) => Some(i128::from(value) + i128::from(!bound.inclusive)),
-        _ => None,
+        _ => None, // check-added-lines: allow(wildcard) constructor enforces integer endpoint domains
     });
     let upper = upper.and_then(|bound| match bound.value {
         NumericValue::Integer(value) => Some(i128::from(value) - i128::from(!bound.inclusive)),
-        _ => None,
+        _ => None, // check-added-lines: allow(wildcard) constructor enforces integer endpoint domains
     });
     (lower, upper)
 }
@@ -357,7 +357,7 @@ fn single_float_range_bounds(
             NumericValue::SingleFloat(bits) => {
                 single_float_order_key(bits) + u32::from(!bound.inclusive)
             }
-            _ => u32::MAX,
+            _ => u32::MAX, // check-added-lines: allow(wildcard) constructor enforces single-float endpoint domains
         },
     );
     let upper = upper.map_or_else(
@@ -366,7 +366,7 @@ fn single_float_range_bounds(
             NumericValue::SingleFloat(bits) => {
                 single_float_order_key(bits) - u32::from(!bound.inclusive)
             }
-            _ => 0,
+            _ => 0, // check-added-lines: allow(wildcard) constructor enforces single-float endpoint domains
         },
     );
     (lower, upper)
@@ -382,7 +382,7 @@ fn double_float_range_bounds(
             NumericValue::DoubleFloat(bits) => {
                 double_float_order_key(bits) + u64::from(!bound.inclusive)
             }
-            _ => u64::MAX,
+            _ => u64::MAX, // check-added-lines: allow(wildcard) constructor enforces double-float endpoint domains
         },
     );
     let upper = upper.map_or_else(
@@ -391,7 +391,7 @@ fn double_float_range_bounds(
             NumericValue::DoubleFloat(bits) => {
                 double_float_order_key(bits) - u64::from(!bound.inclusive)
             }
-            _ => 0,
+            _ => 0, // check-added-lines: allow(wildcard) constructor enforces double-float endpoint domains
         },
     );
     (lower, upper)
@@ -468,7 +468,7 @@ fn upper_bound_contains<T: Copy + Ord>(container: Option<T>, candidate: Option<T
 fn ends_before<T: Ord>(upper: Option<T>, lower: Option<T>) -> bool {
     match (upper, lower) {
         (Some(upper), Some(lower)) => upper < lower,
-        _ => false,
+        _ => false, // check-added-lines: allow(wildcard) unbounded endpoints cannot prove order
     }
 }
 

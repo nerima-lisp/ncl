@@ -216,6 +216,18 @@ mod tests {
     }
 
     #[test]
+    fn code_section_round_trips_multiple_dense_objects_at_aligned_boundaries() {
+        let first_code = [0x90];
+        let second_code = [0xaa; 8];
+        let objects = [object(0, 0, &first_code), object(1, 7, &second_code)];
+        let encoded = must_succeed(encode(&objects));
+        assert_eq!(encoded.len(), 80);
+        assert_eq!(&encoded[33..40], &[0; 7]);
+        assert_eq!(&encoded[76..80], &[0; 4]);
+        assert_eq!(decode(&encoded, 400), Ok(objects.to_vec()));
+    }
+
+    #[test]
     fn code_section_rejects_reserved_bits_bad_entry_and_trailing_bytes() {
         let valid = encode(&[FaslCodeObject {
             id: 0,
@@ -269,6 +281,11 @@ mod tests {
     #[test]
     fn code_decoder_rejects_bad_ids_lengths_padding_and_record_counts() {
         let valid = must_succeed(encode(&[object(0, 0, &[0x90])]));
+
+        assert_eq!(
+            decode(&[1, 0, 0], 320),
+            Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 320))
+        );
 
         let mut bad_id = valid.clone();
         bad_id[4..8].copy_from_slice(&1_u32.to_le_bytes());

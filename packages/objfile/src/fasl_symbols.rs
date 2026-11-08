@@ -260,6 +260,14 @@ mod tests {
         let encoded = encode(&symbols);
         assert_eq!(encoded, Ok(expected.to_vec()));
         assert_eq!(decode(&expected, 320), Ok(symbols.to_vec()));
+
+        assert_eq!(encode(&[]), Ok(vec![0, 0, 0, 0]));
+        assert_eq!(decode(&[0, 0, 0, 0], 320), Ok(Vec::new()));
+        let empty_text = [symbol(0, SymbolBindingKind::Lisp, "", "")];
+        assert_eq!(
+            decode(&must_succeed(encode(&empty_text)), 320),
+            Ok(empty_text.to_vec())
+        );
     }
 
     #[test]
@@ -411,6 +419,13 @@ mod tests {
             Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 336))
         );
 
+        let mut truncated_text = valid.clone();
+        truncated_text[16..20].copy_from_slice(&100_u32.to_le_bytes());
+        assert_eq!(
+            decode(&truncated_text, 320),
+            Err(FaslError::at(FaslRejectReason::InvalidReference, 340))
+        );
+
         assert_eq!(
             decode(&0x0010_0001_u32.to_le_bytes(), 320),
             Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 320))
@@ -441,6 +456,18 @@ mod tests {
         duplicate.extend_from_slice(&second);
         assert_eq!(
             decode(&duplicate, 320),
+            Err(FaslError::at(FaslRejectReason::InvalidReference, 348))
+        );
+
+        let ordered = [
+            symbol(0, SymbolBindingKind::Lisp, "P", "A"),
+            symbol(1, SymbolBindingKind::Lisp, "P", "B"),
+        ];
+        let mut descending = must_succeed(encode(&ordered));
+        descending[25] = b'B';
+        descending[49] = b'A';
+        assert_eq!(
+            decode(&descending, 320),
             Err(FaslError::at(FaslRejectReason::InvalidReference, 348))
         );
     }

@@ -331,6 +331,21 @@ mod private_tests {
     }
 
     #[test]
+    fn debug_decoder_rejects_every_strict_prefix_of_a_complete_record() {
+        let files = [file("a.lisp")];
+        let mut source = record();
+        source.variables.push(DebugVariable {
+            name: "x".into(),
+            location_kind: DebugLocationKind::StackSlot,
+            location_index: 0,
+        });
+        let bytes = must_encode(&files, &[source]);
+        for end in 0..bytes.len() {
+            assert_rejected(&bytes[..end], 500, FaslRejectReason::InvalidDebugRecord);
+        }
+    }
+
+    #[test]
     fn debug_validator_rejects_bad_paths_ranges_and_locations() {
         let invalid = Err(FaslError::new(FaslRejectReason::InvalidDebugRecord));
         assert_eq!(validate(&[file("a/../b.lisp")], &[], &layout()), invalid);
@@ -402,5 +417,9 @@ mod private_tests {
             location_index: 4,
         });
         assert_eq!(validate(&files, &[bad_stack_slot], &layout()), invalid);
+    }
+
+    mod edge_tests {
+        include!("fasl_debug_edge_tests.rs");
     }
 }

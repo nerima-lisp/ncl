@@ -2,10 +2,12 @@ use ncl_hir::{ClTypeKind, HirDeclaration, HirQuality, NodeKind};
 use ncl_ir::{OpKind, Prim, ScalarTypeHint, Terminator};
 use ncl_object::Word;
 
-use super::common::{context, expand_build, fixture_text, has_node, lower_both_and_verify};
+use super::common::{
+    TestResult, context, expand_build, fixture_text, has_node, lower_both_and_verify, verify_ir,
+};
 
 #[test]
-fn declarations_and_type_specifiers_retain_meaning_and_source_data() {
+fn declarations_and_type_specifiers_retain_meaning_and_source_data() -> TestResult<()> {
     let (id, mut builder, mut fixture) = context(34);
     let integer = fixture.cl("INTEGER");
     let integer_range = fixture.list(&[integer, Word::fixnum(0), Word::fixnum(10)]);
@@ -28,12 +30,12 @@ fn declarations_and_type_specifiers_retain_meaning_and_source_data() {
         include_str!("../fixtures/hir-bridge/declarations.lisp"),
         "(locally\n  (declare (type (integer 0 10) x)\n           (optimize (speed 2) (safety 0))\n           (inline helper))\n  (the (integer 0 10) x))\n",
     );
-    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source);
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
     let metadata = form
         .scope_metadata()
         .values()
         .find(|metadata| !metadata.declarations.is_empty())
-        .expect("declaration scope");
+        .ok_or_else(|| std::io::Error::other("declaration scope is missing"))?;
     let mut type_constant = None;
     let mut optimize_seen = false;
     let mut inline_seen = false;
@@ -51,7 +53,8 @@ fn declarations_and_type_specifiers_retain_meaning_and_source_data() {
             _ => {}
         }
     }
-    let type_constant = type_constant.expect("type declaration source constant");
+    let type_constant = type_constant
+        .ok_or_else(|| std::io::Error::other("type declaration source constant is missing"))?;
     assert!(matches!(
         form.type_spec_constant(type_constant),
         Some(ncl_hir::Literal::Cons(_, _))
@@ -63,7 +66,7 @@ fn declarations_and_type_specifiers_retain_meaning_and_source_data() {
     ));
     assert_eq!(metadata.policy.speed().value(), 2);
     assert_eq!(metadata.policy.safety().value(), 0);
-    lower_both_and_verify(&builder, &form, &expr);
+    lower_both_and_verify(&builder, &form, &expr)?;
 
     let foreign_id = ncl_hir::FormId::new(id.compilation_unit(), 1);
     let foreign_integer = fixture.intern("USER", "INTEGER");
@@ -74,7 +77,7 @@ fn declarations_and_type_specifiers_retain_meaning_and_source_data() {
         foreign_id,
         value,
         "(the user:integer 7)",
-    );
+    )?;
     let asserted_type = foreign_form
         .nodes()
         .iter()
@@ -82,15 +85,19 @@ fn declarations_and_type_specifiers_retain_meaning_and_source_data() {
             NodeKind::TypeAssertion { asserted_type, .. } => Some(*asserted_type),
             _ => None,
         })
-        .expect("type assertion");
+        .ok_or_else(|| std::io::Error::other("type assertion is missing"))?;
     assert!(matches!(
-        foreign_form.types().get(asserted_type).map(|ty| ty.kind()),
+        foreign_form
+            .types()
+            .get(asserted_type)
+            .map(ncl_hir::ClType::kind),
         Some(ClTypeKind::Opaque { .. })
     ));
+    Ok(())
 }
 
 #[test]
-fn positive_safety_type_assertion_emits_checked_mir() {
+fn positive_safety_type_assertion_emits_checked_mir() -> TestResult<()> {
     let (id, mut builder, mut fixture) = context(44);
     let safety_name = fixture.cl("SAFETY");
     let safety = fixture.list(&[safety_name, Word::fixnum(3)]);
@@ -105,16 +112,16 @@ fn positive_safety_type_assertion_emits_checked_mir() {
         include_str!("../fixtures/hir-bridge/positive-safety.lisp"),
         "(locally\n  (declare (optimize (safety 3)))\n  (the (integer 0 10) 7))\n",
     );
-    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source);
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
     let policy = form
         .scope_metadata()
         .values()
         .find(|metadata| metadata.policy.safety().value() == 3)
-        .expect("positive safety policy");
+        .ok_or_else(|| std::io::Error::other("positive safety policy is missing"))?;
     assert_eq!(policy.policy.safety().value(), 3);
 
-    let hir = ncl_hir::lower::lower(&form, builder.symbols()).expect("lower checked HIR");
-    ncl_ir::verify(&hir.entry).expect("verify checked HIR MIR");
+    let hir = ncl_hir::lower::lower(&form, builder.symbols())?;
+    verify_ir(&hir.entry, "verify checked HIR MIR")?;
     assert!(hir.entry.blocks.iter().any(|block| {
         block.ops.iter().any(|op| {
             matches!(
@@ -141,8 +148,8 @@ fn positive_safety_type_assertion_emits_checked_mir() {
             .any(|block| matches!(&block.terminator, Terminator::Throw { .. }))
     );
 
-    let baseline = ncl_compiler_front::lower::lower_toplevel(&expr).expect("lower front baseline");
-    ncl_ir::verify(&baseline.entry).expect("verify front baseline MIR");
+    let baseline = ncl_compiler_front::lower::lower_toplevel(&expr)?;
+    verify_ir(&baseline.entry, "verify front baseline MIR")?;
     assert!(baseline.entry.blocks.iter().any(|block| {
         block.ops.iter().any(|op| {
             matches!(
@@ -165,4 +172,5 @@ fn positive_safety_type_assertion_emits_checked_mir() {
             )
         })
     }));
+    Ok(())
 }

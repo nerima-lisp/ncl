@@ -64,8 +64,8 @@ fn use_package_updates_both_lists_and_duplicate_removal_is_stable() {
 #[test]
 fn shadow_and_shadowing_import_are_internal_idempotent_and_uninternable() {
     let (runtime, mut ctx, package) = setup();
-    let shadow_name = ncl_object::make_string(&mut ctx, &runtime, &['S', 'H'])
-        .expect("shadow name");
+    let shadow_name =
+        ncl_object::make_string(&mut ctx, &runtime, &['S', 'H']).expect("shadow name");
     package
         .shadow(&mut ctx, &runtime, shadow_name)
         .expect("shadow");
@@ -79,7 +79,10 @@ fn shadow_and_shadowing_import_are_internal_idempotent_and_uninternable() {
         .expect("duplicate shadow");
     assert_shadowing_list(&ctx, package, &[shadow]);
     assert_eq!(package.unintern(&mut ctx, &runtime, shadow_name), Ok(true));
-    assert_eq!(package.find_symbol(&mut ctx, &runtime, shadow_name), Ok(None));
+    assert_eq!(
+        package.find_symbol(&mut ctx, &runtime, shadow_name),
+        Ok(None)
+    );
     assert_shadowing_list(&ctx, package, &[]);
 
     let source = Package::new(&mut ctx, &runtime, "IMPORT-SOURCE")

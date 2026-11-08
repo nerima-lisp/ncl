@@ -208,3 +208,85 @@ fn range_subtyping_respects_open_endpoints_and_canonical_signed_zero() -> Result
     );
     Ok(())
 }
+
+#[test]
+fn integer_range_membership_respects_each_open_or_closed_endpoint() -> Result<(), Box<dyn Error>> {
+    let mut arena = TypeArena::new(form(111))?;
+    let interval = arena.numeric_range(NumericRange::new(
+        NumericDomain::Integer,
+        Some(NumericBound::exclusive(integer(0))),
+        Some(NumericBound::inclusive(integer(2))),
+    )?)?;
+    let zero = arena.member(vec![MemberValue::Integer(0)])?;
+    let one = arena.member(vec![MemberValue::Integer(1)])?;
+    let two = arena.member(vec![MemberValue::Integer(2)])?;
+    let three = arena.member(vec![MemberValue::Integer(3)])?;
+
+    // CLHS interval designators make the lower bound exclusive and upper bound inclusive.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/12_af.htm
+    assert_eq!(arena.subtype(zero, interval)?, SubtypeRelation::No);
+    assert_eq!(arena.subtype(one, interval)?, SubtypeRelation::Yes);
+    assert_eq!(arena.subtype(two, interval)?, SubtypeRelation::Yes);
+    assert_eq!(arena.subtype(three, interval)?, SubtypeRelation::No);
+    Ok(())
+}
+
+#[test]
+fn adjacent_float_bounds_select_the_smallest_positive_representable_value()
+-> Result<(), Box<dyn Error>> {
+    let mut arena = TypeArena::new(form(112))?;
+    let single_zero_bits = 0.0_f32.to_bits();
+    let smallest_single_bits = f32::from_bits(1).to_bits();
+    let single_range = arena.numeric_range(NumericRange::new(
+        NumericDomain::SingleFloat,
+        Some(NumericBound::exclusive(NumericValue::SingleFloat(
+            single_zero_bits,
+        ))),
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            smallest_single_bits,
+        ))),
+    )?)?;
+    let single_zero = arena.member(vec![MemberValue::SingleFloat(single_zero_bits)])?;
+    let smallest_single = arena.member(vec![MemberValue::SingleFloat(smallest_single_bits)])?;
+    let double_zero_bits = 0.0_f64.to_bits();
+    let smallest_double_bits = f64::from_bits(1).to_bits();
+    let double_range = arena.numeric_range(NumericRange::new(
+        NumericDomain::DoubleFloat,
+        Some(NumericBound::exclusive(NumericValue::DoubleFloat(
+            double_zero_bits,
+        ))),
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            smallest_double_bits,
+        ))),
+    )?)?;
+    let double_zero = arena.member(vec![MemberValue::DoubleFloat(double_zero_bits)])?;
+    let smallest_double = arena.member(vec![MemberValue::DoubleFloat(smallest_double_bits)])?;
+
+    // CLHS interval designators exclude the lower endpoint and include the upper endpoint.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/12_af.htm
+    assert_eq!(
+        arena.subtype(single_zero, single_range)?,
+        SubtypeRelation::No
+    );
+    assert_eq!(
+        arena.subtype(smallest_single, single_range)?,
+        SubtypeRelation::Yes
+    );
+    assert_eq!(
+        arena.subtype(single_range, smallest_single)?,
+        SubtypeRelation::Yes
+    );
+    assert_eq!(
+        arena.subtype(double_zero, double_range)?,
+        SubtypeRelation::No
+    );
+    assert_eq!(
+        arena.subtype(smallest_double, double_range)?,
+        SubtypeRelation::Yes
+    );
+    assert_eq!(
+        arena.subtype(double_range, smallest_double)?,
+        SubtypeRelation::Yes
+    );
+    Ok(())
+}

@@ -49,9 +49,14 @@ pub fn make_string(
 ///
 /// Returns [`ObjectError`] for a non-string or malformed layout.
 pub fn string_length(ctx: &ThreadContext, object: Word) -> Result<usize, ObjectError> {
-    let length = get(ctx, object, layout::widetag::STRING, layout::string_offset::LENGTH)?
-        .as_fixnum()
-        .ok_or(ObjectError::Layout)?;
+    let length = get(
+        ctx,
+        object,
+        layout::widetag::STRING,
+        layout::string_offset::LENGTH,
+    )?
+    .as_fixnum()
+    .ok_or(ObjectError::Layout)?;
     usize::try_from(length).map_err(|_| ObjectError::Layout)
 }
 

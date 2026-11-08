@@ -158,9 +158,7 @@ impl FunctionLowerer<'_> {
         let protected_blocks = self.protected_blocks(start, first_body_block, region_start);
         let body_end = self.current_block;
         let normal = !self.is_terminated();
-        let result = self.builder.fresh_value();
         let merge = if normal {
-            let merge = self.create_block(vec![(Ty::Word, result)]);
             self.position(body_end)?;
             self.leave_handler(id)?;
             let saved = self.capture_multiple_values(value)?;
@@ -170,14 +168,20 @@ impl FunctionLowerer<'_> {
                 }
                 let _ = self.node(*form)?;
             }
-            if !self.is_terminated() {
+            if self.is_terminated() {
+                None
+            } else {
                 let restored = self.restore_multiple_values(saved)?;
+                let cleanup_end = self.current_block;
+                let result = self.builder.fresh_value();
+                let merge = self.create_block(vec![(Ty::Word, result)]);
+                self.position(cleanup_end)?;
                 self.terminate(IrTerminator::Jump {
                     target: merge,
                     args: vec![restored],
                 })?;
+                Some(merge)
             }
-            Some(merge)
         } else {
             None
         };

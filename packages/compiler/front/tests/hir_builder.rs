@@ -6,6 +6,7 @@ mod forms;
 mod hir_builder {
     mod basic;
     mod bindings;
+    mod bridge_errors;
     mod closures;
     mod common;
     mod control;
@@ -15,6 +16,7 @@ mod hir_builder {
     mod identities;
     mod literal_lowering;
     mod literals;
+    mod lowering_paths;
     mod multiple_values;
     mod types;
     mod unsupported;

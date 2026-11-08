@@ -1,9 +1,7 @@
 use super::{DOCUMENTATION, LOCAL_NICKNAMES, LOCK, Package};
 use crate::object_access::{get, put};
 use crate::widetag;
-use crate::{
-    LispError, ObjectError, PackageError, ThreadContext,
-};
+use crate::{LispError, ObjectError, PackageError, ThreadContext};
 use ncl_sys::Word;
 
 impl Package {

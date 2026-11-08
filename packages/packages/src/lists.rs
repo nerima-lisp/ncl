@@ -52,11 +52,7 @@ impl PackageListOperations for Package {
         })
     }
 
-    fn unuse_package(
-        self,
-        ctx: &mut ThreadContext,
-        package: Word,
-    ) -> Result<bool, ObjectError> {
+    fn unuse_package(self, ctx: &mut ThreadContext, package: Word) -> Result<bool, ObjectError> {
         let mut package_self = self.as_word();
         ncl_object::with_root(ctx, &mut package_self, |ctx, package_self| {
             Package::from_word(*package_self).ensure_unlocked(ctx)?;
@@ -115,11 +111,7 @@ impl PackageListOperations for Package {
         })
     }
 
-    fn remove_nickname(
-        self,
-        ctx: &mut ThreadContext,
-        nickname: Word,
-    ) -> Result<bool, ObjectError> {
+    fn remove_nickname(self, ctx: &mut ThreadContext, nickname: Word) -> Result<bool, ObjectError> {
         let mut package = self.as_word();
         ncl_object::with_root(ctx, &mut package, |ctx, package| {
             Package::from_word(*package).ensure_unlocked(ctx)?;
@@ -141,14 +133,13 @@ impl PackageListOperations for Package {
             Package::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             ncl_object::with_root(ctx, &mut name, |ctx, name| {
-                let (mut symbol, new_symbol) =
-                    if let Some((symbol, _)) =
-                        Package::from_word(*package).find_symbol(ctx, runtime, *name)?
-                    {
-                        (symbol, false)
-                    } else {
-                        (make_symbol(ctx, runtime, *name)?, true)
-                    };
+                let (mut symbol, new_symbol) = if let Some((symbol, _)) =
+                    Package::from_word(*package).find_symbol(ctx, runtime, *name)?
+                {
+                    (symbol, false)
+                } else {
+                    (make_symbol(ctx, runtime, *name)?, true)
+                };
                 ncl_object::with_root(ctx, &mut symbol, |ctx, symbol| {
                     if new_symbol {
                         put(
@@ -157,9 +148,8 @@ impl PackageListOperations for Package {
                             ncl_object::layout::symbol_offset::PACKAGE,
                             *package,
                         )?;
-                        Package::from_word(*package).insert_table_symbol(
-                            ctx, runtime, false, *name, *symbol,
-                        )?;
+                        Package::from_word(*package)
+                            .insert_table_symbol(ctx, runtime, false, *name, *symbol)?;
                     }
                     let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
                     while list != Word::NIL {

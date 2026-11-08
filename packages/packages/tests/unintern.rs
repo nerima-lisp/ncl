@@ -13,10 +13,10 @@ fn unintern_does_not_remove_external_when_internal_matches() {
         .unwrap_or_else(|error| panic!("package: {error:?}"));
     let name = make_string(&mut ctx, &runtime, &['D', 'U', 'P'])
         .unwrap_or_else(|error| panic!("name: {error:?}"));
-    let internal = make_symbol(&mut ctx, &runtime, name)
-        .unwrap_or_else(|error| panic!("internal: {error:?}"));
-    let external = make_symbol(&mut ctx, &runtime, name)
-        .unwrap_or_else(|error| panic!("external: {error:?}"));
+    let internal =
+        make_symbol(&mut ctx, &runtime, name).unwrap_or_else(|error| panic!("internal: {error:?}"));
+    let external =
+        make_symbol(&mut ctx, &runtime, name).unwrap_or_else(|error| panic!("external: {error:?}"));
     put(
         &mut ctx,
         internal,
@@ -47,8 +47,5 @@ fn unintern_does_not_remove_external_when_internal_matches() {
         package.table_symbol(&ctx, &runtime, true, name),
         Ok(Some(external))
     );
-    assert_eq!(
-        package.table_symbol(&ctx, &runtime, false, name),
-        Ok(None)
-    );
+    assert_eq!(package.table_symbol(&ctx, &runtime, false, name), Ok(None));
 }

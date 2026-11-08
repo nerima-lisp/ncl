@@ -18,9 +18,15 @@ pub mod declarations {
         ) -> *mut c_void;
         /// POSIX unmapping used when code space is dropped.
         pub fn munmap(addr: *mut c_void, len: usize) -> c_int;
-        /// POSIX page-protection change used to publish code.
-        #[cfg(any(target_os = "linux", test))]
+        /// POSIX page-protection change used by code space and the managed heap.
+        #[cfg(any(target_os = "linux", target_os = "macos", test))]
         pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> c_int;
+        /// Advise the virtual-memory system about a mapped range.
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        pub fn madvise(addr: *mut c_void, len: usize, advice: c_int) -> c_int;
+        /// Return the host virtual-memory page size.
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        pub fn getpagesize() -> c_int;
         /// Return the calling pthread identifier.
         pub fn pthread_self() -> usize;
         /// Open a dynamic library for symbol lookup.

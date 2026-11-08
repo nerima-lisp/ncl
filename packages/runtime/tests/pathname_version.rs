@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for pathname version components and round-tripping.
 
 use ncl_runtime::Runtime;
 

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for logical pathname translation updates and host lookup.
 
 use ncl_runtime::Runtime;
 

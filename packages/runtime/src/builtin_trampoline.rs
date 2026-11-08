@@ -81,7 +81,6 @@ const fn error_result() -> NativeCallResult {
         count: 0,
     }
 }
-#[allow(clippy::too_many_arguments)]
 extern "C" fn make_rest_list_native(
     thread_ptr: *mut Thread,
     a0: u64,
@@ -293,7 +292,10 @@ extern "C" fn undefined_function_dispatch(
     let Some(thread) = NonNull::new(std::ptr::without_provenance_mut::<Thread>(address)) else {
         return error_result();
     };
-    #[allow(clippy::option_if_let_else)]
+    #[expect(
+        clippy::option_if_let_else,
+        reason = "The match avoids the unwrap_or_else form rejected by the added-lines gate."
+    )]
     match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
         let error = LispError::CellError(CellError::UndefinedFunction {
             name: Word::from_bits(symbol),

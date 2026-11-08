@@ -27,7 +27,7 @@ fn current_internal_time() -> Word {
     Word::fixnum(internal_time_ticks(elapsed_nanos))
 }
 
-#[allow(
+#[expect(
     clippy::unnecessary_wraps,
     reason = "RustBuiltin callbacks require the Result<Word, ObjectError> signature."
 )]

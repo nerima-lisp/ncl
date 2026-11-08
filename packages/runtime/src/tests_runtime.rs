@@ -480,7 +480,10 @@ fn assert_macro_expansion_detail<T: std::fmt::Debug>(
 }
 
 #[test]
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "The regression test expects valid macro-expansion and condition setup."
+)]
 fn macro_expansion_preserves_simple_error_report() {
     let mut runtime = Runtime::new().expect("runtime initialization");
     assert_macro_expansion_detail(
@@ -490,14 +493,20 @@ fn macro_expansion_preserves_simple_error_report() {
 }
 
 #[test]
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "The regression test expects valid macro-expansion and condition setup."
+)]
 fn macro_expansion_uses_fallback_when_no_condition_is_pending() {
     let mut runtime = Runtime::new().expect("runtime initialization");
     assert_macro_expansion_detail(&runtime.eval("(loop for index from)"), "TypeError");
 }
 
 #[test]
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "The regression test expects valid macro-expansion and native-load setup."
+)]
 fn compiled_macro_expansion_preserves_native_load_report() {
     let mut runtime = Runtime::new().expect("runtime initialization");
     let path = std::env::temp_dir().join(format!(
@@ -518,7 +527,10 @@ fn compiled_macro_expansion_preserves_native_load_report() {
 }
 
 #[test]
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "The regression test expects valid condition and source setup."
+)]
 fn compiled_macro_expansion_restores_non_simple_condition() {
     let mut runtime = Runtime::new().expect("runtime initialization");
     let path = std::env::temp_dir().join(format!(

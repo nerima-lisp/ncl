@@ -30,7 +30,10 @@ use crate::support::NativeInvocation;
 /// Run `body` with the `ThreadContext` reached through the installed native
 /// callback context, returning `Word::NIL` if no context is installed (which
 /// should not happen for code compiled through this crate).
-#[allow(clippy::option_if_let_else)]
+#[expect(
+    clippy::option_if_let_else,
+    reason = "The match avoids the unwrap_or_else form rejected by the added-lines gate."
+)]
 fn with_context(thread: NonNull<Thread>, body: impl FnOnce(&mut ThreadContext) -> Word) -> Word {
     match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
         body(invocation.context)

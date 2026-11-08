@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for COPY-SEQ on simple and specialized arrays.
 
 use ncl_runtime::Runtime;
 

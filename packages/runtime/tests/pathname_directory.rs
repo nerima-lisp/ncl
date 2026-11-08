@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for pathname directory construction and wild-inferiors.
 
 use ncl_runtime::Runtime;
 

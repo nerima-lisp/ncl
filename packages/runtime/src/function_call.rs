@@ -176,6 +176,9 @@ fn resolve_function(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "The included unit tests unwrap successful function setup and calls to assert results."
+)]
 #[path = "tests_function_call.rs"]
 mod tests;

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for EVAL, COMPILE, and reader-control builtins.
 
 use ncl_object::ObjectError;
 use ncl_runtime::Runtime;

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for loading CLHS examples through the runtime.
 
 use ncl_runtime::Runtime;
 use std::{fs, path::Path};

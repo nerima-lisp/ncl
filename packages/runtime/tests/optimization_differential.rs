@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Runtime tests comparing optimized and unoptimized evaluation under GC stress.
 
 use ncl_runtime::{OptimizationMode, Runtime, RuntimeError, RuntimeOptions};
 use ncl_sys::Word;

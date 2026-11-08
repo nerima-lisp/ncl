@@ -206,7 +206,10 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::expect_used)]
+    #[expect(
+        clippy::expect_used,
+        reason = "This regression test uses expect to make invalid closure setup fail with context."
+    )]
     fn native_make_closure_uses_legacy_entry_code_after_service_miss() {
         let mut runtime = crate::Runtime::new().expect("runtime initialization");
         let entry = 0x1000_usize;

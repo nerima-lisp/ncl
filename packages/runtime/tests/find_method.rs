@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for generic function method lookup and replacement.
 
 use ncl_runtime::Runtime;
 use ncl_sys::Word;

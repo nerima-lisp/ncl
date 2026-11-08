@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for COPY-READTABLE options and copy independence.
 
 use ncl_runtime::Runtime;
 use ncl_sys::Word;

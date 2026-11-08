@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for logical pathname parsing and translation behavior.
 
 use ncl_runtime::Runtime;
 

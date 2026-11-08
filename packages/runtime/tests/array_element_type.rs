@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for array element-type handling across reader and compiler.
 
 use ncl_runtime::Runtime;
 

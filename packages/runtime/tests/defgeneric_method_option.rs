@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for DEFGENERIC method options and dispatch.
 
 use ncl_runtime::Runtime;
 use ncl_sys::Word;

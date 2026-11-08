@@ -23,7 +23,6 @@ pub const fn record_boundary_error(context: &mut ThreadContext, error: ncl_objec
 /// registers; `function_object`/`thread_ptr` are the two pinned registers the
 /// ISA stub moves into ordinary argument slots before tail-calling this
 /// function.
-#[allow(clippy::similar_names, clippy::too_many_arguments)]
 pub(super) extern "C" fn dispatch(
     argc: u64,
     a0: u64,
@@ -44,7 +43,10 @@ pub(super) extern "C" fn dispatch(
     // (its one exemption is the `PoisonError::into_inner` idiom), so this
     // stays a `match` rather than the `Option::map_or_else`/`unwrap_or_else`
     // form clippy would otherwise prefer.
-    #[allow(clippy::option_if_let_else)]
+    #[expect(
+        clippy::option_if_let_else,
+        reason = "The match avoids the unwrap_or_else form rejected by the added-lines gate."
+    )]
     match ncl_sys::with_native_context(thread, |invocation: &mut NativeInvocation<'_>| {
         dispatch_with_context(invocation, argc, [a0, a1, a2, a3], rest, function_object)
     }) {

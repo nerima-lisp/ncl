@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for the class metaobjects shown in CLHS Figure 4-8.
 
 use ncl_runtime::Runtime;
 use ncl_sys::Word;

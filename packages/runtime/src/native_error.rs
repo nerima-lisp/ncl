@@ -116,7 +116,10 @@ pub fn pending_object_error(
         && let Some(condition) = context.take_pending_condition()
     {
         let condition = HeapRootedWord::new(context, condition)?;
-        #[allow(clippy::option_if_let_else)]
+        #[expect(
+            clippy::option_if_let_else,
+            reason = "The match avoids the unwrap_or_else form rejected by the added-lines gate."
+        )]
         let name = match slot_ref(context, Instance::from_word(condition.get()), 0)
             .and_then(|name| symbol_name(context, name))
             .and_then(|name| {

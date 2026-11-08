@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 use crate::Runtime;
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{FunctionArguments, FunctionCaller, MultipleValues, ObjectError, Word};

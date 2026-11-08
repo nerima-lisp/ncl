@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for invoking garbage collection from Lisp.
 
 use ncl_runtime::Runtime;
 use ncl_sys::Word;

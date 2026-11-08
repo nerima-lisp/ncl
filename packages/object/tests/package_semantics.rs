@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for package lookup, symbol identity, and package semantics.
 
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for built-in registration, calling, and arity behavior.
 
 use ncl_object::package::Package;
 use ncl_object::typed::FunctionDesignator;
@@ -80,7 +80,6 @@ const KEY_PARAMETERS: &[Parameter] = &[
     },
 ];
 
-#[allow(clippy::unnecessary_wraps)]
 fn arity_error_converter(
     _ctx: &mut ThreadContext,
     _runtime: &Runtime,

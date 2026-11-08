@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for hash-table equality, weak entries, and regressions.
 
 #[path = "hash_table_regressions/weak_entries.rs"]
 mod weak_entries;

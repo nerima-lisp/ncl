@@ -334,7 +334,10 @@ impl ThreadContext {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "The unit tests fail immediately on invalid runtime setup or control transitions."
+)]
 mod tests {
     use crate::{ObjectError, Runtime, ThreadContext, Word, make_string, make_symbol};
 

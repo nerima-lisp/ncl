@@ -42,7 +42,10 @@ pub enum Rational {
     Ratio(crate::Ratio),
 }
 /// The ANSI real type.
-#[allow(clippy::derive_partial_eq_without_eq)]
+#[expect(
+    clippy::derive_partial_eq_without_eq,
+    reason = "Real and Number may contain floats, whose NaN values make equality non-reflexive."
+)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Real {
     Rational(Rational),

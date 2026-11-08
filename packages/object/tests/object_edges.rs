@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for tagged object classification and edge values.
 
 use ncl_object::{
     ObjectError, ObjectRef, Runtime, ThreadContext, car, cdr, classify, classify_object,

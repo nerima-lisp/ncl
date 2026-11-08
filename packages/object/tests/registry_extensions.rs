@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for package registry extension and conflict behavior.
 
 use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, make_cons, make_string};
 

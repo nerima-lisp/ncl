@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for heap-backed packages and hash-table equality.
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{FindStatus, Package};

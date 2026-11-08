@@ -1,4 +1,5 @@
-#![allow(missing_docs)]
+//! Integration tests for object classification, allocation, and accessors.
+
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::Package;
 use ncl_object::{
@@ -301,7 +302,10 @@ fn non_simple_array_references_survive_minor_and_full_gc() {
     assert_eq!(string_ref(&ctx, value, 0), Ok('x'));
 }
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "This round-trip test checks the object kinds and their rooted values together."
+)]
 fn remaining_object_kinds_round_trip() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();

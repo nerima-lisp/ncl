@@ -1,5 +1,8 @@
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "The unit tests expect valid runtime setup and control transitions."
+)]
 mod tests {
     use crate::{Runtime, ThreadContext, Word, make_string, pop_root, push_root, string_length};
 

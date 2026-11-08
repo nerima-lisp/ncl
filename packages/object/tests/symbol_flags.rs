@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for reading and updating symbol flags.
 
 use ncl_object::{
     ObjectError, Runtime, ThreadContext, make_cons, make_symbol, set_symbol_constant,

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for rooted word stacks and heap-root registration.
 
 use ncl_object::{
     ObjectError, Runtime, ThreadContext, Word, pop_root, push_heap_root, push_root, try_pop_root,

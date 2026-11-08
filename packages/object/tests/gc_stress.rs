@@ -1,4 +1,5 @@
-#![allow(missing_docs)]
+//! Integration tests for object survival during garbage-collection stress.
+
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{

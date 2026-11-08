@@ -1,5 +1,3 @@
-#![allow(clippy::useless_conversion)]
-
 use crate::object_access::{fix, get, put};
 use crate::{ObjectError, Runtime, ThreadContext, allocate, number_offset, widetag, with_roots};
 use ncl_sys::Word;

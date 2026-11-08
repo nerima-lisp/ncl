@@ -1,6 +1,5 @@
-#![allow(
+#![expect(
     clippy::expect_used,
-    clippy::unwrap_used,
     reason = "package tests assert on valid fixture construction"
 )]
 

@@ -119,7 +119,10 @@ impl<'scope, T> HandleVec<'scope, T> {
 /// Owns precise root slots for the duration of a Rust operation.
 pub struct Scope<'ctx> {
     ctx: &'ctx mut ThreadContext,
-    #[allow(clippy::vec_box)]
+    #[expect(
+        clippy::vec_box,
+        reason = "Each boxed Cell address is registered as a GC root and must remain stable when slots grow."
+    )]
     slots: Vec<Box<core::cell::Cell<Word>>>,
     tokens: Vec<RootToken>,
 }
@@ -439,7 +442,10 @@ impl Drop for Scope<'_> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "Scope unit tests expect valid GC root setup and handle operations."
+)]
 mod tests {
     include!("scope_tests.rs");
 }

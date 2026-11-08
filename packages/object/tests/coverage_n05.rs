@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration coverage for object, array, and runtime operations.
 
 use ncl_object::{
     ArrayElementType, ArrayOptions, ObjectError, Package, Runtime, ThreadContext, Word,

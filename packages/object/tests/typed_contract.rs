@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for typed object wrappers and error contracts.
 
 use ncl_object::{
     ArithmeticError, CellError, Character, CodeObject, Cons, ControlError, FileError, Fixnum,

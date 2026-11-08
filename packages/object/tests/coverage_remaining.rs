@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration coverage for object, array, package, stream, and hash-table APIs.
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{

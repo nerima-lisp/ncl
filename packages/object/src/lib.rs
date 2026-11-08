@@ -1,5 +1,8 @@
 //! Typed, safe values and runtime state for NCL.
-#![allow(missing_docs)]
+#![expect(
+    missing_docs,
+    reason = "Public module declarations at this crate root still lack module-level documentation."
+)]
 pub use context::{ConditionHandlerInvoker, PendingRuntimeErrors};
 pub use ncl_sys::Word;
 pub mod array;

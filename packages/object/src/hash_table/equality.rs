@@ -226,7 +226,10 @@ mod tests {
     use ncl_sys::Word;
 
     #[test]
-    #[allow(clippy::map_unwrap_or, clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "The test unwraps successful equality operations to assert their values."
+    )]
     fn equality_and_hashing_cover_strings_numbers_and_depth_limits() {
         let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
         let mut context = ThreadContext::new();
@@ -244,29 +247,19 @@ mod tests {
         );
 
         let bignum = make_bignum_from_i128(&mut context, &runtime, 1_234_567_890_123)
-            .map(Into::into)
-            .unwrap_or(Word::NIL);
+            .map_or(Word::NIL, Into::into);
         let same_bignum = make_bignum_from_i128(&mut context, &runtime, 1_234_567_890_123)
-            .map(Into::into)
-            .unwrap_or(Word::NIL);
-        let double = make_double(&mut context, &runtime, 2.5)
-            .map(Into::into)
-            .unwrap_or(Word::NIL);
-        let same_double = make_double(&mut context, &runtime, 2.5)
-            .map(Into::into)
-            .unwrap_or(Word::NIL);
-        let ratio = make_ratio(&mut context, &runtime, bignum, double)
-            .map(Into::into)
-            .unwrap_or(Word::NIL);
+            .map_or(Word::NIL, Into::into);
+        let double = make_double(&mut context, &runtime, 2.5).map_or(Word::NIL, Into::into);
+        let same_double = make_double(&mut context, &runtime, 2.5).map_or(Word::NIL, Into::into);
+        let ratio =
+            make_ratio(&mut context, &runtime, bignum, double).map_or(Word::NIL, Into::into);
         let same_ratio = make_ratio(&mut context, &runtime, same_bignum, same_double)
-            .map(Into::into)
-            .unwrap_or(Word::NIL);
-        let complex = make_complex(&mut context, &runtime, ratio, bignum)
-            .map(Into::into)
-            .unwrap_or(Word::NIL);
+            .map_or(Word::NIL, Into::into);
+        let complex =
+            make_complex(&mut context, &runtime, ratio, bignum).map_or(Word::NIL, Into::into);
         let same_complex = make_complex(&mut context, &runtime, same_ratio, same_bignum)
-            .map(Into::into)
-            .unwrap_or(Word::NIL);
+            .map_or(Word::NIL, Into::into);
         for (left, right) in [
             (bignum, same_bignum),
             (double, same_double),

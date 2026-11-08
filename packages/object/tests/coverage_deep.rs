@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration coverage for arrays, numeric objects, and hash-table behavior.
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{

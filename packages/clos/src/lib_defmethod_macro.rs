@@ -1,3 +1,109 @@
+static METHOD_COMBINATION_FUNCTION_COUNTER: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+fn define_method_combination_macro_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let mut scope = Scope::new(ctx);
+    let form = scope.root(Local::from_word(args.required(0)?));
+    let parts = macro_list_to_handles(&mut scope, form)?;
+    let name = *parts.as_slice().get(1).ok_or(ObjectError::TypeError)?;
+    let _ = symbol_name_string(scope.context(), scope.get(name).as_word())?;
+    let lambda_list = *parts.as_slice().get(2).ok_or(ObjectError::TypeError)?;
+    macro_list_to_handles(&mut scope, lambda_list)?;
+    let group_specs = *parts.as_slice().get(3).ok_or(ObjectError::TypeError)?;
+    let group_specs = macro_list_to_handles(&mut scope, group_specs)?;
+    let groups_arg = scope.intern(runtime, "NCL", "GROUPS")?;
+    let nth = scope.intern(runtime, COMMON_LISP, "NTH")?;
+    let mut group_bindings = scope.root_many(&[]);
+    for (index, group_spec) in group_specs.as_slice().iter().copied().enumerate() {
+        let group_fields = macro_list_to_handles(&mut scope, group_spec)?;
+        let group_variable = *group_fields
+            .as_slice()
+            .first()
+            .ok_or(ObjectError::TypeError)?;
+        let index = scope.root(Local::from_word(Word::fixnum(
+            i64::try_from(index).map_err(|_| ObjectError::Layout)?,
+        )));
+        let group_value = make_form(&mut scope, runtime, &[nth, index, groups_arg])?;
+        let binding = make_form(&mut scope, runtime, &[group_variable, group_value])?;
+        macro_push_handle(&mut scope, &mut group_bindings, binding);
+    }
+    let body_forms = parts.as_slice().get(4..).ok_or(ObjectError::TypeError)?;
+    if body_forms.is_empty() {
+        return Err(ObjectError::TypeError);
+    }
+    let function_id =
+        METHOD_COMBINATION_FUNCTION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let function_name = scope.intern(
+        runtime,
+        "NCL",
+        &format!("%CLOS-METHOD-COMBINATION-{function_id}"),
+    )?;
+    let options_arg = scope.intern(runtime, "NCL", "OPTIONS")?;
+    let lambda = scope.intern(runtime, COMMON_LISP, "LAMBDA")?;
+    let function = scope.intern(runtime, COMMON_LISP, "FUNCTION")?;
+    let apply = scope.intern(runtime, COMMON_LISP, "APPLY")?;
+    let let_symbol = scope.intern(runtime, COMMON_LISP, "LET")?;
+    let bindings = scope.make_list(runtime, &group_bindings)?;
+    let mut lambda_fields = scope.root_many(&[]);
+    macro_push_handle(&mut scope, &mut lambda_fields, lambda);
+    macro_push_handle(&mut scope, &mut lambda_fields, lambda_list);
+    for body_form in body_forms.iter().copied() {
+        macro_push_handle(&mut scope, &mut lambda_fields, body_form);
+    }
+    let lambda_form = scope.make_list(runtime, &lambda_fields)?;
+    let function_form = make_form(&mut scope, runtime, &[function, lambda_form])?;
+    let apply_form = make_form(&mut scope, runtime, &[apply, function_form, options_arg])?;
+    let body = make_form(&mut scope, runtime, &[let_symbol, bindings, apply_form])?;
+    let defun = scope.intern(runtime, COMMON_LISP, "DEFUN")?;
+    let helper_lambda_list = make_form(&mut scope, runtime, &[groups_arg, options_arg])?;
+    let helper = make_form(
+        &mut scope,
+        runtime,
+        &[defun, function_name, helper_lambda_list, body],
+    )?;
+    let setf = scope.intern(runtime, COMMON_LISP, "SETF")?;
+    let get = scope.intern(runtime, COMMON_LISP, "GET")?;
+    let quoted_name = quoted(&mut scope, runtime, name)?;
+    let definition_key = scope.intern(runtime, "NCL", METHOD_COMBINATION_DEFINITION_KEY_NAME)?;
+    let quoted_definition_key = quoted(&mut scope, runtime, definition_key)?;
+    let definition_place = make_form(
+        &mut scope,
+        runtime,
+        &[get, quoted_name, quoted_definition_key],
+    )?;
+    let quoted_definition = quoted(&mut scope, runtime, form)?;
+    let store_definition = make_form(
+        &mut scope,
+        runtime,
+        &[setf, definition_place, quoted_definition],
+    )?;
+    let function_key = scope.intern(runtime, "NCL", METHOD_COMBINATION_FUNCTION_KEY_NAME)?;
+    let quoted_function_key = quoted(&mut scope, runtime, function_key)?;
+    let function_place = make_form(
+        &mut scope,
+        runtime,
+        &[get, quoted_name, quoted_function_key],
+    )?;
+    let quoted_function_name = quoted(&mut scope, runtime, function_name)?;
+    let store_function = make_form(
+        &mut scope,
+        runtime,
+        &[setf, function_place, quoted_function_name],
+    )?;
+    let progn = scope.intern(runtime, COMMON_LISP, "PROGN")?;
+    let expansion = make_form(
+        &mut scope,
+        runtime,
+        &[progn, helper, store_definition, store_function, quoted_name],
+    )?;
+    Ok(scope.get(expansion).as_word())
+}
+
 static METHOD_FUNCTION_COUNTER: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 

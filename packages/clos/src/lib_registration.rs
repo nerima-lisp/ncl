@@ -37,7 +37,7 @@ fn direct_registration(
     }
 }
 
-const DIRECT_BUILTINS: [DirectBuiltin; 23] = [
+const DIRECT_BUILTINS: [DirectBuiltin; 24] = [
     DirectBuiltin {
         package: BuiltinPackage::CommonLisp,
         name: BuiltinName::new("CLASS-NAME"),
@@ -171,6 +171,12 @@ const DIRECT_BUILTINS: [DirectBuiltin; 23] = [
         callback: clos_next_method_p_builtin,
     },
     DirectBuiltin {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("METHOD-QUALIFIERS"),
+        arity: BuiltinArity::One,
+        callback: mop::method_qualifiers_builtin,
+    },
+    DirectBuiltin {
         package: BuiltinPackage::NclMop,
         name: BuiltinName::new("CLASS-NAME"),
         arity: BuiltinArity::One,
@@ -239,6 +245,10 @@ fn builtin_manifest() -> Vec<Registration> {
     });
     registrations.push(macro_registration("DEFCLASS", defclass_macro_builtin));
     registrations.push(macro_registration("DEFGENERIC", defgeneric_macro_builtin));
+    registrations.push(macro_registration(
+        "DEFINE-METHOD-COMBINATION",
+        define_method_combination_macro_builtin,
+    ));
     registrations.push(macro_registration("DEFMETHOD", defmethod_macro_builtin));
     registrations.push(Registration {
         identifier: BuiltinIdentifier::new(

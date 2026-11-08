@@ -1,7 +1,8 @@
 use super::{
     HASH_TABLE_HIGH_WATER, HASH_TABLE_KV, HASH_TABLE_MARKER, HashMap, HashSet, VECTOR_DATA,
-    Weakness, Word, scan,
+    Weakness, Word,
 };
+use crate::heap::scan;
 pub(super) struct WeakMarkContext<'a> {
     pub(super) state: &'a super::super::State,
     pub(super) full: bool,

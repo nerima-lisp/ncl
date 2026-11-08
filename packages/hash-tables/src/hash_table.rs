@@ -102,11 +102,11 @@ const EPOCH: usize = 4;
 const FREE_HEAD: usize = 5;
 const HIGH_WATER: usize = 6;
 const OCCUPIED: usize = 7;
-pub(crate) const REHASH_SIZE: usize = 8;
-pub(crate) const REHASH_THRESHOLD: usize = 9;
-pub(crate) const MARKER: usize = 10;
-pub(crate) const KV: usize = 11;
-pub(crate) const INDEX: usize = 12;
+const REHASH_SIZE: usize = 8;
+const REHASH_THRESHOLD: usize = 9;
+const MARKER: usize = 10;
+const KV: usize = 11;
+const INDEX: usize = 12;
 const EMPTY: i64 = -1;
 const TOMBSTONE: i64 = -2;
 // Index entries are EMPTY, TOMBSTONE, or positions into live key/value pairs.

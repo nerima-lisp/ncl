@@ -1,4 +1,7 @@
-#![allow(clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "symbol tests create valid package fixtures before asserting cells and property lists"
+)]
 
 use super::super::*;
 use ncl_object::{

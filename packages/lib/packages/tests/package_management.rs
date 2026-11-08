@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Regression test for package deletion preserving locked package state.
 
 use ncl_lib_packages::register as register_package_builtins;
 use ncl_object::{

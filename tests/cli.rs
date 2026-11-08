@@ -409,4 +409,3 @@ fn evals_variadic_calls_and_multiple_values() {
         assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), expected);
     }
 }
-

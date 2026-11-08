@@ -158,7 +158,10 @@ pub const fn kind_number(kind: RelocKind) -> u32 {
 }
 
 pub fn number_kind(value: u32) -> Result<RelocKind, ObjectError> {
-    let index = value as usize;
+    let index = usize::try_from(value).map_err(|_| ObjectError::InvalidField {
+        field: "relocation kind",
+        value: u64::from(value),
+    })?;
     [
         RelocKind::Abs64,
         RelocKind::PcRel32,
@@ -364,10 +367,15 @@ pub fn decode_v1_section(
 }
 
 /// Encodes FASL v1 relocation records in canonical code-object/site order.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "item count is checked against MAX_FASL_RECORDS before encoding"
+)]
 pub fn encode_v1_section(items: &[FaslRelocation]) -> Result<Vec<u8>, FaslError> {
     if items.len() > MAX_FASL_RECORDS {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
+    // check-added-lines: allow(as-cast) item count is bounded by MAX_FASL_RECORDS.
     let count = items.len() as u32;
     let mut ordered = items.to_vec();
     ordered.sort_by_key(|item| (item.code_object_id, item.write_offset));
@@ -391,7 +399,8 @@ pub fn encode_v1_section(items: &[FaslRelocation]) -> Result<Vec<u8>, FaslError>
 }
 
 fn bounded_count(count: u32, offset: usize) -> Result<usize, FaslError> {
-    let count = count as usize;
+    let count = usize::try_from(count)
+        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, offset))?;
     if count > MAX_FASL_RECORDS {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
@@ -402,5 +411,5 @@ fn bounded_count(count: u32, offset: usize) -> Result<usize, FaslError> {
 }
 
 #[cfg(test)]
-#[path = "fasl_relocation_tests.rs"]
+#[path = "tests/fasl_relocation.rs"]
 mod tests;

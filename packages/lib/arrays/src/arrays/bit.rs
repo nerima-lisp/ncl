@@ -10,10 +10,15 @@ use ncl_arrays::{
 use ncl_object::with_roots;
 
 fn bit_value(ctx: &ThreadContext, array: Word, index: usize) -> Result<u8, ObjectError> {
-    match array_row_major_ref(ctx, array, index)?.as_fixnum() {
-        Some(0) => Ok(0),
-        Some(1) => Ok(1),
-        _ => Err(ObjectError::TypeError),
+    let Some(value) = array_row_major_ref(ctx, array, index)?.as_fixnum() else {
+        return Err(ObjectError::TypeError);
+    };
+    if value == 0 {
+        Ok(0)
+    } else if value == 1 {
+        Ok(1)
+    } else {
+        Err(ObjectError::TypeError)
     }
 }
 
@@ -189,10 +194,12 @@ pub(super) fn sbit_builtin(
     let current = bit_value(ctx, array, index)?;
     match args.get(2) {
         Some(value) => {
-            let value = match value.as_fixnum() {
-                Some(0 | 1) => value,
-                _ => return Err(ObjectError::TypeError),
+            let Some(value_fixnum) = value.as_fixnum() else {
+                return Err(ObjectError::TypeError);
             };
+            if value_fixnum != 0 && value_fixnum != 1 {
+                return Err(ObjectError::TypeError);
+            }
             array_row_major_set(ctx, array, index, value)?;
             Ok(value)
         }

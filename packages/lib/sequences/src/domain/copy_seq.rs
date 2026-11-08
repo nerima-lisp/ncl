@@ -1,8 +1,8 @@
 use ncl_object::{
     ArrayElementType, LispError, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    array_dimensions, array_row_major_ref, classify_object, make_simple_vector,
-    make_specialized_array, with_rooted_slice,
+    array_dimensions, classify_object, make_simple_vector, make_specialized_array, with_rooted_slice,
 };
+use ncl_arrays::{array_element_type, array_has_fill_pointer_p, array_row_major_ref, fill_pointer};
 
 use super::{list, sequence_value};
 
@@ -34,13 +34,13 @@ fn copy_array(
         _ => return Err(ObjectError::TypeError), // check-added-lines: allow(wildcard) COPY-SEQ supports rank-one arrays only
     };
     let length = if matches!(classify_object(ctx, object), ObjectRef::Array(_))
-        && ncl_object::array::array_has_fill_pointer_p(ctx, object)?
+        && array_has_fill_pointer_p(ctx, object)?
     {
-        ncl_object::array::fill_pointer(ctx, object)?
+        fill_pointer(ctx, object)?
     } else {
         length
     };
-    let element_type = ncl_object::array::array_element_type(ctx, object)?;
+    let element_type = array_element_type(ctx, object)?;
     let values = (0..length)
         .map(|index| array_row_major_ref(ctx, object, index))
         .collect::<Result<Vec<_>, _>>()?;

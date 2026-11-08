@@ -234,6 +234,44 @@ mod tests {
     }
 
     #[test]
+    fn section_reader_primitive_reads_decode_little_endian_values() {
+        let bytes = [
+            0xaa, 0x34, 0x12, 1, 2, 3, 4, 5, 6, 7, 8, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff,
+        ];
+        let mut reader = SectionReader::new(&bytes, 1400, FaslRejectReason::InvalidCodeObject);
+        assert_eq!(reader.u8(), Ok(0xaa));
+        assert_eq!(reader.u16(), Ok(0x1234));
+        assert_eq!(reader.u64(), Ok(0x0807_0605_0403_0201));
+        assert_eq!(reader.i64(), Ok(-2));
+        assert_eq!(reader.finish(), Ok(()));
+    }
+
+    #[test]
+    fn section_reader_primitive_reads_report_truncated_fields_at_absolute_offsets() {
+        let reason = FaslRejectReason::InvalidTopLevelRecord;
+        let mut short_u8 = SectionReader::new(&[], 1500, reason);
+        assert_eq!(short_u8.u8(), Err(FaslError::at(reason, 1500)));
+
+        let mut short_u16 = SectionReader::new(&[0xaa], 1600, reason);
+        assert_eq!(short_u16.u16(), Err(FaslError::at(reason, 1600)));
+
+        let mut short_u64 = SectionReader::new(&[0; 7], 1700, reason);
+        assert_eq!(short_u64.u64(), Err(FaslError::at(reason, 1700)));
+
+        let mut short_i64 = SectionReader::new(&[0; 7], 1800, reason);
+        assert_eq!(short_i64.i64(), Err(FaslError::at(reason, 1800)));
+    }
+
+    #[test]
+    fn section_reader_take_rejects_length_addition_overflow() {
+        let reason = FaslRejectReason::InvalidCodeObject;
+        let mut reader = SectionReader::new(&[0xaa], 1900, reason);
+        assert_eq!(reader.take(1), Ok(&[0xaa][..]));
+        assert_eq!(reader.take(usize::MAX), Err(FaslError::at(reason, 1901)));
+    }
+
+    #[test]
     fn section_reader_finish_requires_the_section_to_end_at_the_cursor() {
         let mut reader =
             SectionReader::new(&[0xaa, 0xbb], 1200, FaslRejectReason::InvalidCodeObject);

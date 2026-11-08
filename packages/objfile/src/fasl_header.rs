@@ -163,6 +163,12 @@ mod tests {
             128
         );
         assert_eq!(decode(&encoded), Ok(header()));
+
+        let mut x86_header = header();
+        x86_header.architecture = Architecture::X86_64;
+        let x86_encoded = must_succeed(encode(&x86_header));
+        assert_eq!(x86_encoded[10], 1);
+        assert_eq!(decode(&x86_encoded), Ok(x86_header));
     }
 
     #[test]

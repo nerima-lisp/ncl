@@ -490,5 +490,9 @@ mod tests {
             section.validate_file(&[0; 323]),
             Err(FaslError::at(FaslRejectReason::MalformedDirectory, 144))
         );
+        assert_eq!(
+            directory.section(&[], SectionId::Code),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, 336))
+        );
     }
 }

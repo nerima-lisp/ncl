@@ -1,5 +1,8 @@
 //! FASL wire-format validation coverage.
-#![allow(clippy::expect_used)]
+#![expect(
+    clippy::expect_used,
+    reason = "The tests build valid object and FASL fixtures, so unwrap and expect failures identify a broken fixture."
+)]
 
 use ncl_objfile::*;
 

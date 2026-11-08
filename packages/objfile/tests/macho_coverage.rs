@@ -1,5 +1,8 @@
 //! Coverage tests for Mach-O writer paths.
-#![allow(clippy::expect_used, clippy::redundant_clone)]
+#![expect(
+    clippy::expect_used,
+    reason = "Mach-O tests use expect to report failures while constructing valid fixtures."
+)]
 
 use ncl_objfile::*;
 

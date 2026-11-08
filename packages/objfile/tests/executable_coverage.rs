@@ -1,5 +1,9 @@
 //! Executable envelope validation coverage.
-#![allow(clippy::expect_used, clippy::redundant_clone)]
+#![expect(
+    clippy::expect_used,
+    clippy::redundant_clone,
+    reason = "The object fixture is cloned for an independent mutation, while expect reports invalid fixture setup at the assertion site."
+)]
 
 use ncl_objfile::*;
 

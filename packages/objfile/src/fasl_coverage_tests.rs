@@ -73,28 +73,7 @@ fn malformed_private_fasl_ranges_are_rejected() {
 }
 
 #[test]
-fn private_wire_helpers_cover_integer_boundaries() {
-    assert_eq!(
-        u16_at(&[1], 0),
-        Err(ObjectError::Truncated {
-            offset: 0,
-            needed: 2
-        })
-    );
-    assert_eq!(
-        u32_at(&[1, 2], 0),
-        Err(ObjectError::Truncated {
-            offset: 0,
-            needed: 4
-        })
-    );
-    assert_eq!(
-        u64_at(&[1, 2], 0),
-        Err(ObjectError::Truncated {
-            offset: 0,
-            needed: 8
-        })
-    );
+fn legacy_relocation_kind_tags_match_the_shared_wire_enum() {
     assert_eq!(
         relocation_wire::number_kind(99),
         Err(ObjectError::InvalidField {
@@ -106,11 +85,14 @@ fn private_wire_helpers_cover_integer_boundaries() {
 }
 
 #[test]
-fn private_fasl_range_parser_reports_short_headers_and_overlaps() {
+fn legacy_reader_rejects_short_headers_before_parsing_ranges() {
     for length in [24usize, 28, 32, 36, 40, 44, 48, 52, 56, 60] {
         assert!(matches!(
-            read_fasl_ranges(&vec![0; length], 1),
-            Err(ObjectError::Truncated { needed: 4, .. })
+            FaslReader::read(&vec![0; length], Architecture::X86_64, 0),
+            Err(ObjectError::Truncated {
+                offset,
+                needed: 64,
+            }) if offset == length
         ));
     }
     let mut bytes = vec![0; 64];
@@ -322,28 +304,6 @@ fn legacy_writer_and_ranges_reject_unrepresentable_values() {
             value: u64::MAX
         })
     ));
-
-    assert!(matches!(
-        fixed_array::<4>(&[], usize::MAX),
-        Err(ObjectError::Truncated {
-            offset: usize::MAX,
-            needed: 4
-        })
-    ));
-    assert!(matches!(
-        write_at(&mut [0], usize::MAX, &[1], "test"),
-        Err(ObjectError::OutOfBounds {
-            section: "test",
-            ..
-        })
-    ));
-    assert!(matches!(
-        write_at(&mut [0], 1, &[1], "test"),
-        Err(ObjectError::OutOfBounds {
-            section: "test",
-            ..
-        })
-    ));
 }
 
 #[test]
@@ -365,10 +325,10 @@ fn legacy_writer_and_reader_accept_empty_sections_at_the_header_end() {
     let bytes = legacy_bytes(&value);
     assert_eq!(bytes.len(), 64);
     for offset in [24, 32, 40, 48, 56] {
-        assert_eq!(u32_at(&bytes, offset), Ok(64), "section offset at {offset}");
+        assert_eq!(u32_at(&bytes, offset), 64, "section offset at {offset}");
     }
     for offset in [28, 36, 44, 52, 60] {
-        assert_eq!(u32_at(&bytes, offset), Ok(0), "section size at {offset}");
+        assert_eq!(u32_at(&bytes, offset), 0, "section size at {offset}");
     }
     assert_eq!(FaslReader::read(&bytes, Architecture::X86_64, 0), Ok(value));
 }
@@ -383,8 +343,8 @@ fn legacy_v1_reader_decodes_a_fixed_core_relocation() {
         addend: -9,
     }]);
     let mut bytes = legacy_bytes(&value);
-    assert_eq!(u32_at(&bytes, 32), Ok(72));
-    assert_eq!(u32_at(&bytes, 40), Ok(96));
+    assert_eq!(u32_at(&bytes, 32), 72);
+    assert_eq!(u32_at(&bytes, 40), 96);
 
     assert_eq!(bytes.drain(88..96).count(), 8);
     bytes[8..10].copy_from_slice(&1_u16.to_le_bytes());

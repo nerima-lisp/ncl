@@ -158,10 +158,7 @@ pub const fn kind_number(kind: RelocKind) -> u32 {
 }
 
 pub fn number_kind(value: u32) -> Result<RelocKind, ObjectError> {
-    let index = usize::try_from(value).map_err(|_| ObjectError::InvalidField {
-        field: "relocation kind",
-        value: u64::from(value),
-    })?;
+    let index = value as usize;
     [
         RelocKind::Abs64,
         RelocKind::PcRel32,
@@ -323,10 +320,7 @@ pub fn decode_v1_section(
     let mut reader = SectionReader::new(bytes, base_offset, FaslRejectReason::InvalidRelocation);
     let count_offset = reader.absolute_position();
     let count = bounded_count(reader.u32()?, count_offset)?;
-    let expected_length = count
-        .checked_mul(FASL_RELOCATION_RECORD_SIZE)
-        .and_then(|size| size.checked_add(4))
-        .ok_or_else(|| FaslError::at(FaslRejectReason::ResourceLimitExceeded, count_offset))?;
+    let expected_length = count * FASL_RELOCATION_RECORD_SIZE + 4;
     if expected_length != bytes.len() {
         return Err(FaslError::at(
             FaslRejectReason::InvalidRelocation,
@@ -374,8 +368,7 @@ pub fn encode_v1_section(items: &[FaslRelocation]) -> Result<Vec<u8>, FaslError>
     if items.len() > MAX_FASL_RECORDS {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
-    let count = u32::try_from(items.len())
-        .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
+    let count = items.len() as u32;
     let mut ordered = items.to_vec();
     ordered.sort_by_key(|item| (item.code_object_id, item.write_offset));
     if ordered.windows(2).any(|pair| {
@@ -398,8 +391,7 @@ pub fn encode_v1_section(items: &[FaslRelocation]) -> Result<Vec<u8>, FaslError>
 }
 
 fn bounded_count(count: u32, offset: usize) -> Result<usize, FaslError> {
-    let count = usize::try_from(count)
-        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, offset))?;
+    let count = count as usize;
     if count > MAX_FASL_RECORDS {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,

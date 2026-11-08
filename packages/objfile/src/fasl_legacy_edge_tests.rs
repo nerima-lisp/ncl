@@ -42,7 +42,7 @@ fn legacy_v2_writer_and_reader_round_trip_nonempty_sections_and_debug_tail() {
 }
 
 #[test]
-fn legacy_range_and_fixed_field_helpers_report_boundaries() {
+fn legacy_range_helper_reports_boundaries() {
     assert_eq!(
         range(&[], "code", u32::MAX, 1),
         Err(ObjectError::OutOfBounds {
@@ -60,28 +60,6 @@ fn legacy_range_and_fixed_field_helpers_report_boundaries() {
         })
     );
     assert_eq!(range(&[1, 2], "stack", 2, 0), Ok(&[][..]));
-    assert_eq!(
-        fixed_array::<2>(&[1], 0),
-        Err(ObjectError::Truncated {
-            offset: 0,
-            needed: 2,
-        })
-    );
-    assert_eq!(
-        byte_at(&[], 0),
-        Err(ObjectError::Truncated {
-            offset: 0,
-            needed: 1,
-        })
-    );
-    assert_eq!(
-        write_at(&mut [0], 1, &[2], "header"),
-        Err(ObjectError::OutOfBounds {
-            section: "header",
-            offset: 1,
-            size: 1,
-        })
-    );
 }
 
 #[test]

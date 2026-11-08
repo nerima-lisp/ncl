@@ -41,7 +41,6 @@ pub fn parse(control: &str) -> Result<FormatControl, ParseError> {
     let parsed = parser.parse_parts(Boundary {
         terminator: None,
         allow_separator: false,
-        opening_position: 0,
     })?;
     Ok(FormatControl {
         parts: parsed.parts,
@@ -68,7 +67,6 @@ enum Stop {
 struct Boundary {
     terminator: Option<TerminatorKind>,
     allow_separator: bool,
-    opening_position: usize,
 }
 
 impl Parser {
@@ -128,15 +126,6 @@ impl Parser {
             }
         }
         Self::push_literal(&mut parts, &mut literal);
-        if let Some(expected) = boundary.terminator {
-            return Err(Self::error(
-                boundary.opening_position,
-                Some(expected.character()),
-                ParseErrorKind::UnterminatedConstruct {
-                    expected: expected.character(),
-                },
-            ));
-        }
         Ok(ParsedParts {
             parts,
             stop: Stop::End,
@@ -161,9 +150,7 @@ impl Parser {
             if !character.is_ascii_digit() {
                 break;
             }
-            let digit = character.to_digit(10).ok_or_else(|| {
-                Self::error(directive_position, None, ParseErrorKind::InvalidParameter)
-            })?;
+            let digit = u32::from(character) - u32::from('0');
             value = value
                 .checked_mul(10)
                 .and_then(|current| current.checked_add(i128::from(digit)))
@@ -179,9 +166,7 @@ impl Parser {
                 ParseErrorKind::InvalidParameter,
             ));
         }
-        let signed = value.checked_mul(sign).ok_or_else(|| {
-            Self::error(directive_position, None, ParseErrorKind::InvalidParameter)
-        })?;
+        let signed = if sign < 0 { -value } else { value };
         let value = i64::try_from(signed)
             .map_err(|_| Self::error(directive_position, None, ParseErrorKind::InvalidParameter))?;
         Ok(Parameter::Integer(value))
@@ -216,7 +201,6 @@ impl Parser {
                 let parsed = self.parse_parts(Boundary {
                     terminator: Some(close),
                     allow_separator: false,
-                    opening_position: position,
                 })?;
                 let Stop::Terminator(terminator) = parsed.stop else {
                     return Err(Self::error(
@@ -294,7 +278,6 @@ impl Parser {
             let parsed = self.parse_parts(Boundary {
                 terminator: Some(terminator_kind),
                 allow_separator: true,
-                opening_position,
             })?;
             segments.push(ControlSegment {
                 separator,

@@ -81,14 +81,10 @@ impl Parser {
                     return Err(Self::invalid_parameter(header.modifiers.position));
                 }
                 match header.slot {
-                    ParameterSlot::NotStarted => {
+                    ParameterSlot::NotStarted | ParameterSlot::Empty => {
                         header.modifiers.parameters.push(Parameter::Unsupplied);
-                        header.slot = ParameterSlot::Empty;
                     }
                     ParameterSlot::Value => header.slot = ParameterSlot::Empty,
-                    ParameterSlot::Empty => {
-                        header.modifiers.parameters.push(Parameter::Unsupplied);
-                    }
                 }
                 self.index += 1;
                 Ok(None)

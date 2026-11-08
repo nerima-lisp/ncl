@@ -6,13 +6,13 @@
 use super::{Capture, save};
 use crate::format::{HEADER_SIZE, ImageFile};
 use crate::record::{Record, Ref};
+use ncl_arrays::{ArrayOptions, make_array};
 use ncl_hash_tables::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    ArrayElementType, BuiltinImplementation, Package, Runtime, ThreadContext, Word,
-    car, cdr, make_bignum_from_limbs, make_complex, make_cons, make_double, make_ratio,
-    make_simple_vector, make_specialized_array, make_string, simple_vector_ref,
+    ArrayElementType, BuiltinImplementation, Package, Runtime, ThreadContext, Word, car, cdr,
+    make_bignum_from_limbs, make_complex, make_cons, make_double, make_ratio, make_simple_vector,
+    make_specialized_array, make_string, simple_vector_ref,
 };
-use ncl_arrays::{ArrayOptions, make_array};
 use ncl_packages::PackageOperations;
 use ncl_readtables::make_readtable;
 use ncl_streams::make_stream;

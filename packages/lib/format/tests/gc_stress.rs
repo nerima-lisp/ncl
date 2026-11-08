@@ -18,7 +18,7 @@ fn read_string(ctx: &ThreadContext, value: Word) -> String {
         .collect()
 }
 
-#[test]
+#[test] // CLHS 22.3.4.1/.2, 22.3.2
 fn format_arguments_survive_gc_stress_and_strict_forwarding() {
     let runtime = Runtime::new().expect("runtime");
     let mut ctx = ThreadContext::new();

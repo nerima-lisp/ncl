@@ -1,6 +1,7 @@
 //! The recursive reader and its public entry points.
 
 use std::cell::Cell;
+use std::collections::HashMap;
 
 use ncl_object::{HeapRootedWord, Runtime, ThreadContext, Word, make_cons, make_string};
 
@@ -13,6 +14,8 @@ mod list;
 mod options;
 pub use list::read_list;
 pub use options::{current_read_suppression, is_read_suppressed};
+
+pub(super) type ReaderLabels = HashMap<i64, HeapRootedWord>;
 
 /// The float format used when a token has no explicit float marker.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -259,8 +262,8 @@ pub fn read(
         opts.cache_read_base(opts.read_base().value());
     }
     let rt = ncl_object::HeapRootedWord::new(ctx, opts.readtable.object().as_word())?;
-    let labels = ncl_object::HeapRootedWord::new(ctx, Word::NIL)?;
-    read_form(ctx, runtime, source, opts, &rt, &labels).and_then(|form| {
+    let mut labels = ReaderLabels::new();
+    read_form(ctx, runtime, source, opts, &rt, &mut labels).and_then(|form| {
         if form.is_none() && source.peek_char() == Some(')') {
             Err(ReadError::UnmatchedRightParen)
         } else {
@@ -310,22 +313,21 @@ pub fn read_delimited_list(
     opts: &ReadOptions,
 ) -> Result<Word, ReadError> {
     let rt = ncl_object::HeapRootedWord::new(ctx, opts.readtable.object().as_word())?;
-    let labels = ncl_object::HeapRootedWord::new(ctx, Word::NIL)?;
-    read_list(ctx, runtime, source, opts, &rt, &labels)
+    let mut labels = ReaderLabels::new();
+    read_list(ctx, runtime, source, opts, &rt, &mut labels)
 }
 
 /// Read one form, recursing past comments and suppressed forms.
 ///
-/// `rt` and `labels` are rooted slots owned by the caller. They are re-read
-/// before every use, so a collection that moves the readtable or labels table
-/// cannot leave a stale value.
+/// `rt` is a rooted slot owned by the caller. Label values live in the
+/// caller-owned rooted map, so collection cannot leave stale words in it.
 pub fn read_form(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     source: &mut dyn CharSource,
     opts: &ReadOptions,
     rt: &ncl_object::HeapRootedWord,
-    labels: &ncl_object::HeapRootedWord,
+    labels: &mut ReaderLabels,
 ) -> Result<Option<Word>, ReadError> {
     loop {
         skip_whitespace(ctx, source, opts, rt)?;
@@ -410,7 +412,7 @@ fn read_macro_char(
     source: &mut dyn CharSource,
     opts: &ReadOptions,
     rt: &ncl_object::HeapRootedWord,
-    labels: &ncl_object::HeapRootedWord,
+    labels: &mut ReaderLabels,
     c: char,
 ) -> Result<Option<Word>, ReadError> {
     match c {
@@ -439,7 +441,7 @@ fn read_quoted(
     source: &mut dyn CharSource,
     opts: &ReadOptions,
     rt: &ncl_object::HeapRootedWord,
-    labels: &ncl_object::HeapRootedWord,
+    labels: &mut ReaderLabels,
     name: &str,
 ) -> Result<Word, ReadError> {
     let form = read_form(ctx, runtime, source, opts, rt, labels)?;

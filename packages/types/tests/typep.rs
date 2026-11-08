@@ -2,10 +2,9 @@
 
 //! Type predicates for each implemented type.
 
-use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, Package, Runtime, ThreadContext, Word, make_array, make_cons,
-    make_double, make_simple_vector, make_specialized_array, make_string,
+    ArrayElementType, Package, Runtime, ThreadContext, Word, allocate, make_cons, make_double,
+    make_simple_vector, make_specialized_array, make_string, put,
 };
 use ncl_types::{ArrayDimension, IntegerBound, NamedType, TypeSpecifier, Value, typep};
 
@@ -18,6 +17,40 @@ fn setup() -> (Runtime, ThreadContext) {
 
 const fn named(name: NamedType) -> TypeSpecifier {
     TypeSpecifier::Named(name)
+}
+
+fn make_non_simple_array(ctx: &mut ThreadContext, runtime: &Runtime, dimensions: &[usize]) -> Word {
+    let array = allocate(
+        ctx,
+        runtime,
+        ncl_object::layout::widetag::NON_SIMPLE_ARRAY,
+        dimensions.len() + 2,
+    )
+    .unwrap();
+    put(
+        ctx,
+        array,
+        ncl_object::layout::array_offset::ELEMENT_TYPE,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    put(
+        ctx,
+        array,
+        ncl_object::layout::array_offset::RANK,
+        Word::fixnum(i64::try_from(dimensions.len()).unwrap()),
+    )
+    .unwrap();
+    for (index, dimension) in dimensions.iter().copied().enumerate() {
+        put(
+            ctx,
+            array,
+            ncl_object::layout::array_offset::DYNAMIC_BASE + index,
+            Word::fixnum(i64::try_from(dimension).unwrap()),
+        )
+        .unwrap();
+    }
+    array
 }
 
 #[test]
@@ -129,20 +162,7 @@ fn string_vector_array_and_bit_vector() {
     assert!(typep(&mut ctx, bits, &named(NamedType::BitVector)).unwrap());
     assert!(typep(&mut ctx, bits, &named(NamedType::Vector)).unwrap());
 
-    let array = make_array(
-        &mut ctx,
-        &runtime,
-        &[2, 3],
-        ArrayOptions {
-            element_type: ArrayElementType::T,
-            initial_element: Word::NIL,
-            adjustable: false,
-            fill_pointer: None,
-            displaced_to: None,
-            displaced_index_offset: 0,
-        },
-    )
-    .unwrap();
+    let array = make_non_simple_array(&mut ctx, &runtime, &[2, 3]);
     assert!(typep(&mut ctx, array, &named(NamedType::Array)).unwrap());
     assert!(!typep(&mut ctx, array, &named(NamedType::SimpleArray)).unwrap());
 }
@@ -150,9 +170,13 @@ fn string_vector_array_and_bit_vector() {
 #[test]
 fn hash_table() {
     let (runtime, mut ctx) = setup();
-    let table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
-        .unwrap()
-        .as_word();
+    let table = allocate(
+        &mut ctx,
+        &runtime,
+        ncl_object::layout::widetag::HASH_TABLE,
+        1,
+    )
+    .unwrap();
     assert!(typep(&mut ctx, table, &named(NamedType::HashTable)).unwrap());
 }
 
@@ -214,20 +238,7 @@ fn array_and_vector_dimension_checks() {
     };
     assert!(!typep(&mut ctx, vector, &wrong).unwrap());
 
-    let array = make_array(
-        &mut ctx,
-        &runtime,
-        &[2, 3],
-        ArrayOptions {
-            element_type: ArrayElementType::T,
-            initial_element: Word::NIL,
-            adjustable: false,
-            fill_pointer: None,
-            displaced_to: None,
-            displaced_index_offset: 0,
-        },
-    )
-    .unwrap();
+    let array = make_non_simple_array(&mut ctx, &runtime, &[2, 3]);
     let dims = TypeSpecifier::Array {
         element_type: None,
         dimensions: Some(ncl_types::ArrayDimensions::Ranks(vec![

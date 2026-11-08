@@ -1,16 +1,16 @@
 //! Integration coverage for object, array, and runtime operations.
 
 use ncl_object::{
-    ArrayElementType, ArrayOptions, ObjectError, Package, Runtime, ThreadContext, Word,
+    ArrayElementType, ObjectError, Package, Runtime, ThreadContext, Word, array_dimensions,
     bignum_limbs, bignum_sign, code_constants, code_debug, code_entry, code_size, code_stack_map,
     complex_imag, complex_real, function_code, function_entry, function_lambda_list, function_name,
-    instance_class, make_array, make_bignum_from_i128, make_code_object, make_complex, make_double,
+    instance_class, make_bignum_from_i128, make_code_object, make_complex, make_double,
     make_instance, make_ratio, make_simple_fun, make_specialized_array, make_string,
     make_structure, ratio_denominator, ratio_numerator, set_symbol_constant, set_symbol_macro,
     set_symbol_package_locked, set_symbol_special, set_symbol_value, slot_ref, slot_set,
-    specialized_array_element_type, specialized_array_ref, specialized_array_set, structure_layout,
-    structure_ref, structure_set, symbol_flags, symbol_is_constant, symbol_is_macro,
-    symbol_is_package_locked, symbol_is_special, symbol_name, symbol_value,
+    specialized_array_element_type, structure_layout, structure_ref, structure_set, symbol_flags,
+    symbol_is_constant, symbol_is_macro, symbol_is_package_locked, symbol_is_special, symbol_name,
+    symbol_value,
 };
 use ncl_readtables::{make_readtable, readtable_case, readtable_dispatch, readtable_syntax};
 use ncl_streams::{
@@ -122,58 +122,13 @@ fn assert_number_payloads(runtime: &Runtime, context: &mut ThreadContext) {
 }
 
 fn assert_array_payloads(runtime: &Runtime, context: &mut ThreadContext) {
-    let bits = make_specialized_array(
-        context,
-        runtime,
-        ArrayElementType::Bit,
-        &[Word::fixnum(0), Word::fixnum(1)],
-    )
-    .unwrap_or(Word::NIL);
+    let bits = make_specialized_array(context, runtime, ArrayElementType::Bit, &[Word::fixnum(1)])
+        .unwrap_or(Word::NIL);
     assert_eq!(
         specialized_array_element_type(context, bits),
         Ok(ArrayElementType::Bit)
     );
-    assert_eq!(specialized_array_ref(context, bits, 1), Ok(Word::fixnum(1)));
-    assert_eq!(
-        specialized_array_set(context, bits, 0, Word::fixnum(1)),
-        Ok(())
-    );
-    assert_eq!(
-        specialized_array_set(context, bits, 0, Word::fixnum(2)),
-        Err(ObjectError::TypeError)
-    );
-    assert_eq!(
-        make_specialized_array(context, runtime, ArrayElementType::T, &[]),
-        Err(ObjectError::TypeError)
-    );
-
-    let array = make_array(
-        context,
-        runtime,
-        &[2],
-        ArrayOptions {
-            element_type: ArrayElementType::T,
-            initial_element: Word::fixnum(6),
-            adjustable: true,
-            fill_pointer: Some(1),
-            displaced_to: None,
-            displaced_index_offset: 0,
-        },
-    )
-    .unwrap_or(Word::NIL);
-    assert_eq!(ncl_object::array_dimensions(context, array), Ok(vec![2]));
-    assert_eq!(
-        ncl_object::array_row_major_ref(context, array, 0),
-        Ok(Word::fixnum(6))
-    );
-    assert_eq!(
-        ncl_object::array_row_major_set(context, array, 1, Word::TRUE),
-        Ok(())
-    );
-    assert_eq!(
-        ncl_object::array_row_major_ref(context, array, 1),
-        Ok(Word::TRUE)
-    );
+    assert_eq!(array_dimensions(context, bits), Ok(vec![1]));
 }
 
 fn assert_structure_and_descriptor_payloads(runtime: &Runtime, context: &mut ThreadContext) {

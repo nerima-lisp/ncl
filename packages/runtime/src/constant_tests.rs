@@ -5,13 +5,14 @@ mod function_entries_tests;
 mod runtime_error_tests;
 use std::collections::{BTreeMap, HashMap};
 
+use ncl_arrays::{array_element_type, array_row_major_ref};
 use ncl_ir::{
     ArrayElementType as IrArrayElementType, Constant, ConstantIndex, Function, FunctionId,
     SpecializedArrayElementType, StructureKind,
 };
 use ncl_object::{
-    ArrayElementType, HeapRootedWord, Word, array_dimensions, array_row_major_ref, double_value,
-    simple_vector_ref, specialized_array_element_type, specialized_array_ref,
+    ArrayElementType, HeapRootedWord, Word, array_dimensions, double_value, simple_vector_ref,
+    specialized_array_element_type, specialized_array_ref,
 };
 use ncl_sys::{CodeError, SafepointMapError};
 #[test]
@@ -302,7 +303,7 @@ fn general_array_constants_preserve_shape_type_contents_and_cross_table_identity
     );
     // check-added-lines: allow(panic) test-only assertions
     assert_eq!(
-        ncl_object::array::array_element_type(&runtime.context, first_root.get())
+        array_element_type(&runtime.context, first_root.get())
             .map_err(|error| format!("array element type: {error:?}"))?,
         ArrayElementType::Character
     );

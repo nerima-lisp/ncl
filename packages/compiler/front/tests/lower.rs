@@ -10,14 +10,14 @@ mod forms;
 
 use forms::Fixture;
 
+use ncl_arrays::{ArrayOptions, array_row_major_set, make_array};
 use ncl_compiler_front::{Expr, Literal, LowerError, lower_toplevel, lower_toplevel_for_eval};
 use ncl_ir::{
     ArrayElementType, Compare, Constant, Function, HandlerKind, OpKind,
     SpecializedArrayElementType, StructureKind, Terminator, verify,
 };
 use ncl_object::{
-    ArrayElementType as ObjectArrayElementType, ArrayOptions, Word, array_row_major_set,
-    make_array, make_double, make_specialized_array,
+    ArrayElementType as ObjectArrayElementType, Word, make_double, make_specialized_array,
 };
 
 /// Fail with the function's text form when it does not verify.

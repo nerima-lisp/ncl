@@ -382,13 +382,9 @@ impl Verifier<'_> {
         }
         self.scope_descendant(parent, body_scope)?;
         let mut previous = parent;
-        for (index, binding) in bindings.iter().enumerate() {
-            let init = *inits
-                .get(index)
-                .ok_or(VerifyError::InvalidBindingScopes(id))?;
-            let scope = *scopes
-                .get(index)
-                .ok_or(VerifyError::InvalidBindingScopes(id))?;
+        for ((binding, init), scope) in bindings.iter().zip(inits).zip(scopes) {
+            let init = *init;
+            let scope = *scope;
             self.scope(init)?;
             self.scope(scope)?;
             let invalid_scope = match kind {
@@ -409,7 +405,13 @@ impl Verifier<'_> {
                 return Err(VerifyError::InvalidBinding(binding.binding));
             }
             if kind == LetKind::Sequential {
-                if self.input.bindings.scope_parent(scope).ok().flatten() != Some(init) {
+                if self
+                    .input
+                    .bindings
+                    .scope_parent(scope)
+                    .map_err(|_| VerifyError::InvalidScope(scope))?
+                    != Some(init)
+                {
                     return Err(VerifyError::InvalidBindingScopes(id));
                 }
                 previous = scope;

@@ -72,7 +72,10 @@ fn subtype_inner(
     if let Some(result) = cache.get(&(sub, sup)) {
         return *result;
     }
-    let (Some(source_type), Some(target_type)) = (arena.get(sub), arena.get(sup)) else {
+    let Some(source_type) = arena.get(sub) else {
+        return SubtypeRelation::Unknown;
+    };
+    let Some(target_type) = arena.get(sup) else {
         return SubtypeRelation::Unknown;
     };
     let result = match (source_type.kind(), target_type.kind()) {

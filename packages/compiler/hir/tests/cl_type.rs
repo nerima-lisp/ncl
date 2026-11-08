@@ -18,6 +18,8 @@ use ncl_hir::cl_type::{
 };
 use ncl_hir::ids::{CompilationUnitId, FormId, SymbolId, TypeId, TypeSpecConstId};
 
+#[path = "cl_type/coverage_followup.rs"]
+mod coverage_followup;
 #[path = "cl_type/numeric.rs"]
 mod numeric;
 #[path = "cl_type/relation_edges.rs"]

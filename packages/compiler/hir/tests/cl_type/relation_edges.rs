@@ -251,3 +251,86 @@ fn compound_types_prove_not_disjointness_only_when_every_case_is_known()
     );
     Ok(())
 }
+
+#[test]
+fn complements_cover_reachable_disjoint_relation_pairs() -> Result<(), Box<dyn Error>> {
+    let mut arena = TypeArena::new(form(114))?;
+    let integer = named(&mut arena, BuiltinType::Integer)?;
+    let character = named(&mut arena, BuiltinType::Character)?;
+    let string = named(&mut arena, BuiltinType::String)?;
+    let number = named(&mut arena, BuiltinType::Number)?;
+    let atom = named(&mut arena, BuiltinType::Atom)?;
+    let sequence = named(&mut arena, BuiltinType::Sequence)?;
+    let not_integer = arena.complement(integer)?;
+    let not_sequence = arena.complement(sequence)?;
+    let one = member(&mut arena, [MemberValue::Integer(1)])?;
+    let outside = member(&mut arena, [MemberValue::Integer(3)])?;
+    let not_one = arena.complement(one)?;
+    let not_outside = arena.complement(outside)?;
+    let opaque_member = member(
+        &mut arena,
+        [MemberValue::OpaqueObject {
+            owner: CompilationUnitId::new(0),
+            index: 6,
+        }],
+    )?;
+    let not_opaque_member = arena.complement(opaque_member)?;
+    let range = arena.numeric_range(NumericRange::new(
+        NumericDomain::Integer,
+        Some(NumericBound::inclusive(NumericValue::Integer(1))),
+        Some(NumericBound::inclusive(NumericValue::Integer(2))),
+    )?)?;
+
+    let disjoint_names = arena.union([character, string])?;
+    let not_disjoint_names = arena.complement(disjoint_names)?;
+    let opaque = arena.opaque(
+        SymbolId::try_from_index(CompilationUnitId::new(0), 3)?,
+        [OpaqueOperand::Type(integer)],
+    )?;
+    let uncertain_union = arena.union([character, opaque])?;
+    let not_uncertain_union = arena.complement(uncertain_union)?;
+    let integer_and_number = arena.intersection([integer, number])?;
+    let not_integer_and_number = arena.complement(integer_and_number)?;
+    let nested_exclusion = arena.union([not_integer, character])?;
+    let not_nested_exclusion = arena.complement(nested_exclusion)?;
+
+    // CLHS NOT complements compound type specifiers, including OR and AND forms.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_not.htm
+    assert_eq!(arena.subtype(integer, not_integer)?, SubtypeRelation::No);
+    assert_eq!(arena.subtype(character, not_integer)?, SubtypeRelation::Yes);
+    assert_eq!(arena.subtype(number, not_integer)?, SubtypeRelation::No);
+    assert_eq!(arena.subtype(atom, not_sequence)?, SubtypeRelation::Unknown);
+    assert_eq!(arena.subtype(integer, not_one)?, SubtypeRelation::No);
+    assert_eq!(arena.subtype(character, not_one)?, SubtypeRelation::Yes);
+    assert_eq!(
+        arena.subtype(number, not_opaque_member)?,
+        SubtypeRelation::Unknown
+    );
+    assert_eq!(arena.subtype(range, not_one)?, SubtypeRelation::No);
+    assert_eq!(arena.subtype(range, not_outside)?, SubtypeRelation::Yes);
+    assert_eq!(
+        arena.subtype(range, not_opaque_member)?,
+        SubtypeRelation::Unknown
+    );
+    assert_eq!(
+        arena.subtype(integer, not_disjoint_names)?,
+        SubtypeRelation::Yes
+    );
+    assert_eq!(
+        arena.subtype(integer, not_uncertain_union)?,
+        SubtypeRelation::Unknown
+    );
+    assert_eq!(
+        arena.subtype(character, not_integer_and_number)?,
+        SubtypeRelation::Yes
+    );
+    assert_eq!(
+        arena.subtype(integer, not_integer_and_number)?,
+        SubtypeRelation::Unknown
+    );
+    assert_eq!(
+        arena.subtype(integer, not_nested_exclusion)?,
+        SubtypeRelation::Yes
+    );
+    Ok(())
+}

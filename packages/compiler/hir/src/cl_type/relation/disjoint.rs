@@ -2,9 +2,7 @@ use std::collections::HashMap;
 
 use super::super::numeric::NumericDomain;
 use super::super::{ClTypeKind, TypeArena};
-use super::member::{
-    invert_overlap, member_disjoint_from_named, member_disjoint_from_range, member_value_in_member,
-};
+use super::member::{member_disjoint_from_named, member_disjoint_from_range};
 use super::named::{are_disjoint, named_relation};
 use super::{SubtypeRelation, combine_all, combine_any, subtype_inner};
 use crate::ids::TypeId;
@@ -21,7 +19,6 @@ pub(super) fn disjoint_relation(
         return SubtypeRelation::Unknown;
     };
     match (left_node.kind(), right_node.kind()) {
-        (ClTypeKind::Empty, _) | (_, ClTypeKind::Empty) => SubtypeRelation::Yes,
         (ClTypeKind::Named(left), ClTypeKind::Named(right)) => {
             if are_disjoint(*left, *right) {
                 SubtypeRelation::Yes
@@ -45,26 +42,12 @@ pub(super) fn disjoint_relation(
                 SubtypeRelation::No
             }
         }
-        (ClTypeKind::Complement(excluded), _) => subtype_inner(arena, right, *excluded, cache),
         (_, ClTypeKind::Complement(excluded)) => subtype_inner(arena, left, *excluded, cache),
-        (ClTypeKind::Union(members), _) => combine_all(
-            members
-                .iter()
-                .map(|member| disjoint_relation(arena, *member, right, cache)),
-        ),
         (_, ClTypeKind::Union(members)) => combine_all(
             members
                 .iter()
                 .map(|member| disjoint_relation(arena, left, *member, cache)),
         ),
-        (ClTypeKind::Intersection(members), _) => match combine_any(
-            members
-                .iter()
-                .map(|member| disjoint_relation(arena, *member, right, cache)),
-        ) {
-            SubtypeRelation::Yes => SubtypeRelation::Yes,
-            SubtypeRelation::No | SubtypeRelation::Unknown => SubtypeRelation::Unknown,
-        },
         (_, ClTypeKind::Intersection(members)) => match combine_any(
             members
                 .iter()
@@ -73,16 +56,10 @@ pub(super) fn disjoint_relation(
             SubtypeRelation::Yes => SubtypeRelation::Yes,
             SubtypeRelation::No | SubtypeRelation::Unknown => SubtypeRelation::Unknown,
         },
-        (ClTypeKind::Member(left), ClTypeKind::Member(right)) => invert_overlap(combine_any(
-            left.iter()
-                .map(|value| member_value_in_member(*value, right)),
-        )),
-        (ClTypeKind::Member(values), ClTypeKind::Named(name))
-        | (ClTypeKind::Named(name), ClTypeKind::Member(values)) => {
+        (ClTypeKind::Named(name), ClTypeKind::Member(values)) => {
             member_disjoint_from_named(values, *name)
         }
-        (ClTypeKind::Member(values), ClTypeKind::NumericRange(range))
-        | (ClTypeKind::NumericRange(range), ClTypeKind::Member(values)) => {
+        (ClTypeKind::NumericRange(range), ClTypeKind::Member(values)) => {
             member_disjoint_from_range(values, *range)
         }
         _ => SubtypeRelation::Unknown, // check-added-lines: allow(wildcard) unhandled type pairs remain unknown

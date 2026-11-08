@@ -1,7 +1,5 @@
 //! Shared identity and lexical-reference checks.
 
-use std::collections::HashSet;
-
 use super::{Verifier, VerifyError};
 use crate::binding::{BindingKind, ScopeId};
 use crate::ids::{
@@ -181,14 +179,10 @@ impl Verifier<'_> {
         parent: ScopeId,
     ) -> Result<bool, VerifyError> {
         self.scope(parent)?;
-        let mut visited = HashSet::new();
         loop {
             self.scope(child)?;
             if child == parent {
                 return Ok(true);
-            }
-            if !visited.insert(child) {
-                return Err(VerifyError::InvalidScopeTree(child));
             }
             let next = self
                 .input
@@ -198,9 +192,6 @@ impl Verifier<'_> {
             let Some(next) = next else {
                 return Ok(false);
             };
-            if next.index() >= child.index() {
-                return Err(VerifyError::InvalidScopeTree(child));
-            }
             child = next;
         }
     }

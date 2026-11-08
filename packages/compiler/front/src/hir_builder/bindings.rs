@@ -428,13 +428,11 @@ impl BuildContext<'_> {
         symbol: &SymbolRef,
     ) -> Result<CallTarget, HirBuildError> {
         let symbol_id = self.intern(symbol)?;
-        match self
-            .form
+        self.form
             .bindings_mut()
             .resolve_function(scope, symbol_id)?
-        {
-            Some(binding) => Ok(CallTarget::Local(binding)),
-            None => Ok(CallTarget::Global(symbol_id)),
-        }
+            .map_or(Ok(CallTarget::Global(symbol_id)), |binding| {
+                Ok(CallTarget::Local(binding))
+            })
     }
 }

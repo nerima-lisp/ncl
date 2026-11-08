@@ -33,9 +33,10 @@ pub(super) fn named_to_range(name: BuiltinType, range: NumericRange) -> SubtypeR
     let full_domain = range.lower().is_none() && range.upper().is_none();
     match (name, range.domain()) {
         (Integer, NumericDomain::Integer) if full_domain => SubtypeRelation::Yes,
-        (SingleFloat, NumericDomain::SingleFloat) | (DoubleFloat, NumericDomain::DoubleFloat)
-            if range.covers_domain() =>
-        {
+        (SingleFloat, NumericDomain::SingleFloat) if range.covers_single_float_domain() => {
+            SubtypeRelation::Yes
+        }
+        (DoubleFloat, NumericDomain::DoubleFloat) if range.covers_double_float_domain() => {
             SubtypeRelation::Yes
         }
         (SingleFloat, NumericDomain::SingleFloat) | (DoubleFloat, NumericDomain::DoubleFloat) => {

@@ -348,7 +348,9 @@ impl FunctionLowerer<'_> {
 
     pub(super) fn close_handlers_since(&mut self, depth: usize) -> Result<(), LowerError> {
         while self.active_handlers.len() > depth && !self.is_terminated() {
-            let id = self.active_handlers[self.active_handlers.len() - 1];
+            let Some(id) = self.active_handlers.last().copied() else {
+                break;
+            };
             self.leave_handler(id)?;
         }
         Ok(())
@@ -364,7 +366,6 @@ impl FunctionLowerer<'_> {
             .chain(self.created_blocks.iter().skip(first_new_block).copied())
             .collect::<Vec<_>>();
         let candidate_set = candidates.iter().copied().collect::<HashSet<_>>();
-        let nested = &self.handler_regions[first_new_region..];
         let mut pending = vec![start];
         let mut reachable = HashSet::new();
         while let Some(block) = pending.pop() {
@@ -374,7 +375,7 @@ impl FunctionLowerer<'_> {
             if let Some(term) = self.terminators.get(&block) {
                 pending.extend(ir_successors(term));
             }
-            for region in nested {
+            for region in self.handler_regions.iter().skip(first_new_region) {
                 if region.protected.contains(&block) {
                     pending.push(region.handler);
                     pending.extend(region.cleanup);

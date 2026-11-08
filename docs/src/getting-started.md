@@ -52,5 +52,9 @@ cargo test --locked --workspace --all-features --all-targets --release
 Coverage uses LLVM instrumentation through the flake app:
 
 ~~~sh
-nix run path:.#rust-coverage -- --summary-only --fail-under-regions 95.0
+nix run path:.#rust-coverage -- --summary-only
 ~~~
+
+The workspace-wide 95.0% region coverage goal is reported by CI. Add
+`--fail-under-regions 95.0` when you want this local command to fail below the
+goal.

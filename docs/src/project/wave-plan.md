@@ -181,9 +181,14 @@ ncl-stdlib -> existing dependencies plus ncl-threads, ncl-ffi, ncl-image, ncl-co
 ## Test requirements
 
 - Pass each crate's `registers_every_owned_symbol` test.
-- Target at least 95% regions coverage per crate. CI currently enforces the
-  threshold at workspace level; its coverage job does not check the per-crate
-  target.
+- Target at least 95% regions coverage per crate. CI reports the workspace
+  95% goal but does not block on that total. Its blocking coverage gate
+  compares changed source paths with the merge-base report: the combined
+  missed-region count must not increase unless the changed paths reach 95%,
+  and each changed path present in the parent report follows the same rule.
+  When the exact merge-base run has no artifact, CI uses the nearest ancestor
+  run with a non-expired coverage artifact and fails closed if none is
+  available.
 - For local lane work, run `cargo test -p <crate>` for each changed crate. If a
   test under `tests/` changes, run `cargo test -p ncl --test <name>`.
 - CI runs formatting, checks, debug and release tests, and release builds on
@@ -196,7 +201,7 @@ cargo test --locked --workspace --all-features --all-targets
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo build --locked --workspace --release
 cargo test --locked --workspace --all-features --all-targets --release
-cargo llvm-cov --locked --workspace --all-features --all-targets --summary-only --fail-under-regions 95.0
+cargo llvm-cov --locked --workspace --all-features --all-targets --summary-only
 ```
 
 - Run `python3 scripts/check_standards.py`.

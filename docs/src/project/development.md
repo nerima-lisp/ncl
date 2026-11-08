@@ -90,21 +90,33 @@ you want the same toolchain and supporting programs used by the project gates.
 
 ## Rust coverage
 
-Run the Rust workspace tests with LLVM coverage and the current ratchet floors:
+Run the Rust workspace tests with LLVM coverage and inspect the workspace report:
 
 ~~~sh
 nix run path:.#rust-coverage -- --summary-only
 ~~~
 
-To inspect coverage against the configured CI minimum, include the threshold:
+The workspace-wide 95.0% region figure is a goal. CI reports it on every
+coverage run and warns when it is below the goal. The blocking path gate uses
+only source paths in the `cargo llvm-cov` summary; a path missing from either
+summary has zero regions. Changed source paths pass when their combined missed
+region count does not exceed the parent's count, or their combined coverage is
+at least 95.0%. Each changed path present in the parent summary must also have
+no increase in missed regions or reach 95.0% coverage individually.
+The path gate runs on pull requests and non-main branch pushes. Main pushes
+skip it but still upload the workspace summary for later baselines.
+
+To make a local command fail when the workspace total is below 95.0%, include
+the threshold:
 
 ~~~sh
 nix run path:.#rust-coverage -- --summary-only --fail-under-regions 95.0
 ~~~
 
-CI enforces 95.0% region coverage. The displayed workspace `TOTAL` can differ
-from the value used by cargo-llvm-cov for the threshold check; verify both the
-reported summary and the command exit status.
+For the path gate, CI uses the exact merge-base coverage artifact when
+available. If that main run was cancelled or has no artifact, CI uses the
+nearest ancestor run with a non-expired coverage artifact. The gate fails when
+no such ancestor artifact is available.
 
 For a browsable report, use `--html --output-dir artifacts/rust-coverage` in
 place of `--summary-only`. The flake app supplies the pinned Rust and LLVM

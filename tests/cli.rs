@@ -3,11 +3,11 @@
 use std::fs;
 use std::io::Write;
 use std::path::Path;
-use std::process::{Child, Command, Output, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::process::{Command, Stdio};
 
-const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
+#[path = "common/process.rs"]
+mod process;
+use process::{output, wait_with_timeout};
 
 #[path = "cli/setf.rs"]
 mod setf;
@@ -19,41 +19,6 @@ fn ncl() -> Command {
 fn path_str(path: &Path) -> &str {
     path.to_str()
         .unwrap_or_else(|| panic!("non-UTF-8 temp path"))
-}
-
-fn output(command: &mut Command) -> Output {
-    let child = match command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(error) => panic!("failed to run ncl: {error}"),
-    };
-    wait_with_timeout(child)
-}
-
-fn wait_with_timeout(mut child: Child) -> Output {
-    let deadline = Instant::now() + CHILD_TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return match child.wait_with_output() {
-                    Ok(output) => output,
-                    Err(error) => panic!("failed to collect ncl output: {error}"),
-                };
-            }
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-            Ok(None) => {
-                if let Err(error) = child.kill() {
-                    panic!("ncl timed out and could not be killed: {error}");
-                }
-                let _ = child.wait();
-                panic!("ncl did not exit within {CHILD_TIMEOUT:?}");
-            }
-            Err(error) => panic!("failed to poll ncl: {error}"),
-        }
-    }
 }
 
 #[test]
@@ -445,47 +410,3 @@ fn evals_variadic_calls_and_multiple_values() {
     }
 }
 
-#[test]
-fn ansi_harness_fixture_loads_and_reaches_begin() {
-    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ansi_harness");
-    let source = r#"
-        (progn
-          (load "gclload1.lsp")
-          (load "gclload2.lsp")
-          (format t "BEGIN ansi-harness-smoke~%")
-          (unless (and (get 'randomized 'ncl::%clos-method-combination-definition)
-                       (positive-integer-qualifier-p '(1))
-                       (not (positive-integer-qualifier-p '(0))))
-            (error "ANSI harness fixture definitions were not registered"))
-          (format t "PASS ansi-harness-smoke~%")
-          t)
-    "#;
-    let result = output(ncl().current_dir(fixture_dir).args(["--eval", source]));
-    assert!(result.status.success(), "{result:?}");
-    let stdout = String::from_utf8_lossy(&result.stdout);
-    assert!(stdout.contains("BEGIN ansi-harness-smoke"), "{stdout}");
-    assert!(stdout.contains("PASS ansi-harness-smoke"), "{stdout}");
-}
-
-// CLHS 7.6.6.3: a predicate selects which applicable methods enter its method group.
-#[test]
-fn randomized_method_combination_invokes_a_method_with_a_positive_integer_qualifier() {
-    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ansi_harness");
-    let source = r#"
-        (progn
-          (load "gclload1.lsp")
-          (load "gclload2.lsp")
-          (let ((result (ansi-randomized-method :fixture)))
-            (unless (or (eq result :low) (eq result :high))
-              (error "RANDOMIZED selected no qualified method"))
-            (format t "RANDOMIZED-RESULT ~S~%" result)
-            result))
-    "#;
-    let result = output(ncl().current_dir(fixture_dir).args(["--eval", source]));
-    assert!(result.status.success(), "{result:?}");
-    let stdout = String::from_utf8_lossy(&result.stdout);
-    assert!(
-        stdout.contains("RANDOMIZED-RESULT :LOW") || stdout.contains("RANDOMIZED-RESULT :HIGH"),
-        "{stdout}"
-    );
-}

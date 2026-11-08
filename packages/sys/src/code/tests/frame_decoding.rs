@@ -21,6 +21,12 @@ fn map_entry(
     bytes
 }
 
+fn valid_map_entry(pc_offset: u32) -> Vec<u8> {
+    let mut bytes = map_entry(3, 3, 0, Some(0b0000_0100), &[]);
+    bytes[..4].copy_from_slice(&pc_offset.to_le_bytes());
+    bytes
+}
+
 #[test]
 fn safepoint_decode_reports_typed_errors_for_malformed_entries() {
     let cases = [
@@ -80,4 +86,18 @@ fn safepoint_decode_reports_typed_errors_for_malformed_entries() {
         // check-added-lines: allow(panic) test-only assertions
         assert_eq!(SafepointMap::decode(&bytes, 1), Err(expected), "{case}");
     }
+}
+
+#[test]
+fn safepoint_map_sorts_multiple_entries_for_lookup() {
+    let mut bytes = valid_map_entry(8);
+    bytes.extend_from_slice(&valid_map_entry(3));
+    let map = SafepointMap::decode(&bytes, 2)
+        .unwrap_or_else(|error| panic!("valid multi-entry stack map failed to decode: {error}"));
+
+    let offsets: Vec<_> = map.entries().iter().map(|entry| entry.pc_offset).collect();
+    assert_eq!(offsets.as_slice(), &[3, 8]);
+    assert_eq!(map.lookup(8).map(|entry| entry.pc_offset), Some(8));
+    assert_eq!(map.lookup(2), None);
+    assert_eq!(map.lookup(5).map(|entry| entry.pc_offset), Some(3));
 }

@@ -3,7 +3,7 @@ use std::rc::Rc;
 use ncl_object::{HeapRootedWord, LispError, MultipleValues, ObjectError, ThreadContext, Word};
 use ncl_sys::{CodeError, NativeError, NativeOperation, SafepointMapError};
 
-use super::{FileLoadError, finish_file_load};
+use super::{FileLoadError, FileLoadOptions, file_contents, finish_file_load};
 use crate::{Runtime, RuntimeError};
 
 #[test]
@@ -55,6 +55,50 @@ fn code_and_safepoint_errors_become_load_conditions() -> Result<(), String> {
         context.take_pending_lisp_error(),
         Some(LispError::SimpleError { .. })
     ));
+
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(
+        finish_file_load(
+            &mut context,
+            &object,
+            &runtime,
+            &pathname,
+            false,
+            &mut values,
+            Err(FileLoadError::Runtime(RuntimeError::Read(
+                ncl_reader::ReadError::Object(ObjectError::Layout),
+            ))),
+        ),
+        Err(ObjectError::Layout)
+    );
+    // check-added-lines: allow(panic) test-only assertions
+    assert!(context.take_pending_lisp_error().is_none());
+    Ok(())
+}
+
+#[test]
+fn file_contents_reports_io_error_when_source_is_missing() -> Result<(), String> {
+    let mut runtime = Runtime::new().map_err(|error| format!("runtime: {error:?}"))?;
+    let path = std::env::temp_dir().join(format!(
+        "ncl-load-file-contents-missing-{}.lisp",
+        std::process::id()
+    ));
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|error| format!("remove stale fixture: {error}"))?;
+    }
+
+    match file_contents(&mut runtime, &path, FileLoadOptions::default()) {
+        Err(FileLoadError::Runtime(RuntimeError::Io {
+            path: reported_path,
+            error,
+        })) => {
+            // check-added-lines: allow(panic) test-only assertions
+            assert_eq!(reported_path, path.display().to_string());
+            // check-added-lines: allow(panic) test-only assertions
+            assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        }
+        result => return Err(format!("expected missing-file IO error, got {result:?}")),
+    }
     Ok(())
 }
 
@@ -83,6 +127,7 @@ fn pending_and_native_failures_are_converted_when_load_finishes() -> Result<(), 
     let condition = HeapRootedWord::new(&context, condition)
         .map_err(|error| format!("root condition: {error:?}"))?;
     let condition_word = condition.get();
+    // check-added-lines: allow(panic) test-only assertions
     // check-added-lines: allow(panic) test-only assertions
     assert_eq!(
         finish_file_load(

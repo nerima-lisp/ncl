@@ -144,6 +144,29 @@ fn r5_load_signals_end_of_file_for_incomplete_source() {
 }
 
 #[test]
+fn r5_load_rejects_unknown_keyword_with_program_error() {
+    let missing = std::env::temp_dir().join(format!(
+        "ncl-r5-load-unknown-keyword-{}.lisp",
+        std::process::id()
+    ));
+    if missing.exists() {
+        fs::remove_file(&missing)
+            .unwrap_or_else(|error| panic!("stale LOAD fixture cleanup failed: {error}"));
+    }
+    let mut runtime =
+        Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));
+    let form = format!(
+        "(handler-case (load {} :unknown t) (program-error () t))",
+        lisp_string(&missing)
+    );
+    let result = runtime
+        .eval(&form)
+        .unwrap_or_else(|error| panic!("LOAD unknown keyword handler failed: {error}"));
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(runtime.format_result(result), "T");
+}
+
+#[test]
 fn r5_load_builtin_ignores_external_format_for_fasl_and_returns_true() {
     let source = std::env::temp_dir().join(format!(
         "ncl-r5-load-fasl-format-{}.lisp",

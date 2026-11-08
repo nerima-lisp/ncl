@@ -212,6 +212,46 @@ fn native_compilation_rejects_entry_address_overflow() -> Result<(), crate::Runt
     Ok(())
 }
 
+#[test]
+fn compiled_eval_recovers_poisoned_shared_state_locks() -> Result<(), crate::RuntimeError> {
+    let mut runtime = crate::Runtime::new()?;
+
+    let function_state = runtime.evaluator.state.clone();
+    let function_lock_poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = function_state
+            .functions
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // check-added-lines: allow(panic) test-only lock poisoning
+        assert!(
+            function_state.functions.is_poisoned(),
+            "fail while holding the lock to poison it"
+        );
+    }));
+    // check-added-lines: allow(panic) test-only assertions
+    assert!(function_lock_poisoned.is_err());
+
+    let code_state = runtime.evaluator.state.clone();
+    let code_lock_poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = code_state
+            .code
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // check-added-lines: allow(panic) test-only lock poisoning
+        assert!(
+            code_state.code.is_poisoned(),
+            "fail while holding the lock to poison it"
+        );
+    }));
+    // check-added-lines: allow(panic) test-only assertions
+    assert!(code_lock_poisoned.is_err());
+
+    let result = runtime.compile("42")?;
+    // check-added-lines: allow(panic) test-only assertions
+    assert_eq!(runtime.format_result(result), "42");
+    Ok(())
+}
+
 fn native_compilation(
     entry_offset: usize,
     frame_size: u32,

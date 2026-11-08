@@ -14,6 +14,7 @@ pub const REGISTRATION_ORDER: &[&str] = &[
     "ncl-conditions",
     "ncl-clos",
     "ncl-lib-numbers",
+    "ncl-lib-arrays",
     "ncl-lib-sequences",
     "ncl-lib-strings",
     "ncl-lib-hash-arrays",
@@ -44,6 +45,7 @@ pub const REGISTRATION_ORDER: &[&str] = &[
 ///
 /// Returns the first [`ObjectError`] reported by a crate registration.
 pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
+    ncl_lib_arrays::register_layouts(runtime)?;
     ncl_types::register(runtime)?;
     ncl_types::builtins::register(runtime)?;
     // Pre-intern the standard Common Lisp symbols (special operators,
@@ -62,6 +64,7 @@ pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     register_core(runtime, ctx)?;
     ncl_lib_sequences::register(runtime)?;
     ncl_lib_strings::register(runtime)?;
+    ncl_lib_arrays::register(runtime)?;
     ncl_lib_hash_arrays::register(runtime)?;
     ncl_lib_macros::register(runtime)?;
     ncl_lib_streams::register(runtime)?;

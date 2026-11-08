@@ -2,7 +2,6 @@
 
 #![forbid(unsafe_code)]
 
-mod arrays;
 mod hash_tables;
 
 use ncl_object::{
@@ -86,6 +85,5 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
     hash_tables::register(runtime, &mut ctx)?;
-    arrays::register(runtime, &mut ctx)?;
     Ok(())
 }

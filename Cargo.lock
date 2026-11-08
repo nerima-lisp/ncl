@@ -12,6 +12,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ncl-arrays"
+version = "0.1.1"
+dependencies = [
+ "ncl-object",
+]
+
+[[package]]
 name = "ncl-asdf"
 version = "0.1.1"
 dependencies = [
@@ -137,6 +144,16 @@ dependencies = [
 [[package]]
 name = "ncl-ir"
 version = "0.1.1"
+
+[[package]]
+name = "ncl-lib-arrays"
+version = "0.1.1"
+dependencies = [
+ "ncl-arrays",
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-types",
+]
 
 [[package]]
 name = "ncl-lib-format"
@@ -347,6 +364,7 @@ dependencies = [
  "ncl-disasm",
  "ncl-ffi",
  "ncl-image",
+ "ncl-lib-arrays",
  "ncl-lib-format",
  "ncl-lib-hash-arrays",
  "ncl-lib-macros",

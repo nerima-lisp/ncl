@@ -1,9 +1,12 @@
+use ncl_arrays::{
+    adjustable_array_p, array_displacement, array_element_type, array_has_fill_pointer_p,
+    make_array,
+};
 use super::{
     ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime,
-    ThreadContext, Word, array_element_type, array_row_major_ref, array_row_major_set, array_shape,
-    classify_object, make_array, row_major_index,
+    ThreadContext, Word, array_row_major_ref, array_row_major_set, array_shape,
+    classify_object, row_major_index,
 };
-use ncl_object::array::{adjustable_array_p, array_displacement, array_has_fill_pointer_p};
 use ncl_object::with_roots;
 
 fn bit_value(ctx: &ThreadContext, array: Word, index: usize) -> Result<u8, ObjectError> {

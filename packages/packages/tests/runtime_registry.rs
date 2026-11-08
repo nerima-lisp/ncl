@@ -1,6 +1,8 @@
 //! Package registry lifecycle and runtime registry regression tests.
 
-use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, make_cons, make_string};
+use ncl_object::{
+    ObjectError, Package, Runtime, ThreadContext, Word, make_cons, make_string, symbol_package,
+};
 use ncl_packages::RuntimePackageOperations;
 
 #[test]
@@ -24,6 +26,8 @@ fn package_lifecycle_and_class_registry_preserve_names() -> Result<(), ObjectErr
     assert_eq!(runtime.find_package(&ctx, "REGISTRY-LIFECYCLE"), None);
     assert_eq!(runtime.find_package(&ctx, "RENAMED"), Some(package));
     assert_eq!(runtime.find_package(&ctx, "RL"), Some(package));
+    let (symbol, _) = Package::from_word(package).intern(&mut ctx, &runtime, "DELETED-SYMBOL")?;
+    assert_eq!(symbol_package(&ctx, symbol)?, package);
 
     runtime.define_class(&mut ctx, "REGISTRY-CLASS", Word::TRUE)?;
     assert_eq!(runtime.class(&mut ctx, "REGISTRY-CLASS"), Some(Word::TRUE));
@@ -34,6 +38,7 @@ fn package_lifecycle_and_class_registry_preserve_names() -> Result<(), ObjectErr
 
     assert!(runtime.all_packages(&ctx)?.contains(&package));
     assert!(runtime.delete_package(&mut ctx, Package::from_word(package))?);
+    assert_eq!(symbol_package(&ctx, symbol)?, package);
     assert_eq!(runtime.find_package(&ctx, "RENAMED"), None);
     assert_eq!(runtime.find_package(&ctx, "RL"), None);
     assert!(!runtime.all_packages(&ctx)?.contains(&package));

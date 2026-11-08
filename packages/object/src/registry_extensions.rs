@@ -1,8 +1,16 @@
-use crate::hash_table::HashTable;
 use crate::object_access::put;
 use crate::package::{NAME, NICKNAMES};
 use crate::{ObjectError, Package, Runtime, ThreadContext, make_string, string_length, string_ref};
-use ncl_sys::{HeapConfig, Word};
+use ncl_sys::{HeapConfig, StorageCondition, Word};
+
+fn string_from_word(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
+    let length = string_length(ctx, word)?;
+    let mut value = String::new();
+    for index in 0..length {
+        value.push(string_ref(ctx, word, index)?);
+    }
+    Ok(value)
+}
 
 fn standard_package_name(name: &str) -> (&str, Option<&'static str>) {
     if name == "CL" || name == "COMMON-LISP" {
@@ -19,11 +27,15 @@ impl Runtime {
     ///
     /// # Errors
     /// Returns an object error when the package registry is malformed.
-    pub fn all_packages(&self, ctx: &ThreadContext) -> Result<Vec<Word>, ObjectError> {
-        let table = Self::table(&self.packages)?;
-        let mut packages = Vec::new();
-        HashTable::from_word(table).for_each_entry(ctx, |_, package| packages.push(package))?;
-        Ok(packages)
+    pub fn all_packages(&self, _ctx: &ThreadContext) -> Result<Vec<Word>, ObjectError> {
+        let packages = self
+            .packages
+            .lock()
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
+        Ok(packages
+            .values()
+            .map(crate::runtime::RootedWord::get)
+            .collect())
     }
 
     /// Create a package if it does not already exist.
@@ -102,8 +114,13 @@ impl Runtime {
         package: Word,
         name: Word,
     ) -> Result<(), ObjectError> {
-        if let Some(found) = HashTable::from_word(Self::table(&self.packages)?).get(ctx, name)?
-            && found != package
+        let name = string_from_word(ctx, name)?;
+        let packages = self
+            .packages
+            .lock()
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
+        if let Some(found) = packages.get(&name)
+            && found.get() != package
         {
             return Err(ObjectError::PackageConflict);
         }
@@ -117,11 +134,36 @@ impl Runtime {
         name: Word,
         nickname: bool,
     ) -> Result<(), ObjectError> {
-        self.check_package_name(ctx, package, name)?;
-        if nickname {
-            Package::from_word(package).add_nickname(ctx, self, name)?;
-        }
-        HashTable::from_word(Self::table(&self.packages)?).insert(ctx, self, name, package)
+        let mut package = package;
+        let mut name = name;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                self.check_package_name(ctx, *package, *name)?;
+                if nickname {
+                    Package::from_word(*package).add_nickname(ctx, self, *name)?;
+                }
+                let key = string_from_word(ctx, *name)?;
+                self.packages
+                    .lock()
+                    .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?
+                    .insert(key, crate::runtime::RootedWord::new(&self.heap, *package));
+                Ok(())
+            })
+        })
+    }
+
+    fn unregister_package_name(
+        &self,
+        ctx: &ThreadContext,
+        name: Word,
+    ) -> Result<bool, ObjectError> {
+        let key = string_from_word(ctx, name)?;
+        Ok(self
+            .packages
+            .lock()
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?
+            .remove(&key)
+            .is_some())
     }
 
     /// Rename a package and replace its registered nicknames.
@@ -144,7 +186,6 @@ impl Runtime {
                 string_length(ctx, *name)?;
                 let mut nicknames = nicknames;
                 crate::with_root(ctx, &mut nicknames, |ctx, nicknames| {
-                    let table = Self::table(&self.packages)?;
                     let mut names = *nicknames;
                     while names != Word::NIL {
                         let nickname = ncl_sys::read_cons_word(&ctx.thread, names, 0)
@@ -157,13 +198,13 @@ impl Runtime {
                     self.check_package_name(ctx, *package, *name)?;
 
                     let old_name = Package::from_word(*package).name(ctx)?;
-                    HashTable::from_word(table).remove(ctx, self, old_name)?;
+                    self.unregister_package_name(ctx, old_name)?;
                     let old_nicknames = Package::from_word(*package).nicknames(ctx)?;
                     let mut old = old_nicknames;
                     while old != Word::NIL {
                         let nickname = ncl_sys::read_cons_word(&ctx.thread, old, 0)
                             .ok_or(ObjectError::Layout)?;
-                        HashTable::from_word(table).remove(ctx, self, nickname)?;
+                        self.unregister_package_name(ctx, nickname)?;
                         old = ncl_sys::read_cons_word(&ctx.thread, old, 1)
                             .ok_or(ObjectError::Layout)?;
                     }
@@ -197,21 +238,16 @@ impl Runtime {
         let mut package_word = package.as_word();
         crate::with_root(ctx, &mut package_word, |ctx, package| {
             Package::from_word(*package).ensure_unlocked(ctx)?;
-            let table = Self::table(&self.packages)?;
             let mut name = Package::from_word(*package).name(ctx)?;
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let mut nicknames = Package::from_word(*package).nicknames(ctx)?;
-                let mut removed = HashTable::from_word(table)
-                    .remove(ctx, self, *name)?
-                    .is_some();
+                let mut removed = self.unregister_package_name(ctx, *name)?;
                 while nicknames != Word::NIL {
                     let next = crate::with_root(ctx, &mut nicknames, |ctx, nicknames_slot| {
                         let mut nickname = ncl_sys::read_cons_word(&ctx.thread, *nicknames_slot, 0)
                             .ok_or(ObjectError::Layout)?;
                         crate::with_root(ctx, &mut nickname, |ctx, nickname| {
-                            removed |= HashTable::from_word(table)
-                                .remove(ctx, self, *nickname)?
-                                .is_some();
+                            removed |= self.unregister_package_name(ctx, *nickname)?;
                             Ok(())
                         })?;
                         ncl_sys::read_cons_word(&ctx.thread, *nicknames_slot, 1)
@@ -232,21 +268,13 @@ impl Runtime {
         context: &ThreadContext,
         name: &str,
     ) -> Result<Option<Word>, ObjectError> {
-        let table = Self::table(&self.packages)?;
         let name_chars = name.chars().collect::<Vec<_>>();
-        let mut result = None;
-        let mut failure = None;
-        HashTable::from_word(table).for_each_entry(context, |_, package| {
-            if result.is_some() || failure.is_some() {
-                return;
-            }
-            let package = match Package::try_from_word(context, package) {
-                Ok(package) => package,
-                Err(error) => {
-                    failure = Some(error);
-                    return;
-                }
-            };
+        let packages = self
+            .packages
+            .lock()
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
+        for rooted_package in packages.values() {
+            let package = Package::try_from_word(context, rooted_package.get())?;
             let matches = |word: Word| {
                 string_length(context, word).ok() == Some(name_chars.len())
                     && name_chars
@@ -254,41 +282,22 @@ impl Runtime {
                         .enumerate()
                         .all(|(i, c)| string_ref(context, word, i) == Ok(*c))
             };
-            let package_name = match package.name(context) {
-                Ok(package_name) => package_name,
-                Err(error) => {
-                    failure = Some(error);
-                    return;
-                }
-            };
+            let package_name = package.name(context)?;
             if matches(package_name) {
-                result = Some(package.as_word());
-                return;
+                return Ok(Some(package.as_word()));
             }
-            let mut nicknames = match package.nicknames(context) {
-                Ok(nicknames) => nicknames,
-                Err(error) => {
-                    failure = Some(error);
-                    return;
-                }
-            };
+            let mut nicknames = package.nicknames(context)?;
             while nicknames != Word::NIL {
-                let Some(nickname) = ncl_sys::read_cons_word(&context.thread, nicknames, 0) else {
-                    failure = Some(ObjectError::Layout);
-                    return;
-                };
+                let nickname = ncl_sys::read_cons_word(&context.thread, nicknames, 0)
+                    .ok_or(ObjectError::Layout)?;
                 if matches(nickname) {
-                    result = Some(package.as_word());
-                    break;
+                    return Ok(Some(package.as_word()));
                 }
-                let Some(next) = ncl_sys::read_cons_word(&context.thread, nicknames, 1) else {
-                    failure = Some(ObjectError::Layout);
-                    return;
-                };
-                nicknames = next;
+                nicknames = ncl_sys::read_cons_word(&context.thread, nicknames, 1)
+                    .ok_or(ObjectError::Layout)?;
             }
-        })?;
-        failure.map_or(Ok(result), Err)
+        }
+        Ok(None)
     }
 
     fn resolve_package_name(
@@ -296,37 +305,23 @@ impl Runtime {
         context: &ThreadContext,
         name: &str,
     ) -> Result<Option<Word>, ObjectError> {
-        let table = Self::table(&self.packages)?;
         let name_chars = name.chars().collect::<Vec<_>>();
-        let mut result = None;
-        let mut failure = None;
-        HashTable::from_word(table).for_each_entry(context, |_, package| {
-            if result.is_some() || failure.is_some() {
-                return;
-            }
-            let package = match Package::try_from_word(context, package) {
-                Ok(package) => package,
-                Err(error) => {
-                    failure = Some(error);
-                    return;
-                }
-            };
-            let package_name = match package.name(context) {
-                Ok(package_name) => package_name,
-                Err(error) => {
-                    failure = Some(error);
-                    return;
-                }
-            };
+        let packages = self
+            .packages
+            .lock()
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
+        for rooted_package in packages.values() {
+            let package = Package::try_from_word(context, rooted_package.get())?;
+            let package_name = package.name(context)?;
             let matches = string_length(context, package_name).ok() == Some(name_chars.len())
                 && name_chars.iter().enumerate().all(|(index, character)| {
                     string_ref(context, package_name, index) == Ok(*character)
                 });
             if matches {
-                result = Some(package.as_word());
+                return Ok(Some(package.as_word()));
             }
-        })?;
-        failure.map_or(Ok(result), Err)
+        }
+        Ok(None)
     }
 
     #[must_use]
@@ -354,22 +349,22 @@ impl Runtime {
     ) -> Result<(), ObjectError> {
         let name = name.into();
         let mut class = class;
-        crate::with_root(ctx, &mut class, |context, class| {
-            let mut name = make_string(context, self, &name.chars().collect::<Vec<_>>())?;
-            crate::with_root(context, &mut name, |context, name| {
-                let mut table = Self::table(&self.classes)?;
-                crate::with_root(context, &mut table, |context, table| {
-                    HashTable::from_word(*table).insert(context, self, *name, *class)
-                })
-            })
+        crate::with_root(ctx, &mut class, |_, class| {
+            self.classes
+                .lock()
+                .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?
+                .insert(name, crate::runtime::RootedWord::new(&self.heap, *class));
+            Ok(())
         })
     }
 
     #[must_use]
-    pub fn class(&self, ctx: &mut ThreadContext, name: &str) -> Option<Word> {
-        let name = make_string(ctx, self, &name.chars().collect::<Vec<_>>()).ok()?;
-        let table = Self::table(&self.classes).ok()?;
-        HashTable::from_word(table).get(ctx, name).ok().flatten()
+    pub fn class(&self, _ctx: &mut ThreadContext, name: &str) -> Option<Word> {
+        self.classes
+            .lock()
+            .ok()?
+            .get(name)
+            .map(crate::runtime::RootedWord::get)
     }
 
     pub fn add_feature(&self, feature: impl Into<String>) {

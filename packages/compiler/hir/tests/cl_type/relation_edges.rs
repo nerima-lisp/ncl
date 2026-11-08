@@ -1,8 +1,8 @@
 use std::error::Error;
 
 use super::{
-    form, named, ArrayDimensions, ArrayType, BuiltinType, MemberValue, NumericBound, NumericDomain,
-    NumericRange, NumericValue, OpaqueOperand, SubtypeRelation, TypeArena,
+    ArrayDimensions, ArrayType, BuiltinType, MemberValue, NumericBound, NumericDomain,
+    NumericRange, NumericValue, OpaqueOperand, SubtypeRelation, TypeArena, form, named,
 };
 use ncl_hir::ids::{CompilationUnitId, SymbolId, TypeId};
 
@@ -206,8 +206,8 @@ fn boolean_and_null_relations_match_nil_and_true_members() -> Result<(), Box<dyn
 }
 
 #[test]
-fn compound_types_prove_not_disjointness_only_when_every_case_is_known(
-) -> Result<(), Box<dyn Error>> {
+fn compound_types_prove_not_disjointness_only_when_every_case_is_known()
+-> Result<(), Box<dyn Error>> {
     let mut arena = TypeArena::new(form(113))?;
     let integer = named(&mut arena, BuiltinType::Integer)?;
     let character = named(&mut arena, BuiltinType::Character)?;

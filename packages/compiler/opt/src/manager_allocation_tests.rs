@@ -98,3 +98,28 @@ fn allocation_snapshot_omits_delta_when_the_initial_snapshot_is_unavailable() {
     assert_eq!(events[0].allocated_bytes, None);
     assert!(!events[0].to_string().contains("allocated_bytes"));
 }
+
+#[test]
+fn allocation_snapshot_omits_delta_when_the_final_snapshot_is_unavailable() {
+    let mut manager = PassManager::with_options(PassManagerOptions {
+        max_iterations: 1,
+        verify_after_each_pass: true,
+    });
+    manager.add_function_pass(UnchangedPass);
+    let mut snapshots = [Some(61_u128), None].into_iter();
+    let mut events = Vec::new();
+    let report = manager
+        .run_with_observer_and_allocation_snapshot(
+            &mut Module {
+                functions: vec![leaf()],
+            },
+            |event| events.push(event.clone()),
+            || snapshots.next().flatten(),
+        )
+        .fixture();
+
+    assert_eq!(report.stats.len(), 1);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].allocated_bytes, None);
+    assert!(!events[0].to_string().contains("allocated_bytes"));
+}

@@ -24,26 +24,20 @@ struct FunctionPassOutcome {
 
 fn run_function_pass_body<C: AllocationCounter>(
     pass: &mut dyn FunctionPass,
-    module: &mut Module,
-    index: usize,
+    function: &mut Function,
     snapshot: &Module,
-    pass_name: &str,
     counter: &mut C,
-) -> Result<FunctionPassOutcome, PassError> {
+) -> FunctionPassOutcome {
     let allocation_before = counter.before_pass();
     let started = Instant::now();
-    let function = module
-        .functions
-        .get_mut(index)
-        .ok_or_else(|| PassError::new(pass_name, "function index out of bounds"))?;
     let result = pass.run(function, snapshot);
     let elapsed = started.elapsed();
     let allocated_bytes = counter.after_pass(allocation_before);
-    Ok(FunctionPassOutcome {
+    FunctionPassOutcome {
         result,
         elapsed,
         allocated_bytes,
-    })
+    }
 }
 
 pub(super) fn run_function_pass<C, O>(
@@ -64,71 +58,68 @@ where
         counter,
     } = context;
     let pass_name = pass.name().to_owned();
-    let function_name = module
-        .functions
-        .get(index)
-        .map(|function| function.name.clone())
-        .ok_or_else(|| PassError::new(&pass_name, "function index out of bounds"))?;
     let snapshot = module.clone();
     let snapshot_function = snapshot
         .functions
         .get(index)
         .cloned()
         .ok_or_else(|| PassError::new(&pass_name, "function index out of bounds"))?;
-    let FunctionPassOutcome {
-        result,
-        elapsed,
-        allocated_bytes,
-    } = run_function_pass_body(pass, module, index, &snapshot, &pass_name, counter)?;
-    let updated_function = module
+    let function = module
         .functions
-        .get(index)
+        .get_mut(index)
         .ok_or_else(|| PassError::new(&pass_name, "function index out of bounds"))?;
-    let original_address_errors = address_liveness_errors(&snapshot_function);
-    let new_errors = added_provenance_errors(&original_address_errors, updated_function);
-    let did_change = match result {
-        Ok(changed) => changed,
-        Err(error) => {
-            let invocation = PassInvocation::for_function(
-                iteration,
-                function_name,
-                pass_name,
-                false,
-                elapsed,
-                allocated_bytes,
-            );
-            if new_errors.is_empty() {
-                return Err(report_function_pass_error(invocation, error, observer));
+    let function_name = function.name.clone();
+    let (did_change, elapsed, allocated_bytes) = {
+        let FunctionPassOutcome {
+            result,
+            elapsed,
+            allocated_bytes,
+        } = run_function_pass_body(pass, function, &snapshot, counter);
+        let original_address_errors = address_liveness_errors(&snapshot_function);
+        let new_errors = added_provenance_errors(&original_address_errors, function);
+        let did_change = match result {
+            Ok(changed) => changed,
+            Err(error) => {
+                let invocation = PassInvocation::for_function(
+                    iteration,
+                    function_name,
+                    pass_name,
+                    false,
+                    elapsed,
+                    allocated_bytes,
+                );
+                if new_errors.is_empty() {
+                    return Err(report_function_pass_error(invocation, error, observer));
+                }
+                return Ok(rollback_function_pass(
+                    function,
+                    snapshot_function,
+                    invocation,
+                    report,
+                    observer,
+                    &format!("{new_errors:?}; pass error: {}", error.message),
+                ));
             }
-            return rollback_function_pass(
-                module,
-                index,
+        };
+        if !new_errors.is_empty() {
+            return Ok(rollback_function_pass(
+                function,
                 snapshot_function,
-                invocation,
+                PassInvocation::for_function(
+                    iteration,
+                    function_name,
+                    pass_name,
+                    false,
+                    elapsed,
+                    allocated_bytes,
+                ),
                 report,
                 observer,
-                &format!("{new_errors:?}; pass error: {}", error.message),
-            );
+                &format!("{new_errors:?}"),
+            ));
         }
+        (did_change, elapsed, allocated_bytes)
     };
-    if !new_errors.is_empty() {
-        return rollback_function_pass(
-            module,
-            index,
-            snapshot_function,
-            PassInvocation::for_function(
-                iteration,
-                function_name,
-                pass_name,
-                false,
-                elapsed,
-                allocated_bytes,
-            ),
-            report,
-            observer,
-            &format!("{new_errors:?}"),
-        );
-    }
     report.stats.push(PassStat {
         pass: pass_name.clone(),
         changed: did_change,
@@ -151,20 +142,13 @@ where
 }
 
 fn rollback_function_pass(
-    module: &mut Module,
-    index: usize,
+    function: &mut Function,
     snapshot_function: Function,
     invocation: PassInvocation,
     report: &mut PassReport,
     observer: &mut impl FnMut(&PassEvent),
     detail: &str,
-) -> Result<(bool, bool), PassError> {
-    let Some(function) = module.functions.get_mut(index) else {
-        return Err(PassError::new(
-            &invocation.pass,
-            "function index out of bounds",
-        ));
-    };
+) -> (bool, bool) {
     *function = snapshot_function;
     let message = format!(
         "provenance verification rolled back {}: {detail}",
@@ -185,7 +169,7 @@ fn rollback_function_pass(
         allocated_bytes: invocation.allocated_bytes,
         error: Some(message),
     });
-    Ok((false, true))
+    (false, true)
 }
 
 pub(super) fn run_module_pass(

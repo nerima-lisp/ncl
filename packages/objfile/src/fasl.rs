@@ -89,26 +89,10 @@ impl FaslV1Writer {
             debug,
             top_level,
         ];
-        let lengths = sections
-            .iter()
-            .map(|section| {
-                u64::try_from(section.len())
-                    .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let lengths: [u64; fasl_directory::SECTION_COUNT] = lengths
-            .try_into()
-            .map_err(|_| FaslError::new(FaslRejectReason::MalformedDirectory))?;
+        let lengths = std::array::from_fn(|index| sections[index].len() as u64);
         let directory = Directory::from_lengths(lengths)?;
-        let final_entry = directory
-            .entries()
-            .last()
-            .ok_or_else(|| FaslError::new(FaslRejectReason::MalformedDirectory))?;
-        let file_length = final_entry
-            .file_offset
-            .checked_add(final_entry.byte_length)
-            .and_then(|length| usize::try_from(length).ok())
-            .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
+        let final_entry = directory.entries()[fasl_directory::SECTION_COUNT - 1];
+        let file_length = (final_entry.file_offset + final_entry.byte_length) as usize;
 
         let header = FaslV1Header {
             architecture: fasl.architecture,
@@ -118,12 +102,13 @@ impl FaslV1Writer {
             feature_fingerprint: fasl_metadata::feature_fingerprint(&fasl.metadata.features)?,
         };
         let mut bytes = vec![0; file_length];
-        write_at(&mut bytes, 0, &fasl_header::encode(&header)?)?;
-        write_at(&mut bytes, 128, &directory.encode()?)?;
+        bytes[..fasl_header::HEADER_SIZE].copy_from_slice(&fasl_header::encode(&header));
+        let directory_bytes = directory.encode();
+        bytes[128..128 + directory_bytes.len()].copy_from_slice(&directory_bytes);
         for (entry, section) in directory.entries().iter().zip(&sections) {
-            let start = usize::try_from(entry.file_offset)
-                .map_err(|_| FaslError::new(FaslRejectReason::MalformedDirectory))?;
-            write_at(&mut bytes, start, section)?;
+            let start = entry.file_offset as usize;
+            let end = start + section.len();
+            bytes[start..end].copy_from_slice(section);
         }
         Ok(bytes)
     }
@@ -145,11 +130,7 @@ impl FaslV1Reader {
         bytes: &'a [u8],
         expected: &FaslV1Compatibility,
     ) -> Result<FaslV1<'a>, FaslError> {
-        let file_size = u64::try_from(bytes.len())
-            .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
-        if file_size > fasl_directory::MAX_FILE_SIZE {
-            return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
-        }
+        validate_file_size(bytes.len())?;
         let header = fasl_header::decode(bytes)?;
         let directory_end = 128_usize + 8 * 24;
         let directory_bytes = bytes
@@ -199,18 +180,20 @@ impl FaslV1Reader {
     }
 }
 
+fn validate_file_size(file_size: usize) -> Result<(), FaslError> {
+    if file_size > fasl_directory::MAX_FILE_SIZE as usize {
+        return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
+    }
+    Ok(())
+}
+
 fn section<'a>(
     directory: &Directory,
     file: &'a [u8],
     id: SectionId,
 ) -> Result<(&'a [u8], usize), FaslError> {
-    let entry = directory
-        .entries()
-        .iter()
-        .find(|entry| entry.id == id)
-        .ok_or_else(|| FaslError::new(FaslRejectReason::MalformedDirectory))?;
-    let offset = usize::try_from(entry.file_offset)
-        .map_err(|_| FaslError::new(FaslRejectReason::MalformedDirectory))?;
+    let entry = directory.entries()[id.index()];
+    let offset = entry.file_offset as usize;
     Ok((directory.section(file, id)?, offset))
 }
 
@@ -279,17 +262,6 @@ fn code_layouts<'a>(code: &[FaslCodeObject<'a>]) -> Vec<FaslCodeLayout<'a>> {
             code: object.code,
         })
         .collect()
-}
-
-fn write_at(bytes: &mut [u8], offset: usize, value: &[u8]) -> Result<(), FaslError> {
-    let end = offset
-        .checked_add(value.len())
-        .ok_or_else(|| FaslError::at(FaslRejectReason::ResourceLimitExceeded, offset))?;
-    let destination = bytes
-        .get_mut(offset..end)
-        .ok_or_else(|| FaslError::at(FaslRejectReason::MalformedDirectory, offset))?;
-    destination.copy_from_slice(value);
-    Ok(())
 }
 
 #[cfg(test)]

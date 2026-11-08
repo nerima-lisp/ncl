@@ -24,6 +24,56 @@ fn fixture() -> FaslV1<'static> {
     }
 }
 
+fn populated_fixture() -> FaslV1<'static> {
+    let mut fasl = fixture();
+    fasl.symbols.push(FaslSymbol {
+        id: 0,
+        binding_kind: crate::fasl_symbols::SymbolBindingKind::Lisp,
+        package: "CL-USER".to_owned(),
+        name: "X".to_owned(),
+    });
+    fasl.constants.push(FaslConstantGroup {
+        code_object_id: 0,
+        constants: vec![crate::fasl_constants::FaslConstant::SymbolReference(0)],
+    });
+    fasl.code.push(FaslCodeObject {
+        id: 0,
+        entry_offset: 0,
+        frame_words: 0,
+        constant_count: 1,
+        stack_map_count: 0,
+        debug_record_count: 1,
+        code: &[0x90],
+    });
+    fasl.stack_maps.push(crate::fasl_stack_map::SafepointGroup {
+        code_object_id: 0,
+        entries: Vec::new(),
+    });
+    fasl.debug_files.push(crate::fasl_debug::DebugFile {
+        file_id: 0,
+        path: "source.lisp".to_owned(),
+    });
+    fasl.debug_records.push(crate::fasl_debug::DebugRecord {
+        code_object_id: 0,
+        pc_start: 0,
+        pc_end: 1,
+        file_id: 0,
+        line: 1,
+        column: 1,
+        source_start: 0,
+        source_end: 1,
+        variables: Vec::new(),
+    });
+    fasl.top_level
+        .push(crate::fasl_top_level::FaslTopLevelRecord {
+            ordinal: 0,
+            code_object_id: 0,
+            entry_offset: 0,
+            flags: 1,
+        });
+    fasl
+}
+
 fn must_succeed<T, E>(result: Result<T, E>) -> T {
     result.unwrap_or_else(|_| panic!("test fixture must be valid"))
 }
@@ -71,8 +121,8 @@ fn section_start(bytes: &[u8], id: SectionId) -> usize {
     usize::try_from(file_offset).unwrap_or_else(|_| panic!("fixture offset fits usize"))
 }
 
-fn set_section_first_word(bytes: &mut [u8], id: SectionId, value: u32) {
-    let start = section_start(bytes, id);
+fn set_section_word(bytes: &mut [u8], id: SectionId, relative: usize, value: u32) {
+    let start = section_start(bytes, id) + relative;
     bytes[start..start + 4].copy_from_slice(&value.to_le_bytes());
 }
 
@@ -149,51 +199,55 @@ fn native_reader_rejects_header_fingerprints_and_short_directory() {
 
 #[test]
 fn native_reader_propagates_rejections_from_every_section_decoder() {
-    let value = fixture();
+    let value = populated_fixture();
     let expected = compatibility(&value);
     let original = must_succeed(FaslV1Writer::write(&value));
     let cases = [
-        (SectionId::Metadata, FaslRejectReason::MalformedMetadata),
-        (SectionId::Symbols, FaslRejectReason::InvalidReference),
-        (SectionId::Constants, FaslRejectReason::InvalidCodeObject),
-        (SectionId::Code, FaslRejectReason::InvalidCodeObject),
-        (SectionId::Relocations, FaslRejectReason::InvalidRelocation),
-        (SectionId::StackMaps, FaslRejectReason::InvalidSafepointMap),
+        (
+            SectionId::Metadata,
+            0,
+            0,
+            FaslRejectReason::MalformedMetadata,
+        ),
+        (SectionId::Symbols, 4, 1, FaslRejectReason::InvalidReference),
+        (
+            SectionId::Constants,
+            4,
+            1,
+            FaslRejectReason::InvalidCodeObject,
+        ),
+        (SectionId::Code, 4, 1, FaslRejectReason::InvalidCodeObject),
+        (
+            SectionId::Relocations,
+            0,
+            1,
+            FaslRejectReason::InvalidRelocation,
+        ),
+        (
+            SectionId::StackMaps,
+            4,
+            1,
+            FaslRejectReason::InvalidSafepointMap,
+        ),
         (
             SectionId::DebugRecords,
+            4,
+            1,
             FaslRejectReason::InvalidDebugRecord,
         ),
         (
             SectionId::TopLevelRecords,
+            4,
+            1,
             FaslRejectReason::InvalidTopLevelRecord,
         ),
     ];
 
-    for (id, reason) in cases {
+    for (id, offset, value, reason) in cases {
         let mut malformed = original.clone();
-        set_section_first_word(
-            &mut malformed,
-            id,
-            if id == SectionId::Metadata { 0 } else { 1 },
-        );
+        set_section_word(&mut malformed, id, offset, value);
         assert_reason(&malformed, &expected, reason);
     }
-}
-
-#[test]
-fn native_writer_reports_checked_output_ranges() {
-    let mut bytes = [0_u8; 1];
-    assert_eq!(
-        write_at(&mut bytes, usize::MAX, &[1]),
-        Err(FaslError::at(
-            FaslRejectReason::ResourceLimitExceeded,
-            usize::MAX
-        ))
-    );
-    assert_eq!(
-        write_at(&mut bytes, 1, &[1]),
-        Err(FaslError::at(FaslRejectReason::MalformedDirectory, 1))
-    );
 }
 
 #[test]
@@ -350,5 +404,17 @@ fn native_writer_propagates_debug_and_top_level_validation_errors() {
     assert_eq!(
         FaslV1Writer::write(&bad_top_level),
         Err(FaslError::new(FaslRejectReason::InvalidTopLevelRecord))
+    );
+}
+
+#[test]
+fn native_reader_checks_file_size_limit_without_allocating_a_large_buffer() {
+    assert_eq!(
+        validate_file_size(fasl_directory::MAX_FILE_SIZE as usize),
+        Ok(())
+    );
+    assert_eq!(
+        validate_file_size(fasl_directory::MAX_FILE_SIZE as usize + 1),
+        Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
     );
 }

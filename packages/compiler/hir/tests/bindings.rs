@@ -450,3 +450,12 @@ fn control_flow_rejects_missing_terminators_and_duplicate_terminators() -> Resul
     );
     Ok(())
 }
+
+#[test]
+fn binding_errors_display_their_context() {
+    let error = BindingError::Id(IdError::IndexOverflow { index: 7 });
+    assert_eq!(
+        error.to_string(),
+        "binding error: Id(IndexOverflow { index: 7 })"
+    );
+}

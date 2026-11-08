@@ -21,7 +21,10 @@ fn composite_type_operands_remain_owned_and_verifiable() -> Result<(), Box<dyn E
     let constant = builder.add_type_spec_constant(Literal::Symbol(source_symbol))?;
     let types = builder.types_mut();
     let integer = types.named(BuiltinType::Integer)?;
-    let member = types.member(vec![MemberValue::Symbol(member_symbol)])?;
+    let member = types.member(vec![
+        MemberValue::Integer(17),
+        MemberValue::Symbol(member_symbol),
+    ])?;
     let union = types.union([integer, member])?;
     let intersection = types.intersection([union, integer])?;
     let complement = types.complement(intersection)?;

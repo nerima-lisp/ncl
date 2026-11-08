@@ -1,4 +1,8 @@
-use ncl_hir::{CompileTimeSituation, HirDeclaration, LocalFunctionKind, NodeKind};
+use ncl_hir::cl_type::NumericValue;
+use ncl_hir::{
+    BuiltinType, CallTarget, ClTypeKind, CompileTimeSituation, HirDeclaration, LocalFunctionKind,
+    NodeKind,
+};
 use ncl_ir::{Constant, OpKind};
 use ncl_object::Word;
 
@@ -321,5 +325,124 @@ fn let_optimization_declaration_is_preserved_alongside_its_binding() -> TestResu
     // CLHS permits OPTIMIZE declarations in a LET body and defines SPEED as an optimization quality.
     // https://www.lispworks.com/documentation/HyperSpec/Body/s_let_l.htm
     // https://www.lispworks.com/documentation/HyperSpec/Body/d_optimi.htm
+    Ok(())
+}
+
+#[test]
+fn flet_functions_shadow_global_values_and_funcall_calls() -> TestResult<()> {
+    let (id, mut builder, mut fixture) = context(134);
+    let values_name = fixture.cl("VALUES");
+    let no_parameters = fixture.list(&[]);
+    let values_definition = fixture.list(&[values_name, no_parameters, Word::fixnum(7)]);
+    let funcall_name = fixture.cl("FUNCALL");
+    let parameter = fixture.user("VALUE");
+    let funcall_parameters = fixture.list(&[parameter]);
+    let funcall_definition = fixture.list(&[funcall_name, funcall_parameters, parameter]);
+    let definitions = fixture.list(&[values_definition, funcall_definition]);
+    let values_call = fixture.form("VALUES", &[]);
+    let funcall_call = fixture.form("FUNCALL", &[Word::fixnum(59)]);
+    let body = fixture.form("PROGN", &[values_call, funcall_call]);
+    let input = fixture.form("FLET", &[definitions, body]);
+    let source = "(flet ((values () 7) (funcall (value) value)) (values) (funcall 59))";
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
+
+    assert!(form.nodes().iter().any(|(_, node)| matches!(
+        &node.kind,
+        NodeKind::LocalFunctions {
+            kind: LocalFunctionKind::Flet,
+            definitions,
+            ..
+        } if definitions.len() == 2
+    )));
+    let mut local_call_arities = form
+        .nodes()
+        .iter()
+        .filter_map(|(_, node)| match &node.kind {
+            NodeKind::Call {
+                target: CallTarget::Local(_),
+                arguments,
+            } => Some(arguments.len()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    local_call_arities.sort_unstable();
+    assert_eq!(local_call_arities, [0, 1]);
+
+    let (lowered, _) = lower_both_and_verify(&builder, &form, &expr)?;
+    let mut lowered_local_call_arities = lowered
+        .entry
+        .blocks
+        .iter()
+        .flat_map(|block| &block.ops)
+        .filter_map(|operation| match &operation.kind {
+            OpKind::CallClosure {
+                args,
+                named_symbol: None,
+                ..
+            } => args.len().checked_sub(1),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    lowered_local_call_arities.sort_unstable();
+    assert_eq!(lowered_local_call_arities, [0, 1]);
+
+    // CLHS FLET establishes lexical function bindings that shadow same-named global functions.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_flet_.htm
+    Ok(())
+}
+
+#[test]
+fn finite_integer_and_two_operand_cons_types_survive_hir_lowering() -> TestResult<()> {
+    let (id, mut builder, mut fixture) = context(135);
+    let cons_name = fixture.cl("CONS");
+    let integer_name = fixture.cl("INTEGER");
+    let symbol_name = fixture.cl("SYMBOL");
+    let cons_type = fixture.list(&[cons_name, integer_name, symbol_name]);
+    let integer_name = fixture.cl("INTEGER");
+    let integer_type = fixture.list(&[integer_name, Word::fixnum(-2), Word::fixnum(10)]);
+    let x = fixture.user("X");
+    let quoted_symbol = fixture.form("QUOTE", &[x]);
+    let cons_value = fixture.form("CONS", &[Word::fixnum(1), quoted_symbol]);
+    let cons_assertion = fixture.form("THE", &[cons_type, cons_value]);
+    let integer_assertion = fixture.form("THE", &[integer_type, Word::fixnum(7)]);
+    let input = fixture.form("PROGN", &[cons_assertion, integer_assertion]);
+    let source = "(progn (the (cons integer symbol) (cons 1 'x)) (the (integer -2 10) 7))";
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
+
+    let asserted_types = form
+        .nodes()
+        .iter()
+        .filter_map(|(_, node)| match &node.kind {
+            NodeKind::TypeAssertion { asserted_type, .. } => Some(*asserted_type),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(asserted_types.len(), 2);
+    let cons_type = form
+        .types()
+        .get(asserted_types[0])
+        .ok_or_else(|| std::io::Error::other("CONS assertion type is missing"))?;
+    assert!(matches!(
+        cons_type.kind(),
+        ClTypeKind::Cons { car, cdr }
+            if form.types().get(*car).is_some_and(|ty| ty.kind() == &ClTypeKind::Named(BuiltinType::Integer))
+                && form.types().get(*cdr).is_some_and(|ty| ty.kind() == &ClTypeKind::Named(BuiltinType::Symbol))
+    ));
+    let integer_type = form
+        .types()
+        .get(asserted_types[1])
+        .ok_or_else(|| std::io::Error::other("INTEGER assertion type is missing"))?;
+    assert!(matches!(
+        integer_type.kind(),
+        ClTypeKind::NumericRange(range)
+            if range.lower().is_some_and(|bound| bound.value() == NumericValue::Integer(-2))
+                && range.upper().is_some_and(|bound| bound.value() == NumericValue::Integer(10))
+    ));
+
+    lower_both_and_verify(&builder, &form, &expr)?;
+
+    // CLHS CONS accepts two element type operands; INTEGER accepts finite inclusive bounds.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_cons.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_intege.htm
     Ok(())
 }

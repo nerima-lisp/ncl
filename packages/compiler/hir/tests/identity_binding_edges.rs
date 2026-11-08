@@ -157,3 +157,11 @@ fn checked_form_ids_preserve_owner_when_indexes_match() -> Result<(), Box<dyn Er
     assert_ne!(form, same_index_foreign_form);
     Ok(())
 }
+
+#[test]
+fn symbol_errors_display_their_context() {
+    assert_eq!(
+        SymbolError::InvalidIdentityShape.to_string(),
+        "symbol table error: InvalidIdentityShape"
+    );
+}

@@ -56,21 +56,14 @@ impl FunctionLowerer<'_> {
         self.push_one(OpKind::Const { result: index }, ty)
     }
 
-    pub(super) fn coerce_to_word(&mut self, value: ValueId, ty: Ty) -> Result<ValueId, LowerError> {
-        let op = match ty {
-            Ty::Word => return Ok(value),
-            Ty::I64 => Convert::I64ToWord,
-            Ty::F64 => Convert::F64ToWord,
-            Ty::Address => Convert::AddressToWord,
-            Ty::Bool | Ty::Unit => return Self::unsupported_value_type(),
-        };
-        self.push_one(OpKind::Convert { op, value }, Ty::Word)
-    }
-
-    fn unsupported_value_type() -> Result<ValueId, LowerError> {
-        Err(LowerError::Ir(
-            "non-object value cannot be converted to a Lisp word".into(),
-        ))
+    pub(super) fn coerce_to_word(
+        &mut self,
+        value: ValueId,
+        conversion: Option<Convert>,
+    ) -> Result<ValueId, LowerError> {
+        conversion.map_or(Ok(value), |op| {
+            self.push_one(OpKind::Convert { op, value }, Ty::Word)
+        })
     }
 
     pub(super) fn add_constant(

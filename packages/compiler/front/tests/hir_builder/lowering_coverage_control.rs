@@ -243,3 +243,94 @@ fn cleanup_throw_replaces_return_from() -> TestResult<()> {
     // https://www.lispworks.com/documentation/HyperSpec/Body/s_block.htm
     Ok(())
 }
+
+#[test]
+fn non_local_exits_during_catch_tag_and_progv_arguments_use_outer_catchers() -> TestResult<()> {
+    let (id, mut builder, mut fixture) = context(136);
+    let escape = fixture.keyword("ESCAPE");
+
+    let catch_tag_exit = fixture.form("THROW", &[escape, Word::fixnum(41)]);
+    let inner_catch = fixture.form("CATCH", &[catch_tag_exit, Word::fixnum(9)]);
+    let catch_tag_case = fixture.form("CATCH", &[escape, inner_catch]);
+
+    let progv_symbols_exit = fixture.form("THROW", &[escape, Word::fixnum(42)]);
+    let nil = fixture.cl("NIL");
+    let progv_symbols_case = fixture.form("PROGV", &[progv_symbols_exit, nil, Word::fixnum(13)]);
+    let progv_symbols_case = fixture.form("CATCH", &[escape, progv_symbols_case]);
+
+    let nil = fixture.cl("NIL");
+    let progv_values_exit = fixture.form("THROW", &[escape, Word::fixnum(43)]);
+    let progv_values_case = fixture.form("PROGV", &[nil, progv_values_exit, Word::fixnum(17)]);
+    let progv_values_case = fixture.form("CATCH", &[escape, progv_values_case]);
+
+    let input = fixture.form(
+        "PROGN",
+        &[catch_tag_case, progv_symbols_case, progv_values_case],
+    );
+    let source = "(progn (catch :escape (catch (throw :escape 41) 9)) (catch :escape (progv (throw :escape 42) nil 13)) (catch :escape (progv nil (throw :escape 43) 17)))";
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
+
+    assert_eq!(
+        form.nodes()
+            .iter()
+            .filter(|(_, node)| matches!(&node.kind, NodeKind::Catch { .. }))
+            .count(),
+        4
+    );
+    assert_eq!(
+        form.nodes()
+            .iter()
+            .filter(|(_, node)| matches!(&node.kind, NodeKind::DynamicBinding { .. }))
+            .count(),
+        2
+    );
+
+    let (lowered, _) = lower_both_and_verify(&builder, &form, &expr)?;
+    let throw_blocks = lowered
+        .entry
+        .blocks
+        .iter()
+        .filter(|block| matches!(&block.terminator, MirTerminator::Throw { .. }))
+        .collect::<Vec<_>>();
+    assert_eq!(throw_blocks.len(), 3);
+    let catch_regions = lowered
+        .entry
+        .handler_regions
+        .iter()
+        .filter(|region| region.kind == HandlerKind::Catch)
+        .collect::<Vec<_>>();
+    assert_eq!(catch_regions.len(), 3);
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .all(|region| region.kind != HandlerKind::Progv)
+    );
+    for block in &throw_blocks {
+        assert_eq!(
+            catch_regions
+                .iter()
+                .filter(|region| region.protected.contains(&block.id))
+                .count(),
+            1,
+            "each argument-evaluation THROW must be protected only by its outer CATCH"
+        );
+    }
+    for region in &catch_regions {
+        assert_eq!(
+            throw_blocks
+                .iter()
+                .filter(|block| region.protected.contains(&block.id))
+                .count(),
+            1,
+            "each outer CATCH must protect only its argument-evaluation THROW"
+        );
+    }
+
+    // CLHS evaluates a CATCH tag before establishing its catcher and evaluates PROGV's
+    // symbols and values arguments before establishing its dynamic bindings.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_catch.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_progv.htm
+    Ok(())
+}

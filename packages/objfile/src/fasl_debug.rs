@@ -82,7 +82,7 @@ fn decode_files(reader: &mut SectionReader<'_>) -> Result<Vec<DebugFile>, FaslEr
     for expected_id in 0..file_count {
         let record_offset = reader.absolute_position();
         let file_id = reader.u32()?;
-        if usize::try_from(file_id).ok() != Some(expected_id) {
+        if file_id as usize != expected_id {
             return Err(FaslError::at(
                 FaslRejectReason::InvalidDebugRecord,
                 record_offset,
@@ -170,13 +170,10 @@ fn decode_record(
         ));
     }
     let code = code_layout(code_objects, code_object_id, record_offset)?;
-    let code_length = u32::try_from(code.code.len())
-        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, record_offset))?;
+    let code_length = code.code.len() as u32;
     if pc_start >= pc_end
         || pc_end > code_length
-        || usize::try_from(file_id)
-            .ok()
-            .is_none_or(|id| id >= files.len())
+        || file_id as usize >= files.len()
         || line == 0
         || column == 0
         || source_start > source_end
@@ -265,9 +262,9 @@ pub fn encode_section(files: &[DebugFile], records: &[DebugRecord]) -> Result<Ve
         return Err(FaslError::new(FaslRejectReason::InvalidDebugRecord));
     }
     let mut writer = SectionWriter::new();
-    writer.put_u32(count_u32(files.len())?);
+    writer.put_u32(count_u32(files.len()));
     for (expected_id, file) in files.iter().enumerate() {
-        if usize::try_from(file.file_id).ok() != Some(expected_id)
+        if file.file_id as usize != expected_id
             || file.path.is_empty()
             || !is_normalized_relative_path(&file.path)
             || file.path.len() > MAX_STRING_BYTES
@@ -275,7 +272,7 @@ pub fn encode_section(files: &[DebugFile], records: &[DebugRecord]) -> Result<Ve
             return Err(FaslError::new(FaslRejectReason::InvalidDebugRecord));
         }
         writer.put_u32(file.file_id);
-        writer.put_u32(count_u32(file.path.len())?);
+        writer.put_u32(count_u32(file.path.len()));
         writer.put_bytes(file.path.as_bytes());
         writer.zero_padding(4);
     }
@@ -286,7 +283,7 @@ pub fn encode_section(files: &[DebugFile], records: &[DebugRecord]) -> Result<Ve
     }) {
         return Err(FaslError::new(FaslRejectReason::InvalidDebugRecord));
     }
-    writer.put_u32(count_u32(ordered_records.len())?);
+    writer.put_u32(count_u32(ordered_records.len()));
     for mut record in ordered_records {
         if record.variables.len() > MAX_RECORDS {
             return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
@@ -298,9 +295,7 @@ pub fn encode_section(files: &[DebugFile], records: &[DebugRecord]) -> Result<Ve
             .variables
             .windows(2)
             .any(|pair| matches!(pair, [left, right] if left.name == right.name))
-            || usize::try_from(record.file_id)
-                .ok()
-                .is_none_or(|id| id >= files.len())
+            || record.file_id as usize >= files.len()
             || record.pc_start >= record.pc_end
             || record.line == 0
             || record.column == 0
@@ -316,7 +311,7 @@ pub fn encode_section(files: &[DebugFile], records: &[DebugRecord]) -> Result<Ve
         writer.put_u32(record.column);
         writer.put_u32(record.source_start);
         writer.put_u32(record.source_end);
-        writer.put_u32(count_u32(record.variables.len())?);
+        writer.put_u32(count_u32(record.variables.len()));
         for variable in record.variables {
             if variable.name.is_empty()
                 || variable.name.len() > MAX_STRING_BYTES
@@ -324,7 +319,7 @@ pub fn encode_section(files: &[DebugFile], records: &[DebugRecord]) -> Result<Ve
             {
                 return Err(FaslError::new(FaslRejectReason::InvalidDebugRecord));
             }
-            writer.put_u32(count_u32(variable.name.len())?);
+            writer.put_u32(count_u32(variable.name.len()));
             writer.put_bytes(variable.name.as_bytes());
             writer.put_u32(match variable.location_kind {
                 DebugLocationKind::StackSlot => 0,
@@ -345,7 +340,7 @@ pub fn validate(
 ) -> Result<(), FaslError> {
     let mut previous_path: Option<&[u8]> = None;
     for (expected_id, file) in files.iter().enumerate() {
-        if usize::try_from(file.file_id).ok() != Some(expected_id)
+        if file.file_id as usize != expected_id
             || !is_normalized_relative_path(&file.path)
             || file.path.len() > MAX_STRING_BYTES
             || previous_path.is_some_and(|previous| previous >= file.path.as_bytes())
@@ -358,14 +353,11 @@ pub fn validate(
     for record in records {
         let key = (record.code_object_id, record.pc_start);
         let code = code_layout(code_objects, record.code_object_id, 0)?;
-        let code_length = u32::try_from(code.code.len())
-            .map_err(|_| FaslError::new(FaslRejectReason::InvalidDebugRecord))?;
+        let code_length = code.code.len() as u32;
         if previous_key.is_some_and(|previous| key <= previous)
             || record.pc_start >= record.pc_end
             || record.pc_end > code_length
-            || usize::try_from(record.file_id)
-                .ok()
-                .is_none_or(|id| id >= files.len())
+            || record.file_id as usize >= files.len()
             || record.line == 0
             || record.column == 0
             || record.source_start > record.source_end
@@ -418,21 +410,19 @@ fn code_layout<'a, 'b>(
     id: u32,
     offset: usize,
 ) -> Result<&'a FaslCodeLayout<'b>, FaslError> {
-    let index = usize::try_from(id)
-        .map_err(|_| FaslError::at(FaslRejectReason::InvalidDebugRecord, offset))?;
+    let index = id as usize;
     code_objects
         .get(index)
         .filter(|layout| layout.id == id)
         .ok_or_else(|| FaslError::at(FaslRejectReason::InvalidReference, offset))
 }
 
-fn count_u32(count: usize) -> Result<u32, FaslError> {
-    u32::try_from(count).map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+fn count_u32(count: usize) -> u32 {
+    count as u32
 }
 
 fn bounded_count(count: u32, offset: usize) -> Result<usize, FaslError> {
-    let count = usize::try_from(count)
-        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, offset))?;
+    let count = count as usize;
     if count > MAX_RECORDS {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
@@ -443,8 +433,7 @@ fn bounded_count(count: u32, offset: usize) -> Result<usize, FaslError> {
 }
 
 fn bounded_string_length(length: u32, offset: usize) -> Result<usize, FaslError> {
-    let length = usize::try_from(length)
-        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, offset))?;
+    let length = length as usize;
     if length > MAX_STRING_BYTES {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,

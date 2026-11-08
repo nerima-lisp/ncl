@@ -4,7 +4,7 @@ use super::common::{
     number_value, optional_character, repeated, scaled, shortest_fraction_digits, sign, signed,
     signed_parameter, significant_digits,
 };
-use crate::executor::{ExecutionState, FormatError, FormatOutput};
+use crate::executor::{ExecutionState, FormatError, FormatErrorKind, FormatOutput};
 use crate::model::{Directive, DirectiveKind, Parameter};
 
 pub(super) fn execute(
@@ -142,7 +142,10 @@ fn general(
     let exponent_char = character_parameter(parameters, 6, 'E', directive)?;
     let word = state.take_argument(directive)?;
     let Some(value) = number_value(state, word, directive)? else {
-        return fallback(directive, state, output, word, width);
+        return Err(FormatError::at(
+            directive,
+            FormatErrorKind::WrongArgumentType,
+        ));
     };
 
     let mut requested_digits = requested_digits;

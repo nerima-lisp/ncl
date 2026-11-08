@@ -126,10 +126,10 @@ fn format_as_a(
     if width == 0 {
         return output.print(state, value, &options, directive);
     }
-    let text = render(state, directive, value, &options)?;
-    let mut result = repeated(pad, width.saturating_sub(text.chars().count()), directive)?;
-    result.push_str(&text);
-    output.write_str(&result)
+    let mut text = render(state, directive, value, &options)?;
+    let padding = repeated(pad, width.saturating_sub(text.chars().count()), directive)?;
+    text.push_str(&padding);
+    output.write_str(&text)
 }
 
 fn integer_field(number: &str, width: usize, pad: char, force_sign: bool) -> String {

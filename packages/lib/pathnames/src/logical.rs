@@ -3,7 +3,7 @@
 #[path = "logical_namestring.rs"]
 mod logical_namestring;
 
-use ncl_object::hash_table::{HashTable, HashTest, Weakness};
+use ncl_hash_tables::{HashTable, HashTest, Weakness};
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, Instance, LambdaList, LispError, MultipleValues, ObjectError,

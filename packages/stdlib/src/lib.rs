@@ -68,7 +68,7 @@ pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     ncl_lib_arrays::register(runtime)?;
     ncl_lib_hash_tables::register(runtime)?;
     ncl_lib_macros::register(runtime)?;
-    ncl_lib_streams::register(runtime)?;
+    ncl_lib_streams::register_with_context(runtime, ctx)?;
     ncl_lib_pathnames::register(ctx, runtime)?;
     ncl_lib_packages::register(runtime)?;
     ncl_lib_format::register(runtime)?;

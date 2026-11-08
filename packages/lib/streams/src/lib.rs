@@ -55,4 +55,4 @@ const STRING_PARAMETERS: &[ncl_object::Parameter] = &[
     },
 ];
 
-pub use registration::register;
+pub use registration::{register, register_with_context};

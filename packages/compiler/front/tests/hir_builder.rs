@@ -18,8 +18,12 @@ mod hir_builder {
     mod identities;
     mod literal_lowering;
     mod literals;
+    mod lowering_coverage_control;
     mod lowering_coverage_followup;
+    mod lowering_coverage_lambda;
+    mod lowering_coverage_literals;
     mod lowering_followup;
+    mod lowering_hir_coverage_followup;
     mod lowering_paths;
     mod multiple_values;
     mod types;

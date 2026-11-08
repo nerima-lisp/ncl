@@ -174,10 +174,15 @@ impl FunctionLowerer<'_> {
         exit: ncl_ir::BlockId,
     ) -> Result<(), LowerError> {
         match terminator {
-            HirTerminator::Jump(target) => self.terminate(IrTerminator::Jump {
-                target: lookup_tag_target(targets, *target)?,
-                args: Vec::new(),
-            }),
+            HirTerminator::Jump(target) => {
+                if self.is_tagbody_backedge(*target) {
+                    self.push_none(OpKind::Safepoint)?;
+                }
+                self.terminate(IrTerminator::Jump {
+                    target: lookup_tag_target(targets, *target)?,
+                    args: Vec::new(),
+                })
+            }
             HirTerminator::Conditional {
                 condition,
                 if_true,
@@ -196,6 +201,9 @@ impl FunctionLowerer<'_> {
                     },
                     Ty::Bool,
                 )?;
+                if self.is_tagbody_backedge(*if_true) || self.is_tagbody_backedge(*if_false) {
+                    self.push_none(OpKind::Safepoint)?;
+                }
                 self.terminate(IrTerminator::Branch {
                     condition,
                     then_target: lookup_tag_target(targets, *if_true)?,
@@ -231,12 +239,24 @@ impl FunctionLowerer<'_> {
         let value = self.word_constant(Constant::Nil)?;
         if !self.is_terminated() {
             self.close_handlers_since(active_depth)?;
+            if self.is_tagbody_backedge(target) {
+                self.push_none(OpKind::Safepoint)?;
+            }
             self.terminate(IrTerminator::Jump {
                 target: block,
                 args: Vec::new(),
             })?;
         }
         Ok(value)
+    }
+
+    fn is_tagbody_backedge(&self, target: BlockId) -> bool {
+        self.hir_block.is_some_and(|source| {
+            self.dominance_contexts
+                .last()
+                .and_then(|context| context.dominators.get(&source))
+                .is_some_and(|dominators| dominators.contains(&target))
+        })
     }
 }
 

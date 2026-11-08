@@ -3,7 +3,7 @@
 use std::cell::Cell;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, mpsc};
 use std::time::Duration;
 
 static CONTROL_THREAD_STARTED: Mutex<bool> = Mutex::new(false);

@@ -6,7 +6,7 @@ use std::error::Error as _;
 use std::io;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::Duration;
 
 #[path = "../src/signal_control.rs"]
@@ -106,7 +106,7 @@ fn startup_failures_keep_typed_errors() {
 
 #[test]
 fn control_event_maps_configured_signals_and_rejects_unknown_values() {
-    use signal_control_source::{control_event, SignalEvent as SourceEvent};
+    use signal_control_source::{SignalEvent as SourceEvent, control_event};
 
     assert_eq!(control_event(2), Some(SourceEvent::Interrupt));
     assert_eq!(control_event(15), Some(SourceEvent::TerminationRequested));
@@ -119,7 +119,7 @@ fn control_event_maps_configured_signals_and_rejects_unknown_values() {
 
 #[test]
 fn worker_failure_stops_siblings_and_receiver() {
-    use signal_control_source::{sigwait_loop, SignalControlError as SourceError};
+    use signal_control_source::{SignalControlError as SourceError, sigwait_loop};
 
     let worker_failed = Arc::new(AtomicBool::new(false));
     let (sender, receiver) = mpsc::channel();
@@ -165,7 +165,7 @@ fn wait_failure_before_return_stops_without_reporting_an_event() {
 
 #[test]
 fn unexpected_signal_is_reported_as_worker_failure() {
-    use signal_control_source::{sigwait_loop, SignalControlError as SourceError};
+    use signal_control_source::{SignalControlError as SourceError, sigwait_loop};
 
     let worker_failed = AtomicBool::new(false);
     let (sender, receiver) = mpsc::channel();

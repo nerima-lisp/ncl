@@ -77,6 +77,98 @@ fn frame_walk_and_scan_reject_invalid_ranges() {
 }
 
 #[test]
+fn frame_header_walk_and_register_scan_forward_roots() {
+    let words = [
+        Word::from_bits(8),
+        Word::from_bits(0x1234),
+        Word::fixnum(10),
+        Word::from_bits(3),
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        Word::from_bits(0x5678),
+        Word::fixnum(20),
+        Word::from_bits(4),
+    ];
+    let headers = walk_frame_headers(&words, 0, 2);
+    assert_eq!(
+        headers,
+        [
+            FrameHeader {
+                previous: 8,
+                return_pc: 0x1234,
+                function: Word::fixnum(10),
+                flags: 3,
+            },
+            FrameHeader {
+                previous: 0,
+                return_pc: 0x5678,
+                function: Word::fixnum(20),
+                flags: 4,
+            },
+        ]
+    );
+
+    let map = Safepoint {
+        pc_offset: 7,
+        frame_words: 4,
+        slot_words: 4,
+        word_slot_count: 3,
+        register_mask: 1 << 3,
+        map_flags: 0,
+        slot_bitmap: vec![0b0000_0100],
+        register_ids: vec![3],
+    };
+    let mut frame = [Word::NIL, Word::NIL, Word::fixnum(1), Word::NIL];
+    let mut registers = [Word::NIL, Word::NIL, Word::NIL, Word::fixnum(9)];
+    let mut saw_non_fixnum = false;
+    assert_eq!(
+        scan_frame_with_registers(&mut frame, 0, &map, &mut registers, |word| {
+            word.as_fixnum().map_or_else(
+                || {
+                    saw_non_fixnum = true;
+                    word
+                },
+                |value| Word::fixnum(value + 1),
+            )
+        }),
+        Some(2)
+    );
+    assert!(!saw_non_fixnum, "only live fixnums are forwarded");
+    assert_eq!(frame[2].as_fixnum(), Some(2));
+    assert_eq!(registers[3].as_fixnum(), Some(10));
+
+    let mut short_registers = [Word::NIL; 3];
+    let mut frame = [Word::NIL, Word::NIL, Word::fixnum(4), Word::NIL];
+    let mut saw_non_fixnum_frame_word = false;
+    assert_eq!(
+        scan_frame_with_registers(&mut frame, 0, &map, &mut short_registers, |word| {
+            word.as_fixnum().map_or_else(
+                || {
+                    saw_non_fixnum_frame_word = true;
+                    word
+                },
+                |value| Word::fixnum(value + 1),
+            )
+        }),
+        Some(1)
+    );
+    assert!(
+        !saw_non_fixnum_frame_word,
+        "only the live frame slot is forwarded"
+    );
+
+    let mut invalid = map;
+    invalid.register_ids = vec![16];
+    assert_eq!(
+        scan_frame_with_registers(&mut frame, 0, &invalid, &mut registers, |word| word),
+        None
+    );
+}
+
+#[test]
 fn registry_register_find_unregister() {
     let Ok(mut code) = alloc_code(16) else {
         return;
@@ -106,6 +198,58 @@ fn registry_register_find_unregister() {
     assert!(registry.find(code.address() + code.len()).is_none());
     assert!(registry.unregister(&code).is_some());
     assert!(registry.find(code.address()).is_none());
+}
+
+#[test]
+fn registry_rejects_invalid_metadata_and_duplicate_ranges() {
+    let code_result = alloc_code(8);
+    assert!(code_result.is_ok(), "allocate code range: {code_result:?}");
+    let Ok(mut code) = code_result else {
+        return;
+    };
+    let mut registry = CodeRegistry::default();
+    let metadata = |size, entry_offset, function_name| CodeObjectMetadata {
+        entry_offset,
+        size,
+        frame_words: 0,
+        function_name,
+        source_locations: Vec::new(),
+        constant_slots: Vec::new(),
+        safepoint_map: SafepointMap::default(),
+        debug_table: Vec::new(),
+    };
+
+    for invalid in [
+        metadata(0, 0, "empty".to_owned()),
+        metadata(9, 0, "oversized".to_owned()),
+        metadata(8, 8, "entry-at-end".to_owned()),
+    ] {
+        assert_eq!(
+            registry.register(&code, invalid),
+            Err(CodeError::OutOfBounds)
+        );
+    }
+
+    assert_eq!(
+        registry.register(&code, metadata(8, 0, "registered".to_owned())),
+        Ok(())
+    );
+    assert_eq!(
+        registry.register(&code, metadata(8, 0, "duplicate".to_owned())),
+        Err(CodeError::AlreadyRegistered)
+    );
+    assert!(registry.find(code.address()).is_none());
+
+    assert_eq!(seal_code(&mut code), Ok(()));
+    assert_eq!(synchronize_code(&mut code), Ok(()));
+    assert_eq!(activate_code(&mut code), Ok(()));
+    assert_eq!(activate_code_registry(&code), Ok(()));
+    assert_eq!(
+        registry
+            .find(code.address())
+            .map(|(metadata, _)| metadata.function_name.as_str()),
+        Some("registered")
+    );
 }
 
 #[test]
@@ -335,60 +479,4 @@ fn frame_chain_keeps_return_pc_low_bits_for_safepoint_lookup() {
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-#[test]
-fn published_machine_code_returns_42() {
-    #[cfg(target_arch = "aarch64")]
-    let bytes = [0x40, 0x05, 0x80, 0xd2, 0xc0, 0x03, 0x5f, 0xd6];
-    #[cfg(target_arch = "x86_64")]
-    let bytes = [0xb8, 0x2a, 0, 0, 0, 0xc3];
-    let Ok(mut code) = alloc_code(bytes.len()) else {
-        return;
-    };
-    assert!(code.write_code(0, &bytes).is_ok());
-    assert!(publish_code(&mut code).is_ok());
-    let mut thread = crate::Thread::new();
-    let (value, _count) = crate::invoke_entry(&code, 0, &raw mut thread, 0, [0; 4], 0);
-    assert_eq!(value, 42);
-}
-
-/// Generated code reads the pinned context register and the callee function
-/// object that a native call supplies, so the invoke entry must deliver both.
-#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-#[test]
-fn invoke_entry_delivers_context_and_function_object() {
-    #[cfg(target_arch = "aarch64")]
-    let context_bytes = [0xe0, 0x03, 0x15, 0xaa, 0xc0, 0x03, 0x5f, 0xd6];
-    #[cfg(target_arch = "aarch64")]
-    let function_bytes = [0xe0, 0x03, 0x10, 0xaa, 0xc0, 0x03, 0x5f, 0xd6];
-    #[cfg(target_arch = "x86_64")]
-    let context_bytes = [0x4c, 0x89, 0xf8, 0xc3];
-    #[cfg(target_arch = "x86_64")]
-    let function_bytes = [0x4c, 0x89, 0xd0, 0xc3];
-    let mut thread = crate::Thread::new();
-    let context = &raw mut thread;
-    let function_object = 0x1234_5678_9abc_def0_u64;
-
-    let Ok(mut context_code) = alloc_code(context_bytes.len()) else {
-        return;
-    };
-    assert!(context_code.write_code(0, &context_bytes).is_ok());
-    assert!(publish_code(&mut context_code).is_ok());
-    let (returned_context, _) = crate::invoke_entry(&context_code, 0, context, 0, [0; 4], 0);
-    assert_eq!(returned_context, context as usize as u64);
-
-    let Ok(mut function_code) = alloc_code(function_bytes.len()) else {
-        return;
-    };
-    assert!(function_code.write_code(0, &function_bytes).is_ok());
-    assert!(publish_code(&mut function_code).is_ok());
-    let (returned_function, _) = crate::invoke_entry_with_function(
-        &function_code,
-        0,
-        context,
-        function_object,
-        0,
-        [0; 4],
-        0,
-    );
-    assert_eq!(returned_function, function_object);
-}
+mod invocation;

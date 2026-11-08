@@ -53,6 +53,10 @@ pub mod declarations {
         pub fn pthread_get_stacksize_np(thread: usize) -> usize;
         /// Enable or disable macOS JIT write protection.
         pub fn pthread_jit_write_protect_np(enabled: c_int);
+    }
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    // SAFETY: this declaration matches the macOS instruction-cache invalidation entry point.
+    unsafe extern "C" {
         /// Flush macOS instruction cache after writing JIT code.
         pub fn sys_icache_invalidate(start: *const c_void, len: usize);
     }

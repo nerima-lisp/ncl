@@ -14,6 +14,9 @@ use ncl_readtables::Readtable as ObjectReadtable;
 
 mod read_options;
 mod support;
+#[cfg(test)]
+#[path = "load/tests.rs"]
+mod tests;
 mod top_level;
 
 pub use read_options::current_read_options;
@@ -171,7 +174,20 @@ fn load_with_runtime(
         if_missing,
         options,
     } = parse_load_arguments(ctx, object, args)?;
-    match file_with_options(runtime, &path, options) {
+    let result = file_with_options(runtime, &path, options);
+    finish_file_load(ctx, object, runtime, &pathname, if_missing, values, result)
+}
+
+fn finish_file_load(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    runtime: &Runtime,
+    pathname: &HeapRootedWord,
+    if_missing: bool,
+    values: &mut MultipleValues,
+    result: Result<Word, FileLoadError>,
+) -> Result<Word, ObjectError> {
+    match result {
         Ok(_) => {
             values.set(&[Word::TRUE]);
             Ok(Word::TRUE)

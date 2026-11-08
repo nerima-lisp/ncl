@@ -1,7 +1,12 @@
+#![expect(
+    clippy::expect_used,
+    reason = "AArch64 call fixtures are constructed to be valid, so expect failures identify broken test setup without adding uncovered fallback branches."
+)]
+
 use super::*;
 
 #[test]
-fn aarch64_call_with_five_arguments_reserves_and_roots_rest_area() -> Result<(), String> {
+fn aarch64_call_with_five_arguments_reserves_and_roots_rest_area() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(33),
         "aarch64-five-argument-call",
@@ -34,14 +39,13 @@ fn aarch64_call_with_five_arguments_reserves_and_roots_rest_area() -> Result<(),
         vec![Ty::Word],
     );
     let argc = builder.add_constant(Constant::Fixnum(5));
-    let Some(argc) = builder
+    let argc = builder
         .push_op(OpKind::Const { result: argc }, &[Ty::I64])
-        .ok()
-        .and_then(|values| values.first().copied())
-    else {
-        return Err("argc constant did not lower".into());
-    };
-    let Some(argc) = builder
+        .expect("argc constant lowers")
+        .first()
+        .copied()
+        .expect("argc constant produces a value");
+    let argc = builder
         .push_op(
             OpKind::Convert {
                 op: ncl_ir::Convert::I64ToWord,
@@ -49,12 +53,11 @@ fn aarch64_call_with_five_arguments_reserves_and_roots_rest_area() -> Result<(),
             },
             &[Ty::Word],
         )
-        .ok()
-        .and_then(|values| values.first().copied())
-    else {
-        return Err("argc conversion did not lower".into());
-    };
-    let Some(result) = builder
+        .expect("argc conversion lowers")
+        .first()
+        .copied()
+        .expect("argc conversion produces a value");
+    let result = builder
         .push_op(
             OpKind::Call {
                 function: ncl_ir::ValueId(0),
@@ -69,41 +72,29 @@ fn aarch64_call_with_five_arguments_reserves_and_roots_rest_area() -> Result<(),
             },
             &[Ty::Word],
         )
-        .ok()
-        .and_then(|values| values.first().copied())
-    else {
-        return Err("call did not lower".into());
-    };
-    if builder
+        .expect("call lowers")
+        .first()
+        .copied()
+        .expect("call produces a value");
+    builder
         .terminate(Terminator::Return {
             values: vec![result],
         })
-        .is_err()
-    {
-        return Err("return terminator did not lower".into());
-    }
+        .expect("return terminator lowers");
 
-    let Ok(compiled) = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
-    else {
-        return Err("five-argument call did not compile".into());
-    };
-    if compiled.frame_size < 48 {
-        return Err("rest area was not reserved".into());
-    }
-    let Some(map) = compiled.safepoint_maps.first() else {
-        return Err("call safepoint map was not emitted".into());
-    };
-    let Some(rest_roots) = map.bitmap.get(1) else {
-        return Err("outgoing roots were not represented".into());
-    };
-    if *rest_roots & 0b1100 != 0b1100 {
-        return Err("rest roots were not marked".into());
-    }
-    Ok(())
+    let compiled = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
+        .expect("five-argument call compiles");
+    assert!(compiled.frame_size >= 48, "rest area was not reserved");
+    let map = compiled
+        .safepoint_maps
+        .first()
+        .expect("call safepoint map was emitted");
+    let rest_roots = map.bitmap.get(1).expect("outgoing roots were represented");
+    assert_eq!(*rest_roots & 0b1100, 0b1100, "rest roots were marked");
 }
 
 #[test]
-fn aarch64_closure_call_acquire_loads_function_entry() -> Result<(), String> {
+fn aarch64_closure_call_acquire_loads_function_entry() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(34),
         "aarch64-acquire-function-entry",
@@ -119,7 +110,7 @@ fn aarch64_closure_call_acquire_loads_function_entry() -> Result<(), String> {
         ],
         vec![Ty::Word],
     );
-    let Some(result) = builder
+    let result = builder
         .push_op(
             OpKind::CallClosure {
                 closure: ncl_ir::ValueId(0),
@@ -128,24 +119,18 @@ fn aarch64_closure_call_acquire_loads_function_entry() -> Result<(), String> {
             },
             &[Ty::Word],
         )
-        .ok()
-        .and_then(|values| values.first().copied())
-    else {
-        return Err("closure call did not lower".into());
-    };
-    if builder
+        .expect("closure call lowers")
+        .first()
+        .copied()
+        .expect("closure call produces a value");
+    builder
         .terminate(Terminator::Return {
             values: vec![result],
         })
-        .is_err()
-    {
-        return Err("return terminator did not lower".into());
-    }
+        .expect("return terminator lowers");
 
-    let Ok(compiled) = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
-    else {
-        return Err("closure call did not compile".into());
-    };
+    let compiled = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
+        .expect("closure call compiles");
     let expected = encode_aarch64([
         ncl_asm_aarch64::Inst::AddImm {
             rd: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(17)),
@@ -168,11 +153,10 @@ fn aarch64_closure_call_acquire_loads_function_entry() -> Result<(), String> {
         &expected,
         "closure call acquire-loads the function entry before decoding it",
     );
-    Ok(())
 }
 
 #[test]
-fn aarch64_function_cell_field_load_uses_acquire() -> Result<(), String> {
+fn aarch64_function_cell_field_load_uses_acquire() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(35),
         "aarch64-function-cell-load",
@@ -183,8 +167,8 @@ fn aarch64_function_cell_field_load_uses_acquire() -> Result<(), String> {
         vec![Ty::Word],
     );
     let field = u32::try_from(ncl_object::symbol_offset::FUNCTION)
-        .map_err(|error| format!("function-cell field offset: {error}"))?;
-    let Some(value) = builder
+        .expect("function-cell field offset fits in IR");
+    let value = builder
         .push_op(
             OpKind::LoadField {
                 object: ncl_ir::ValueId(0),
@@ -192,26 +176,20 @@ fn aarch64_function_cell_field_load_uses_acquire() -> Result<(), String> {
             },
             &[Ty::Word],
         )
-        .ok()
-        .and_then(|values| values.first().copied())
-    else {
-        return Err("function-cell field load did not lower".into());
-    };
-    if builder
+        .expect("function-cell field load lowers")
+        .first()
+        .copied()
+        .expect("function-cell field load produces a value");
+    builder
         .terminate(Terminator::Return {
             values: vec![value],
         })
-        .is_err()
-    {
-        return Err("return terminator did not lower".into());
-    }
+        .expect("return terminator lowers");
 
-    let Ok(compiled) = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
-    else {
-        return Err("function-cell field load did not compile".into());
-    };
+    let compiled = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi::default())
+        .expect("function-cell field load compiles");
     let offset = u16::try_from((ncl_object::symbol_offset::FUNCTION + 1) * 8)
-        .map_err(|error| format!("function-cell byte offset: {error}"))?;
+        .expect("function-cell byte offset fits in an AArch64 instruction");
     let expected = encode_aarch64([
         ncl_asm_aarch64::Inst::AndImm {
             rd: ncl_asm_aarch64::Reg(16),
@@ -234,5 +212,4 @@ fn aarch64_function_cell_field_load_uses_acquire() -> Result<(), String> {
         &expected,
         "function-cell LoadField forms its address and uses LDAR",
     );
-    Ok(())
 }

@@ -13,6 +13,7 @@ mod hir_builder {
     mod dynamic_control;
     mod functions;
     mod identities;
+    mod literal_lowering;
     mod literals;
     mod types;
     mod unsupported;

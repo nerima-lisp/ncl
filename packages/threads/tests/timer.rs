@@ -1,6 +1,5 @@
-#![allow(
+#![expect(
     clippy::unwrap_used,
-    clippy::expect_used,
     reason = "tests assert on timer and deadline outcomes"
 )]
 

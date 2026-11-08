@@ -1,6 +1,5 @@
-#![allow(
+#![expect(
     clippy::unwrap_used,
-    clippy::expect_used,
     reason = "tests assert on thread lifecycle outcomes"
 )]
 
@@ -21,7 +20,10 @@ fn registry_guard() -> MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-#[allow(clippy::unnecessary_wraps)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "The spawned thread callback must return a fallible result even when this fixture succeeds."
+)]
 const fn body_ok(_runtime: &Runtime, _ctx: &mut ThreadContext) -> Result<(), ThreadError> {
     Ok(())
 }
@@ -40,9 +42,9 @@ fn body_allocates(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Thre
     Ok(())
 }
 
-#[allow(
+#[expect(
     clippy::unnecessary_wraps,
-    reason = "thread bodies return a fallible result"
+    reason = "Thread callbacks return a fallible result so spawn and join can report worker errors."
 )]
 fn body_waiting_for_termination(
     _runtime: &Runtime,

@@ -186,7 +186,11 @@ fn method_body_rewriting_preserves_quoted_forms_and_local_functions() -> Result<
     let next_method_p_form = make_list(&mut scope, &runtime, &[next_method_p_word])?;
     let next_method_p_form_word = scope.get(next_method_p_form).as_word();
     let call_without_arguments_word = scope.get(call_without_arguments).as_word();
-    let quoted_form = make_list(&mut scope, &runtime, &[quote_word, call_without_arguments_word])?;
+    let quoted_form = make_list(
+        &mut scope,
+        &runtime,
+        &[quote_word, call_without_arguments_word],
+    )?;
     let quoted_form_word = scope.get(quoted_form).as_word();
     let lambda_form = make_list(
         &mut scope,
@@ -197,7 +201,12 @@ fn method_body_rewriting_preserves_quoted_forms_and_local_functions() -> Result<
     let defun_form = make_list(
         &mut scope,
         &runtime,
-        &[defun_word, local_helper_word, Word::NIL, call_without_arguments_word],
+        &[
+            defun_word,
+            local_helper_word,
+            Word::NIL,
+            call_without_arguments_word,
+        ],
     )?;
     let defun_form_word = scope.get(defun_form).as_word();
     let call_with_argument_word = scope.get(call_with_argument).as_word();
@@ -214,7 +223,8 @@ fn method_body_rewriting_preserves_quoted_forms_and_local_functions() -> Result<
             Word::fixnum(19),
         ],
     )?;
-    let source_forms = scope.list_to_handle_vec(Local::from_word(scope.get(source_forms).as_word()))?;
+    let source_forms =
+        scope.list_to_handle_vec(Local::from_word(scope.get(source_forms).as_word()))?;
     let rewritten = rewrite_method_body(
         &mut scope,
         &runtime,
@@ -240,7 +250,10 @@ fn method_body_rewriting_preserves_quoted_forms_and_local_functions() -> Result<
         "%CLOS-CALL-NEXT-METHOD"
     );
     let supplied_arguments = list_words(&mut scope, explicit_argument_call[2])?;
-    assert_eq!(symbol_name_string(scope.context(), supplied_arguments[0])?, "LIST");
+    assert_eq!(
+        symbol_name_string(scope.context(), supplied_arguments[0])?,
+        "LIST"
+    );
     assert_eq!(supplied_arguments[1], scope.get(value).as_word());
 
     let next_method_p_call = list_words(&mut scope, forms[3])?;
@@ -339,10 +352,18 @@ fn long_form_method_combination_expansion_stores_definition_and_builder() -> Res
 
     let helper = list_words(&mut scope, expansion[1])?;
     assert_eq!(symbol_name_string(scope.context(), helper[0])?, "DEFUN");
-    assert!(symbol_name_string(scope.context(), helper[1])?.starts_with("%CLOS-METHOD-COMBINATION-"));
+    assert!(
+        symbol_name_string(scope.context(), helper[1])?.starts_with("%CLOS-METHOD-COMBINATION-")
+    );
     let helper_arguments = list_words(&mut scope, helper[2])?;
-    assert_eq!(symbol_name_string(scope.context(), helper_arguments[0])?, "GROUPS");
-    assert_eq!(symbol_name_string(scope.context(), helper_arguments[1])?, "OPTIONS");
+    assert_eq!(
+        symbol_name_string(scope.context(), helper_arguments[0])?,
+        "GROUPS"
+    );
+    assert_eq!(
+        symbol_name_string(scope.context(), helper_arguments[1])?,
+        "OPTIONS"
+    );
     let helper_body = list_words(&mut scope, helper[3])?;
     assert_eq!(symbol_name_string(scope.context(), helper_body[0])?, "LET");
     let bindings = list_words(&mut scope, helper_body[1])?;
@@ -357,20 +378,38 @@ fn long_form_method_combination_expansion_stores_definition_and_builder() -> Res
     let body = list_words(&mut scope, helper_body[2])?;
     assert_eq!(symbol_name_string(scope.context(), body[0])?, "APPLY");
     let function_form = list_words(&mut scope, body[1])?;
-    assert_eq!(symbol_name_string(scope.context(), function_form[0])?, "FUNCTION");
+    assert_eq!(
+        symbol_name_string(scope.context(), function_form[0])?,
+        "FUNCTION"
+    );
     let lambda_form = list_words(&mut scope, function_form[1])?;
-    assert_eq!(symbol_name_string(scope.context(), lambda_form[0])?, "LAMBDA");
+    assert_eq!(
+        symbol_name_string(scope.context(), lambda_form[0])?,
+        "LAMBDA"
+    );
     assert_eq!(lambda_form[1], Word::NIL);
     assert_eq!(lambda_form[2], Word::fixnum(23));
     assert_eq!(symbol_name_string(scope.context(), body[2])?, "OPTIONS");
 
     let stored_definition = list_words(&mut scope, expansion[2])?;
-    assert_eq!(symbol_name_string(scope.context(), stored_definition[0])?, "SETF");
+    assert_eq!(
+        symbol_name_string(scope.context(), stored_definition[0])?,
+        "SETF"
+    );
     let stored_function = list_words(&mut scope, expansion[3])?;
-    assert_eq!(symbol_name_string(scope.context(), stored_function[0])?, "SETF");
+    assert_eq!(
+        symbol_name_string(scope.context(), stored_function[0])?,
+        "SETF"
+    );
     let result_name = list_words(&mut scope, expansion[4])?;
-    assert_eq!(symbol_name_string(scope.context(), result_name[0])?, "QUOTE");
-    assert_eq!(symbol_name_string(scope.context(), result_name[1])?, "WEIGHTED-PROBE");
+    assert_eq!(
+        symbol_name_string(scope.context(), result_name[0])?,
+        "QUOTE"
+    );
+    assert_eq!(
+        symbol_name_string(scope.context(), result_name[1])?,
+        "WEIGHTED-PROBE"
+    );
     Ok(())
 }
 

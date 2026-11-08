@@ -71,7 +71,7 @@ pub fn encode(metadata: &FaslMetadata) -> Result<Vec<u8>, FaslError> {
 }
 
 pub fn decode(bytes: &[u8], file_offset: usize) -> Result<FaslMetadata, FaslError> {
-    if bytes.len() > MAX_METADATA_BYTES {
+    if metadata_size_exceeds_limit(bytes.len()) {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
             file_offset,
@@ -252,11 +252,15 @@ fn extend_bounded(bytes: &mut Vec<u8>, value: &[u8]) -> Result<(), FaslError> {
         .len()
         .checked_add(value.len())
         .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
-    if end > MAX_METADATA_BYTES {
+    if metadata_size_exceeds_limit(end) {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
     bytes.extend_from_slice(value);
     Ok(())
+}
+
+const fn metadata_size_exceeds_limit(size: usize) -> bool {
+    size > MAX_METADATA_BYTES
 }
 
 fn count_u32(count: usize) -> Result<u32, FaslError> {

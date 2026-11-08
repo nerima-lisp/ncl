@@ -70,10 +70,7 @@ impl<'a> SectionReader<'a> {
     }
 
     pub fn u8(&mut self) -> Result<u8, FaslError> {
-        self.take(1)?
-            .first()
-            .copied()
-            .ok_or_else(|| FaslError::at(self.reason, self.absolute_position()))
+        Ok(u8::from_le_bytes(self.take_array()?))
     }
 
     pub fn u16(&mut self) -> Result<u16, FaslError> {
@@ -261,6 +258,15 @@ mod tests {
 
         let mut short_i64 = SectionReader::new(&[0; 7], 1800, reason);
         assert_eq!(short_i64.i64(), Err(FaslError::at(reason, 1800)));
+    }
+
+    #[test]
+    fn section_reader_truncated_primitive_uses_the_advanced_absolute_offset() {
+        let reason = FaslRejectReason::InvalidCodeObject;
+        let mut reader = SectionReader::new(&[0xaa, 0xbb], 2000, reason);
+        assert_eq!(reader.u8(), Ok(0xaa));
+        assert_eq!(reader.u16(), Err(FaslError::at(reason, 2001)));
+        assert_eq!(reader.remaining(), 1);
     }
 
     #[test]

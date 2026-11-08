@@ -1,4 +1,7 @@
-#![allow(clippy::needless_pass_by_ref_mut)]
+#![expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "the numeric builtin forwards mutable rooted words so garbage collection can update them"
+)]
 
 use super::{MultipleValues, ObjectError, Runtime, ThreadContext, Word, integer, integer_word};
 

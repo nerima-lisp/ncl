@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+//! Tests random-number behavior and numeric constants.
+
+#![expect(
+    clippy::unwrap_used,
+    reason = "tests assert on canonical numeric constants and their runtime values"
+)]
 
 use ncl_object::{
     Bignum, DoubleFloat, FunctionObject, ObjectError, ObjectRef, Package, Runtime, ThreadContext,

@@ -1,10 +1,11 @@
-#![allow(
+#![expect(
     clippy::float_cmp,
     clippy::needless_pass_by_ref_mut,
     clippy::unwrap_used,
     dead_code,
-    missing_docs
+    reason = "the test imports full numeric modules while checking float comparisons, rooted arguments, and valid helper fixtures"
 )]
+//! Tests for numeric helpers included directly from their source modules.
 
 #[path = "../src/complex.rs"]
 mod complex;

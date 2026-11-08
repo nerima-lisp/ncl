@@ -1,8 +1,5 @@
-#![allow(
-    clippy::unwrap_used,
-    missing_docs,
-    reason = "numeric builtin assertions"
-)]
+#![expect(clippy::unwrap_used, reason = "numeric builtin assertions")]
+//! Tests for transcendental numeric builtins and complex results.
 
 use ncl_object::{
     ObjectRef, Ratio, Runtime, ThreadContext, Word, classify_object, complex_imag, complex_real,

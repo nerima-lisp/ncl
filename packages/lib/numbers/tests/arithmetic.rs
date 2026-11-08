@@ -1,8 +1,8 @@
-#![allow(
+#![expect(
     clippy::unwrap_used,
-    missing_docs,
     reason = "tests assert on numeric builtin behavior"
 )]
+//! Tests for numeric arithmetic builtins and overflow boundaries.
 
 use ncl_object::{
     Bignum, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs,

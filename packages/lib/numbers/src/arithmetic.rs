@@ -77,7 +77,6 @@ typed_runtime!(typed_abs, abs);
 typed_runtime!(typed_signum, signum);
 
 #[cfg(test)]
-#[allow(clippy::needless_borrow)]
 mod tests {
     include!("arithmetic/test_cases.inc");
 }

@@ -144,12 +144,18 @@ fn add(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
     (a.0 + b.0, a.1 + b.1)
 }
 
-#[allow(clippy::suboptimal_flops)]
+#[expect(
+    clippy::suboptimal_flops,
+    reason = "preserving the operation order keeps the numeric conversion result stable"
+)]
 fn mul(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
     (a.0 * b.0 - a.1 * b.1, a.0 * b.1 + a.1 * b.0)
 }
 
-#[allow(clippy::suboptimal_flops)]
+#[expect(
+    clippy::suboptimal_flops,
+    reason = "preserving the operation order keeps the numeric conversion result stable"
+)]
 fn div(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
     let scale = b.0.hypot(b.1);
     let (br, bi) = (b.0 / scale, b.1 / scale);

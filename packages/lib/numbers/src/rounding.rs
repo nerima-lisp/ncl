@@ -23,12 +23,10 @@ fn with_rooted_word<T>(
     result
 }
 
-#[allow(clippy::map_or_identity)]
 fn integer_to_f64(value: i128) -> f64 {
     let magnitude = value.unsigned_abs();
-    let limb = |shift| {
-        f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).map_or(0, |v| v))
-    };
+    let limb =
+        |shift| f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).unwrap_or(0));
     let result =
         limb(96) * 2_f64.powi(96) + limb(64) * 2_f64.powi(64) + limb(32) * 2_f64.powi(32) + limb(0);
     if value.is_negative() { -result } else { result }
@@ -327,7 +325,6 @@ fn float_quotient(value: f64, mode: u8) -> f64 {
             let Some(lower) = float_to_i128(lower) else {
                 return value.round();
             };
-            #[allow(clippy::float_cmp)]
             let round_down = fraction < HALF || (fraction == HALF && lower.unsigned_abs() % 2 == 0);
             if round_down {
                 integer_to_f64(lower)

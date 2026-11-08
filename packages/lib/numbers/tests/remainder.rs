@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+//! Tests remainder, GCD, LCM, and integer-square-root builtins.
+
+#![expect(
+    clippy::unwrap_used,
+    reason = "tests assert on remainder and integer-root behavior for valid numeric fixtures"
+)]
 
 use ncl_object::{
     FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object,

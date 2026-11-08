@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "tests assert on rounding and integer-conversion boundaries"
+)]
+//! Tests for numeric rounding rules and integer-conversion boundaries.
 
 use ncl_object::{
     DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,

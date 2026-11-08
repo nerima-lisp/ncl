@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "tests assert on exact rational and complex numeric behavior"
+)]
+//! Tests for rational and complex numeric representations and arithmetic.
 
 use ncl_object::{
     FunctionObject, ObjectError, ObjectRef, Ratio, Runtime, ThreadContext, Word, classify_object,

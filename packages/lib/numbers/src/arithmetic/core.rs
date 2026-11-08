@@ -305,7 +305,10 @@ pub(super) fn sub_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
     }
     real_pair(a, b, |x, y| x - y, i128::checked_sub)
 }
-#[allow(clippy::suboptimal_flops)]
+#[expect(
+    clippy::suboptimal_flops,
+    reason = "preserving the operation order keeps the numeric conversion result stable"
+)]
 pub(super) fn mul_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
     if let (Number::Complex(ar, ai), Number::Complex(br, bi)) = (a, b) {
         return Ok(Number::Complex(ar * br - ai * bi, ar * bi + ai * br));
@@ -342,7 +345,10 @@ pub(super) fn mul_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
         (x, y) => Ok(Number::Float(x.to_f64()? * y.to_f64()?)),
     }
 }
-#[allow(clippy::suboptimal_flops)]
+#[expect(
+    clippy::suboptimal_flops,
+    reason = "preserving the operation order keeps the numeric conversion result stable"
+)]
 pub(super) fn div_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
     if matches!(a, Number::Ratio(_, 0)) || matches!(b, Number::Ratio(_, 0)) {
         return Err(ObjectError::TypeError);

@@ -209,7 +209,10 @@ fn install_rational_float(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<
 /// # Errors
 ///
 /// Returns an error if registration or package initialization fails.
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the registration function defines the complete numeric builtin table"
+)]
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;

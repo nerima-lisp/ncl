@@ -3,7 +3,10 @@
 //! The callbacks in this module deliberately contain no symbol registration.  The
 //! numbers registrar can install them alongside the other numeric callbacks.
 
-#![allow(clippy::needless_pass_by_ref_mut)]
+#![expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "the numeric builtin forwards mutable rooted words so garbage collection can update them"
+)]
 
 use ncl_object::{
     Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign,

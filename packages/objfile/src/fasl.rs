@@ -68,6 +68,10 @@ impl FaslV1Writer {
     /// # Errors
     ///
     /// Returns a typed error when a record, cross-reference, or section exceeds the wire contract.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "FASL limits fit supported usize widths and section lengths fit the u64 wire field"
+    )]
     pub fn write(fasl: &FaslV1<'_>) -> Result<Vec<u8>, FaslError> {
         let metadata = fasl_metadata::encode(&fasl.metadata)?;
         let symbols = fasl_symbols::encode(&fasl.symbols)?;
@@ -88,10 +92,17 @@ impl FaslV1Writer {
             top_level,
         ];
         fasl_validate::validate_sections(fasl, None)?;
-        let lengths = std::array::from_fn(|index| sections[index].len() as u64);
+        let mut lengths = [0_u64; fasl_directory::SECTION_COUNT];
+        for (length, section) in lengths.iter_mut().zip(&sections) {
+            // check-added-lines: allow(as-cast) Rust usize is no wider than the FASL u64 length field.
+            *length = section.len() as u64;
+        }
         let directory = Directory::from_lengths(lengths)?;
+        // check-added-lines: allow(index) the directory always has eight entries.
         let final_entry = directory.entries()[fasl_directory::SECTION_COUNT - 1];
-        let file_length = (final_entry.file_offset + final_entry.byte_length) as usize;
+        let file_size = final_entry.file_offset + final_entry.byte_length;
+        // check-added-lines: allow(as-cast) the directory caps file size at 256 MiB.
+        let file_length = file_size as usize;
 
         let header = FaslV1Header {
             architecture: fasl.architecture,
@@ -101,12 +112,17 @@ impl FaslV1Writer {
             feature_fingerprint: fasl_metadata::feature_fingerprint(&fasl.metadata.features)?,
         };
         let mut bytes = vec![0; file_length];
+        // check-added-lines: allow(index) the allocated file has room for the fixed header.
         bytes[..fasl_header::HEADER_SIZE].copy_from_slice(&fasl_header::encode(&header));
         let directory_bytes = directory.encode();
-        bytes[128..128 + directory_bytes.len()].copy_from_slice(&directory_bytes);
+        let directory_end = fasl_header::HEADER_SIZE + directory_bytes.len();
+        // check-added-lines: allow(index) the directory has a fixed size and follows the header.
+        bytes[fasl_header::HEADER_SIZE..directory_end].copy_from_slice(&directory_bytes);
         for (entry, section) in directory.entries().iter().zip(&sections) {
+            // check-added-lines: allow(as-cast) validated directory offsets fit within the allocated file.
             let start = entry.file_offset as usize;
             let end = start + section.len();
+            // check-added-lines: allow(index) directory offsets and section lengths were validated above.
             bytes[start..end].copy_from_slice(section);
         }
         Ok(bytes)
@@ -179,17 +195,29 @@ impl FaslV1Reader {
     }
 }
 
-fn validate_file_size(file_size: usize) -> Result<(), FaslError> {
-    if file_size > fasl_directory::MAX_FILE_SIZE as usize {
+const fn validate_file_size(file_size: usize) -> Result<(), FaslError> {
+    // check-added-lines: allow(as-cast) Rust usize is no wider than the FASL u64 size field.
+    let file_size = file_size as u64;
+    if file_size > fasl_directory::MAX_FILE_SIZE {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
     Ok(())
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the caller validates directory ranges against the file slice first"
+)]
 fn section<'a>(directory: &Directory, file: &'a [u8], id: SectionId) -> (&'a [u8], usize) {
+    // check-added-lines: allow(index) each closed SectionId maps inside the fixed directory array.
     let entry = directory.entries()[id.index()];
+    // Directory validation has already bounded this section by the input slice.
+    // check-added-lines: allow(as-cast) its file offset therefore fits in usize.
     let offset = entry.file_offset as usize;
-    let end = offset + entry.byte_length as usize;
+    // check-added-lines: allow(as-cast) its byte length therefore fits in usize.
+    let length = entry.byte_length as usize;
+    let end = offset + length;
+    // check-added-lines: allow(index) directory validation proved this range is within the file.
     (&file[offset..end], offset)
 }
 

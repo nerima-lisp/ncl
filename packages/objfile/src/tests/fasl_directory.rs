@@ -78,6 +78,9 @@ fn directory_rejects_bad_order_flags_alignment_padding_and_trailing_bytes() {
 
 #[test]
 fn directory_bounds_check_section_lengths_without_allocating_file_sized_buffers() {
+    let Ok(max_file_size) = usize::try_from(MAX_FILE_SIZE) else {
+        panic!("the supported FASL size fits in usize on this target");
+    };
     let mut over_limit = [0; SECTION_COUNT];
     over_limit[0] = MAX_FILE_SIZE + 1;
     assert_eq!(
@@ -95,9 +98,9 @@ fn directory_bounds_check_section_lengths_without_allocating_file_sized_buffers(
     let mut exact_limit = [0; SECTION_COUNT];
     exact_limit[0] = MAX_FILE_SIZE - 320;
     assert!(Directory::from_lengths(exact_limit).is_ok());
-    assert_eq!(validate_file_size(MAX_FILE_SIZE as usize), Ok(()));
+    assert_eq!(validate_file_size(max_file_size), Ok(()));
     assert_eq!(
-        validate_file_size(MAX_FILE_SIZE as usize + 1),
+        validate_file_size(max_file_size + 1),
         Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
     );
 }
@@ -131,6 +134,25 @@ fn directory_decode_checks_exact_size_alignment_and_section_size_limits() {
 }
 
 #[test]
+fn directory_entry_reader_reports_truncation_at_each_fixed_field() {
+    let (directory, _) = fixture();
+    let bytes = directory.encode();
+    for (length, offset) in [(0, 128), (2, 130), (4, 132), (8, 136), (16, 144), (24, 152)] {
+        assert_eq!(
+            Directory::decode_entries(&bytes[..length]),
+            Err(FaslError::at(FaslRejectReason::MalformedDirectory, offset)),
+            "truncated at byte {offset}"
+        );
+    }
+    let mut trailing = bytes.to_vec();
+    trailing.push(0);
+    assert_eq!(
+        Directory::decode_entries(&trailing),
+        Err(FaslError::at(FaslRejectReason::MalformedDirectory, 320))
+    );
+}
+
+#[test]
 fn directory_file_validation_reports_short_ranges_misalignment_and_overflow() {
     let (directory, file) = fixture();
     assert_eq!(
@@ -139,7 +161,7 @@ fn directory_file_validation_reports_short_ranges_misalignment_and_overflow() {
     );
     assert_eq!(
         directory.validate_file(&file[..321]),
-        Err(FaslError::at(FaslRejectReason::MalformedDirectory, 321))
+        Err(FaslError::at(FaslRejectReason::MalformedDirectory, 160))
     );
 
     let mut bad_offset = directory.encode();

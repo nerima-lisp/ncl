@@ -13,9 +13,11 @@ const TRACKED_PHASE_BEGIN: &str = "TRACKED_PHASE_BEGIN";
 #[test]
 fn pass_allocation_diagnostics_report_bytes_without_changing_results()
 -> Result<(), Box<dyn std::error::Error>> {
-    let mut unoptimized = Runtime::with_options(RuntimeOptions::new(OptimizationMode::Off, false))?;
-    let value = unoptimized.eval(SOURCE)?;
-    assert_eq!(unoptimized.format_result(value), "42");
+    ALLOCATOR.activate();
+    let options = RuntimeOptions::default().with_pass_allocation_diagnostics(true);
+    let mut tracked = Runtime::with_options(options)?;
+    let value = tracked.eval(SOURCE)?;
+    assert_eq!(tracked.format_result(value), "42");
 
     let output = Command::new(std::env::current_exe()?)
         .args([

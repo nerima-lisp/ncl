@@ -241,9 +241,7 @@ fn method_body_rewriting_preserves_quoted_forms_and_local_functions() -> Result<
         next_methods_word,
         current_arguments_word,
         value_word,
-        quoted_form_word,
-        lambda_form_word,
-        defun_form_word,
+        [quoted_form_word, lambda_form_word, defun_form_word],
     )
 }
 
@@ -253,9 +251,7 @@ fn assert_rewritten_method_body(
     next_methods: Word,
     current_arguments: Word,
     value: Word,
-    quoted_form: Word,
-    lambda_form: Word,
-    defun_form: Word,
+    preserved_forms: [Word; 3],
 ) -> Result<(), ObjectError> {
     let forms = list_words(scope, rewritten)?;
     assert_eq!(symbol_name_string(scope.context(), forms[0])?, "PROGN");
@@ -286,9 +282,9 @@ fn assert_rewritten_method_body(
         "%CLOS-NEXT-METHOD-P"
     );
     assert_eq!(next_method_p_call[1], next_methods);
-    assert_eq!(forms[4], quoted_form);
-    assert_eq!(forms[5], lambda_form);
-    assert_eq!(forms[6], defun_form);
+    assert_eq!(forms[4], preserved_forms[0]);
+    assert_eq!(forms[5], preserved_forms[1]);
+    assert_eq!(forms[6], preserved_forms[2]);
     assert_eq!(forms[7], Word::fixnum(19));
     Ok(())
 }

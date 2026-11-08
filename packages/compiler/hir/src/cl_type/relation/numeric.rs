@@ -9,17 +9,17 @@ pub(super) const fn range_to_named(range: NumericRange, name: BuiltinType) -> Su
         NumericDomain::Integer => match name {
             Integer | Rational | Real | Number | Atom => Some(true),
             Float | SingleFloat | DoubleFloat | Complex => Some(false),
-            _ => None,
+            _ => None, // check-added-lines: allow(wildcard) unclassified numeric names remain unknown
         },
         NumericDomain::SingleFloat => match name {
             SingleFloat | Float | Real | Number | Atom => Some(true),
             Integer | Rational | Complex => Some(false),
-            _ => None,
+            _ => None, // check-added-lines: allow(wildcard) unclassified numeric names remain unknown
         },
         NumericDomain::DoubleFloat => match name {
             DoubleFloat | Float | Real | Number | Atom => Some(true),
             Integer | Rational | Complex => Some(false),
-            _ => None,
+            _ => None, // check-added-lines: allow(wildcard) unclassified numeric names remain unknown
         },
     };
     match relation {
@@ -42,7 +42,7 @@ pub(super) fn named_to_range(name: BuiltinType, range: NumericRange) -> SubtypeR
             SubtypeRelation::No
         }
         (Integer | Float | Real | Number, _) => SubtypeRelation::No,
-        _ => SubtypeRelation::Unknown,
+        _ => SubtypeRelation::Unknown, // check-added-lines: allow(wildcard) unhandled builtin and domain pairs remain unknown
     }
 }
 pub(super) fn numeric_relation(sub: NumericRange, sup: NumericRange) -> SubtypeRelation {

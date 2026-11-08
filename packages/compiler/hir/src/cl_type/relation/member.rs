@@ -39,7 +39,11 @@ fn member_value_subtype(
             MemberValue::DoubleFloat(value) => {
                 contains_value(*range, NumericValue::DoubleFloat(value))
             }
-            _ => SubtypeRelation::No,
+            MemberValue::OpaqueObject { .. } => SubtypeRelation::Unknown,
+            MemberValue::Nil
+            | MemberValue::True
+            | MemberValue::Character(_)
+            | MemberValue::Symbol(_) => SubtypeRelation::No,
         },
         ClTypeKind::Member(values) => member_value_in_member(value, values),
         ClTypeKind::Union(members) => combine_any(
@@ -128,7 +132,13 @@ fn member_value_to_named(value: MemberValue, name: BuiltinType) -> SubtypeRelati
             SubtypeRelation::Unknown
         }
         MemberValue::OpaqueObject { .. } => SubtypeRelation::Unknown,
-        _ => SubtypeRelation::No,
+        MemberValue::Nil
+        | MemberValue::True
+        | MemberValue::Integer(_)
+        | MemberValue::Character(_)
+        | MemberValue::SingleFloat(_)
+        | MemberValue::DoubleFloat(_)
+        | MemberValue::Symbol(_) => SubtypeRelation::No,
     }
 }
 pub(super) fn member_to_range(values: &[MemberValue], range: NumericRange) -> SubtypeRelation {
@@ -137,7 +147,10 @@ pub(super) fn member_to_range(values: &[MemberValue], range: NumericRange) -> Su
         MemberValue::SingleFloat(value) => contains_value(range, NumericValue::SingleFloat(*value)),
         MemberValue::DoubleFloat(value) => contains_value(range, NumericValue::DoubleFloat(*value)),
         MemberValue::OpaqueObject { .. } => SubtypeRelation::Unknown,
-        _ => SubtypeRelation::No,
+        MemberValue::Nil
+        | MemberValue::True
+        | MemberValue::Character(_)
+        | MemberValue::Symbol(_) => SubtypeRelation::No,
     }))
 }
 fn contains_value(range: NumericRange, value: NumericValue) -> SubtypeRelation {
@@ -166,7 +179,7 @@ pub(super) fn named_to_member(name: BuiltinType, values: &[MemberValue]) -> Subt
             }
         }
         BuiltinType::Symbol => SubtypeRelation::No,
-        _ => SubtypeRelation::Unknown,
+        _ => SubtypeRelation::Unknown, // check-added-lines: allow(wildcard) unclassified named types remain unknown
     }
 }
 pub(super) fn range_to_member(range: NumericRange, values: &[MemberValue]) -> SubtypeRelation {
@@ -203,7 +216,10 @@ pub(super) fn member_disjoint_from_range(
         MemberValue::SingleFloat(value) => contains_value(range, NumericValue::SingleFloat(*value)),
         MemberValue::DoubleFloat(value) => contains_value(range, NumericValue::DoubleFloat(*value)),
         MemberValue::OpaqueObject { .. } => SubtypeRelation::Unknown,
-        _ => SubtypeRelation::No,
+        MemberValue::Nil
+        | MemberValue::True
+        | MemberValue::Character(_)
+        | MemberValue::Symbol(_) => SubtypeRelation::No,
     })))
 }
 pub(super) const fn invert_overlap(overlap: SubtypeRelation) -> SubtypeRelation {

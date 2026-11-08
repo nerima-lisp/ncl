@@ -13,5 +13,8 @@ ncl-lib-streams = { path = "../streams" }
 ncl-lib-strings = { path = "../strings" }
 ncl-printer = { path = "../../printer" }
 
+[dev-dependencies]
+ncl-packages = { path = "../../packages" }
+
 [lints]
 workspace = true

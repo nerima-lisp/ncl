@@ -6,6 +6,7 @@
 )]
 
 use ncl_lib_format::{FormatErrorKind, execute, parse};
+use ncl_packages::PackageOperations;
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError, Package,

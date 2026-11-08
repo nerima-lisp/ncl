@@ -4,6 +4,18 @@ use ncl_object::Word;
 
 use super::common::{TestResult, build, context, lower_both_and_verify};
 
+fn result_is_three_argument_call(function: &ncl_ir::Function, expected: ncl_ir::ValueId) -> bool {
+    function.blocks.iter().any(|block| {
+        block.ops.iter().any(|operation| {
+            operation
+                .results
+                .iter()
+                .any(|(result, _)| *result == expected)
+                && matches!(&operation.kind, OpKind::CallClosure { args, .. } if args.len() == 3)
+        })
+    })
+}
+
 #[test]
 fn let_star_initializer_reads_the_previous_binding() -> TestResult<()> {
     let (id, mut builder, mut fixture) = context(64);
@@ -97,20 +109,6 @@ fn let_star_initializer_reads_the_previous_binding() -> TestResult<()> {
         .ok_or_else(|| std::io::Error::other("second LET* result is missing"))?;
     assert!(lowered.entry.constants.contains(&Constant::Fixnum(2)));
     assert!(lowered.entry.constants.contains(&Constant::Fixnum(3)));
-    assert!(lowered.entry.blocks.iter().any(|block| {
-        block.ops.iter().any(|operation| {
-            if !operation
-                .results
-                .iter()
-                .any(|(result, _)| *result == second_value)
-            {
-                return false;
-            }
-            let OpKind::CallClosure { args, .. } = &operation.kind else {
-                return false;
-            };
-            args.len() == 3
-        })
-    }));
+    assert!(result_is_three_argument_call(&lowered.entry, second_value));
     Ok(())
 }

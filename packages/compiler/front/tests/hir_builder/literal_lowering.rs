@@ -29,17 +29,16 @@ fn emits_value(function: &Function, expected: &Constant) -> bool {
         .any(|(index, constant)| {
             constant == expected
                 && u32::try_from(index)
-                    .ok()
-                    .is_some_and(|index| emits_constant(function, ConstantIndex(index)))
+                    .is_ok_and(|index| emits_constant(function, ConstantIndex(index)))
         })
 }
 
 fn assert_array_storage<'a>(
     function: &'a Function,
     identity: u32,
-    expected_kind: StructureKind,
+    expected_kind: &StructureKind,
     expected_elements: usize,
-) -> &'a [ConstantIndex] {
+) -> TestResult<&'a [ConstantIndex]> {
     let value = function
         .constants
         .iter()
@@ -50,13 +49,13 @@ fn assert_array_storage<'a>(
             } if *actual == identity => Some(*value),
             _ => None,
         })
-        .expect("array descriptor");
+        .ok_or_else(|| std::io::Error::other("array descriptor is missing"))?;
     let Some(Constant::Structure { kind, elements }) = constant_at(function, value) else {
-        panic!("array descriptor is not a structure")
+        return Err(std::io::Error::other("array descriptor is not a structure").into());
     };
-    assert_eq!(kind, &expected_kind);
+    assert_eq!(kind, expected_kind);
     assert_eq!(elements.len(), expected_elements);
-    elements
+    Ok(elements)
 }
 
 #[test]
@@ -115,7 +114,7 @@ fn numeric_character_and_string_literals_lower_to_exact_mir_values() -> TestResu
                 } => Some((*numerator, *denominator)),
                 _ => None,
             })
-            .expect("MIR ratio constant");
+            .ok_or_else(|| std::io::Error::other("MIR ratio constant is missing"))?;
         assert_eq!(
             constant_at(function, numerator),
             Some(&Constant::Bignum {
@@ -135,7 +134,7 @@ fn numeric_character_and_string_literals_lower_to_exact_mir_values() -> TestResu
                 Constant::Complex { real, imaginary } => Some((*real, *imaginary)),
                 _ => None,
             })
-            .expect("MIR complex constant");
+            .ok_or_else(|| std::io::Error::other("MIR complex constant is missing"))?;
         assert!(matches!(
             constant_at(function, real),
             Some(Constant::DoubleFloat(value)) if value.to_bits() == (-0.0_f64).to_bits()
@@ -234,21 +233,21 @@ fn vectors_and_array_literals_lower_with_rank_element_type_and_identity() -> Tes
             assert_array_storage(
                 function,
                 u32::try_from(offset + 60)?,
-                StructureKind::SpecializedArray {
+                &StructureKind::SpecializedArray {
                     element_type: *expected_type,
                 },
                 1,
-            );
+            )?;
         }
         assert_array_storage(
             function,
             71,
-            StructureKind::Array {
+            &StructureKind::Array {
                 dimensions: vec![2, 1],
                 element_type: ncl_ir::ArrayElementType::Unsigned,
             },
             2,
-        );
+        )?;
         assert_eq!(
             function
                 .constants
@@ -296,10 +295,10 @@ fn opaque_type_specifier_storage_retains_nested_array_literals() -> TestResult<(
             NodeKind::TypeAssertion { expected_type, .. } => Some(*expected_type),
             _ => None,
         })
-        .expect("type assertion source constant");
+        .ok_or_else(|| std::io::Error::other("type assertion source constant is missing"))?;
     let stored = form
         .type_spec_constant(source_id)
-        .expect("stored type specifier");
+        .ok_or_else(|| std::io::Error::other("stored type specifier is missing"))?;
     assert!(matches!(stored, HirLiteral::Cons(operator, arguments)
         if matches!(operator.as_ref(), HirLiteral::Symbol(id)
             if builder.symbols().get(*id).is_some_and(|symbol| symbol.name() == "CUSTOM-TYPE"))
@@ -313,12 +312,12 @@ fn opaque_type_specifier_storage_retains_nested_array_literals() -> TestResult<(
     let elements = assert_array_storage(
         &hir.entry,
         74,
-        StructureKind::Array {
+        &StructureKind::Array {
             dimensions: vec![2],
             element_type: ncl_ir::ArrayElementType::T,
         },
         2,
-    );
+    )?;
     let first = elements
         .first()
         .copied()

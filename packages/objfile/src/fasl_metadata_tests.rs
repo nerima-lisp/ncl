@@ -70,6 +70,29 @@ mod private_tests {
     }
 
     #[test]
+    fn metadata_decoder_rejects_every_strict_prefix_of_a_valid_section() {
+        let bytes = must_succeed(encode(&metadata_fixture()));
+        for end in 0..bytes.len() {
+            assert!(
+                matches!(
+                    decode(&bytes[..end], 320),
+                    Err(FaslError {
+                        reason: FaslRejectReason::MalformedMetadata,
+                        ..
+                    })
+                ),
+                "metadata accepted strict prefix ending at {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn metadata_size_limit_includes_the_exact_boundary() {
+        assert!(!metadata_size_exceeds_limit(MAX_METADATA_BYTES));
+        assert!(metadata_size_exceeds_limit(MAX_METADATA_BYTES + 1));
+    }
+
+    #[test]
     fn metadata_rejects_noncanonical_policy_values() {
         let valid = metadata_fixture();
         let malformed = FaslError::at(FaslRejectReason::MalformedMetadata, 0);
@@ -183,6 +206,31 @@ mod private_tests {
             candidate.semantic_version = value;
             assert_eq!(validate(&candidate), Err(malformed), "{case}");
             assert_eq!(encode(&candidate), Err(malformed), "{case}");
+        }
+
+        for (case, value, reason) in [
+            (
+                "empty target triple",
+                String::new(),
+                FaslRejectReason::MalformedMetadata,
+            ),
+            (
+                "NUL in target triple",
+                "x86_64-unknown\0-linux-gnu".to_owned(),
+                FaslRejectReason::MalformedMetadata,
+            ),
+            (
+                "oversized target triple",
+                "x".repeat(MAX_STRING_BYTES + 1),
+                FaslRejectReason::ResourceLimitExceeded,
+            ),
+        ] {
+            let mut candidate = valid.clone();
+            candidate.target_triple = value;
+            let expected = FaslError::at(reason, 0);
+            assert_eq!(validate(&candidate), Err(expected), "{case}");
+            assert_eq!(encode(&candidate), Err(expected), "{case}");
+            assert_eq!(compiler_identity(&candidate), Err(expected), "{case}");
         }
     }
 

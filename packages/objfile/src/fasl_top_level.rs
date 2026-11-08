@@ -162,9 +162,19 @@ mod tests {
     fn top_level_records_round_trip_multiple_ordinals_and_zero_flags() {
         let code_objects = [code_object(0, 0), code_object(1, 3)];
         let records = [record(0, 0, 0, 0), record(1, 1, 3, 1)];
-        let encoded =
-            encode(&records, &code_objects).unwrap_or_else(|_| panic!("fixture must encode"));
-        assert_eq!(decode(&encoded, 500, &code_objects), Ok(records.to_vec()));
+        let expected = [
+            2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3,
+            0, 0, 0, 1, 0, 0, 0,
+        ];
+        assert_eq!(encode(&records, &code_objects), Ok(expected.to_vec()));
+        assert_eq!(decode(&expected, 500, &code_objects), Ok(records.to_vec()));
+
+        let mut bad_second_flags = expected;
+        bad_second_flags[32..36].copy_from_slice(&4_u32.to_le_bytes());
+        assert_eq!(
+            decode(&bad_second_flags, 500, &code_objects),
+            Err(FaslError::at(FaslRejectReason::InvalidTopLevelRecord, 520))
+        );
     }
 
     #[test]
@@ -231,6 +241,16 @@ mod tests {
     fn top_level_decoder_checks_counts_ordinals_references_and_complete_sections() {
         let code_objects = [code_object(0, 1)];
         let valid = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
+
+        for prefix_end in 0..valid.len() {
+            assert!(matches!(
+                decode(&valid[..prefix_end], 320, &code_objects),
+                Err(FaslError {
+                    reason: FaslRejectReason::InvalidTopLevelRecord,
+                    ..
+                })
+            ));
+        }
 
         assert_eq!(
             decode(&[], 320, &code_objects),

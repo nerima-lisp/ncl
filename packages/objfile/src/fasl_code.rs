@@ -31,16 +31,14 @@ pub fn encode(objects: &[FaslCodeObject<'_>]) -> Result<Vec<u8>, FaslError> {
     }
     let mut section_size = 4_usize;
     for (index, object) in objects.iter().enumerate() {
-        validate_object(object, index, None)?;
+        validate_object(object, index)?;
         let padded_end = section_size
             .checked_add(28)
             .and_then(|size| size.checked_add(object.code.len()))
             .and_then(|size| size.checked_add(7))
             .map(|size| size & !7)
             .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
-        if padded_end > MAX_SECTION_BYTES {
-            return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
-        }
+        check_section_size(padded_end, None)?;
         section_size = padded_end;
     }
 
@@ -68,12 +66,7 @@ pub fn encode(objects: &[FaslCodeObject<'_>]) -> Result<Vec<u8>, FaslError> {
 
 /// Decodes code objects without copying machine-code bytes.
 pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslCodeObject<'_>>, FaslError> {
-    if bytes.len() > MAX_SECTION_BYTES {
-        return Err(FaslError::at(
-            FaslRejectReason::ResourceLimitExceeded,
-            base_offset,
-        ));
-    }
+    check_section_size(bytes.len(), Some(base_offset))?;
     let mut reader = SectionReader::new(bytes, base_offset, FaslRejectReason::InvalidCodeObject);
     let count_offset = reader.absolute_position();
     let count = usize::try_from(reader.u32()?)
@@ -148,29 +141,29 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslCodeObject<'_>
     Ok(objects)
 }
 
-fn validate_object(
-    object: &FaslCodeObject<'_>,
-    expected_id: usize,
-    offset: Option<usize>,
-) -> Result<(), FaslError> {
-    let error = || {
-        offset.map_or_else(
-            || FaslError::new(FaslRejectReason::InvalidCodeObject),
-            |offset| FaslError::at(FaslRejectReason::InvalidCodeObject, offset),
-        )
-    };
+fn validate_object(object: &FaslCodeObject<'_>, expected_id: usize) -> Result<(), FaslError> {
     if usize::try_from(object.id).ok() != Some(expected_id)
         || object.code.is_empty()
         || usize::try_from(object.entry_offset)
             .ok()
             .is_none_or(|entry| entry >= object.code.len())
     {
-        return Err(error());
+        return Err(FaslError::new(FaslRejectReason::InvalidCodeObject));
     }
     if u32::try_from(object.code.len()).is_err() {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
     Ok(())
+}
+
+fn check_section_size(size: usize, offset: Option<usize>) -> Result<(), FaslError> {
+    if size <= MAX_SECTION_BYTES {
+        return Ok(());
+    }
+    Err(offset.map_or_else(
+        || FaslError::new(FaslRejectReason::ResourceLimitExceeded),
+        |offset| FaslError::at(FaslRejectReason::ResourceLimitExceeded, offset),
+    ))
 }
 
 #[cfg(test)]
@@ -191,6 +184,20 @@ mod tests {
             debug_record_count: 0,
             code,
         }
+    }
+
+    #[test]
+    fn code_section_size_boundary_preserves_encoder_and_decoder_errors() {
+        assert_eq!(check_section_size(MAX_SECTION_BYTES, None), Ok(()));
+        assert_eq!(
+            check_section_size(MAX_SECTION_BYTES + 1, None),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+        );
+        assert_eq!(check_section_size(MAX_SECTION_BYTES, Some(320)), Ok(()));
+        assert_eq!(
+            check_section_size(MAX_SECTION_BYTES + 1, Some(320)),
+            Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 320))
+        );
     }
 
     #[test]
@@ -225,6 +232,13 @@ mod tests {
         assert_eq!(&encoded[33..40], &[0; 7]);
         assert_eq!(&encoded[76..80], &[0; 4]);
         assert_eq!(decode(&encoded, 400), Ok(objects.to_vec()));
+
+        let mut bad_second_flags = encoded.clone();
+        bad_second_flags[54..56].copy_from_slice(&1_u16.to_le_bytes());
+        assert_eq!(
+            decode(&bad_second_flags, 400).map(|_| ()),
+            Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 454))
+        );
     }
 
     #[test]
@@ -281,6 +295,16 @@ mod tests {
     #[test]
     fn code_decoder_rejects_bad_ids_lengths_padding_and_record_counts() {
         let valid = must_succeed(encode(&[object(0, 0, &[0x90])]));
+
+        for end in 0..valid.len() {
+            assert!(matches!(
+                decode(&valid[..end], 320),
+                Err(FaslError {
+                    reason: FaslRejectReason::InvalidCodeObject,
+                    ..
+                })
+            ));
+        }
 
         assert_eq!(
             decode(&[1, 0, 0], 320),

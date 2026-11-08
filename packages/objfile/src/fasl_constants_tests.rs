@@ -95,6 +95,49 @@ mod private_tests {
     }
 
     #[test]
+    fn constant_decoder_rejects_every_strict_prefix_for_each_tag() {
+        let constants = [
+            FaslConstant::Nil,
+            FaslConstant::Truth,
+            FaslConstant::Fixnum(0),
+            FaslConstant::Character('x'),
+            FaslConstant::SingleFloat(0x3f80_0000),
+            FaslConstant::DoubleFloat(0x3ff0_0000_0000_0000),
+            FaslConstant::String("x".to_owned()),
+            FaslConstant::SymbolReference(0),
+            FaslConstant::Cons { car: 0, cdr: 0 },
+            FaslConstant::SimpleVector(vec![0]),
+            FaslConstant::Bignum {
+                negative: false,
+                limbs: vec![1],
+            },
+            FaslConstant::Ratio {
+                numerator: 0,
+                denominator: 0,
+            },
+            FaslConstant::Complex {
+                real: 0,
+                imaginary: 0,
+            },
+        ];
+        for (tag, constant) in constants.into_iter().enumerate() {
+            let bytes = must_succeed(encode(&[group(vec![constant])]));
+            for end in 0..bytes.len() {
+                assert!(
+                    matches!(
+                        decode(&bytes[..end], 320),
+                        Err(FaslError {
+                            reason: FaslRejectReason::InvalidCodeObject,
+                            ..
+                        })
+                    ),
+                    "tag {tag} accepted strict prefix ending at {end}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn constants_reject_bad_padding_lengths_fixnums_and_references() {
         let one_string = [group(vec![FaslConstant::String("x".to_owned())])];
         let mut bad_padding = must_succeed(encode(&one_string));
@@ -338,6 +381,20 @@ mod private_tests {
         assert_eq!(
             decode(&missing_constant, 320),
             Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 328))
+        );
+    }
+
+    #[test]
+    fn constant_section_size_limit_includes_the_exact_boundary() {
+        assert!(!section_size_exceeds_limit(MAX_SECTION_BYTES));
+        assert!(section_size_exceeds_limit(MAX_SECTION_BYTES + 1));
+        assert_eq!(
+            checked_section_growth(MAX_SECTION_BYTES, 0),
+            Ok(MAX_SECTION_BYTES)
+        );
+        assert_eq!(
+            checked_section_growth(MAX_SECTION_BYTES, 1),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
         );
     }
 

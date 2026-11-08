@@ -1,7 +1,8 @@
 use ncl_object::package::Package;
-use ncl_arrays::{ArrayElementType, array_dimensions, simple_vector_length, simple_vector_ref};
+use ncl_arrays::{ArrayElementType, array_dimensions};
 use ncl_object::{
-    ObjectError, ObjectRef, Runtime, ThreadContext, Word, car, cdr, string_length, string_ref,
+    ObjectError, ObjectRef, Runtime, ThreadContext, Word, car, cdr, simple_vector_length,
+    simple_vector_ref, string_length, string_ref,
 };
 
 pub(super) fn array_element_type_symbol(

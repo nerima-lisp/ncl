@@ -6,7 +6,8 @@ use crate::{
     Runtime, ThreadContext, Word,
     layout::{
         code_offset, function_offset, instance_offset, number_offset, readtable_offset,
-        reference_words, stream_offset, structure_offset, symbol_offset, widetag,
+        reference_words, simple_vector_offset, stream_offset, structure_offset, symbol_offset,
+        widetag,
     },
     make_bignum_from_i128, make_string,
 };
@@ -102,6 +103,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
             ],
         ),
         (widetag::STRING, vec![]),
+        (widetag::SIMPLE_VECTOR, vec![]),
         (widetag::STRUCTURE, vec![structure_offset::SLOTS]),
         (
             widetag::INSTANCE,
@@ -166,6 +168,10 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
     ] {
         let layout = match tag {
             widetag::PACKAGE => package_layout(),
+            widetag::SIMPLE_VECTOR => ncl_sys::ReferenceLayout {
+                reference_words: reference_words(&[simple_vector_offset::DATA]),
+                boxed_from: Some(simple_vector_offset::DATA + 1),
+            },
             _ => ncl_sys::ReferenceLayout {
                 reference_words: reference_words(&slots),
                 boxed_from: match tag {

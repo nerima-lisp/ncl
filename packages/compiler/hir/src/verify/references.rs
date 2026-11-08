@@ -7,9 +7,46 @@ use crate::binding::{BindingKind, ScopeId};
 use crate::ids::{
     BindingId, BlockId, NodeId, SourceOriginId, SymbolId, TypeId, TypeSpecConstId, ValueId,
 };
-use crate::node::{CallTarget, Literal, Node, VariableTarget};
+use crate::node::{CallTarget, Literal, Node, NodeKind, VariableTarget};
 
 impl Verifier<'_> {
+    pub(super) fn node_references(&self, id: NodeId, node: &Node) -> Result<(), VerifyError> {
+        match &node.kind {
+            NodeKind::VariableReference { target } => self.variable(id, node.scope, *target),
+            NodeKind::FunctionReference { target } => self.call_target(id, node.scope, *target),
+            NodeKind::ClosureReference { function } => self.child(node.scope, *function),
+            NodeKind::Assignment { target, value } => {
+                self.variable(id, node.scope, *target)?;
+                self.child(node.scope, *value)
+            }
+            NodeKind::Call { target, arguments } => {
+                self.call_target(id, node.scope, *target)?;
+                self.children(node.scope, arguments)
+            }
+            NodeKind::KnownFunctionOperation {
+                function,
+                arguments,
+            }
+            | NodeKind::SequenceOperation {
+                function,
+                arguments,
+            }
+            | NodeKind::ArrayOperation {
+                function,
+                arguments,
+            } => {
+                self.symbol(*function)?;
+                self.children(node.scope, arguments)
+            }
+            NodeKind::RuntimeCheck { value, .. } => self.child(node.scope, *value),
+            NodeKind::TopLevelDefinition { name, value, .. } => {
+                self.symbol(*name)?;
+                self.child(node.scope, *value)
+            }
+            _ => Err(VerifyError::InvalidNode(id)), // check-added-lines: allow(wildcard) dispatch subset
+        }
+    }
+
     pub(super) fn parameters(
         &self,
         node: NodeId,
@@ -69,7 +106,7 @@ impl Verifier<'_> {
                 }
             }
             VariableTarget::Special(symbol) | VariableTarget::Global(symbol) => {
-                self.symbol(symbol)?
+                self.symbol(symbol)?;
             }
         }
         Ok(())

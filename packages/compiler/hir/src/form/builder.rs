@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::arena::Arena;
 use crate::binding::{BindingEnvironment, ScopeId};
@@ -32,6 +32,7 @@ pub struct HirFormBuilder {
     pub(super) type_spec_constants: TypeSpecConstantArena,
     pub(super) symbol_ids: HashSet<SymbolId>,
     pub(super) value_ids: HashSet<ValueId>,
+    pub(super) value_producers: HashMap<ValueId, NodeId>,
     pub(super) type_spec_constant_ids: HashSet<TypeSpecConstId>,
     pub(super) metadata: FormMetadata,
 }
@@ -78,6 +79,7 @@ impl HirFormBuilder {
             type_spec_constants: Arena::new(form),
             symbol_ids: HashSet::new(),
             value_ids: HashSet::new(),
+            value_producers: HashMap::new(),
             type_spec_constant_ids: HashSet::new(),
             metadata,
         })
@@ -96,22 +98,22 @@ impl HirFormBuilder {
     }
 
     /// Returns mutable node storage for constructing HIR nodes.
-    pub fn nodes_mut(&mut self) -> &mut NodeArena {
+    pub const fn nodes_mut(&mut self) -> &mut NodeArena {
         &mut self.nodes
     }
 
     /// Returns mutable lexical scopes and bindings.
-    pub fn bindings_mut(&mut self) -> &mut BindingEnvironment {
+    pub const fn bindings_mut(&mut self) -> &mut BindingEnvironment {
         &mut self.bindings
     }
 
     /// Returns mutable Common Lisp type storage.
-    pub fn types_mut(&mut self) -> &mut TypeArena {
+    pub const fn types_mut(&mut self) -> &mut TypeArena {
         &mut self.types
     }
 
     /// Returns the control-flow builder for this form.
-    pub fn control_flow_mut(&mut self) -> &mut ControlFlowBuilder {
+    pub const fn control_flow_mut(&mut self) -> &mut ControlFlowBuilder {
         &mut self.control_flow
     }
 
@@ -248,6 +250,34 @@ impl HirFormBuilder {
         Ok(())
     }
 
+    /// Associates an SSA value with the node that produces it.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FormError` when either identity is foreign, the producer node is
+    /// absent, or the value already has a producer.
+    pub fn register_value_producer(
+        &mut self,
+        value: ValueId,
+        producer: NodeId,
+    ) -> Result<(), FormError> {
+        if value.form() != self.form {
+            return Err(FormError::ForeignValue(value));
+        }
+        if producer.form() != self.form {
+            return Err(FormError::ForeignNode(producer));
+        }
+        if self.nodes.get(producer).is_none() {
+            return Err(FormError::InvalidNode(producer));
+        }
+        if self.value_producers.contains_key(&value) {
+            return Err(FormError::DuplicateValueProducer(value));
+        }
+        self.value_ids.insert(value);
+        self.value_producers.insert(value, producer);
+        Ok(())
+    }
+
     /// Adds a complete source type specifier to the form-local constant pool.
     ///
     /// # Errors
@@ -337,6 +367,7 @@ impl HirFormBuilder {
             type_spec_constants: self.type_spec_constants,
             symbol_ids: self.symbol_ids,
             value_ids: self.value_ids,
+            value_producers: self.value_producers,
             type_spec_constant_ids: self.type_spec_constant_ids,
             metadata: self.metadata,
         })

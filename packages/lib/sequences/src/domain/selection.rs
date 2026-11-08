@@ -1,6 +1,5 @@
 //! Common Lisp selection and matching operations.
 
-#![allow(dead_code)]
 //!
 //! The implementation keeps a rooted snapshot of a sequence while calling
 //! Lisp functions.  This is important: a key or predicate may allocate and
@@ -183,13 +182,10 @@ fn bounds_from(
     }
 }
 
-fn index_word(index: usize) -> Result<Word, ObjectError> {
-    i64::try_from(index)
-        .map(Word::fixnum)
-        .map_err(|_| ObjectError::TypeError)
-}
-
-#[allow(clippy::needless_pass_by_ref_mut)]
+#[expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "rooting and predicate callbacks may update context and sequence roots during GC"
+)]
 pub fn matching_indices<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -248,7 +244,6 @@ pub fn matching_indices<C: FunctionCaller>(
     })
 }
 
-#[allow(clippy::needless_pass_by_ref_mut)]
 pub fn find<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -318,32 +313,6 @@ pub fn remove<C: FunctionCaller>(
         .collect())
 }
 
-pub fn substitute<C: FunctionCaller>(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    caller: &mut C,
-    values: &mut [Word], // check-added-lines: allow(index) slice type
-    replacement: Word,
-    object: Word,
-    options: SelectionOptions,
-) -> Result<Vec<Word>, ObjectError> {
-    let indices = matching_indices(ctx, runtime, caller, values, object, options)?;
-    let replaced = indices
-        .into_iter()
-        .collect::<std::collections::HashSet<_>>();
-    Ok(values
-        .iter()
-        .enumerate()
-        .map(|(index, value)| {
-            if replaced.contains(&index) {
-                replacement
-            } else {
-                *value
-            }
-        })
-        .collect())
-}
-
 #[path = "selection_if.rs"]
 mod selection_if;
 pub use selection_if::{count_if, find_if, position_if, remove_if, substitute_if};
@@ -354,6 +323,4 @@ pub use selection_duplicates::remove_duplicates;
 
 #[path = "selection_search.rs"]
 mod selection_search;
-#[allow(unused_imports)]
-pub use selection_search::{mismatch, search};
 pub use selection_search::{mismatch_pair, search_pair};

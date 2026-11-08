@@ -46,7 +46,10 @@ fn direct_descriptor(required: &'static [Parameter]) -> Builtin {
         )),
     }
 }
-#[allow(clippy::unnecessary_wraps)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "adapted builtin callbacks use a fallible result signature uniformly"
+)]
 fn identity(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
     Ok(args.as_slice().to_vec())
 }

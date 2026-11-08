@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Tests for Common Lisp ordered set builtins.
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,

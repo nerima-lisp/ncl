@@ -1,12 +1,8 @@
-#![allow(dead_code, clippy::redundant_pub_crate)]
-
 #[path = "order_sets_assoc.rs"]
 mod assoc;
-#[allow(unused_imports)]
 pub use assoc::{assoc, member, rassoc};
 #[path = "order_sets_extra.rs"]
 mod extra;
-#[allow(unused_imports)]
 pub use extra::{adjoin, intersection, set_difference, set_exclusive_or, subsetp};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{

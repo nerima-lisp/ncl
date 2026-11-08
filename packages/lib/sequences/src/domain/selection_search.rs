@@ -1,4 +1,4 @@
-use super::{PairSelectionOptions, SelectionOptions, bounds_from, call_one, function, scope_roots};
+use super::{PairSelectionOptions, bounds_from, call_one, function, scope_roots};
 use ncl_object::{
     FunctionArguments, FunctionCaller, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
 };
@@ -8,13 +8,6 @@ const fn end1_bound(options: PairSelectionOptions) -> Option<usize> {
         super::selection_options::End1Bound::Omitted => options.selection.end,
         super::selection_options::End1Bound::Unbounded => None,
         super::selection_options::End1Bound::Index(index) => Some(index),
-    }
-}
-
-fn legacy_options(options: SelectionOptions) -> PairSelectionOptions {
-    PairSelectionOptions {
-        selection: options,
-        ..PairSelectionOptions::default()
     }
 }
 
@@ -104,19 +97,10 @@ fn index_word(index: usize) -> Result<Word, ObjectError> {
         .map_err(|_| ObjectError::TypeError)
 }
 
-#[allow(clippy::needless_pass_by_ref_mut)]
-pub fn search<C: FunctionCaller>(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    caller: &mut C,
-    left: &mut [Word],  // check-added-lines: allow(index) slice type
-    right: &mut [Word], // check-added-lines: allow(index) slice type
-    options: SelectionOptions,
-) -> Result<Word, ObjectError> {
-    search_pair(ctx, runtime, caller, left, right, legacy_options(options))
-}
-
-#[allow(clippy::needless_pass_by_ref_mut)]
+#[expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "rooted predicate calls may trigger GC that rewrites both input sequences"
+)]
 pub fn search_pair<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -168,19 +152,10 @@ pub fn search_pair<C: FunctionCaller>(
     })
 }
 
-#[allow(clippy::needless_pass_by_ref_mut)]
-pub fn mismatch<C: FunctionCaller>(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    caller: &mut C,
-    left: &mut [Word],  // check-added-lines: allow(index) slice type
-    right: &mut [Word], // check-added-lines: allow(index) slice type
-    options: SelectionOptions,
-) -> Result<Word, ObjectError> {
-    mismatch_pair(ctx, runtime, caller, left, right, legacy_options(options))
-}
-
-#[allow(clippy::needless_pass_by_ref_mut)]
+#[expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "rooted predicate calls may trigger GC that rewrites both input sequences"
+)]
 pub fn mismatch_pair<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

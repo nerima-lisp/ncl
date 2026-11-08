@@ -230,7 +230,10 @@ fn replace_entry(
     Ok(scope.get(result_handle).as_word())
 }
 
-#[allow(clippy::unnecessary_wraps)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "adapted builtins use a fallible callback signature even when this transform cannot fail"
+)]
 fn pass(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
     Ok(args.as_slice().to_vec())
 }

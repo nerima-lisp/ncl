@@ -42,23 +42,32 @@ fn proper_list(ctx: &ThreadContext, mut cursor: Word) -> Result<(), LispError> {
     }
 }
 
-#[allow(clippy::missing_const_for_fn, clippy::unnecessary_wraps)]
-pub fn atom(_: &mut ThreadContext, _: &Runtime, value: Word) -> Result<Word, LispError> {
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "typed builtin callbacks use Result for uniform Lisp error propagation"
+)]
+pub const fn atom(_: &mut ThreadContext, _: &Runtime, value: Word) -> Result<Word, LispError> {
     Ok(if value.is_cons() {
         Word::NIL
     } else {
         Word::TRUE
     })
 }
-#[allow(clippy::missing_const_for_fn, clippy::unnecessary_wraps)]
-pub fn cons_p(_: &mut ThreadContext, _: &Runtime, value: Word) -> Result<Word, LispError> {
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "typed builtin callbacks use Result for uniform Lisp error propagation"
+)]
+pub const fn cons_p(_: &mut ThreadContext, _: &Runtime, value: Word) -> Result<Word, LispError> {
     Ok(if value.is_cons() {
         Word::TRUE
     } else {
         Word::NIL
     })
 }
-#[allow(clippy::unnecessary_wraps)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "typed builtin callbacks use Result for uniform Lisp error propagation"
+)]
 pub fn list_p(_: &ThreadContext, _: &Runtime, value: Word) -> Result<Word, LispError> {
     Ok(if value == Word::NIL || value.is_cons() {
         Word::TRUE

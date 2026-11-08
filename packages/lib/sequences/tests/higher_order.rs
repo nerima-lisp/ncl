@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Tests for higher-order sequence operations and callback behavior.
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Tests for sequence selection builtins and their option handling.
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,

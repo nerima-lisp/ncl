@@ -4,7 +4,10 @@ use super::{
 };
 use ncl_object::make_cons;
 
-#[allow(clippy::needless_pass_by_ref_mut)]
+#[expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "the rooting scope rewrites sequence values if allocation moves them"
+)]
 pub fn list_from_values(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

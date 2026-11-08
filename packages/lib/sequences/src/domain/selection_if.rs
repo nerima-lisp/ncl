@@ -11,7 +11,10 @@ use super::{SelectionOptions, bounds, call_one, scope_roots};
 /// functions (`FIND-IF`, `POSITION-IF`, `COUNT-IF`, `REMOVE-IF`,
 /// `SUBSTITUTE-IF`, and their `-NOT` counterparts); `negate` selects the
 /// `-IF-NOT` sense.
-#[allow(clippy::needless_pass_by_ref_mut)]
+#[expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "rooting and predicate calls may trigger GC that rewrites sequence values"
+)]
 pub fn matching_indices_if<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -56,7 +59,6 @@ pub fn matching_indices_if<C: FunctionCaller>(
     })
 }
 
-#[allow(clippy::needless_pass_by_ref_mut)]
 pub fn find_if<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -132,7 +134,10 @@ pub fn remove_if<C: FunctionCaller>(
         .collect())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "SUBSTITUTE-IF carries callback state, inputs, predicate options, and replacement"
+)]
 pub fn substitute_if<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

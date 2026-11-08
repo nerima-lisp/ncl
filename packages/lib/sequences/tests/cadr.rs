@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Tests for nested CAR and CDR sequence accessors.
 
 use std::collections::HashMap;
 

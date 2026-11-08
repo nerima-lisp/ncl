@@ -37,7 +37,10 @@ pub fn equalp(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, Obje
 ///
 /// # Errors
 /// Propagates object-layer errors from reading either operand.
-#[allow(clippy::needless_pass_by_ref_mut)]
+#[expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "typed builtin adapters require the shared mutable-context callback signature"
+)]
 pub fn equal_predicate(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
@@ -55,7 +58,10 @@ pub fn equal_predicate(
 ///
 /// # Errors
 /// Propagates object-layer errors from reading either operand.
-#[allow(clippy::needless_pass_by_ref_mut)]
+#[expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "typed builtin adapters require the shared mutable-context callback signature"
+)]
 pub fn equalp_predicate(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
@@ -384,7 +390,10 @@ fn numeric_equal_exact(ctx: &ThreadContext, left: Word, right: Word) -> Result<b
 /// comparator in this crate.
 fn real_to_f64(ctx: &ThreadContext, word: Word) -> Result<f64, ObjectError> {
     match classify_object(ctx, word) {
-        #[allow(clippy::cast_precision_loss)]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "EQUALP converts fixnums to f64 for approximate cross-type comparison"
+        )]
         ObjectRef::Fixnum(value) => Ok(value as f64), // check-added-lines: allow(as-cast) approximate cross-type EQUALP comparison.
         ObjectRef::DoubleFloat(_) => double_value(ctx, DoubleFloat::from_word(word)),
         ObjectRef::Bignum(_) => Ok(bignum_limbs(ctx, Bignum::from_word(word))?

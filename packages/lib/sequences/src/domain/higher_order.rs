@@ -1,11 +1,9 @@
 //! Higher-order sequence operations.
 
-#![allow(dead_code)]
-
 use ncl_object::{
-    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, FunctionDesignator, List,
-    MultipleValues, ObjectError, Runtime, Sequence, ThreadContext, Word, make_simple_vector,
-    simple_vector_length, simple_vector_ref,
+    FunctionArguments, FunctionCaller, FunctionDesignator, List, MultipleValues, ObjectError,
+    Runtime, Sequence, ThreadContext, Word, make_simple_vector, simple_vector_length,
+    simple_vector_ref,
 };
 use std::collections::HashSet;
 
@@ -458,9 +456,4 @@ fn flatten_results(
             ObjectError::TypeError
         })
     })
-}
-
-/// Convenience entry point for callers that do not need a custom function caller.
-pub const fn builtin_caller() -> BuiltinFunctionCaller {
-    BuiltinFunctionCaller
 }

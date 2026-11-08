@@ -267,7 +267,10 @@ define_composed_builtin!(
     domain::list::cdr
 );
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the entry point keeps direct, adapted, and variadic builtin registrations together"
+)]
 /// Register the implemented list and sequence builtins.
 ///
 /// # Errors

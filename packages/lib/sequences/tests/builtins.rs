@@ -63,7 +63,10 @@ fn probe(
     });
 }
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the test verifies the complete builtin set under GC stress and strict forwarding"
+)]
 fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
     let mut ctx = ThreadContext::new();

@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::unwrap_used,
     reason = "test constructs a valid builtin fixture"
 )]

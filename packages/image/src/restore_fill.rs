@@ -14,7 +14,7 @@ use crate::record::{Record, Ref};
 use super::invalid;
 
 /// Pass 4: write every payload slot and hash-table entry.
-#[allow(clippy::too_many_lines, reason = "flat per-kind fill dispatch")]
+#[expect(clippy::too_many_lines, reason = "flat per-kind fill dispatch")]
 pub(super) fn fill_objects(
     runtime: &Runtime,
     ctx: &mut ThreadContext,

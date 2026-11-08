@@ -1,10 +1,6 @@
 // The lint allow and crate doc must precede the architecture gate: on other
 // targets the `#![cfg]` empties the crate and would strip them with it.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "tests assert on code-space failures"
-)]
+#![expect(clippy::unwrap_used, reason = "tests assert on code-space failures")]
 
 //! Acceptance test: a published code block executes after an image load.
 

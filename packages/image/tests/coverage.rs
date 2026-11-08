@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on coverage failures")]
+#![expect(clippy::unwrap_used, reason = "tests assert on coverage failures")]
 
 //! Ownership coverage gate for the public `NCL-IMAGE` surface.
 

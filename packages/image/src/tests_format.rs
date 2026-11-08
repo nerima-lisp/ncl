@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests mutate valid image fixtures")]
+#![expect(clippy::unwrap_used, reason = "tests mutate valid image fixtures")]
 
 use super::{FORMAT_VERSION, Reader, get_record};
 use crate::ImageError;

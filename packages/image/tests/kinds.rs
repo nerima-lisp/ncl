@@ -1,7 +1,6 @@
-#![allow(
+#![expect(
     clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "tests assert on image failures"
+    reason = "The image-kind fixtures are valid round trips, and unwrap failures identify the record that failed to decode."
 )]
 
 //! Round-trip coverage for the object kinds beyond the acceptance graph.
@@ -17,7 +16,7 @@ use ncl_object::{
 };
 
 #[test]
-#[allow(clippy::too_many_lines, reason = "one flat round-trip per kind")]
+#[expect(clippy::too_many_lines, reason = "one flat round-trip per kind")]
 fn remaining_object_kinds_round_trip() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();

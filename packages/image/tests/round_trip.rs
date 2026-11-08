@@ -1,8 +1,4 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "tests assert on image failures"
-)]
+#![expect(clippy::unwrap_used, reason = "tests assert on image failures")]
 
 //! Acceptance tests: an object graph round-trips into a fresh runtime and
 //! survives a collection there.
@@ -316,7 +312,7 @@ fn isomorphic(a: &mut ThreadContext, wa: Word, b: &mut ThreadContext, wb: Word) 
     iso(a, wa, b, wb, &mut seen)
 }
 
-#[allow(clippy::too_many_lines, reason = "flat per-kind comparison")]
+#[expect(clippy::too_many_lines, reason = "flat per-kind comparison")]
 fn iso(
     a: &mut ThreadContext,
     wa: Word,

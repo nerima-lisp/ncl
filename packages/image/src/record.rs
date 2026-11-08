@@ -52,7 +52,7 @@ pub fn put_refs(out: &mut Vec<u8>, values: &[Ref]) -> Result<(), ImageError> {
 }
 
 /// Encode one object record.
-#[allow(clippy::too_many_lines, reason = "flat wire-format dispatch table")]
+#[expect(clippy::too_many_lines, reason = "flat wire-format dispatch table")]
 pub fn put_record(out: &mut Vec<u8>, record: &Record) -> Result<(), ImageError> {
     match record {
         Record::Cons { car, cdr } => {
@@ -236,7 +236,7 @@ pub fn get_refs(reader: &mut Reader<'_>) -> Result<Vec<Ref>, ImageError> {
 }
 
 /// Decode one object record.
-#[allow(clippy::too_many_lines, reason = "flat wire-format dispatch table")]
+#[expect(clippy::too_many_lines, reason = "flat wire-format dispatch table")]
 pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
     let kind = reader.u8()?;
     Ok(match kind {
@@ -369,7 +369,10 @@ pub fn get_record(reader: &mut Reader<'_>) -> Result<Record, ImageError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "This test serializes a well-formed function record and reads it back, so unwrap failures indicate a broken record round trip."
+)]
 mod tests {
     use super::{BuiltinIdentity, Record, Ref, get_record, put_record};
     use crate::format::Reader;

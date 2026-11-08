@@ -71,6 +71,10 @@ fn register_one_ncl(
 }
 
 /// Register the array layout with the runtime heap.
+///
+/// # Errors
+///
+/// Returns [`ObjectError::Layout`] if an array layout widetag is already registered.
 pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
     ncl_arrays::register_layouts(runtime)
 }

@@ -1,9 +1,16 @@
-#![allow(missing_docs)]
-#![allow(clippy::unwrap_used)]
+//! Tests for the `x86-64` instruction encoder.
+
+#![expect(
+    clippy::unwrap_used,
+    reason = "The encoder tests construct valid instruction fixtures, so unwrap and expect failures identify a broken fixture or encoding."
+)]
 
 use ncl_asm_x86_64::*;
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "The lowering boundary accepts a fresh one-use instruction value so callers can pass constructed instructions directly before the assembler borrows it."
+)]
 fn assert_encoding(inst: Inst, expected: &[u8]) {
     let mut assembler = Assembler::new();
     assert!(
@@ -13,7 +20,10 @@ fn assert_encoding(inst: Inst, expected: &[u8]) {
     assert_eq!(assembler.bytes(), expected, "wrong bytes for {inst:?}");
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "The lowering boundary accepts a fresh one-use instruction value so callers can pass constructed instructions directly before the assembler borrows it."
+)]
 fn assert_invalid_memory(inst: Inst) {
     let mut assembler = Assembler::new();
     assert_eq!(
@@ -24,7 +34,10 @@ fn assert_invalid_memory(inst: Inst) {
 }
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The function keeps one focused coverage matrix together so related fixtures and assertions remain reviewable as a unit."
+)]
 fn golden_uncovered_instruction_encodings() {
     assert_encoding(
         Inst::MovRI(Reg::R8, Imm::I64(-1)),
@@ -183,7 +196,10 @@ fn golden_sse_encodings() {
 }
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The function keeps one focused coverage matrix together so related fixtures and assertions remain reviewable as a unit."
+)]
 fn model_conversions_and_invalid_memory_are_specific() {
     for id in 0..16 {
         assert_eq!(Reg::from_id(id).map(Reg::id), Some(id));

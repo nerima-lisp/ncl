@@ -100,7 +100,7 @@ pub(crate) fn release_alternate_signal_stack(
         retain(memory);
         return;
     };
-    if current_address != memory.as_ptr() as usize {
+    if current_address != memory.as_ptr().addr() {
         return;
     }
     if flags & on_stack_flag != 0 {

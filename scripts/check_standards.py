@@ -136,7 +136,13 @@ def main() -> int:
         if "sys" not in path.parts and UNSAFE.search(source):
             failures.append(f"{relative}: unsafe is outside packages/sys")
         checked = "" if test_only else non_test_source(path, source)
-        failures.extend(f"{relative}:{match.start()}: forbidden {match.group()}" for match in FORBIDDEN.finditer(checked))
+        for match in FORBIDDEN.finditer(checked):
+            line_start = source.rfind("\n", 0, match.start()) + 1
+            prefix = source[line_start : match.start()]
+            if match.group().startswith("expect(") and re.fullmatch(r"\s*#!?\[\s*", prefix):
+                continue
+            line_number = source.count("\n", 0, match.start()) + 1
+            failures.append(f"{relative}:{line_number}: forbidden {match.group()}")
         failures.extend(comment_slop_violations(path, source))
         todo_count += len(TODO.findall(checked))
 

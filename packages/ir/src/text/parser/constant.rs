@@ -21,7 +21,7 @@ pub(super) fn constant_read(r: &mut Reader<'_>) -> Result<Constant, ParseError> 
         },
         6 => Constant::StringBytes(
             (0..r.u()?)
-                .map(|_| Ok(u8(r.u()?)?))
+                .map(|_| u8(r.u()?))
                 .collect::<Result<Vec<_>, ParseError>>()?,
         ),
         11 => {

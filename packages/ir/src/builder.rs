@@ -1,7 +1,4 @@
 //! Construction helpers for SSA functions.
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::all)]
-
 use crate::{
     BasicBlock, BlockId, Constant, Function, FunctionId, HandlerRegion, Local, LocalId, Op, OpKind,
     Param, Terminator, Ty, ValueId,

@@ -1,5 +1,4 @@
 //! Dependency-free intermediate representation shared by the compiler lanes.
-#![allow(clippy::all)]
 
 mod builder;
 mod fixnum;

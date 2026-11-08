@@ -1,5 +1,7 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use super::{
+    BasicBlock, BlockId, Definition, Function, HashMap, HashSet, Op, OpKind, Terminator, Ty,
+    ValueId, VerifyError, require_results, require_type, require_word_args, use_value,
+};
 use crate::{ConstantIndex, Convert, FixnumOp, Prim};
 
 /// Record an out-of-bounds error when a constant references a table index
@@ -19,6 +21,10 @@ fn check_constant_reference(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The op check needs the operation, block context, function metadata, analysis facts, and diagnostic sink together."
+)]
 pub(super) fn check_op(
     op: &Op,
     block: &BasicBlock,
@@ -111,10 +117,7 @@ pub(super) fn check_op(
         }
         OpKind::Alloc { .. } => require_results(op, &[Ty::Address], block.id, errors),
         OpKind::LoadArg { index } => {
-            if let Some(parameter) = usize::try_from(*index)
-                .ok()
-                .and_then(|parameter_index| function.params.get(parameter_index))
-            {
+            if let Some(parameter) = function.params.get(usize::from(*index)) {
                 require_results(op, &[parameter.ty], block.id, errors);
             } else {
                 errors.push(VerifyError::TypeMismatch(block.id));
@@ -181,10 +184,10 @@ pub(super) fn check_op(
                 dominators,
                 errors,
             );
-            if let Some(target) = condition {
-                if !blocks.contains_key(target) {
-                    errors.push(VerifyError::MissingBlock(*target));
-                }
+            if let Some(target) = condition
+                && !blocks.contains_key(target)
+            {
+                errors.push(VerifyError::MissingBlock(*target));
             }
         }
         OpKind::Compare { left, right, .. } => {
@@ -224,6 +227,10 @@ pub(super) fn check_op(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Primitive validation uses the op context, SSA analysis facts, and shared diagnostic sink in one local check."
+)]
 fn check_prim(
     primitive: &Prim,
     args: &[ValueId],
@@ -286,10 +293,10 @@ fn successor(
             dominators,
             errors,
         );
-        if let Some(parameter) = destination.params.get(index) {
-            if actual != Some(parameter.ty) {
-                errors.push(VerifyError::SuccessorType(block.id));
-            }
+        if let Some(parameter) = destination.params.get(index)
+            && actual != Some(parameter.ty)
+        {
+            errors.push(VerifyError::SuccessorType(block.id));
         }
     }
 }

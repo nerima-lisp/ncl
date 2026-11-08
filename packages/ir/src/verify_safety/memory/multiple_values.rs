@@ -26,10 +26,10 @@ pub(super) fn multiple_value_address_provenance(
             if let Some(predecessors) = predecessors.get_mut(&region.handler) {
                 predecessors.push(*protected);
             }
-            if let Some(cleanup) = region.cleanup {
-                if let Some(predecessors) = predecessors.get_mut(&cleanup) {
-                    predecessors.push(*protected);
-                }
+            if let Some(cleanup) = region.cleanup
+                && let Some(predecessors) = predecessors.get_mut(&cleanup)
+            {
+                predecessors.push(*protected);
             }
         }
     }

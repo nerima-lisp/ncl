@@ -13,9 +13,9 @@ pub(super) fn text_version(header: &str) -> Result<u8, ParseError> {
     match header.rsplit_once(' ') {
         Some((name, "ir3")) if !name.is_empty() => Ok(3),
         Some((name, "ir2")) if !name.is_empty() => Ok(2),
-        Some(_) => return Err(ParseError("unsupported IR text version".into())),
+        Some(_) => Err(ParseError("unsupported IR text version".into())),
         None if !header.is_empty() => Ok(1),
-        None => return Err(ParseError("expected fn header".into())),
+        None => Err(ParseError("expected fn header".into())),
     }
 }
 

@@ -118,17 +118,18 @@ pub fn proven_fixnum_values(function: &Function) -> HashSet<ValueId> {
     let mut conversions = Vec::new();
     for block in &function.blocks {
         for op in &block.ops {
-            match &op.kind {
-                crate::OpKind::Convert {
-                    op: crate::Convert::I64ToWord,
-                    value,
-                } => conversions.extend(
+            // Only I64ToWord conversions can carry proven fixnum facts.
+            if let crate::OpKind::Convert {
+                op: crate::Convert::I64ToWord,
+                value,
+            } = &op.kind
+            {
+                conversions.extend(
                     op.results
                         .iter()
                         .filter(|(_, ty)| *ty == Ty::Word)
                         .map(|(result, _)| (*result, *value)),
-                ),
-                _ => {} // check-added-lines: allow(wildcard) only I64ToWord conversions can carry proven fixnum facts.
+                );
             }
         }
     }

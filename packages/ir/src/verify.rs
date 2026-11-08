@@ -1,7 +1,12 @@
 //! Structural, SSA, type, and safepoint checks for IR functions.
-#![allow(missing_docs)]
-#![allow(clippy::all)]
-#![allow(clippy::too_many_lines)]
+#![expect(
+    missing_docs,
+    reason = "Verifier diagnostics are structured variants that identify the failed IR invariant and its location."
+)]
+#![expect(
+    clippy::too_many_lines,
+    reason = "The verifier or builder keeps related state transitions together so each invariant is checked in its construction order."
+)]
 
 mod dominance;
 mod fixnum;
@@ -154,10 +159,10 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
                 errors.push(VerifyError::HandlerTarget(*block));
             }
         }
-        if let Some(tag) = region.catch_tag {
-            if definitions.get(&tag).map(|(ty, _, _)| *ty) != Some(Ty::Word) {
-                errors.push(VerifyError::TypeMismatch(region.handler));
-            }
+        if let Some(tag) = region.catch_tag
+            && definitions.get(&tag).map(|(ty, _, _)| *ty) != Some(Ty::Word)
+        {
+            errors.push(VerifyError::TypeMismatch(region.handler));
         }
         match region.kind {
             crate::HandlerKind::Catch => {
@@ -271,10 +276,10 @@ fn verify_handler_flow(
                 continue;
             }
             if enter {
-                if let Some(parent) = regions[&region].parent {
-                    if stack.last().copied() != Some(parent) {
-                        errors.push(VerifyError::HandlerMismatch(block.id));
-                    }
+                if let Some(parent) = regions[&region].parent
+                    && stack.last().copied() != Some(parent)
+                {
+                    errors.push(VerifyError::HandlerMismatch(block.id));
                 }
                 stack.push(region);
             } else if stack.last().copied() == Some(region) {
@@ -323,10 +328,10 @@ fn insert_definition(
     definitions: &mut HashMap<ValueId, Definition>,
     errors: &mut Vec<VerifyError>,
 ) {
-    if definitions.contains_key(&value) {
-        errors.push(VerifyError::DuplicateValue(value));
+    if let std::collections::hash_map::Entry::Vacant(entry) = definitions.entry(value) {
+        entry.insert(definition);
     } else {
-        definitions.insert(value, definition);
+        errors.push(VerifyError::DuplicateValue(value));
     }
 }
 

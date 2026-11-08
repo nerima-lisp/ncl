@@ -38,7 +38,7 @@ pub(super) fn op(results: &[(u32, Ty)], kind: OpKind) -> Op {
     }
 }
 
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "the table keeps the required round-trip fixtures together"
 )]

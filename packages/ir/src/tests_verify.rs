@@ -4,8 +4,7 @@ use crate::*;
 fn verify_has(function: &Function, expected: &VerifyError) {
     let errors = match verify(function) {
         Ok(()) => {
-            assert!(false, "invalid fixture was accepted");
-            return;
+            panic!("invalid fixture was accepted");
         }
         Err(errors) => errors,
     };
@@ -1021,7 +1020,7 @@ fn verifier_rejects_address_live_across_loop_backedge() {
     );
 }
 
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "the table keeps the required verifier fixtures together"
 )]

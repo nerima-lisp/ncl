@@ -1,6 +1,8 @@
 //! The value objects and instruction vocabulary of the IR.
-#![allow(missing_docs)]
-#![allow(clippy::all)]
+#![expect(
+    missing_docs,
+    reason = "The IR types form a closed typed vocabulary whose variants and payload types identify each case."
+)]
 
 use crate::fixnum::{FixnumSpecialization, ScalarTypeHint};
 

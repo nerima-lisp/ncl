@@ -1,10 +1,9 @@
 use super::{HashTable, HashTest, Weakness};
-use crate::object_access::{get, put};
-use crate::{
-    Bignum, ObjectError, ObjectRef, Ratio, Runtime, ThreadContext, bignum_limbs, bignum_sign,
-    classify_object, double_value, make_double, ratio_denominator, ratio_numerator, widetag,
+use ncl_object::{
+    Bignum, DoubleFloat, ObjectError, ObjectRef, Ratio, Runtime, ThreadContext, Word, bignum_limbs,
+    bignum_sign, classify_object, double_value, get, make_double, put, ratio_denominator,
+    ratio_numerator, widetag,
 };
-use ncl_sys::Word;
 
 const DEFAULT_CAPACITY: usize = 8;
 const DEFAULT_REHASH_SIZE: f64 = 1.5;
@@ -17,10 +16,7 @@ pub(super) fn refresh_forwarded_field(
     slot: usize,
 ) -> Result<Word, ObjectError> {
     let value = get(ctx, table.as_word(), widetag::HASH_TABLE, slot)?;
-    let forwarded = runtime
-        .heap
-        .forwarded_word(value)
-        .ok_or(ObjectError::Layout)?;
+    let forwarded = runtime.forwarded_word(value).ok_or(ObjectError::Layout)?;
     if forwarded != value {
         put(ctx, table.as_word(), slot, forwarded)?;
     }
@@ -80,17 +76,17 @@ impl HashTable {
             validate_rehash_threshold(ctx, value)?;
         }
         let mut size = size;
-        crate::with_root(ctx, &mut size, |ctx, _size| {
+        ncl_object::with_root(ctx, &mut size, |ctx, _size| {
             let mut rehash_size = match rehash_size {
                 Some(value) => value,
                 None => make_double(ctx, runtime, DEFAULT_REHASH_SIZE)?.as_word(),
             };
-            crate::with_root(ctx, &mut rehash_size, |ctx, rehash_size| {
+            ncl_object::with_root(ctx, &mut rehash_size, |ctx, rehash_size| {
                 let mut rehash_threshold = match rehash_threshold {
                     Some(value) => value,
                     None => make_double(ctx, runtime, DEFAULT_REHASH_THRESHOLD)?.as_word(),
                 };
-                crate::with_root(ctx, &mut rehash_threshold, |ctx, rehash_threshold| {
+                ncl_object::with_root(ctx, &mut rehash_threshold, |ctx, rehash_threshold| {
                     Self::allocate(
                         ctx,
                         runtime,
@@ -152,7 +148,7 @@ fn validate_rehash_size(ctx: &ThreadContext, word: Word) -> Result<(), ObjectErr
         ObjectRef::Fixnum(value) => validate_positive_integer(ctx, Word::fixnum(value)),
         ObjectRef::Bignum(value) => validate_positive_integer(ctx, value),
         ObjectRef::DoubleFloat(value) => {
-            let value = double_value(ctx, crate::DoubleFloat::from_word(value))?;
+            let value = double_value(ctx, DoubleFloat::from_word(value))?;
             if value.is_finite() && value > 1.0 {
                 Ok(())
             } else {
@@ -192,7 +188,7 @@ fn rehash_size_value(ctx: &ThreadContext, word: Word) -> Result<RehashSize, Obje
             usize::try_from(positive_integer(ctx, value)?).map_err(|_| ObjectError::TypeError)?,
         )),
         ObjectRef::DoubleFloat(value) => {
-            let value = double_value(ctx, crate::DoubleFloat::from_word(value))?;
+            let value = double_value(ctx, DoubleFloat::from_word(value))?;
             if value.is_finite() && value > 1.0 {
                 Ok(RehashSize::Multiply(value))
             } else {
@@ -223,7 +219,7 @@ pub(super) fn rehash_threshold_value(ctx: &ThreadContext, word: Word) -> Result<
             let denominator = rehash_threshold_value(ctx, ratio_denominator(ctx, object)?)?;
             Ok(numerator / denominator)
         }
-        ObjectRef::DoubleFloat(value) => double_value(ctx, crate::DoubleFloat::from_word(value)),
+        ObjectRef::DoubleFloat(value) => double_value(ctx, DoubleFloat::from_word(value)),
         // check-added-lines: allow(wildcard) ObjectRef is non_exhaustive and unknown values are invalid.
         _ => Err(ObjectError::TypeError),
     }

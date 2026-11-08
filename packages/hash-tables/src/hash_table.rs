@@ -1,9 +1,10 @@
 //! Heap-resident open-addressed hash tables.
 
-use crate::object_access::{fix, get, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, finish_root, make_simple_vector};
-use crate::{simple_vector_length, simple_vector_ref, simple_vector_set, widetag};
-use ncl_sys::Word;
+use ncl_arrays::{make_simple_vector, simple_vector_length, simple_vector_ref, simple_vector_set};
+use ncl_object::{
+    ObjectError, RootSlot, Runtime, ThreadContext, Word, allocate, finish_root, fix, get,
+    object_widetag, put, widetag,
+};
 
 mod equality;
 mod options;
@@ -15,7 +16,28 @@ use options::{
 pub use support::sxhash;
 use support::{decode_test, decode_weakness, probe};
 
-crate::word_newtype!(HashTable);
+ncl_object::word_newtype!(HashTable);
+
+/// Register the heap layout used by hash-table objects.
+///
+/// # Errors
+///
+/// Returns [`ObjectError::Layout`] if the layout has already been registered.
+pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
+    runtime.register_layout(
+        widetag::HASH_TABLE,
+        ncl_object::ReferenceLayout {
+            reference_words: ncl_object::layout::reference_words(&[
+                REHASH_SIZE,
+                REHASH_THRESHOLD,
+                MARKER,
+                KV,
+                INDEX,
+            ]),
+            boxed_from: Some(MARKER + 1),
+        },
+    )
+}
 
 /// Hash comparison required by a Common Lisp hash table.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -56,31 +78,48 @@ const TOMBSTONE: i64 = -2;
 // Index entries are EMPTY, TOMBSTONE, or positions into live key/value pairs.
 // Removed key slots use a reserved tagged word and their value slots form a free-position list.
 impl HashTable {
+    /// Convert a kernel word view to a hash-table model value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ncl_object::TypeError`] when the view is not a hash table.
+    pub fn try_from_word_view(
+        view: ncl_object::WordView,
+    ) -> Result<Self, ncl_object::TypeError> {
+        match view {
+            ncl_object::WordView::HashTable(word) => Ok(Self::from_word(word)),
+            _ => Err(ncl_object::TypeError {
+                datum: view.as_word(),
+                expected: ncl_object::ObjectType::HashTable,
+            }),
+        }
+    }
+
     fn allocate(
         ctx: &mut ThreadContext,
         runtime: &Runtime,
         test: HashTest,
         weakness: Weakness,
         capacity: usize,
-        rehash_size: crate::RootSlot<'_>,
-        rehash_threshold: crate::RootSlot<'_>,
+        rehash_size: RootSlot<'_>,
+        rehash_threshold: RootSlot<'_>,
     ) -> Result<Self, ObjectError> {
         let mut marker = make_simple_vector(ctx, runtime, &[])?;
-        let marker_token = crate::push_root(ctx, &mut marker);
+        let marker_token = ncl_object::push_root(ctx, &mut marker);
         let result = (|| {
             let kv_words = capacity.checked_mul(2).ok_or(ObjectError::Layout)?;
             let mut kv = make_simple_vector(ctx, runtime, &vec![Word::NIL; kv_words])?;
-            let kv_token = crate::push_root(ctx, &mut kv);
+            let kv_token = ncl_object::push_root(ctx, &mut kv);
             let result = (|| {
                 for position in 0..kv_words {
                     simple_vector_set(ctx, kv, position, marker)?;
                 }
                 let mut index =
                     make_simple_vector(ctx, runtime, &vec![Word::fixnum(-1); capacity])?;
-                let index_token = crate::push_root(ctx, &mut index);
+                let index_token = ncl_object::push_root(ctx, &mut index);
                 let result = (|| {
                     let table = allocate(ctx, runtime, widetag::HASH_TABLE, 13)?;
-                    let epoch = ncl_sys::heap_epoch(&ctx.thread);
+                    let epoch = ctx.heap_epoch();
                     for (slot, value) in [
                         (TEST, Word::fixnum(test as i64)),
                         (WEAKNESS, Word::fixnum(weakness as i64)),
@@ -195,11 +234,11 @@ impl HashTable {
         value: Word,
     ) -> Result<(), ObjectError> {
         let mut table_word = self.0;
-        let table_token = crate::push_root(ctx, &mut table_word);
+        let table_token = ncl_object::push_root(ctx, &mut table_word);
         let mut key = key;
-        let key_token = crate::push_root(ctx, &mut key);
+        let key_token = ncl_object::push_root(ctx, &mut key);
         let mut value = value;
-        let value_token = crate::push_root(ctx, &mut value);
+        let value_token = ncl_object::push_root(ctx, &mut value);
         let result = (|| {
             let mut table = Self::from_word(table_word);
             table.rehash_if_needed(ctx)?;
@@ -278,9 +317,9 @@ impl HashTable {
             }
             Ok(())
         })();
-        assert!(crate::pop_root(ctx, value_token));
-        assert!(crate::pop_root(ctx, key_token));
-        assert!(crate::pop_root(ctx, table_token));
+        assert!(ncl_object::pop_root(ctx, value_token));
+        assert!(ncl_object::pop_root(ctx, key_token));
+        assert!(ncl_object::pop_root(ctx, table_token));
         result
     }
     /// Remove a key and return its value when present.
@@ -390,20 +429,20 @@ impl HashTable {
         capacity: usize,
     ) -> Result<(), ObjectError> {
         let mut table_word = self.0;
-        let table_token = crate::push_root(ctx, &mut table_word);
+        let table_token = ncl_object::push_root(ctx, &mut table_word);
         let result = (|| {
             let mut rehash_size = get(ctx, table_word, widetag::HASH_TABLE, REHASH_SIZE)?;
-            let rehash_size_token = crate::push_root(ctx, &mut rehash_size);
+            let rehash_size_token = ncl_object::push_root(ctx, &mut rehash_size);
             let mut rehash_threshold = get(ctx, table_word, widetag::HASH_TABLE, REHASH_THRESHOLD)?;
-            let rehash_threshold_token = crate::push_root(ctx, &mut rehash_threshold);
+            let rehash_threshold_token = ncl_object::push_root(ctx, &mut rehash_threshold);
             let result = (|| {
                 let kv_words = capacity.checked_mul(2).ok_or(ObjectError::Layout)?;
                 let mut new_kv = make_simple_vector(ctx, runtime, &vec![Word::NIL; kv_words])?;
-                let kv_token = crate::push_root(ctx, &mut new_kv);
+                let kv_token = ncl_object::push_root(ctx, &mut new_kv);
                 let result = (|| {
                     let mut new_index =
                         make_simple_vector(ctx, runtime, &vec![Word::fixnum(EMPTY); capacity])?;
-                    let index_token = crate::push_root(ctx, &mut new_index);
+                    let index_token = ncl_object::push_root(ctx, &mut new_index);
                     let result = (|| {
                         let table = Self::from_word(table_word);
                         let marker = get(ctx, table_word, widetag::HASH_TABLE, MARKER)?;
@@ -455,7 +494,7 @@ impl HashTable {
     fn rehash_if_needed(self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
         let test = self.test(ctx)?;
         if u64::try_from(self.read_i64(ctx, EPOCH)?).map_err(|_| ObjectError::Layout)?
-            != ncl_sys::heap_epoch(&ctx.thread)
+            != ctx.heap_epoch()
         {
             let (index, kv) = self.storage(ctx)?;
             for slot in 0..simple_vector_length(ctx, index)? {
@@ -475,7 +514,7 @@ impl HashTable {
                 ctx,
                 self.0,
                 EPOCH,
-                fix(usize::try_from(ncl_sys::heap_epoch(&ctx.thread))
+                fix(usize::try_from(ctx.heap_epoch())
                     .map_err(|_| ObjectError::Layout)?)?,
             )?;
         }

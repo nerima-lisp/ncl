@@ -1,5 +1,5 @@
 use super::call;
-use ncl_object::hash_table::HashTable;
+use ncl_hash_tables::HashTable;
 use ncl_object::{
     FunctionObject, ObjectError, Runtime, ThreadContext, Word, double_value, make_code_object,
     make_double, make_simple_fun, pop_root, push_root,
@@ -19,7 +19,7 @@ fn make_hash_table_accepts_size_and_rehash_options() -> Result<(), ObjectError> 
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let size_key = keyword(&runtime, &mut ctx, "SIZE")?;
     let rehash_size_key = keyword(&runtime, &mut ctx, "REHASH-SIZE")?;
@@ -79,7 +79,7 @@ fn make_hash_table_accepts_function_test_designator() -> Result<(), ObjectError>
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let test_key = keyword(&runtime, &mut ctx, "TEST")?;
     let common_lisp = runtime
@@ -104,7 +104,7 @@ fn make_hash_table_rejects_invalid_size_and_rehash_options() -> Result<(), Objec
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
     let size_key = keyword(&runtime, &mut ctx, "SIZE")?;
     let rehash_size_key = keyword(&runtime, &mut ctx, "REHASH-SIZE")?;
     let threshold_key = keyword(&runtime, &mut ctx, "REHASH-THRESHOLD")?;
@@ -165,7 +165,7 @@ fn hash_table_options_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let mut size_key = keyword(&runtime, &mut ctx, "SIZE")?;
     let size_key_token = push_root(&mut ctx, &mut size_key);

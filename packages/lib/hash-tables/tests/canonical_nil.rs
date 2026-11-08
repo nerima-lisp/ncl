@@ -20,7 +20,7 @@ fn make_array_builtin_accepts_canonical_nil_element_type() -> Result<(), ObjectE
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let keyword_package = runtime
         .find_package(&ctx, "KEYWORD")

@@ -385,6 +385,11 @@ impl Runtime {
     pub fn widetag(&self, object: Word) -> Option<u8> {
         ncl_sys::widetag(&self.heap, object)
     }
+    /// Return a forwarded word when the heap has moved its object.
+    #[must_use]
+    pub fn forwarded_word(&self, word: Word) -> Option<Word> {
+        self.heap.forwarded_word(word)
+    }
     /// Configure strict stale-word checking for this runtime heap.
     pub fn set_strict_forwarding(&self, on: bool) {
         self.heap.set_strict_forwarding(on);

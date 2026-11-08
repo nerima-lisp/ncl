@@ -1,0 +1,11 @@
+COMMON-LISP	CLRHASH	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
+COMMON-LISP	GETHASH	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-COUNT	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-P	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-REHASH-SIZE	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-REHASH-THRESHOLD	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-SIZE	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-TEST	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
+COMMON-LISP	MAKE-HASH-TABLE	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
+COMMON-LISP	MAPHASH	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation
+COMMON-LISP	REMHASH	function	ncl-lib-hash-tables	1	no	array/vector/bit/hash operation

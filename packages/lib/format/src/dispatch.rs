@@ -2,7 +2,7 @@ use crate::executor::{ExecutionState, Flow, FormatError, FormatOutput};
 use crate::model::{Directive, DirectiveKind};
 
 #[derive(Clone, Copy)]
-pub(crate) enum ControlDirective {
+pub enum ControlDirective {
     Star,
     Conditional,
     Iteration,
@@ -12,13 +12,13 @@ pub(crate) enum ControlDirective {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum NumericDirective {
+pub enum NumericDirective {
     Radix(RadixDirective),
     Floating(FloatingDirective),
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum RadixDirective {
+pub enum RadixDirective {
     Decimal,
     Binary,
     Octal,
@@ -27,7 +27,7 @@ pub(crate) enum RadixDirective {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum FloatingDirective {
+pub enum FloatingDirective {
     Fixed,
     Exponential,
     General,
@@ -35,7 +35,7 @@ pub(crate) enum FloatingDirective {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum PrettyDirective {
+pub enum PrettyDirective {
     Underscore,
     Indent,
     Tab,
@@ -45,7 +45,7 @@ pub(crate) enum PrettyDirective {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum TextDirective {
+pub enum TextDirective {
     Value(ValueDirective),
     Character,
     Plural,
@@ -53,14 +53,14 @@ pub(crate) enum TextDirective {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum ValueDirective {
+pub enum ValueDirective {
     Aesthetic,
     Standard,
     Write,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum LineDirective {
+pub enum LineDirective {
     Percent,
     Ampersand,
     Bar,
@@ -68,146 +68,75 @@ pub(crate) enum LineDirective {
     Newline,
 }
 
-pub(crate) fn execute_directive(
+enum DirectiveRoute {
+    Text(TextDirective),
+    Numeric(NumericDirective),
+    Control(ControlDirective),
+    Pretty(PrettyDirective),
+}
+
+pub fn execute_directive(
     state: &mut ExecutionState<'_>,
     directive: &Directive,
     output: &mut FormatOutput<'_>,
 ) -> Result<Flow, FormatError> {
-    match directive.kind {
-        DirectiveKind::A => execute_text(
-            TextDirective::Value(ValueDirective::Aesthetic),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::S => execute_text(
-            TextDirective::Value(ValueDirective::Standard),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::W => execute_text(
-            TextDirective::Value(ValueDirective::Write),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::C => execute_text(TextDirective::Character, directive, state, output),
-        DirectiveKind::Plural => execute_text(TextDirective::Plural, directive, state, output),
-        DirectiveKind::Percent => execute_text(
-            TextDirective::Line(LineDirective::Percent),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::Ampersand => execute_text(
-            TextDirective::Line(LineDirective::Ampersand),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::Bar => execute_text(
-            TextDirective::Line(LineDirective::Bar),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::Tilde => execute_text(
-            TextDirective::Line(LineDirective::Tilde),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::Newline => execute_text(
-            TextDirective::Line(LineDirective::Newline),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::D => execute_numeric(
-            NumericDirective::Radix(RadixDirective::Decimal),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::B => execute_numeric(
-            NumericDirective::Radix(RadixDirective::Binary),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::O => execute_numeric(
-            NumericDirective::Radix(RadixDirective::Octal),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::X => execute_numeric(
-            NumericDirective::Radix(RadixDirective::Hexadecimal),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::R => execute_numeric(
-            NumericDirective::Radix(RadixDirective::Radix),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::F => execute_numeric(
-            NumericDirective::Floating(FloatingDirective::Fixed),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::E => execute_numeric(
-            NumericDirective::Floating(FloatingDirective::Exponential),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::G => execute_numeric(
-            NumericDirective::Floating(FloatingDirective::General),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::Dollar => execute_numeric(
-            NumericDirective::Floating(FloatingDirective::Monetary),
-            directive,
-            state,
-            output,
-        ),
-        DirectiveKind::Star => {
-            crate::control::execute(ControlDirective::Star, directive, state, output)
+    match route_directive(directive.kind) {
+        DirectiveRoute::Text(kind) => execute_text(kind, directive, state, output),
+        DirectiveRoute::Numeric(kind) => execute_numeric(kind, directive, state, output),
+        DirectiveRoute::Control(kind) => crate::control::execute(kind, directive, state, output),
+        DirectiveRoute::Pretty(kind) => execute_pretty(kind, directive, state, output),
+    }
+}
+
+const fn route_directive(kind: DirectiveKind) -> DirectiveRoute {
+    match kind {
+        DirectiveKind::A => DirectiveRoute::Text(TextDirective::Value(ValueDirective::Aesthetic)),
+        DirectiveKind::S => DirectiveRoute::Text(TextDirective::Value(ValueDirective::Standard)),
+        DirectiveKind::W => DirectiveRoute::Text(TextDirective::Value(ValueDirective::Write)),
+        DirectiveKind::C => DirectiveRoute::Text(TextDirective::Character),
+        DirectiveKind::Plural => DirectiveRoute::Text(TextDirective::Plural),
+        DirectiveKind::Percent => DirectiveRoute::Text(TextDirective::Line(LineDirective::Percent)),
+        DirectiveKind::Ampersand => {
+            DirectiveRoute::Text(TextDirective::Line(LineDirective::Ampersand))
         }
-        DirectiveKind::Conditional => {
-            crate::control::execute(ControlDirective::Conditional, directive, state, output)
+        DirectiveKind::Bar => DirectiveRoute::Text(TextDirective::Line(LineDirective::Bar)),
+        DirectiveKind::Tilde => DirectiveRoute::Text(TextDirective::Line(LineDirective::Tilde)),
+        DirectiveKind::Newline => DirectiveRoute::Text(TextDirective::Line(LineDirective::Newline)),
+        DirectiveKind::D => {
+            DirectiveRoute::Numeric(NumericDirective::Radix(RadixDirective::Decimal))
         }
-        DirectiveKind::Iteration => {
-            crate::control::execute(ControlDirective::Iteration, directive, state, output)
+        DirectiveKind::B => {
+            DirectiveRoute::Numeric(NumericDirective::Radix(RadixDirective::Binary))
         }
-        DirectiveKind::Recursive => {
-            crate::control::execute(ControlDirective::Recursive, directive, state, output)
+        DirectiveKind::O => DirectiveRoute::Numeric(NumericDirective::Radix(RadixDirective::Octal)),
+        DirectiveKind::X => {
+            DirectiveRoute::Numeric(NumericDirective::Radix(RadixDirective::Hexadecimal))
         }
-        DirectiveKind::CaseConversion => {
-            crate::control::execute(ControlDirective::CaseConversion, directive, state, output)
+        DirectiveKind::R => DirectiveRoute::Numeric(NumericDirective::Radix(RadixDirective::Radix)),
+        DirectiveKind::F => {
+            DirectiveRoute::Numeric(NumericDirective::Floating(FloatingDirective::Fixed))
         }
-        DirectiveKind::UpArrow => {
-            crate::control::execute(ControlDirective::UpArrow, directive, state, output)
+        DirectiveKind::E => {
+            DirectiveRoute::Numeric(NumericDirective::Floating(FloatingDirective::Exponential))
         }
-        DirectiveKind::Underscore => {
-            execute_pretty(PrettyDirective::Underscore, directive, state, output)
+        DirectiveKind::G => {
+            DirectiveRoute::Numeric(NumericDirective::Floating(FloatingDirective::General))
         }
-        DirectiveKind::LogicalBlock => {
-            execute_pretty(PrettyDirective::LogicalBlock, directive, state, output)
+        DirectiveKind::Dollar => {
+            DirectiveRoute::Numeric(NumericDirective::Floating(FloatingDirective::Monetary))
         }
-        DirectiveKind::Indent => execute_pretty(PrettyDirective::Indent, directive, state, output),
-        DirectiveKind::Slash => execute_pretty(PrettyDirective::Slash, directive, state, output),
-        DirectiveKind::Tab => execute_pretty(PrettyDirective::Tab, directive, state, output),
-        DirectiveKind::Justification => {
-            execute_pretty(PrettyDirective::Justification, directive, state, output)
-        }
+        DirectiveKind::Star => DirectiveRoute::Control(ControlDirective::Star),
+        DirectiveKind::Conditional => DirectiveRoute::Control(ControlDirective::Conditional),
+        DirectiveKind::Iteration => DirectiveRoute::Control(ControlDirective::Iteration),
+        DirectiveKind::Recursive => DirectiveRoute::Control(ControlDirective::Recursive),
+        DirectiveKind::CaseConversion => DirectiveRoute::Control(ControlDirective::CaseConversion),
+        DirectiveKind::UpArrow => DirectiveRoute::Control(ControlDirective::UpArrow),
+        DirectiveKind::Underscore => DirectiveRoute::Pretty(PrettyDirective::Underscore),
+        DirectiveKind::LogicalBlock => DirectiveRoute::Pretty(PrettyDirective::LogicalBlock),
+        DirectiveKind::Indent => DirectiveRoute::Pretty(PrettyDirective::Indent),
+        DirectiveKind::Slash => DirectiveRoute::Pretty(PrettyDirective::Slash),
+        DirectiveKind::Tab => DirectiveRoute::Pretty(PrettyDirective::Tab),
+        DirectiveKind::Justification => DirectiveRoute::Pretty(PrettyDirective::Justification),
     }
 }
 

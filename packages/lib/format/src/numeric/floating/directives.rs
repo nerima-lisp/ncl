@@ -45,23 +45,26 @@ fn fixed(
     let text = if width.is_none() && precision.is_none() && scale == 0 {
         free_float(state, directive, word, value)?
     } else {
-        let (digits, trim) = match precision {
-            Some(digits) => (digits, false),
-            None => (
-                width.map_or_else(
-                    || shortest_fraction_digits(value),
-                    |width| default_fixed_precision(value, width, directive.at_sign),
-                ),
-                true,
-            ),
-        };
+        let (digits, trim) = precision.map_or_else(
+            || {
+                (
+                    width.map_or_else(
+                        || shortest_fraction_digits(value),
+                        |width| default_fixed_precision(value, width, directive.at_sign),
+                    ),
+                    true,
+                )
+            },
+            |digits| (digits, false),
+        );
         let mut text = fixed_core(value, digits, None, trim, directive)?;
         if let Some(width) = width {
             let sign_width = sign(value, directive.at_sign).len();
-            if value.abs() < 1.0 && width == sign_width + 2 {
-                if let Some(fraction) = text.strip_prefix("0.") {
-                    text = format!(".{fraction}");
-                }
+            if value.abs() < 1.0
+                && width == sign_width + 2
+                && let Some(fraction) = text.strip_prefix("0.")
+            {
+                text = format!(".{fraction}");
             }
             let rendered_width = sign_width.saturating_add(text.chars().count());
             if text.ends_with(".0") && rendered_width > width && rendered_width - 1 <= width {

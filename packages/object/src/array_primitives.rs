@@ -24,17 +24,21 @@ impl ArrayElementType {
     /// # Errors
     /// Returns [`ObjectError::Layout`] when the tag is not supported.
     pub fn from_word(word: Word) -> Result<Self, ObjectError> {
-        match word.as_fixnum().and_then(|n| u8::try_from(n).ok()) {
-            Some(0) => Ok(Self::T),
-            Some(1) => Ok(Self::Bit),
-            Some(2) => Ok(Self::Character),
-            Some(3) => Ok(Self::BaseChar),
-            Some(4) => Ok(Self::Fixnum),
-            Some(5) => Ok(Self::Signed),
-            Some(6) => Ok(Self::Unsigned),
-            Some(7) => Ok(Self::SingleFloat),
-            Some(8) => Ok(Self::DoubleFloat),
-            _ => Err(ObjectError::Layout),
+        let tag = word
+            .as_fixnum()
+            .and_then(|value| u8::try_from(value).ok())
+            .ok_or(ObjectError::Layout)?;
+        match tag {
+            0 => Ok(Self::T),
+            1 => Ok(Self::Bit),
+            2 => Ok(Self::Character),
+            3 => Ok(Self::BaseChar),
+            4 => Ok(Self::Fixnum),
+            5 => Ok(Self::Signed),
+            6 => Ok(Self::Unsigned),
+            7 => Ok(Self::SingleFloat),
+            8 => Ok(Self::DoubleFloat),
+            9..=u8::MAX => Err(ObjectError::Layout),
         }
     }
 }
@@ -56,11 +60,16 @@ pub fn validate_array_element(
             classify_object(ctx, value),
             ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)
         ),
-        ArrayElementType::Unsigned => match classify_object(ctx, value) {
-            ObjectRef::Fixnum(value) => value >= 0,
-            ObjectRef::Bignum(value) => !crate::bignum_sign(ctx, Bignum::from_word(value))?,
-            _ => false,
-        },
+        ArrayElementType::Unsigned => {
+            let classification = classify_object(ctx, value);
+            if let ObjectRef::Fixnum(value) = classification {
+                value >= 0
+            } else if let ObjectRef::Bignum(value) = classification {
+                !crate::bignum_sign(ctx, Bignum::from_word(value))?
+            } else {
+                false
+            }
+        }
         ArrayElementType::SingleFloat | ArrayElementType::DoubleFloat | ArrayElementType::T => true,
     };
     valid.then_some(value).ok_or(ObjectError::TypeError)
@@ -89,11 +98,22 @@ pub fn make_specialized_array(
             layout::widetag::SPECIALIZED_ARRAY,
             values.len().checked_add(2).ok_or(ObjectError::Layout)?,
         )?;
+        let element_type_tag = match element_type {
+            ArrayElementType::T => 0,
+            ArrayElementType::Bit => 1,
+            ArrayElementType::Character => 2,
+            ArrayElementType::BaseChar => 3,
+            ArrayElementType::Fixnum => 4,
+            ArrayElementType::Signed => 5,
+            ArrayElementType::Unsigned => 6,
+            ArrayElementType::SingleFloat => 7,
+            ArrayElementType::DoubleFloat => 8,
+        };
         put(
             ctx,
             object,
             layout::specialized_array_offset::ELEMENT_TYPE,
-            Word::fixnum(i64::from(element_type as u8)),
+            Word::fixnum(i64::from(element_type_tag)),
         )?;
         put(
             ctx,
@@ -173,30 +193,40 @@ pub fn specialized_array_set(
 /// # Errors
 /// Returns [`ObjectError`] for a non-array or malformed layout.
 pub fn array_dimensions(ctx: &ThreadContext, object: Word) -> Result<Vec<usize>, ObjectError> {
-    match classify_object(ctx, object) {
-        ObjectRef::SimpleVector(word) => Ok(vec![crate::simple_vector_length(ctx, word)?]),
-        ObjectRef::String(word) => Ok(vec![crate::string_length(ctx, word)?]),
-        ObjectRef::SpecializedArray(word) => Ok(vec![length(
+    let classification = classify_object(ctx, object);
+    if let ObjectRef::SimpleVector(word) = classification {
+        return Ok(vec![crate::simple_vector_length(ctx, word)?]);
+    }
+    if let ObjectRef::String(word) = classification {
+        return Ok(vec![crate::string_length(ctx, word)?]);
+    }
+    if let ObjectRef::SpecializedArray(word) = classification {
+        return Ok(vec![length(
             ctx,
             word,
             layout::widetag::SPECIALIZED_ARRAY,
             layout::specialized_array_offset::LENGTH,
-        )?]),
-        ObjectRef::Array(word) => {
-            let rank = length(ctx, word, layout::widetag::NON_SIMPLE_ARRAY, layout::array_offset::RANK)?;
-            (0..rank)
-                .map(|index| {
-                    length(
-                        ctx,
-                        word,
-                        layout::widetag::NON_SIMPLE_ARRAY,
-                        layout::array_offset::DYNAMIC_BASE + index,
-                    )
-                })
-                .collect()
-        }
-        _ => Err(ObjectError::TypeError),
+        )?]);
     }
+    if let ObjectRef::Array(word) = classification {
+        let rank = length(
+            ctx,
+            word,
+            layout::widetag::NON_SIMPLE_ARRAY,
+            layout::array_offset::RANK,
+        )?;
+        return (0..rank)
+            .map(|index| {
+                length(
+                    ctx,
+                    word,
+                    layout::widetag::NON_SIMPLE_ARRAY,
+                    layout::array_offset::DYNAMIC_BASE + index,
+                )
+            })
+            .collect();
+    }
+    Err(ObjectError::TypeError)
 }
 
 /// Return the element type tag stored in a specialized array object.
@@ -218,12 +248,7 @@ pub fn specialized_array_element_type(
     )?)
 }
 
-fn length(
-    ctx: &ThreadContext,
-    object: Word,
-    tag: u8,
-    slot: usize,
-) -> Result<usize, ObjectError> {
+fn length(ctx: &ThreadContext, object: Word, tag: u8, slot: usize) -> Result<usize, ObjectError> {
     usize::try_from(
         get(ctx, object, tag, slot)?
             .as_fixnum()

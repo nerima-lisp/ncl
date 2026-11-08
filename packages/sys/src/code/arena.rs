@@ -116,7 +116,11 @@ impl CodeArena {
         self.extent(0, len)
     }
 
-    fn extent(self: &Arc<Self>, start: usize, _extent_len: usize) -> CodeExtent {
+    fn extent(
+        self: &Arc<Self>,
+        start: usize,
+        #[cfg_attr(target_os = "macos", allow(unused_variables))] len: usize,
+    ) -> CodeExtent {
         // SAFETY: `reserve` checks the range, and `allocate` passes a page-rounded
         // extent no larger than a new arena. This pointer arithmetic preserves
         // the mapping's provenance.
@@ -124,7 +128,7 @@ impl CodeArena {
         CodeExtent {
             ptr,
             #[cfg(not(target_os = "macos"))]
-            len: _extent_len,
+            len,
             arena: Arc::clone(self),
         }
     }

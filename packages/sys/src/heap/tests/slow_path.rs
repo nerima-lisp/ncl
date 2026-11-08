@@ -188,7 +188,7 @@ fn native_registered_root_survives_collection() {
     assert!(native.stack_bounds.is_some());
 
     heap.begin_collection(&mut collector);
-    heap.collect(true);
+    assert_eq!(heap.collect(true), Ok(()));
     heap.end_collection();
 
     assert_eq!(heap.widetag(car), Some(13));
@@ -581,7 +581,7 @@ fn run_concurrent_slow_path_waiter_publishes_roots_and_retries_after_collector(
     native_waiter: bool,
 ) {
     let heap = Arc::new(Heap::new(HeapConfig {
-        dynamic_space_size: 4096,
+        dynamic_space_size: 4 * crate::heap::pages::LOGICAL_PAGE_SIZE,
         bytes_considered_between_gcs: 16,
     }));
     let mut setup = Thread::new();

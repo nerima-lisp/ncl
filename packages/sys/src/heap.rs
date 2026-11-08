@@ -11,6 +11,8 @@ use std::sync::{Condvar, Mutex};
 mod allocation;
 #[path = "heap/collect.rs"]
 mod collect;
+#[path = "heap/lookup.rs"]
+mod lookup;
 #[path = "heap/pages.rs"]
 mod pages;
 pub use pages::{LOGICAL_PAGE_SIZE, PageError, PageRange};
@@ -20,6 +22,8 @@ mod relocation;
 mod roots;
 #[path = "heap/scan.rs"]
 mod scan;
+#[cfg(test)]
+use lookup::SIMPLE_FUN_WIDETAG;
 pub use roots::HeapRootError;
 const CARD_SIZE: usize = 512;
 const LARGE_OBJECT: usize = 8 * 1024;
@@ -49,7 +53,7 @@ pub struct Heap {
 impl Default for HeapConfig {
     fn default() -> Self {
         Self {
-            dynamic_space_size: 64 * 1024 * 1024,
+            dynamic_space_size: 512 * 1024 * 1024,
             bytes_considered_between_gcs: 4 * 1024 * 1024,
         }
     }
@@ -165,23 +169,6 @@ impl Heap {
     /// Reject forwarded from-space words passed through mutator accessors.
     pub fn set_strict_forwarding(&self, on: bool) {
         self.strict_forwarding.store(on, Ordering::Relaxed);
-    }
-    /// Resolve a heap word through forwarding for registry lookups.
-    #[must_use]
-    pub fn forwarded_word(&self, value: Word) -> Option<Word> {
-        let state = self.lock_state();
-        let index = Self::find(&state, value)?;
-        let object = state.objects.get(index)?;
-        let tag = match value.lowtag() {
-            x if x == crate::LowTag::List as u8 => crate::LowTag::List,
-            x if x == crate::LowTag::Function as u8 => crate::LowTag::Function,
-            x if x == crate::LowTag::Instance as u8 => crate::LowTag::Instance,
-            x if x == crate::LowTag::OtherPointer as u8 => crate::LowTag::OtherPointer,
-            _ => return None,
-        };
-        let address = object.start;
-        drop(state);
-        Some(Word::pointer(address, tag))
     }
     /// # Errors
     /// Returns `LayoutError` when the widetag is already registered.
@@ -337,50 +324,6 @@ impl Heap {
                 }
             })
             .count()
-    }
-    fn find_raw(state: &State, value: Word) -> Option<usize> {
-        // check-added-lines: allow(as-cast) LowTag has repr(u8), so conversion is lossless.
-        let other_pointer_tag = crate::LowTag::OtherPointer as u8;
-        let is_heap_pointer = value.is_cons() || value.lowtag() == other_pointer_tag;
-        if !is_heap_pointer {
-            return None;
-        }
-        let address = value.address();
-        let index = state.object_index_at(address)?;
-        let object = state.objects.get(index)?;
-        (object.alive || object.forwarded_to.is_some()).then_some(index)
-    }
-    fn find(state: &State, value: Word) -> Option<usize> {
-        let mut index = Self::find_raw(state, value)?;
-        while let Some(next) = state.objects[index].forwarded_to {
-            index = next;
-        }
-        state.objects[index].alive.then_some(index)
-    }
-    fn find_for_mutator(&self, state: &State, value: Word) -> Option<usize> {
-        let index = Self::find_raw(state, value)?;
-        if self.strict_forwarding.load(Ordering::Relaxed)
-            && state.objects[index].forwarded_to.is_some()
-        {
-            return None;
-        }
-        let mut index = index;
-        while let Some(next) = state.objects[index].forwarded_to {
-            index = next;
-        }
-        state.objects[index].alive.then_some(index)
-    }
-    fn find_conservative(state: &State, value: Word) -> Option<usize> {
-        let index = Self::find_raw(state, value)?;
-        let object = state.objects.get(index)?;
-        let kind_matches = if value.is_list() {
-            object.kind == PageKind::Cons
-        } else if value.lowtag() == crate::LowTag::OtherPointer as u8 {
-            matches!(object.kind, PageKind::HeaderObject | PageKind::Large)
-        } else {
-            false
-        };
-        (kind_matches && value.address() == object.start).then_some(index)
     }
     pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
         let state = self.lock_state();

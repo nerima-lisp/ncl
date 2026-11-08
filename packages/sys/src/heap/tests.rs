@@ -1,5 +1,7 @@
 use super::*;
 
+#[path = "tests/metadata.rs"]
+mod metadata;
 #[path = "tests/pages.rs"]
 mod pages;
 use std::sync::Arc;
@@ -23,29 +25,6 @@ fn allocation_and_limit() {
     let mut t = Thread::new();
     assert_eq!(h.register_thread(&mut t), Ok(()));
     assert!(h.alloc_cons(&mut t, Word::NIL, Word::NIL).is_err());
-}
-
-#[test]
-fn collection_rewrites_heap_owned_precise_root_slot() {
-    let h = Heap::new(HeapConfig::default());
-    let mut t = Thread::new();
-    assert_eq!(h.register_thread(&mut t), Ok(()));
-
-    let allocation = h.alloc_cons(&mut t, Word::NIL, Word::NIL);
-    assert!(
-        allocation.is_ok(),
-        "cons allocation failed in root relocation test"
-    );
-    let Ok(mut root) = allocation else { return };
-    let old = root;
-    let token = h.push_root(&mut root);
-
-    assert_eq!(h.collect(false), Ok(()));
-
-    assert_ne!(root, old, "the heap-owned root slot should be rewritten");
-    assert_eq!(h.forwarded_word(old), Some(root));
-    assert!(h.pop_root(token));
-    h.unregister_thread(&t);
 }
 
 #[test]
@@ -97,66 +76,6 @@ fn boxed_tail_layout_moves_every_capture() {
     }
     drop(state);
     assert!(t.pop_root(token));
-}
-
-#[test]
-fn collection_updates_registered_frame_snapshot() {
-    let h = Heap::new(HeapConfig::default());
-    let mut t = Thread::new();
-    assert_eq!(h.register_thread(&mut t), Ok(()));
-    let Ok(mut code) = crate::alloc_code(16) else {
-        return;
-    };
-    assert!(crate::publish_code(&mut code).is_ok());
-    let mut map_bytes = vec![0; 16];
-    map_bytes[4..6].copy_from_slice(&5_u16.to_le_bytes());
-    map_bytes[6..8].copy_from_slice(&5_u16.to_le_bytes());
-    map_bytes[8..10].copy_from_slice(&5_u16.to_le_bytes());
-    map_bytes[10..12].copy_from_slice(&0_u16.to_le_bytes());
-    map_bytes.push(0b0001_0100);
-    let Ok(map) = crate::SafepointMap::decode(&map_bytes, 1) else {
-        return;
-    };
-    assert!(
-        h.register_code(
-            &code,
-            crate::CodeObjectMetadata {
-                entry_offset: 0,
-                size: code.len(),
-                frame_words: 5,
-                function_name: "test".to_string(),
-                source_locations: Vec::new(),
-                constant_slots: Vec::new(),
-                safepoint_map: map,
-                debug_table: Vec::new(),
-            },
-        )
-        .is_ok()
-    );
-    let function = h
-        .alloc_cons(&mut t, Word::fixnum(1), Word::NIL)
-        .unwrap_or(Word::NIL);
-    let local = h
-        .alloc_cons(&mut t, Word::fixnum(2), Word::NIL)
-        .unwrap_or(Word::NIL);
-    let old_function = function;
-    let old_local = local;
-    t.set_frame_snapshot(
-        vec![
-            Word::from_bits(0),
-            Word::from_bits(code.address() as u64),
-            function,
-            Word::NIL,
-            local,
-        ],
-        Vec::new(),
-    );
-    assert_eq!(h.collect(false), Ok(()));
-    assert_ne!(t.frame_chain[2], old_function);
-    assert_ne!(t.frame_chain[4], old_local);
-    let state = h.lock_state();
-    assert!(Heap::find(&state, t.frame_chain[2]).is_some());
-    assert!(Heap::find(&state, t.frame_chain[4]).is_some());
 }
 
 #[test]
@@ -291,42 +210,6 @@ fn unreachable_nursery_is_reclaimed_and_raw_layout_words_are_unchanged() {
 }
 
 #[test]
-fn dirty_card_keeps_old_to_young_reference() {
-    let h = Heap::new(HeapConfig::default());
-    let mut t = Thread::new();
-    assert_eq!(h.register_thread(&mut t), Ok(()));
-    assert!(
-        h.register_layout(
-            12,
-            ReferenceLayout {
-                reference_words: vec![1],
-                boxed_from: None,
-            }
-        )
-        .is_ok()
-    );
-    let mut old = h
-        .alloc(&mut t, TypeTag { widetag: 12 }, 1)
-        .unwrap_or(Word::NIL);
-    let token = t.push_root(&mut old);
-    assert_eq!(h.collect(false), Ok(()));
-    assert_eq!(h.collect(false), Ok(()));
-    let child = h
-        .alloc_cons(&mut t, Word::fixnum(99), Word::NIL)
-        .unwrap_or(Word::NIL);
-    h.write_words(old, &[(1, child)]);
-    h.barrier(old, 1);
-    assert_eq!(h.collect(false), Ok(()));
-    let state = h.lock_state();
-    let index = Heap::find(&state, old).unwrap_or(usize::MAX);
-    let retained = Word::from_bits(state.objects[index].words[1]);
-    assert!(Heap::find(&state, retained).is_some());
-    assert_eq!(state.objects[index].generation, 2);
-    drop(state);
-    assert!(t.pop_root(token));
-}
-
-#[test]
 fn aging_promotes_after_two_minor_collections() {
     let h = Heap::new(HeapConfig::default());
     let mut t = Thread::new();
@@ -349,44 +232,6 @@ fn aging_promotes_after_two_minor_collections() {
         2
     );
     assert!(t.pop_root(token));
-}
-
-#[test]
-fn full_collection_reclaims_old_cycle() {
-    let h = Heap::new(HeapConfig::default());
-    let mut t = Thread::new();
-    assert_eq!(h.register_thread(&mut t), Ok(()));
-    let mut first = h
-        .alloc_cons(&mut t, Word::NIL, Word::NIL)
-        .unwrap_or(Word::NIL);
-    let second = h.alloc_cons(&mut t, first, Word::NIL).unwrap_or(Word::NIL);
-    h.write_words(first, &[(1, second)]);
-    let token = t.push_root(&mut first);
-    assert_eq!(h.collect(false), Ok(()));
-    assert_eq!(h.collect(false), Ok(()));
-    first = Word::NIL;
-    assert_eq!(first, Word::NIL);
-    assert!(t.pop_root(token));
-    assert_eq!(h.collect(true), Ok(()));
-    let state = h.lock_state();
-    assert_eq!(
-        state.objects.iter().filter(|object| object.alive).count(),
-        0
-    );
-}
-
-#[test]
-fn large_objects_start_in_old_generation() {
-    let h = Heap::new(HeapConfig::default());
-    let mut t = Thread::new();
-    assert_eq!(h.register_thread(&mut t), Ok(()));
-    let value = h
-        .alloc_large(&mut t, TypeTag { widetag: 13 }, 1023)
-        .unwrap_or(Word::NIL);
-    let state = h.lock_state();
-    let index = Heap::find(&state, value).unwrap_or(usize::MAX);
-    assert_eq!(state.objects[index].generation, 2);
-    assert_eq!(state.objects[index].kind, PageKind::Large);
 }
 
 #[test]

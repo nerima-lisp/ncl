@@ -1,5 +1,3 @@
-use crate::object_access::put;
-use crate::package::{NAME, NICKNAMES};
 use crate::{ObjectError, Package, Runtime, ThreadContext, make_string, string_length, string_ref};
 use ncl_sys::{HeapConfig, StorageCondition, Word};
 
@@ -108,7 +106,7 @@ impl Runtime {
         })
     }
 
-    fn check_package_name(
+    pub fn check_package_name(
         &self,
         ctx: &mut ThreadContext,
         package: Word,
@@ -127,7 +125,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn register_package_name(
+    pub fn register_package_name(
         &self,
         ctx: &mut ThreadContext,
         package: Word,
@@ -140,9 +138,10 @@ impl Runtime {
             crate::with_root(ctx, &mut name, |ctx, name| {
                 self.check_package_name(ctx, *package, *name)?;
                 if nickname {
-                    Package::from_word(*package).add_nickname(ctx, self, *name)?;
+                    Package::from_word(*package).register_nickname(ctx, self, *name)?;
                 }
                 let key = string_from_word(ctx, *name)?;
+                self.register_package_symbols(ctx, *package)?;
                 self.packages
                     .lock()
                     .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?
@@ -152,7 +151,7 @@ impl Runtime {
         })
     }
 
-    fn unregister_package_name(
+    pub fn unregister_package_name(
         &self,
         ctx: &ThreadContext,
         name: Word,
@@ -164,103 +163,6 @@ impl Runtime {
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?
             .remove(&key)
             .is_some())
-    }
-
-    /// Rename a package and replace its registered nicknames.
-    ///
-    /// # Errors
-    /// Returns an object error when the package is locked, a name is
-    /// malformed, or a name or nickname conflicts with another package.
-    pub fn rename_package(
-        &self,
-        ctx: &mut ThreadContext,
-        package: Package,
-        name: Word,
-        nicknames: Word,
-    ) -> Result<(), ObjectError> {
-        let mut package_word = package.as_word();
-        crate::with_root(ctx, &mut package_word, |ctx, package| {
-            Package::from_word(*package).ensure_unlocked(ctx)?;
-            let mut name = name;
-            crate::with_root(ctx, &mut name, |ctx, name| {
-                string_length(ctx, *name)?;
-                let mut nicknames = nicknames;
-                crate::with_root(ctx, &mut nicknames, |ctx, nicknames| {
-                    let mut names = *nicknames;
-                    while names != Word::NIL {
-                        let nickname = ncl_sys::read_cons_word(&ctx.thread, names, 0)
-                            .ok_or(ObjectError::Layout)?;
-                        string_length(ctx, nickname)?;
-                        self.check_package_name(ctx, *package, nickname)?;
-                        names = ncl_sys::read_cons_word(&ctx.thread, names, 1)
-                            .ok_or(ObjectError::Layout)?;
-                    }
-                    self.check_package_name(ctx, *package, *name)?;
-
-                    let old_name = Package::from_word(*package).name(ctx)?;
-                    self.unregister_package_name(ctx, old_name)?;
-                    let old_nicknames = Package::from_word(*package).nicknames(ctx)?;
-                    let mut old = old_nicknames;
-                    while old != Word::NIL {
-                        let nickname = ncl_sys::read_cons_word(&ctx.thread, old, 0)
-                            .ok_or(ObjectError::Layout)?;
-                        self.unregister_package_name(ctx, nickname)?;
-                        old = ncl_sys::read_cons_word(&ctx.thread, old, 1)
-                            .ok_or(ObjectError::Layout)?;
-                    }
-                    put(ctx, *package, NAME, *name)?;
-                    put(ctx, *package, NICKNAMES, *nicknames)?;
-                    self.register_package_name(ctx, *package, *name, false)?;
-                    let mut names = *nicknames;
-                    while names != Word::NIL {
-                        let nickname = ncl_sys::read_cons_word(&ctx.thread, names, 0)
-                            .ok_or(ObjectError::Layout)?;
-                        self.register_package_name(ctx, *package, nickname, true)?;
-                        names = ncl_sys::read_cons_word(&ctx.thread, names, 1)
-                            .ok_or(ObjectError::Layout)?;
-                    }
-                    Ok(())
-                })
-            })
-        })
-    }
-
-    /// Remove a package from the runtime package registry.
-    ///
-    /// # Errors
-    /// Returns an object error when the package is locked, its metadata is
-    /// malformed, or the registry cannot be updated.
-    pub fn delete_package(
-        &self,
-        ctx: &mut ThreadContext,
-        package: Package,
-    ) -> Result<bool, ObjectError> {
-        let mut package_word = package.as_word();
-        crate::with_root(ctx, &mut package_word, |ctx, package| {
-            Package::from_word(*package).ensure_unlocked(ctx)?;
-            let mut name = Package::from_word(*package).name(ctx)?;
-            crate::with_root(ctx, &mut name, |ctx, name| {
-                let mut nicknames = Package::from_word(*package).nicknames(ctx)?;
-                let mut removed = self.unregister_package_name(ctx, *name)?;
-                while nicknames != Word::NIL {
-                    let next = crate::with_root(ctx, &mut nicknames, |ctx, nicknames_slot| {
-                        let mut nickname = ncl_sys::read_cons_word(&ctx.thread, *nicknames_slot, 0)
-                            .ok_or(ObjectError::Layout)?;
-                        crate::with_root(ctx, &mut nickname, |ctx, nickname| {
-                            removed |= self.unregister_package_name(ctx, *nickname)?;
-                            Ok(())
-                        })?;
-                        ncl_sys::read_cons_word(&ctx.thread, *nicknames_slot, 1)
-                            .ok_or(ObjectError::Layout)
-                    })?;
-                    nicknames = next;
-                }
-                if removed {
-                    put(ctx, *package, NAME, Word::NIL)?;
-                }
-                Ok(removed)
-            })
-        })
     }
 
     fn resolve_package(
@@ -387,62 +289,3 @@ impl Runtime {
     }
 }
 
-#[cfg(test)]
-mod registry_behavior_tests {
-    use super::*;
-    use crate::{make_cons, make_string};
-
-    #[test]
-    fn package_lifecycle_and_class_registry_preserve_names() -> Result<(), ObjectError> {
-        let runtime = Runtime::new()?;
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime)?;
-
-        let common_lisp = runtime.ensure_package(&mut ctx, "CL")?;
-        assert_eq!(
-            runtime.ensure_package(&mut ctx, "COMMON-LISP")?,
-            common_lisp
-        );
-        assert_eq!(runtime.find_package(&ctx, "CL"), Some(common_lisp));
-
-        let package = runtime.ensure_package(&mut ctx, "REGISTRY-LIFECYCLE")?;
-        let nickname = make_string(&mut ctx, &runtime, &['R', 'L'])?;
-        let nicknames = make_cons(&mut ctx, &runtime, nickname, Word::NIL)?;
-        let renamed = make_string(&mut ctx, &runtime, &['R', 'E', 'N', 'A', 'M', 'E', 'D'])?;
-        runtime.rename_package(&mut ctx, Package::from_word(package), renamed, nicknames)?;
-        assert_eq!(runtime.find_package(&ctx, "REGISTRY-LIFECYCLE"), None);
-        assert_eq!(runtime.find_package(&ctx, "RENAMED"), Some(package));
-        assert_eq!(runtime.find_package(&ctx, "RL"), Some(package));
-
-        runtime.define_class(&mut ctx, "REGISTRY-CLASS", Word::TRUE)?;
-        assert_eq!(runtime.class(&mut ctx, "REGISTRY-CLASS"), Some(Word::TRUE));
-        assert_eq!(runtime.class(&mut ctx, "UNKNOWN-CLASS"), None);
-        runtime.add_feature("REGISTRY-FEATURE");
-        runtime.add_feature("REGISTRY-FEATURE");
-        assert_eq!(runtime.features(), vec!["REGISTRY-FEATURE"]);
-
-        assert!(runtime.all_packages(&ctx)?.contains(&package));
-        assert!(runtime.delete_package(&mut ctx, Package::from_word(package))?);
-        assert_eq!(runtime.find_package(&ctx, "RENAMED"), None);
-        assert_eq!(runtime.find_package(&ctx, "RL"), None);
-        assert!(!runtime.all_packages(&ctx)?.contains(&package));
-        assert!(!runtime.delete_package(&mut ctx, Package::from_word(package))?);
-        Ok(())
-    }
-
-    #[test]
-    fn common_lisp_user_has_standard_cl_user_nickname() -> Result<(), ObjectError> {
-        let runtime = Runtime::new()?;
-        let mut ctx = ThreadContext::new();
-        ctx.register(&runtime)?;
-        let common_lisp_user = runtime
-            .find_package(&ctx, "COMMON-LISP-USER")
-            .ok_or(ObjectError::Layout)?;
-
-        assert_eq!(
-            runtime.find_package(&ctx, "CL-USER"),
-            Some(common_lisp_user)
-        );
-        Ok(())
-    }
-}

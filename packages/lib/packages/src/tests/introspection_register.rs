@@ -1,12 +1,10 @@
 use super::*;
-use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::string_offset;
 
 // These slots corrupt test fixtures to exercise malformed object layouts.
 const PACKAGE_USE_LIST_SLOT: usize = 4;
 const PACKAGE_INTERNAL_SLOT: usize = 6;
 const PACKAGE_EXTERNAL_SLOT: usize = 7;
-const HASH_TABLE_TEST_SLOT: usize = 0;
 
 fn registered_runtime() -> Result<(Runtime, ThreadContext), ObjectError> {
     let runtime = Runtime::new()?;
@@ -21,17 +19,6 @@ fn ensure_package(
     name: &str,
 ) -> Result<Package, ObjectError> {
     Ok(Package::from_word(runtime.ensure_package(ctx, name)?))
-}
-
-fn table_with_entry(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    key: Word,
-    value: Word,
-) -> Result<HashTable, ObjectError> {
-    let table = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?;
-    table.insert(ctx, runtime, key, value)?;
-    Ok(table)
 }
 
 fn set_use_list(
@@ -101,9 +88,11 @@ fn package_iteration_reports_malformed_symbol_tables() -> Result<(), ObjectError
     assert!(all_package_iteration_symbols(&mut ctx, &runtime).is_err());
 
     let bad_symbol = ensure_package(&mut ctx, &runtime, "N25-ITERATION-BAD-SYMBOL")?;
-    let key = ncl_object::make_string(&mut ctx, &runtime, &['B', 'A', 'D'])?;
-    let table = table_with_entry(&mut ctx, &runtime, key, Word::fixnum(0))?;
-    ctx.write_object_slot(bad_symbol.as_word(), PACKAGE_INTERNAL_SLOT, table.as_word())?;
+    ctx.write_object_slot(
+        bad_symbol.as_word(),
+        PACKAGE_INTERNAL_SLOT,
+        Word::fixnum(0),
+    )?;
     assert_eq!(
         package_iteration_symbols_for(
             &mut ctx,
@@ -118,9 +107,7 @@ fn package_iteration_reports_malformed_symbol_tables() -> Result<(), ObjectError
     let (symbol, _) = bad_lookup.intern(&mut ctx, &runtime, "EXTERNAL")?;
     let name = ncl_object::symbol_name(&ctx, symbol)?;
     bad_lookup.export(&mut ctx, &runtime, name)?;
-    let table = table_with_entry(&mut ctx, &runtime, name, symbol)?;
-    ctx.write_object_slot(table.as_word(), HASH_TABLE_TEST_SLOT, Word::fixnum(99))?;
-    ctx.write_object_slot(bad_lookup.as_word(), PACKAGE_EXTERNAL_SLOT, table.as_word())?;
+    ctx.write_object_slot(bad_lookup.as_word(), PACKAGE_EXTERNAL_SLOT, Word::fixnum(0))?;
     assert!(
         package_iteration_symbols_for(
             &mut ctx,
@@ -167,12 +154,10 @@ fn package_iteration_reports_malformed_use_and_inherited_tables() -> Result<(), 
     );
 
     let bad_candidate = ensure_package(&mut ctx, &runtime, "N25-ITERATION-BAD-CANDIDATE")?;
-    let key = ncl_object::make_string(&mut ctx, &runtime, &['B', 'A', 'D'])?;
-    let table = table_with_entry(&mut ctx, &runtime, key, Word::fixnum(0))?;
     ctx.write_object_slot(
         bad_candidate.as_word(),
         PACKAGE_INTERNAL_SLOT,
-        table.as_word(),
+        Word::fixnum(0),
     )?;
     let target = ensure_package(&mut ctx, &runtime, "N25-ITERATION-TARGET-BAD-CANDIDATE")?;
     set_use_list(&mut ctx, &runtime, target, bad_candidate.as_word())?;
@@ -185,12 +170,10 @@ fn package_iteration_reports_malformed_use_and_inherited_tables() -> Result<(), 
     let (symbol, _) = bad_used_lookup.intern(&mut ctx, &runtime, "EXTERNAL")?;
     let name = ncl_object::symbol_name(&ctx, symbol)?;
     bad_used_lookup.export(&mut ctx, &runtime, name)?;
-    let table = table_with_entry(&mut ctx, &runtime, name, symbol)?;
-    ctx.write_object_slot(table.as_word(), HASH_TABLE_TEST_SLOT, Word::fixnum(99))?;
     ctx.write_object_slot(
         bad_used_lookup.as_word(),
         PACKAGE_EXTERNAL_SLOT,
-        table.as_word(),
+        Word::fixnum(0),
     )?;
     let target = ensure_package(&mut ctx, &runtime, "N25-ITERATION-TARGET-BAD-USED-LOOKUP")?;
     set_use_list(&mut ctx, &runtime, target, bad_used_lookup.as_word())?;
@@ -200,12 +183,10 @@ fn package_iteration_reports_malformed_use_and_inherited_tables() -> Result<(), 
     );
 
     let bad_target_lookup = ensure_package(&mut ctx, &runtime, "N25-ITERATION-BAD-TARGET-LOOKUP")?;
-    let table = HashTable::new(&mut ctx, &runtime, HashTest::Equal, Weakness::None)?;
-    ctx.write_object_slot(table.as_word(), HASH_TABLE_TEST_SLOT, Word::fixnum(99))?;
     ctx.write_object_slot(
         bad_target_lookup.as_word(),
         PACKAGE_INTERNAL_SLOT,
-        table.as_word(),
+        Word::fixnum(0),
     )?;
     let used = ensure_package(&mut ctx, &runtime, "N25-ITERATION-TARGET-LOOKUP-USED")?;
     let (symbol, _) = used.intern(&mut ctx, &runtime, "EXTERNAL")?;

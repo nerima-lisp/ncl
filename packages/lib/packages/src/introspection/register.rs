@@ -10,6 +10,7 @@ use ncl_object::{
     BuiltinPackage, FindStatus, LambdaList, MultipleValues, ObjectError, Package, Parameter,
     ParameterType, Runtime, ThreadContext, Word, symbol_name,
 };
+use ncl_packages::PackageOperations;
 
 const ITERATION_MODE: Parameter = Parameter {
     name: BuiltinName::new("MODE"),
@@ -95,7 +96,9 @@ fn package_iteration_symbols_for(
             PackageIterationMode::External => {
                 for symbol in local.iter().copied() {
                     let name = symbol_name(ctx, symbol)?;
-                    if let Some((_, FindStatus::External)) = package.find_symbol(ctx, name)? {
+                    if let Some((_, FindStatus::External)) =
+                        package.find_symbol(ctx, runtime, name)?
+                    {
                         symbols.push(symbol);
                     }
                 }
@@ -109,11 +112,13 @@ fn package_iteration_symbols_for(
                     used.for_each_symbol(ctx, |symbol| candidates.push(symbol))?;
                     for candidate in candidates {
                         let name = symbol_name(ctx, candidate)?;
-                        let Some((_, FindStatus::External)) = used.find_symbol(ctx, name)? else {
+                        let Some((_, FindStatus::External)) =
+                            used.find_symbol(ctx, runtime, name)?
+                        else {
                             continue;
                         };
                         let Some((visible, FindStatus::Inherited)) =
-                            package.find_symbol(ctx, name)?
+                            package.find_symbol(ctx, runtime, name)?
                         else {
                             continue;
                         };

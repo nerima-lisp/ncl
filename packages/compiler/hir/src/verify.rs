@@ -15,9 +15,13 @@ use crate::node::NodeArena;
 use crate::policy::OptimizationPolicy;
 use crate::source::SourceOrigins;
 
+#[path = "verify/control.rs"]
 mod control;
+#[path = "verify/facts.rs"]
 mod facts;
+#[path = "verify/references.rs"]
 mod references;
+#[path = "verify/structure.rs"]
 mod structure;
 
 pub use facts::*;
@@ -50,6 +54,7 @@ impl<'a> VerifyResources<'a> {
 }
 
 /// HIR data and resource bounds for one form.
+#[derive(Debug)]
 pub struct VerifyInput<'a> {
     /// The top-level form being checked.
     pub form: FormId,
@@ -104,9 +109,19 @@ pub enum VerifyError {
     /// A cleanup has no matching UNWIND-PROTECT node.
     InvalidCleanup(CleanupId),
     /// A variable reference does not resolve to the visible binding.
-    InvisibleVariable { node: NodeId, binding: BindingId },
+    InvisibleVariable {
+        /// The reference node.
+        node: NodeId,
+        /// The binding that is not visible.
+        binding: BindingId,
+    },
     /// A local function reference does not resolve to the visible binding.
-    InvisibleFunction { node: NodeId, binding: BindingId },
+    InvisibleFunction {
+        /// The function reference node.
+        node: NodeId,
+        /// The local function binding that is not visible.
+        binding: BindingId,
+    },
     /// Scope metadata is inconsistent with lexical bindings.
     InvalidBindingScopes(NodeId),
     /// A non-local exit names a node of the wrong semantic kind.
@@ -118,7 +133,12 @@ pub enum VerifyError {
     /// A block is duplicated or owned by another function.
     InvalidFunctionBlock(BlockId),
     /// A successor is absent or belongs to another function.
-    InvalidSuccessor { source: BlockId, target: BlockId },
+    InvalidSuccessor {
+        /// The block containing the invalid edge.
+        source: BlockId,
+        /// The missing or foreign successor block.
+        target: BlockId,
+    },
     /// A check has no unique success/failure conditional edge.
     InvalidCheckEdges(NodeId),
     /// CheckType diagnostic origin differs from the node origin.

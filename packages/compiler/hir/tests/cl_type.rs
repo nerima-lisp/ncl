@@ -2,13 +2,16 @@
 
 #![deny(
     unreachable_pub,
-    unused_crate_dependencies,
     dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::indexing_slicing,
     clippy::panic,
     clippy::as_conversions
+)]
+#![expect(
+    unused_crate_dependencies,
+    reason = "This target includes source modules by path to test private invariants"
 )]
 
 #[path = "../src/arena.rs"]

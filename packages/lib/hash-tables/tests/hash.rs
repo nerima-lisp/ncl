@@ -5,7 +5,7 @@ mod options;
 
 use ncl_hash_tables::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object,
+    FunctionObject, ObjectError, ObjectRef, Package, Runtime, ThreadContext, Word, classify_object,
     double_value, make_string, pop_root, push_root,
 };
 
@@ -22,6 +22,63 @@ fn call(
     runtime.call_builtin(ctx, function, args)
 }
 
+fn assert_insert_remove_clear(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    table: Word,
+    key: Word,
+    value: Word,
+) -> Result<(), ObjectError> {
+    let mut gethash_set = runtime
+        .function(ctx, "NCL-EXT", "GETHASH-SET")
+        .ok_or(ObjectError::UndefinedFunction)?;
+    let gethash_set_token = push_root(ctx, &mut gethash_set);
+    assert_eq!(
+        runtime.call_builtin(
+            ctx,
+            FunctionObject::try_from(gethash_set).map_err(|_| ObjectError::TypeError)?,
+            &[key, table, value],
+        )?,
+        value
+    );
+    assert_eq!(
+        call(runtime, ctx, "HASH-TABLE-COUNT", &[table])?,
+        Word::fixnum(1)
+    );
+    call(runtime, ctx, "GETHASH", &[key, table])?;
+    assert_eq!(ctx.values(), &[value, Word::TRUE]);
+    assert_eq!(call(runtime, ctx, "REMHASH", &[key, table])?, Word::TRUE);
+    assert_eq!(
+        call(runtime, ctx, "HASH-TABLE-COUNT", &[table])?,
+        Word::fixnum(0)
+    );
+
+    let inserted_entries = [
+        (Word::fixnum(8), Word::fixnum(80)),
+        (Word::fixnum(9), Word::fixnum(90)),
+    ];
+    for (key, value) in inserted_entries {
+        runtime.call_builtin(
+            ctx,
+            FunctionObject::try_from(gethash_set).map_err(|_| ObjectError::TypeError)?,
+            &[key, table, value],
+        )?;
+    }
+    assert_eq!(
+        call(runtime, ctx, "HASH-TABLE-COUNT", &[table])?,
+        Word::fixnum(2)
+    );
+    assert_eq!(call(runtime, ctx, "CLRHASH", &[table])?, table);
+    assert_eq!(
+        call(runtime, ctx, "HASH-TABLE-COUNT", &[table])?,
+        Word::fixnum(0)
+    );
+    call(runtime, ctx, "GETHASH", &[Word::fixnum(8), table])?;
+    assert_eq!(ctx.values(), &[Word::NIL, Word::NIL]);
+    assert!(pop_root(ctx, gethash_set_token));
+    Ok(())
+}
+
 #[test]
 fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
@@ -35,6 +92,14 @@ fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError
         Word::TRUE
     );
     assert_eq!(
+        call(&runtime, &mut ctx, "HASH-TABLE-P", &[Word::fixnum(0)])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "HASH-TABLE-COUNT", &[Word::fixnum(0)]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
         call(&runtime, &mut ctx, "HASH-TABLE-COUNT", &[table])?,
         Word::fixnum(0)
     );
@@ -46,17 +111,13 @@ fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError
 
     call(&runtime, &mut ctx, "GETHASH", &[key, table])?;
     assert_eq!(ctx.values(), &[Word::NIL, Word::NIL]);
-    call(&runtime, &mut ctx, "REMHASH", &[key, table])?;
-    assert_eq!(
-        call(&runtime, &mut ctx, "HASH-TABLE-COUNT", &[table])?,
-        Word::fixnum(0)
-    );
+    assert_insert_remove_clear(&runtime, &mut ctx, table, key, value)?;
 
-    call(&runtime, &mut ctx, "CLRHASH", &[table])?;
-    assert!(
-        call(&runtime, &mut ctx, "SXHASH", &[key])?
-            .as_fixnum()
-            .is_some()
+    let sxhash = call(&runtime, &mut ctx, "SXHASH", &[key])?;
+    let mask = u64::try_from(i64::MAX).map_err(|_| ObjectError::Layout)?;
+    assert_eq!(
+        sxhash,
+        Word::fixnum((ncl_hash_tables::sxhash(key) & mask).cast_signed())
     );
     let rehash_size = call(&runtime, &mut ctx, "HASH-TABLE-REHASH-SIZE", &[table])?;
     assert!(matches!(
@@ -139,7 +200,13 @@ fn hash_table_test_reports_equalp_and_weakness_semantics() -> Result<(), ObjectE
         FunctionObject::try_from(test_function).map_err(|_| ObjectError::TypeError)?,
         &[table],
     )?;
-    assert!(matches!(classify_object(&ctx, test), ObjectRef::Symbol(_)));
+    let common_lisp = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let equalp_symbol = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "EQUALP")?
+        .0;
+    assert_eq!(test, equalp_symbol);
     assert_eq!(HashTable::from_word(table).weakness(&ctx)?, Weakness::Key);
     let mut gethash_function = runtime
         .function(&mut ctx, "COMMON-LISP", "GETHASH")
@@ -176,6 +243,14 @@ fn maphash_accepts_function_designators_and_rejects_other_values() -> Result<(),
     assert_eq!(
         call(&runtime, &mut ctx, "MAPHASH", &[Word::NIL, table],),
         Ok(Word::NIL)
+    );
+    HashTable::from_word(table).insert(&mut ctx, &runtime, Word::fixnum(1), table)?;
+    let gethash = runtime
+        .function(&mut ctx, "COMMON-LISP", "GETHASH")
+        .ok_or(ObjectError::UndefinedFunction)?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAPHASH", &[gethash, table])?,
+        Word::NIL
     );
     Ok(())
 }

@@ -1,7 +1,7 @@
 use super::array_shape;
 use ncl_arrays::{
-    adjustable_array_p, array_displacement, array_element_type, array_has_fill_pointer_p,
-    ArrayElementType,
+    ArrayElementType, adjustable_array_p, array_displacement, array_element_type,
+    array_has_fill_pointer_p,
 };
 use ncl_object::package::{nil, truth};
 use ncl_object::{

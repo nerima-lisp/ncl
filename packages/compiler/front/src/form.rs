@@ -10,10 +10,10 @@ use std::collections::HashMap;
 use ncl_arrays::{array_element_type, array_row_major_ref};
 use ncl_object::{
     Bignum, Complex, DoubleFloat, Instance, ObjectRef, Package, Ratio, Runtime, ThreadContext,
-    Word, array_dimensions, bignum_limbs, bignum_sign, car, cdr, classify,
-    classify_object, complex_imag, complex_real, double_value, instance_class, ratio_denominator,
-    ratio_numerator, simple_vector_length, simple_vector_ref, slot_ref,
-    specialized_array_element_type, string_length, string_ref, symbol_name, symbol_package,
+    Word, array_dimensions, bignum_limbs, bignum_sign, car, cdr, classify, classify_object,
+    complex_imag, complex_real, double_value, instance_class, ratio_denominator, ratio_numerator,
+    simple_vector_length, simple_vector_ref, slot_ref, specialized_array_element_type,
+    string_length, string_ref, symbol_name, symbol_package,
 };
 
 use crate::error::FrontError;

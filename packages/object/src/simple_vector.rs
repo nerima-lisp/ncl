@@ -1,6 +1,4 @@
-use crate::{
-    ObjectError, Runtime, ThreadContext, Word, allocate, get, layout, put, with_roots,
-};
+use crate::{ObjectError, Runtime, ThreadContext, Word, allocate, get, layout, put, with_roots};
 
 /// Allocate a simple vector with contiguous Lisp values.
 ///

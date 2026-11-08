@@ -199,12 +199,7 @@ fn macro_variable_and_constant_kinds_require_their_flag_bits() {
     let cases = [
         ("ncl-lib-macros", Kind::Macro, "macro bit not set"),
         ("ncl-lib-streams", Kind::Variable, "special bit not set"),
-        (
-            "ncl-lib-arrays",
-            "ncl-lib-hash-tables",
-            Kind::Constant,
-            "constant bit not set",
-        ),
+        ("ncl-lib-arrays", Kind::Constant, "constant bit not set"),
     ];
     for (crate_name, kind, reason) in cases {
         let runtime = Runtime::new().unwrap();

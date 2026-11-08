@@ -18,6 +18,11 @@ use ncl_hir::cl_type::{
 };
 use ncl_hir::ids::{CompilationUnitId, FormId, SymbolId, TypeId, TypeSpecConstId};
 
+#[path = "cl_type/numeric.rs"]
+mod numeric;
+#[path = "cl_type/relations.rs"]
+mod relations;
+
 const fn form(index: u32) -> FormId {
     FormId::new(CompilationUnitId::new(0), index)
 }

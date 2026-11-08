@@ -297,6 +297,11 @@ fn justification_supports_alignment_padding_and_minimum_internal_padding() {
         execute_text("~8:<~A~>", &[value], &mut ctx, &runtime).0,
         "       x"
     );
+    // CLHS 22.3.6.2 leaves seven spaces before x for this empty first segment.
+    assert_eq!(
+        execute_text("~8<~;x~>", &[], &mut ctx, &runtime).0,
+        "       x"
+    );
     assert_eq!(
         execute_text("~8:@<~A~>", &[value], &mut ctx, &runtime).0,
         "    x   "

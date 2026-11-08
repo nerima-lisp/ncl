@@ -1,14 +1,16 @@
 use std::collections::HashSet;
 
 use ncl_object::{
-    ObjectError, ObjectRef, ThreadContext, Word, car, cdr, classify_object, string_length,
-    string_ref, symbol_name,
+    ObjectError, ObjectRef, StringObject, ThreadContext, Word, car, cdr, classify_object,
+    string_length, string_ref,
 };
 use ncl_printer::PrintError;
 
 use crate::dispatch::ControlDirective;
-use crate::executor::{ExecutionState, Flow, FormatError, FormatErrorKind, FormatOutput};
-use crate::model::{Directive, Parameter};
+use crate::executor::{
+    ExecutionState, Flow, FormatError, FormatErrorKind, FormatOutput, ResolvedParameter,
+};
+use crate::model::Directive;
 
 mod arguments;
 mod case;
@@ -37,25 +39,25 @@ pub const fn object_error(directive: &Directive, error: ObjectError) -> FormatEr
 }
 
 pub fn integer_parameter(
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     index: usize,
     default: i64,
     directive: &Directive,
 ) -> Result<i64, FormatError> {
     match parameters.get(index) {
-        None | Some(Parameter::Unsupplied) => Ok(default),
-        Some(Parameter::Integer(value)) => Ok(*value),
+        None | Some(ResolvedParameter::Unsupplied) => Ok(default),
+        Some(ResolvedParameter::Integer(value)) => Ok(*value),
         Some(_) => Err(invalid_parameter(directive)),
     }
 }
 
 pub fn iteration_limit(
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     directive: &Directive,
 ) -> Result<Option<usize>, FormatError> {
     match parameters.first() {
-        None | Some(Parameter::Unsupplied) => Ok(None),
-        Some(Parameter::Integer(value)) if *value >= 0 => usize::try_from(*value)
+        None | Some(ResolvedParameter::Unsupplied) => Ok(None),
+        Some(ResolvedParameter::Integer(value)) if *value >= 0 => usize::try_from(*value)
             .map(Some)
             .map_err(|_| invalid_parameter(directive)),
         Some(_) => Err(invalid_parameter(directive)),
@@ -80,22 +82,9 @@ pub fn list_elements(
     Ok(values)
 }
 
-pub fn string_value(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
-    if let ObjectRef::Character(character) = classify_object(ctx, value) {
-        return char::from_u32(character)
-            .map(|character| character.to_string())
-            .ok_or(ObjectError::TypeError);
-    }
-    let object = classify_object(ctx, value);
-    let string = if matches!(object, ObjectRef::String(_)) {
-        value
-    } else if matches!(object, ObjectRef::Symbol(_)) {
-        symbol_name(ctx, value)?
-    } else {
-        return Err(ObjectError::TypeError);
-    };
-    (0..string_length(ctx, string)?)
-        .map(|index| string_ref(ctx, string, index))
+pub fn string_value(ctx: &ThreadContext, value: StringObject) -> Result<String, ObjectError> {
+    (0..string_length(ctx, value.as_word())?)
+        .map(|index| string_ref(ctx, value.as_word(), index))
         .collect()
 }
 

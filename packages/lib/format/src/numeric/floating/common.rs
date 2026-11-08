@@ -4,8 +4,10 @@ use ncl_object::{
 };
 use ncl_printer::{PrintOptions, StringSink, write};
 
-use crate::executor::{ExecutionState, FormatError, FormatErrorKind, FormatOutput};
-use crate::model::{Directive, Parameter};
+use crate::executor::{
+    ExecutionState, FormatError, FormatErrorKind, FormatOutput, ResolvedParameter,
+};
+use crate::model::Directive;
 
 const MAX_PRECISION: usize = 10_000;
 
@@ -46,9 +48,8 @@ fn integer_float(
     directive: &Directive,
 ) -> Result<Option<f64>, FormatError> {
     let object = classify_object(state.ctx, word);
-    if matches!(object, ObjectRef::Fixnum(_)) {
-        return Ok(crate::executor::integer_value(state.ctx, word)
-            .and_then(|value| value.to_string().parse::<f64>().ok()));
+    if let ObjectRef::Fixnum(value) = object {
+        return Ok(value.to_string().parse::<f64>().ok());
     }
     let ObjectRef::Bignum(word) = object else {
         return Ok(None);
@@ -369,62 +370,54 @@ pub(super) const fn sign(value: f64, force: bool) -> &'static str {
 }
 
 pub(super) fn integer_parameter(
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     index: usize,
     directive: &Directive,
 ) -> Result<Option<usize>, FormatError> {
     match parameters.get(index) {
-        None | Some(Parameter::Unsupplied) => Ok(None),
-        Some(Parameter::Integer(value)) => usize::try_from(*value)
+        None | Some(ResolvedParameter::Unsupplied) => Ok(None),
+        Some(ResolvedParameter::Integer(value)) => usize::try_from(*value)
             .map(Some)
             .map_err(|_| invalid(directive)),
-        Some(Parameter::Character(_) | Parameter::Relative | Parameter::Remaining) => {
-            Err(invalid(directive))
-        }
+        Some(ResolvedParameter::Character(_)) => Err(invalid(directive)),
     }
 }
 
 pub(super) fn signed_parameter(
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     index: usize,
     default: i64,
     directive: &Directive,
 ) -> Result<i64, FormatError> {
     match parameters.get(index) {
-        None | Some(Parameter::Unsupplied) => Ok(default),
-        Some(Parameter::Integer(value)) => Ok(*value),
-        Some(Parameter::Character(_) | Parameter::Relative | Parameter::Remaining) => {
-            Err(invalid(directive))
-        }
+        None | Some(ResolvedParameter::Unsupplied) => Ok(default),
+        Some(ResolvedParameter::Integer(value)) => Ok(*value),
+        Some(ResolvedParameter::Character(_)) => Err(invalid(directive)),
     }
 }
 
 pub(super) fn character_parameter(
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     index: usize,
     default: char,
     directive: &Directive,
 ) -> Result<char, FormatError> {
     match parameters.get(index) {
-        None | Some(Parameter::Unsupplied) => Ok(default),
-        Some(Parameter::Character(value)) => Ok(*value),
-        Some(Parameter::Integer(_) | Parameter::Relative | Parameter::Remaining) => {
-            Err(invalid(directive))
-        }
+        None | Some(ResolvedParameter::Unsupplied) => Ok(default),
+        Some(ResolvedParameter::Character(value)) => Ok(*value),
+        Some(ResolvedParameter::Integer(_)) => Err(invalid(directive)),
     }
 }
 
 pub(super) fn optional_character(
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     index: usize,
     directive: &Directive,
 ) -> Result<Option<char>, FormatError> {
     match parameters.get(index) {
-        None | Some(Parameter::Unsupplied) => Ok(None),
-        Some(Parameter::Character(value)) => Ok(Some(*value)),
-        Some(Parameter::Integer(_) | Parameter::Relative | Parameter::Remaining) => {
-            Err(invalid(directive))
-        }
+        None | Some(ResolvedParameter::Unsupplied) => Ok(None),
+        Some(ResolvedParameter::Character(value)) => Ok(Some(*value)),
+        Some(ResolvedParameter::Integer(_)) => Err(invalid(directive)),
     }
 }
 

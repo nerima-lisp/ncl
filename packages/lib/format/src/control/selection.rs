@@ -1,7 +1,9 @@
 use ncl_object::{ObjectRef, Word, classify_object};
 
-use crate::executor::{Flow, FormatError, FormatErrorKind, execute_control, integer_value};
-use crate::model::{ControlSegment, Directive, DirectiveBody, Parameter, TerminatorKind};
+use crate::executor::{
+    Flow, FormatError, FormatErrorKind, ResolvedParameter, bignum_integer_value, execute_control,
+};
+use crate::model::{ControlSegment, Directive, DirectiveBody, TerminatorKind};
 
 use super::{FlowResult, Output, State, invalid_use, missing_argument};
 
@@ -47,22 +49,25 @@ pub(super) fn execute(
     } else {
         validate_separators(clauses, directive, true)?;
         match parameters.first() {
-            None | Some(Parameter::Unsupplied) => {
+            None | Some(ResolvedParameter::Unsupplied) => {
                 let selector = state.take_argument(directive)?;
-                if matches!(
-                    classify_object(state.ctx, selector),
-                    ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)
-                ) {
-                    integer_value(state.ctx, selector).and_then(selector_index)
-                } else {
-                    return Err(FormatError::at(
-                        directive,
-                        FormatErrorKind::WrongArgumentType,
-                    ));
+                match classify_object(state.ctx, selector) {
+                    ObjectRef::Fixnum(value) => selector_index(value),
+                    ObjectRef::Bignum(word) => {
+                        bignum_integer_value(state.ctx, ncl_object::Bignum::from_word(word))
+                            .and_then(selector_index)
+                    }
+                    // check-added-lines: allow(wildcard) ObjectRef is non-exhaustive.
+                    _ => {
+                        return Err(FormatError::at(
+                            directive,
+                            FormatErrorKind::WrongArgumentType,
+                        ));
+                    }
                 }
             }
-            Some(Parameter::Integer(value)) => selector_index(*value),
-            Some(Parameter::Character(_) | Parameter::Relative | Parameter::Remaining) => {
+            Some(ResolvedParameter::Integer(value)) => selector_index(*value),
+            Some(ResolvedParameter::Character(_)) => {
                 return Err(FormatError::at(
                     directive,
                     FormatErrorKind::WrongArgumentType,

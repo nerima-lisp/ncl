@@ -1,6 +1,7 @@
 use ncl_object::{
     BuiltinFunctionCaller, FunctionArguments, FunctionCaller, FunctionDesignator, FunctionObject,
-    MultipleValues, ObjectError, ObjectRef, Word, classify_object, with_root, with_rooted_slice,
+    MultipleValues, ObjectError, ObjectRef, StringObject, Word, classify_object, with_root,
+    with_rooted_slice,
 };
 
 use crate::executor::{ExecutionState, Flow, FormatError, FormatErrorKind, execute_control};
@@ -21,8 +22,8 @@ pub(super) fn execute(
     }
     let control_word = state.take_argument(directive)?;
     let control_type = classify_object(state.ctx, control_word);
-    if matches!(control_type, ObjectRef::String(_)) {
-        execute_string_control(directive, state, output, control_word)
+    if let ObjectRef::String(word) = control_type {
+        execute_string_control(directive, state, output, StringObject::from_word(word))
     } else if !directive.at_sign
         && matches!(
             control_type,
@@ -42,7 +43,7 @@ fn execute_string_control(
     directive: &Directive,
     state: &mut State<'_>,
     output: &mut Output<'_>,
-    control_word: Word,
+    control_word: StringObject,
 ) -> FlowResult {
     let control =
         string_value(state.ctx, control_word).map_err(|error| object_error(directive, error))?;
@@ -132,7 +133,7 @@ fn call_formatter(
                 })?;
                 let text =
                     call_stream_builtin(ctx, runtime, "GET-OUTPUT-STREAM-STRING", &[*stream])?;
-                string_value(ctx, text)
+                string_value(ctx, StringObject::from_word(text))
             })
         })
     })

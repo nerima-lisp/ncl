@@ -1,8 +1,10 @@
 use ncl_printer::StringSink;
 
-use crate::executor::{ControlFrame, ExecutionState, Flow, FormatOutput, execute_control};
+use crate::executor::{
+    ControlFrame, ExecutionState, Flow, FormatOutput, ResolvedParameter, execute_control,
+};
 use crate::model::{
-    ControlSegment, Directive, DirectiveBody, DirectiveKind, FormatControl, Parameter,
+    ControlSegment, Directive, DirectiveBody, DirectiveKind, DirectiveModifiers, FormatControl,
 };
 use crate::{FormatError, FormatErrorKind};
 
@@ -48,9 +50,9 @@ pub(super) fn execute_justification(
     let colinc = parameter_usize(&parameters, 1, 1, directive)?;
     let minpad = parameter_usize(&parameters, 2, 0, directive)?;
     let padchar = match parameters.get(3) {
-        None | Some(Parameter::Unsupplied) => ' ',
-        Some(Parameter::Character(character)) => *character,
-        Some(Parameter::Integer(_) | Parameter::Relative | Parameter::Remaining) => {
+        None | Some(ResolvedParameter::Unsupplied) => ' ',
+        Some(ResolvedParameter::Character(character)) => *character,
+        Some(ResolvedParameter::Integer(_)) => {
             return Err(FormatError::at(
                 directive,
                 FormatErrorKind::InvalidParameter,
@@ -59,9 +61,14 @@ pub(super) fn execute_justification(
     };
     validate_separators(segments, directive)?;
     let special_prefix = segments
-        .get(1)
-        .and_then(|segment| segment.separator.as_ref())
-        .is_some_and(|separator| separator.colon);
+        .first()
+        .zip(
+            segments
+                .get(1)
+                .and_then(|segment| segment.separator.as_ref())
+                .filter(|separator| separator.colon),
+        )
+        .is_some();
     let saved_frames = state.frames.clone();
     state.frames.push(ControlFrame::Justification);
     let result = render_justified(
@@ -123,20 +130,17 @@ fn render_justified(
     let mut line_width = UNKNOWN_LINE_WIDTH;
     let mut spare = 0;
     let mut prefix_escaped = false;
-    if special_prefix {
-        let Some(segment) = segments.first() else {
-            return Err(FormatError::at(
-                directive,
-                FormatErrorKind::InvalidDirectiveUse,
-            ));
-        };
+    let prefix_control = segments.first().zip(
+        segments
+            .get(1)
+            .and_then(|segment| segment.separator.as_ref())
+            .filter(|separator| separator.colon),
+    );
+    if let Some((segment, separator)) = prefix_control {
         let (rendered_prefix, flow) = render_segment(state, &segment.control, output)?;
         prefix = rendered_prefix;
         prefix_escaped = flow != Flow::Continue;
         if !prefix_escaped {
-            let separator = segments
-                .get(1)
-                .and_then(|segment| segment.separator.as_ref());
             let (minimum_spare, requested_width) =
                 separator_parameters(state, separator, directive)?;
             spare = minimum_spare;
@@ -187,12 +191,9 @@ fn render_segment(
 
 fn separator_parameters(
     state: &mut ExecutionState<'_>,
-    separator: Option<&crate::model::DirectiveModifiers>,
+    separator: &DirectiveModifiers,
     directive: &Directive,
 ) -> Result<(usize, Option<usize>), FormatError> {
-    let Some(separator) = separator else {
-        return Ok((0, None));
-    };
     let synthetic = Directive {
         position: separator.position,
         parameters: separator.parameters.clone(),
@@ -207,13 +208,10 @@ fn separator_parameters(
     Ok((
         parameter_usize(&parameters, 0, 0, directive)?,
         match parameters.get(1) {
-            None | Some(Parameter::Unsupplied) => None,
-            Some(
-                Parameter::Integer(_)
-                | Parameter::Character(_)
-                | Parameter::Relative
-                | Parameter::Remaining,
-            ) => Some(parameter_usize(&parameters, 1, 0, directive)?),
+            None | Some(ResolvedParameter::Unsupplied) => None,
+            Some(ResolvedParameter::Integer(_) | ResolvedParameter::Character(_)) => {
+                Some(parameter_usize(&parameters, 1, 0, directive)?)
+            }
         },
     ))
 }
@@ -226,9 +224,6 @@ fn justify(
     padchar: char,
     directive: &Directive,
 ) -> Result<String, FormatError> {
-    if pieces.is_empty() {
-        return Ok(String::new());
-    }
     let widths = pieces
         .iter()
         .map(|piece| display_width(piece))
@@ -264,12 +259,8 @@ fn justify(
         .checked_sub(text_width)
         .ok_or_else(|| FormatError::at(directive, FormatErrorKind::InvalidParameter))?;
     if pieces.len() == 1 && !directive.colon && !directive.at_sign {
-        let Some(piece) = pieces.first() else {
-            return Err(FormatError::at(
-                directive,
-                FormatErrorKind::InvalidParameter,
-            ));
-        };
+        // check-added-lines: allow(index) the guard above requires pieces.len() == 1.
+        let piece = &pieces[0];
         return Ok(format!("{}{}", pad(padchar, extra), piece));
     }
     let leading = usize::from(directive.colon);
@@ -278,9 +269,6 @@ fn justify(
         .checked_add(leading)
         .and_then(|n| n.checked_add(trailing))
         .ok_or_else(|| FormatError::at(directive, FormatErrorKind::InvalidParameter))?;
-    if slots == 0 {
-        return Ok(pieces.concat());
-    }
     let distributable = extra.saturating_sub(minimum_padding);
     let share = distributable / slots;
     let remainder = distributable % slots;
@@ -291,30 +279,25 @@ fn justify(
     }
     let mut result = String::new();
     let mut slot = 0;
+    // The slot count above matches the leading, internal, and trailing pads emitted below.
     if leading == 1 {
-        let amount = padding
-            .get(slot)
-            .copied()
-            .ok_or_else(|| FormatError::at(directive, FormatErrorKind::InvalidParameter))?;
+        // check-added-lines: allow(index) leading + gaps + trailing equals padding.len().
+        let amount = padding[slot];
         result.push_str(&pad(padchar, amount));
         slot += 1;
     }
     for (index, piece) in pieces.iter().enumerate() {
         result.push_str(piece);
         if index < gaps {
-            let amount = padding
-                .get(slot)
-                .copied()
-                .ok_or_else(|| FormatError::at(directive, FormatErrorKind::InvalidParameter))?;
+            // check-added-lines: allow(index) slot advances once per internal gap.
+            let amount = padding[slot];
             result.push_str(&pad(padchar, amount));
             slot += 1;
         }
     }
     if trailing == 1 {
-        let amount = padding
-            .get(slot)
-            .copied()
-            .ok_or_else(|| FormatError::at(directive, FormatErrorKind::InvalidParameter))?;
+        // check-added-lines: allow(index) the trailing slot is counted above.
+        let amount = padding[slot];
         result.push_str(&pad(padchar, amount));
     }
     Ok(result)

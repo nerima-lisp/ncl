@@ -5,8 +5,8 @@ use ncl_object::{
     with_rooted_slice,
 };
 
-use crate::executor::{ExecutionState, FormatOutput};
-use crate::model::{Directive, Parameter};
+use crate::executor::{ExecutionState, FormatOutput, ResolvedParameter};
+use crate::model::Directive;
 use crate::{FormatError, FormatErrorKind};
 
 pub(super) fn execute(
@@ -140,7 +140,7 @@ fn parse_name(name: &str) -> Option<(&str, &str, bool)> {
 fn with_parameter_words<T>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     directive: &Directive,
     execute: impl FnOnce(&mut ThreadContext, &[Word]) -> Result<T, FormatError>,
 ) -> Result<T, FormatError> {
@@ -149,10 +149,10 @@ fn with_parameter_words<T>(
     let build = (|| {
         for parameter in parameters {
             match parameter {
-                Parameter::Integer(value) if is_fixnum(*value) => {
+                ResolvedParameter::Integer(value) if is_fixnum(*value) => {
                     words.push(Word::fixnum(*value));
                 }
-                Parameter::Integer(value) => {
+                ResolvedParameter::Integer(value) => {
                     let number = make_bignum_from_i128(ctx, runtime, i128::from(*value))
                         .map_err(|_| FormatError::at(directive, FormatErrorKind::InvalidParameter))?
                         .as_word();
@@ -161,58 +161,33 @@ fn with_parameter_words<T>(
                     words.push(*number);
                     roots.push((words.len() - 1, number, token));
                 }
-                Parameter::Character(character) => {
+                ResolvedParameter::Character(character) => {
                     words.push(Word::character(u32::from(*character)));
                 }
-                Parameter::Unsupplied => words.push(Word::NIL),
-                Parameter::Relative | Parameter::Remaining => {
-                    return Err(FormatError::at(
-                        directive,
-                        FormatErrorKind::InvalidParameter,
-                    ));
-                }
+                ResolvedParameter::Unsupplied => words.push(Word::NIL),
             }
         }
         Ok(())
     })();
-    let result = if let Err(error) = build {
-        Err(error)
-    } else {
-        let mut restore_failure = None;
+    let result = build.and_then(|()| {
+        // Each root index is captured immediately after its word is appended.
         for (index, number, _) in &roots {
-            if let Some(word) = words.get_mut(*index) {
-                *word = **number;
-            } else {
-                restore_failure = Some(FormatError::at(
-                    directive,
-                    FormatErrorKind::InvalidDirectiveUse,
-                ));
-                break;
-            }
+            // check-added-lines: allow(index) index is captured after push; words is not shortened.
+            words[*index] = **number;
         }
-        restore_failure.map_or_else(
-            || {
-                let mut failure = None;
-                let rooted =
-                    with_rooted_slice(ctx, &words, |ctx, rooted| match execute(ctx, rooted) {
-                        Ok(value) => Ok(value),
-                        Err(error) => {
-                            failure = Some(error);
-                            Err(ObjectError::TypeError)
-                        }
-                    });
-                failure.map_or_else(
-                    || {
-                        rooted.map_err(|_| {
-                            FormatError::at(directive, FormatErrorKind::InvalidDirectiveUse)
-                        })
-                    },
-                    Err,
-                )
-            },
+        let mut failure = None;
+        let rooted = with_rooted_slice(ctx, &words, |ctx, rooted| match execute(ctx, rooted) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                failure = Some(error);
+                Err(ObjectError::TypeError)
+            }
+        });
+        failure.map_or_else(
+            || rooted.map_err(|_| FormatError::at(directive, FormatErrorKind::InvalidDirectiveUse)),
             Err,
         )
-    };
+    });
     let mut root_failure = false;
     for (_, _, token) in roots.into_iter().rev() {
         root_failure |= !pop_root(ctx, token);

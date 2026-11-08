@@ -14,9 +14,11 @@ pub(super) fn execute_underscore(
     underscore::execute_underscore(directive, state, output)
 }
 
-use crate::executor::{ControlFrame, ExecutionState, Flow, FormatOutput, execute_control};
+use crate::executor::{
+    ControlFrame, ExecutionState, Flow, FormatOutput, ResolvedParameter, execute_control,
+};
 use crate::model::{
-    ControlPart, ControlSegment, Directive, DirectiveBody, DirectiveKind, FormatControl, Parameter,
+    ControlPart, ControlSegment, Directive, DirectiveBody, DirectiveKind, FormatControl,
     TerminatorKind,
 };
 use crate::{FormatError, FormatErrorKind};
@@ -33,8 +35,8 @@ pub(super) fn execute_indent(
         ));
     }
     let amount = match state.parameters(directive)?.first() {
-        None | Some(Parameter::Unsupplied) => 0,
-        Some(Parameter::Integer(value)) => *value,
+        None | Some(ResolvedParameter::Unsupplied) => 0,
+        Some(ResolvedParameter::Integer(value)) => *value,
         Some(_) => {
             return Err(FormatError::at(
                 directive,
@@ -137,14 +139,14 @@ fn relative_tab_spaces(
 }
 
 pub(super) fn parameter_usize(
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     index: usize,
     default: usize,
     directive: &Directive,
 ) -> Result<usize, FormatError> {
     match parameters.get(index) {
-        None | Some(Parameter::Unsupplied) => Ok(default),
-        Some(Parameter::Integer(value)) if *value >= 0 => usize::try_from(*value)
+        None | Some(ResolvedParameter::Unsupplied) => Ok(default),
+        Some(ResolvedParameter::Integer(value)) if *value >= 0 => usize::try_from(*value)
             .map_err(|_| FormatError::at(directive, FormatErrorKind::InvalidParameter)),
         Some(_) => Err(FormatError::at(
             directive,
@@ -468,14 +470,7 @@ fn list_elements(
     let mut cursor = list;
     while cursor != Word::NIL {
         let ObjectRef::Cons(cons) = classify_object(ctx, cursor) else {
-            return Err(FormatError::at(
-                directive,
-                if values.is_empty() {
-                    FormatErrorKind::WrongArgumentType
-                } else {
-                    FormatErrorKind::ImproperList
-                },
-            ));
+            return Err(FormatError::at(directive, FormatErrorKind::ImproperList));
         };
         if !seen.insert(cons.bits()) {
             return Err(FormatError::at(directive, FormatErrorKind::ImproperList));

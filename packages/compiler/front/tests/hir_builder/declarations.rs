@@ -1,0 +1,168 @@
+use ncl_hir::{ClTypeKind, HirDeclaration, HirQuality, NodeKind};
+use ncl_ir::{OpKind, Prim, ScalarTypeHint, Terminator};
+use ncl_object::Word;
+
+use super::common::{context, expand_build, fixture_text, has_node, lower_both_and_verify};
+
+#[test]
+fn declarations_and_type_specifiers_retain_meaning_and_source_data() {
+    let (id, mut builder, mut fixture) = context(34);
+    let integer = fixture.cl("INTEGER");
+    let integer_range = fixture.list(&[integer, Word::fixnum(0), Word::fixnum(10)]);
+    let x = fixture.user("X");
+    let type_keyword = fixture.cl("TYPE");
+    let type_declaration = fixture.list(&[type_keyword, integer_range, x]);
+    let speed_name = fixture.cl("SPEED");
+    let speed = fixture.list(&[speed_name, Word::fixnum(2)]);
+    let safety_name = fixture.cl("SAFETY");
+    let safety = fixture.list(&[safety_name, Word::fixnum(0)]);
+    let optimize_name = fixture.cl("OPTIMIZE");
+    let optimize = fixture.list(&[optimize_name, speed, safety]);
+    let inline_name = fixture.cl("INLINE");
+    let helper = fixture.user("HELPER");
+    let inline = fixture.list(&[inline_name, helper]);
+    let declaration = fixture.form("DECLARE", &[type_declaration, optimize, inline]);
+    let assertion = fixture.form("THE", &[integer_range, x]);
+    let input = fixture.form("LOCALLY", &[declaration, assertion]);
+    let source = fixture_text(
+        include_str!("../fixtures/hir-bridge/declarations.lisp"),
+        "(locally\n  (declare (type (integer 0 10) x)\n           (optimize (speed 2) (safety 0))\n           (inline helper))\n  (the (integer 0 10) x))\n",
+    );
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source);
+    let metadata = form
+        .scope_metadata()
+        .values()
+        .find(|metadata| !metadata.declarations.is_empty())
+        .expect("declaration scope");
+    let mut type_constant = None;
+    let mut optimize_seen = false;
+    let mut inline_seen = false;
+    for declaration in &metadata.declarations {
+        match declaration {
+            HirDeclaration::Type {
+                source_specifier, ..
+            } => type_constant = Some(*source_specifier),
+            HirDeclaration::Optimize { settings } => {
+                optimize_seen = settings
+                    .iter()
+                    .any(|item| item.quality == HirQuality::Speed);
+            }
+            HirDeclaration::Inline { .. } => inline_seen = true,
+            _ => {}
+        }
+    }
+    let type_constant = type_constant.expect("type declaration source constant");
+    assert!(matches!(
+        form.type_spec_constant(type_constant),
+        Some(ncl_hir::Literal::Cons(_, _))
+    ));
+    assert!(optimize_seen && inline_seen);
+    assert!(has_node(
+        &form,
+        |node| matches!(node, NodeKind::TypeAssertion { expected_type, .. } if form.type_spec_constant(*expected_type).is_some())
+    ));
+    assert_eq!(metadata.policy.speed().value(), 2);
+    assert_eq!(metadata.policy.safety().value(), 0);
+    lower_both_and_verify(&builder, &form, &expr);
+
+    let foreign_id = ncl_hir::FormId::new(id.compilation_unit(), 1);
+    let foreign_integer = fixture.intern("USER", "INTEGER");
+    let value = fixture.form("THE", &[foreign_integer, Word::fixnum(7)]);
+    let (_, foreign_form) = expand_build(
+        &mut builder,
+        &mut fixture,
+        foreign_id,
+        value,
+        "(the user:integer 7)",
+    );
+    let asserted_type = foreign_form
+        .nodes()
+        .iter()
+        .find_map(|(_, node)| match &node.kind {
+            NodeKind::TypeAssertion { asserted_type, .. } => Some(*asserted_type),
+            _ => None,
+        })
+        .expect("type assertion");
+    assert!(matches!(
+        foreign_form.types().get(asserted_type).map(|ty| ty.kind()),
+        Some(ClTypeKind::Opaque { .. })
+    ));
+}
+
+#[test]
+fn positive_safety_type_assertion_emits_checked_mir() {
+    let (id, mut builder, mut fixture) = context(44);
+    let safety_name = fixture.cl("SAFETY");
+    let safety = fixture.list(&[safety_name, Word::fixnum(3)]);
+    let optimize_name = fixture.cl("OPTIMIZE");
+    let optimize = fixture.list(&[optimize_name, safety]);
+    let declaration = fixture.form("DECLARE", &[optimize]);
+    let integer = fixture.cl("INTEGER");
+    let integer_range = fixture.list(&[integer, Word::fixnum(0), Word::fixnum(10)]);
+    let assertion = fixture.form("THE", &[integer_range, Word::fixnum(7)]);
+    let input = fixture.form("LOCALLY", &[declaration, assertion]);
+    let source = fixture_text(
+        include_str!("../fixtures/hir-bridge/positive-safety.lisp"),
+        "(locally\n  (declare (optimize (safety 3)))\n  (the (integer 0 10) 7))\n",
+    );
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source);
+    let policy = form
+        .scope_metadata()
+        .values()
+        .find(|metadata| metadata.policy.safety().value() == 3)
+        .expect("positive safety policy");
+    assert_eq!(policy.policy.safety().value(), 3);
+
+    let hir = ncl_hir::lower::lower(&form, builder.symbols()).expect("lower checked HIR");
+    ncl_ir::verify(&hir.entry).expect("verify checked HIR MIR");
+    assert!(hir.entry.blocks.iter().any(|block| {
+        block.ops.iter().any(|op| {
+            matches!(
+                &op.kind,
+                OpKind::Prim {
+                    op: Prim::Typep,
+                    ..
+                }
+            )
+        })
+    }));
+    assert!(hir.entry.blocks.iter().any(|block| {
+        block.ops.iter().any(|op| {
+            matches!(
+                &op.kind,
+                OpKind::Builtin { name, .. } if name == "ncl_signal_type_error"
+            )
+        })
+    }));
+    assert!(
+        hir.entry
+            .blocks
+            .iter()
+            .any(|block| matches!(&block.terminator, Terminator::Throw { .. }))
+    );
+
+    let baseline = ncl_compiler_front::lower::lower_toplevel(&expr).expect("lower front baseline");
+    ncl_ir::verify(&baseline.entry).expect("verify front baseline MIR");
+    assert!(baseline.entry.blocks.iter().any(|block| {
+        block.ops.iter().any(|op| {
+            matches!(
+                &op.kind,
+                OpKind::TypeHint {
+                    ty: ScalarTypeHint::Integer,
+                    ..
+                }
+            )
+        })
+    }));
+    assert!(!baseline.entry.blocks.iter().any(|block| {
+        block.ops.iter().any(|op| {
+            matches!(
+                &op.kind,
+                OpKind::Prim {
+                    op: Prim::Typep,
+                    ..
+                }
+            )
+        })
+    }));
+}

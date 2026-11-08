@@ -25,6 +25,7 @@ pub mod env;
 pub mod error;
 pub mod expand;
 pub mod form;
+pub mod hir_builder;
 pub mod lambda_list;
 pub mod literal;
 pub mod lower;

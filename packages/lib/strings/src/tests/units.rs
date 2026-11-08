@@ -66,7 +66,10 @@ fn string_value(ctx: &ThreadContext, string: Word) -> String {
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the test helper names each string conversion input and expected result explicitly"
+)]
 fn assert_case_result(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -148,7 +151,10 @@ fn string_builtins_cover_comparison_case_trim_and_construction() {
 }
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one regression scenario checks related character and mutating string boundary cases"
+)]
 fn character_and_mutating_string_builtins_cover_boundaries() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
     let mut ctx = ThreadContext::new();

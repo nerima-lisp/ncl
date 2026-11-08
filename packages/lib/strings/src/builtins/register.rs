@@ -74,8 +74,11 @@ const INITIAL_ELEMENT: Parameter = Parameter {
     ty: ParameterType::Any,
 };
 
-#[allow(clippy::missing_const_for_fn, clippy::cast_possible_truncation)]
-fn descriptor(lambda_list: LambdaList) -> Builtin {
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the static lambda-list table bounds required arity before encoding it in the runtime u8 descriptor"
+)]
+const fn descriptor(lambda_list: LambdaList) -> Builtin {
     Builtin {
         convention: if lambda_list.is_direct() {
             BuiltinConvention::Direct(Arity::exact(lambda_list.required.len() as u8))
@@ -94,7 +97,10 @@ fn identity_adapter(args: &BuiltinArgs<'_>) -> Vec<Word> {
 ///
 /// # Errors
 /// Returns an object error if a package, class, or builtin cannot be registered.
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the function declares the complete string builtin registration table"
+)]
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;

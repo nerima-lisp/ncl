@@ -60,7 +60,6 @@ fn char_code_typed_entry(
     Ok(result)
 }
 
-#[allow(clippy::missing_const_for_fn, clippy::unnecessary_wraps)]
 fn characterp_builtin(
     _ctx: &mut ThreadContext,
     _runtime: &Runtime,

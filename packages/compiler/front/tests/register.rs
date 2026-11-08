@@ -15,7 +15,7 @@ fn find(runtime: &Runtime, ctx: &mut ThreadContext, package: &str, name: &str) -
     let package_word = runtime.find_package(ctx, package).unwrap();
     let name = ncl_object::make_string(ctx, runtime, &name.chars().collect::<Vec<char>>()).unwrap();
     Package::from_word(package_word)
-        .find_symbol(ctx, name)
+        .find_symbol(ctx, runtime, name)
         .unwrap()
         .expect("interned symbol")
         .0

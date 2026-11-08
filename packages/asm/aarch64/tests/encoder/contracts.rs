@@ -1,5 +1,7 @@
-#![allow(missing_docs)]
-#![allow(clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "The encoder tests construct valid instruction fixtures, so unwrap and expect failures identify a broken fixture or encoding."
+)]
 
 use super::common::*;
 use ncl_asm_aarch64::*;

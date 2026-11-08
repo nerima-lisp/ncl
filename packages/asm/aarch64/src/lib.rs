@@ -1,5 +1,9 @@
 //! Dependency-free `AArch64` instruction encoding for NCL's native backend.
-#![allow(missing_docs)]
+
+#![expect(
+    missing_docs,
+    reason = "The public AArch64 model exposes ISA operand fields whose names and types mirror instruction encodings; Clippy reports the existing undocumented fields."
+)]
 
 mod assembler;
 mod encoding;

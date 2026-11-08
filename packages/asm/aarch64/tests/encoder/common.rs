@@ -1,9 +1,5 @@
 use ncl_asm_aarch64::{Assembler, CodeBlob, Inst, Label, Reg};
 
-#[allow(
-    clippy::option_if_let_else,
-    reason = "The helper is const so test register literals remain compile-time values."
-)]
 pub const fn x(n: u8) -> Reg {
     match Reg::new(n) {
         Ok(register) => register,

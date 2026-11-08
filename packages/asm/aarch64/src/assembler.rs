@@ -163,7 +163,11 @@ const fn fixup(i: &Inst) -> Option<(FixupKind, Label)> {
         _ => None,
     }
 }
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "The conversion extracts a fixed-width instruction field after the encoder or decoder has validated its representable range."
+)]
 const fn patch_signed(
     word: u32,
     delta: i64,
@@ -184,7 +188,11 @@ const fn patch_signed(
     Ok(word | ((v as u32) & ((1 << bits) - 1)) << lsb)
 }
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "The conversion extracts a fixed-width instruction field after the encoder or decoder has validated its representable range."
+)]
 const fn patch_pc_relative21(word: u32, delta: i64, fixup: Fixup) -> Result<u32, EncodeError> {
     let min = -(1_i64 << 20);
     let max = (1_i64 << 20) - 1;

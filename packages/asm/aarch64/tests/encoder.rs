@@ -1,6 +1,13 @@
-#![allow(missing_docs)]
-#![allow(clippy::unwrap_used)]
-#![allow(clippy::too_many_lines)]
+//! Tests for `AArch64` instruction encoding and fixups.
+
+#![expect(
+    clippy::unwrap_used,
+    reason = "The encoder tests construct valid instruction fixtures, so unwrap and expect failures identify a broken fixture or encoding."
+)]
+#![expect(
+    clippy::too_many_lines,
+    reason = "The function keeps one focused coverage matrix together so related fixtures and assertions remain reviewable as a unit."
+)]
 
 #[path = "encoder/common.rs"]
 mod common;

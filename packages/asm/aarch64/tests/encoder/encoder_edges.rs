@@ -1,6 +1,3 @@
-#![allow(missing_docs)]
-#![allow(clippy::unwrap_used)]
-
 use super::common::*;
 use ncl_asm_aarch64::*;
 

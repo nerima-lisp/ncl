@@ -19,7 +19,7 @@ fn imm(value: i64, bits: u8) -> Result<u32, EncodeError> {
         u32::try_from(value).map_or(Err(EncodeError::ImmediateOutOfRange { value, bits }), Ok)
     }
 }
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "Memory addressing forms share one validated encoder."
 )]
@@ -243,7 +243,10 @@ fn right_shift_immediates(amount: u8) -> (u32, u32) {
 // `immr`/`imms` are the AArch64 ISA's own field names for a bitfield
 // instruction's rotate and size immediates; keeping them matches the
 // reference manual, so the similar-names lint is not useful here.
-#[allow(clippy::similar_names)]
+#[expect(
+    clippy::similar_names,
+    reason = "The similarly named values represent distinct roles in the same instruction or call lowering, so their paired names prevent mixing those roles."
+)]
 fn bit_shift(
     base: u32,
     rd: Reg,
@@ -307,7 +310,7 @@ fn float_mem(m: crate::MemOperand, rt: crate::VReg, load: bool) -> Result<u32, E
 /// # Errors
 ///
 /// Returns an error when an operand cannot be represented by the instruction.
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "The closed instruction enum is dispatched in one encoding function."
 )]

@@ -9,45 +9,22 @@
     clippy::panic,
     clippy::as_conversions
 )]
-#![expect(
-    unused_crate_dependencies,
-    reason = "This target includes source modules by path to test private invariants"
-)]
-
-#[path = "../src/arena.rs"]
-/// The typed arena used by verifier fixtures.
-pub mod arena;
-#[path = "../src/binding.rs"]
-pub mod binding;
-#[path = "../src/cl_type.rs"]
-pub mod cl_type;
-#[path = "../src/control.rs"]
-pub mod control;
-#[path = "../src/ids.rs"]
-pub mod ids;
-#[path = "../src/node.rs"]
-pub mod node;
-#[path = "../src/policy.rs"]
-pub mod policy;
-#[path = "../src/source.rs"]
-pub mod source;
-#[path = "../src/verify.rs"]
-pub mod verify;
-
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 
-use binding::{BindingEnvironment, LocalFunctionKind, ScopeId};
-use cl_type::TypeArena;
-use control::{ControlError, ControlFlowBuilder, ControlFlowGraph, Terminator};
-use ids::{
+use ncl_hir::binding::{BindingEnvironment, LocalFunctionKind, ScopeId};
+use ncl_hir::cl_type::TypeArena;
+use ncl_hir::control::{self, ControlError, ControlFlowBuilder, ControlFlowGraph, Terminator};
+use ncl_hir::ids::{
     CleanupId, CompilationUnitId, FormId, IdError, NodeId, SourceOriginId, SymbolId,
     TypeSpecConstId, ValueId,
 };
-use node::{CallTarget, LocalFunctionDefinition, Node, NodeArena, NodeKind, VariableTarget};
-use policy::OptimizationPolicy;
-use source::{SourceFiles, SourceOrigins};
-use verify::{
+use ncl_hir::node::{
+    self, CallTarget, LocalFunctionDefinition, Node, NodeArena, NodeKind, VariableTarget,
+};
+use ncl_hir::policy::OptimizationPolicy;
+use ncl_hir::source::{self, SourceFiles, SourceOrigins};
+use ncl_hir::verify::{
     FactAuthorization, FactCertainty, FactDomain, FactEpochs, FactProvenance, FactRecord,
     FactStore, PassInvalidations, VerificationBuild, VerificationConfig, VerifyError, VerifyInput,
     VerifyResources, verify,

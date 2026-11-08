@@ -9,33 +9,18 @@
     clippy::panic,
     clippy::as_conversions
 )]
-#![expect(
-    unused_crate_dependencies,
-    reason = "This target includes source modules by path to test private invariants"
-)]
-
-#[path = "../src/arena.rs"]
-/// The arena implementation shared by these tests.
-pub mod arena;
-#[path = "../src/binding.rs"]
-/// The lexical binding implementation under test.
-pub mod binding;
-#[path = "../src/control.rs"]
-/// The control-flow graph implementation under test.
-pub mod control;
-#[path = "../src/ids.rs"]
-/// Typed identities shared by the HIR modules.
-pub mod ids;
-#[path = "../src/node.rs"]
-/// Semantic HIR nodes under test.
-pub mod node;
-
 use std::error::Error;
 
-use binding::{BindingEnvironment, BindingError, BindingKind, BindingUseKind, LocalFunctionKind};
-use control::{ControlError, ControlFlowBuilder, ExitTarget, Terminator};
-use ids::{BindingId, CompilationUnitId, FormId, IdError, NodeId, SourceOriginId, SymbolId};
-use node::{CallTarget, MultipleValueOperation, Node, NodeArena, NodeKind, VariableTarget};
+use ncl_hir::binding::{
+    self, BindingEnvironment, BindingError, BindingKind, BindingUseKind, LocalFunctionKind,
+};
+use ncl_hir::control::{ControlError, ControlFlowBuilder, ExitTarget, Terminator};
+use ncl_hir::ids::{
+    self, BindingId, CompilationUnitId, FormId, IdError, NodeId, SourceOriginId, SymbolId,
+};
+use ncl_hir::node::{
+    self, CallTarget, MultipleValueOperation, Node, NodeArena, NodeKind, VariableTarget,
+};
 
 const fn form(index: u32) -> FormId {
     FormId::new(CompilationUnitId::new(0), index)

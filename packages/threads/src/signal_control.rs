@@ -8,17 +8,17 @@ use std::time::Duration;
 
 static CONTROL_THREAD_STARTED: Mutex<bool> = Mutex::new(false);
 
-pub(super) fn lock_signal_control_start_state<'a>(
+fn lock_signal_control_start_state<'a>(
     result: Result<MutexGuard<'a, bool>, PoisonError<MutexGuard<'a, bool>>>,
 ) -> Result<MutexGuard<'a, bool>, SignalControlError> {
     result.map_err(|_| SignalControlError::StartStatePoisoned)
 }
 
-pub(super) fn map_signal_setup_result(result: io::Result<()>) -> Result<(), SignalControlError> {
+fn map_signal_setup_result(result: io::Result<()>) -> Result<(), SignalControlError> {
     result.map_err(SignalControlError::OperatingSystem)
 }
 
-pub(super) fn map_signal_worker_spawn(result: io::Result<()>) -> Result<(), SignalControlError> {
+fn map_signal_worker_spawn(result: io::Result<()>) -> Result<(), SignalControlError> {
     result.map_err(SignalControlError::ThreadSpawn)
 }
 
@@ -148,16 +148,10 @@ impl SignalControl {
             *started = true;
         }
         drop(started);
-        Ok(Self::with_receiver(receiver))
-    }
-
-    pub(super) fn with_receiver(
-        receiver: mpsc::Receiver<Result<SignalEvent, SignalControlError>>,
-    ) -> Self {
-        Self {
+        Ok(Self {
             receiver,
             failed: Cell::new(false),
-        }
+        })
     }
 
     /// Prepare a runtime thread before Lisp execution.
@@ -251,14 +245,17 @@ fn spawn_signal_worker(
 ) -> io::Result<()> {
     std::thread::Builder::new()
         .name(name.to_owned())
-        .spawn(move || sigwait_loop(&sender, &worker_failed, wait))
+        .spawn(move || {
+            let mut wait = wait;
+            sigwait_loop(&sender, &worker_failed, &mut wait);
+        })
         .map(|_| ())
 }
 
-pub(super) fn sigwait_loop(
+fn sigwait_loop(
     sender: &mpsc::Sender<Result<SignalEvent, SignalControlError>>,
     worker_failed: &AtomicBool,
-    mut wait: impl FnMut() -> io::Result<i32>,
+    wait: &mut dyn FnMut() -> io::Result<i32>,
 ) {
     loop {
         if worker_failed.load(Ordering::Acquire) {
@@ -297,7 +294,7 @@ fn report_worker_failure(
     let _ = sender.send(Err(error));
 }
 
-pub(super) const fn control_event(signal: i32) -> Option<SignalEvent> {
+const fn control_event(signal: i32) -> Option<SignalEvent> {
     if signal == 2 {
         return Some(SignalEvent::Interrupt);
     }
@@ -314,3 +311,7 @@ pub(super) const fn control_event(signal: i32) -> Option<SignalEvent> {
     }
     None
 }
+
+#[cfg(test)]
+#[path = "../tests/signal_control/private.rs"]
+mod private_tests;

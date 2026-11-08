@@ -292,6 +292,24 @@ fn repl_reports_a_runtime_error_and_continues_to_the_next_prompt() {
     assert!(stderr.ends_with("> "), "{stderr}");
 }
 
+#[cfg(unix)]
+#[test]
+fn repl_reports_stdin_read_failure_and_exits() -> Result<(), Box<dyn std::error::Error>> {
+    let input = std::fs::File::open("/")?;
+    let result = profiler()
+        .stdin(Stdio::from(input))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()?;
+
+    assert_eq!(result.status.code(), Some(1));
+    assert!(result.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.starts_with("> ncl-profiler: "), "{stderr}");
+    assert!(!stderr.ends_with("> "), "{stderr}");
+    Ok(())
+}
+
 #[test]
 fn invalid_eval_reports_a_runtime_error_without_stdout() {
     let result = output(profiler().args(["--eval", ")"]));

@@ -1,5 +1,6 @@
 use super::common::{
-    TestResult, context, expand_build, fixture_text, has_node, lower_both_and_verify,
+    TestResult, constant_for_value, context, expand_build, fixture_text, has_node,
+    lower_both_and_verify,
 };
 use ncl_hir::{MultipleValueOperation, NodeId, NodeKind, Terminator};
 use ncl_ir::{Constant, OpKind};
@@ -174,6 +175,113 @@ fn forward_go_and_setq_form_a_verified_tagbody_cfg() -> TestResult<()> {
         NodeKind::Assignment { .. }
     )));
     lower_both_and_verify(&builder, &form, &expr)?;
+    Ok(())
+}
+
+#[test]
+fn backward_go_revisits_its_tag_after_the_initial_tagbody_form() -> TestResult<()> {
+    let (id, mut builder, mut fixture) = context(67);
+    let x = fixture.user("X");
+    let initial_setq = fixture.form("SETQ", &[x, Word::fixnum(1)]);
+    let start = fixture.user("START");
+    let repeated_setq = fixture.form("SETQ", &[x, Word::fixnum(2)]);
+    let go = fixture.form("GO", &[start]);
+    let done = fixture.user("DONE");
+    let input = fixture.form("TAGBODY", &[initial_setq, start, repeated_setq, go, done]);
+    let source = "(tagbody\n  (setq x 1)\nstart\n  (setq x 2)\n  (go start)\n  done)\n";
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
+    let (tagbody, first_tag, second_tag) = form
+        .nodes()
+        .iter()
+        .find_map(|(index, node)| match &node.kind {
+            NodeKind::Tagbody { tags, .. } if tags.len() == 2 => Some((
+                NodeId::try_from_index(id, index).ok()?,
+                tags[0].block,
+                tags[1].block,
+            )),
+            _ => None,
+        })
+        .ok_or_else(|| std::io::Error::other("tagbody tags are missing"))?;
+    let flow = form
+        .control_flow()
+        .function(tagbody)
+        .ok_or_else(|| std::io::Error::other("tagbody flow is missing"))?;
+    let entry = form
+        .control_flow()
+        .block(flow.entry())
+        .ok_or_else(|| std::io::Error::other("tagbody entry is missing"))?;
+    assert_ne!(flow.entry(), first_tag);
+    assert!(entry.operations().iter().any(|operation| matches!(
+        form.nodes().get(*operation).map(|node| &node.kind),
+        Some(NodeKind::Assignment { .. })
+    )));
+    assert!(matches!(
+        entry.terminator(),
+        Terminator::Jump(target) if *target == first_tag
+    ));
+
+    let loop_block = form
+        .control_flow()
+        .block(first_tag)
+        .ok_or_else(|| std::io::Error::other("backward GO target is missing"))?;
+    assert!(loop_block.operations().iter().any(|operation| matches!(
+        form.nodes().get(*operation).map(|node| &node.kind),
+        Some(NodeKind::Assignment { .. })
+    )));
+    assert!(loop_block.operations().iter().any(|operation| matches!(
+        form.nodes().get(*operation).map(|node| &node.kind),
+        Some(NodeKind::Go { target }) if *target == first_tag
+    )));
+    assert!(matches!(
+        loop_block.terminator(),
+        Terminator::Jump(target) if *target == first_tag
+    ));
+    assert_ne!(first_tag, second_tag);
+
+    // CLHS specifies that TAGBODY statements run in order and GO transfers to its matching tag.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_tagbod.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_go.htm
+    let (lowered, _) = lower_both_and_verify(&builder, &form, &expr)?;
+    let first_assignment = lowered
+        .entry
+        .blocks
+        .iter()
+        .find(|block| {
+            block.ops.iter().any(|operation| {
+                matches!(
+                    &operation.kind,
+                    OpKind::StoreField { value, .. }
+                        if constant_for_value(&lowered.entry, *value)
+                            == Some(&Constant::Fixnum(1))
+                )
+            })
+        })
+        .ok_or_else(|| std::io::Error::other("initial SETQ value is missing from MIR"))?;
+    let ncl_ir::Terminator::Jump {
+        target: loop_target,
+        ..
+    } = &first_assignment.terminator
+    else {
+        return Err(std::io::Error::other("initial SETQ does not reach the first tag").into());
+    };
+    let loop_block = lowered
+        .entry
+        .blocks
+        .iter()
+        .find(|block| block.id == *loop_target)
+        .ok_or_else(|| std::io::Error::other("MIR backward GO target is missing"))?;
+    assert!(loop_block.ops.iter().any(|operation| {
+        matches!(
+            &operation.kind,
+            OpKind::StoreField { value, .. }
+                if constant_for_value(&lowered.entry, *value)
+                    == Some(&Constant::Fixnum(2))
+        )
+    }));
+    assert!(matches!(
+        &loop_block.terminator,
+        ncl_ir::Terminator::Jump { target, .. } if *target == loop_block.id
+    ));
     Ok(())
 }
 

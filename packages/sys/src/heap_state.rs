@@ -125,16 +125,56 @@ impl State {
         let Some(end) = base.checked_add(LOGICAL_PAGE_SIZE) else {
             return;
         };
-        for object in &mut self.objects {
-            if !object.alive
-                && object.forwarded_to.is_some()
-                && object.start >= base
-                && object.start < end
+        for index in 0..self.objects.len() {
+            let rewrite = {
+                let Some(source) = self.objects.get(index) else {
+                    continue;
+                };
+                if source.alive
+                    || source.forwarded_to.is_none()
+                    || !Self::is_forwarder_on_page(source, base, end)
+                {
+                    let mut next = source.forwarded_to;
+                    let mut crosses_retiring_page = false;
+                    let mut live_target = None;
+                    for _ in 0..self.objects.len() {
+                        let Some(next_index) = next else {
+                            break;
+                        };
+                        let Some(target) = self.objects.get(next_index) else {
+                            break;
+                        };
+                        crosses_retiring_page |= Self::is_forwarder_on_page(target, base, end);
+                        if target.alive {
+                            live_target = Some(next_index);
+                            break;
+                        }
+                        next = target.forwarded_to;
+                    }
+                    crosses_retiring_page.then_some(live_target)
+                } else {
+                    None
+                }
+            };
+            if let Some(target) = rewrite
+                && let Some(source) = self.objects.get_mut(index)
             {
+                source.forwarded_to = target;
+                if target.is_none() {
+                    source.words.retire();
+                }
+            }
+        }
+        for object in &mut self.objects {
+            if Self::is_forwarder_on_page(object, base, end) {
                 object.forwarded_to = None;
                 object.words.retire();
             }
         }
+    }
+
+    const fn is_forwarder_on_page(object: &Object, base: usize, end: usize) -> bool {
+        !object.alive && object.forwarded_to.is_some() && object.start >= base && object.start < end
     }
 
     pub(crate) fn flush_pending_allocations(&mut self) -> Result<(), PageError> {
@@ -202,6 +242,101 @@ impl State {
             thread.mark_allocations_reconciled(published);
         }
         Ok(())
+    }
+
+    pub(crate) fn compact_objects(&mut self) -> Result<(), PageError> {
+        const DROPPED: usize = usize::MAX;
+        const RETAINED: usize = usize::MAX - 1;
+
+        let mut old_to_new = Vec::new();
+        old_to_new
+            .try_reserve_exact(self.objects.len())
+            .map_err(|_| PageError::MetadataAllocationFailed)?;
+        old_to_new.resize(self.objects.len(), DROPPED);
+        for (index, object) in self.objects.iter().enumerate() {
+            if object.alive || Self::live_forwarding_target(&self.objects, index).is_some() {
+                let mapping = old_to_new
+                    .get_mut(index)
+                    .ok_or(PageError::PageOutOfBounds)?;
+                *mapping = RETAINED;
+            }
+        }
+        for page in &self.pages {
+            if let Some(owner) = page.extent_owner {
+                let mapping = old_to_new
+                    .get_mut(owner)
+                    .ok_or(PageError::PageOutOfBounds)?;
+                *mapping = RETAINED;
+            }
+        }
+
+        let mut compacted_count = 0_usize;
+        for mapping in &mut old_to_new {
+            if *mapping == RETAINED {
+                *mapping = compacted_count;
+                compacted_count = compacted_count
+                    .checked_add(1)
+                    .ok_or(PageError::AddressSpaceOverflow)?;
+            }
+        }
+
+        let mut compacted = Vec::new();
+        compacted
+            .try_reserve_exact(compacted_count)
+            .map_err(|_| PageError::MetadataAllocationFailed)?;
+        let mut dirty_cards = HashSet::new();
+        dirty_cards
+            .try_reserve(self.dirty_cards.len())
+            .map_err(|_| PageError::MetadataAllocationFailed)?;
+        for (old_index, card) in self.dirty_cards.iter().copied() {
+            if let Some(new_index) = old_to_new
+                .get(old_index)
+                .copied()
+                .filter(|index| *index != DROPPED)
+            {
+                dirty_cards.insert((new_index, card));
+            }
+        }
+
+        let old_objects = std::mem::take(&mut self.objects);
+        for (new_index, mut object) in old_to_new.iter().copied().zip(old_objects) {
+            if new_index == DROPPED {
+                continue;
+            }
+            if let Some(old_target) = object.forwarded_to {
+                object.forwarded_to = old_to_new
+                    .get(old_target)
+                    .copied()
+                    .filter(|index| *index != DROPPED);
+            }
+            compacted.push(object);
+        }
+        self.objects = compacted;
+        self.dirty_cards = dirty_cards;
+        for page in &mut self.pages {
+            if let Some(old_owner) = page.extent_owner {
+                page.extent_owner = old_to_new
+                    .get(old_owner)
+                    .copied()
+                    .filter(|index| *index != DROPPED);
+            }
+        }
+        self.rebuild_object_starts();
+        Ok(())
+    }
+
+    fn live_forwarding_target(objects: &[Object], source: usize) -> Option<usize> {
+        let mut index = objects.get(source)?.forwarded_to?;
+        let mut remaining = objects.len();
+        while remaining > 0 {
+            let object = objects.get(index)?;
+            if object.alive {
+                return Some(index);
+            }
+            index = object.forwarded_to?;
+            remaining -= 1;
+        }
+        None
     }
 
     pub(crate) fn page_index(&self, address: usize) -> Option<usize> {

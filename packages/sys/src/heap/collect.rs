@@ -64,11 +64,6 @@ impl super::Heap {
             self.config.dynamic_space_size.saturating_sub(state.used),
             std::sync::atomic::Ordering::Release,
         );
-        if let Err(error) = decommit_result {
-            state.pending_page_error = Some(error);
-            self.pending_page_error
-                .store(true, std::sync::atomic::Ordering::Release);
-        }
         #[cfg(feature = "test-support")]
         test_support::record_root_slot_status(
             self,
@@ -77,11 +72,22 @@ impl super::Heap {
             &moved,
             &registered_root_slots_before_collection,
         );
+        let compaction_result = if full {
+            state.compact_objects()
+        } else {
+            Ok(())
+        };
+        let collection_result = decommit_result.and(compaction_result);
+        if let Err(error) = collection_result {
+            state.pending_page_error = Some(error);
+            self.pending_page_error
+                .store(true, std::sync::atomic::Ordering::Release);
+        }
         drop(state);
         for hook in hooks {
             hook();
         }
-        decommit_result
+        collection_result
     }
 
     fn move_live_objects(

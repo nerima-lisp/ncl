@@ -103,7 +103,7 @@ fn taking_pending_runtime_errors_drains_all_three_sources() -> Result<(), Object
         .find_package(&context, "COMMON-LISP")
         .ok_or(ObjectError::Layout)?;
     let use_list = crate::object_access::get(
-        &mut context,
+        &context,
         common_lisp_user,
         crate::widetag::PACKAGE,
         crate::package::USE_LIST,

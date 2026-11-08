@@ -239,91 +239,107 @@ fn printer_registration_propagates_heap_capacity_failure() {
     let mut roots = vec![common_lisp, copy_symbol];
     roots.resize(1_024, Word::NIL);
     let result = ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
-        for root in roots.iter_mut().skip(2).take(EMPTY_RESERVE_ROOTS) {
-            *root = make_string(ctx, &runtime, &[])?;
-        }
-
-        let Some(common_lisp) = roots.first().copied() else {
-            return Err(ObjectError::Layout);
-        };
-        let (first_symbol, _) =
-            Package::from_word(common_lisp).intern(ctx, &runtime, "COPY-PPRINT-DISPATCH")?;
-        let Some(copy_symbol) = roots.get(1).copied() else {
-            return Err(ObjectError::Layout);
-        };
-        assert_eq!(first_symbol, copy_symbol);
-        let Some(common_lisp) = roots.first().copied() else {
-            return Err(ObjectError::Layout);
-        };
-        let (second_symbol, _) =
-            Package::from_word(common_lisp).intern(ctx, &runtime, "COPY-PPRINT-DISPATCH")?;
-        let Some(copy_symbol) = roots.get(1).copied() else {
-            return Err(ObjectError::Layout);
-        };
-        assert_eq!(second_symbol, copy_symbol);
-        ctx.collect(true)?;
-
-        let mut next_root = 2 + EMPTY_RESERVE_ROOTS;
-        for words in [65_536, 4_096, 256, 16, 1] {
-            loop {
-                let value = vec!['x'; words - 1];
-                match make_string(ctx, &runtime, &value) {
-                    Ok(object) => {
-                        let Some(root) = roots.get_mut(next_root) else {
-                            return Err(ObjectError::Layout);
-                        };
-                        *root = object;
-                        next_root += 1;
-                    }
-                    Err(error) => {
-                        assert_capacity_exceeded(error, "heap fill");
-                        break;
-                    }
-                }
-            }
-        }
-
-        for root in roots.iter_mut().skip(2).take(RELEASED_EMPTY_ROOTS) {
-            *root = Word::NIL;
-        }
-        ctx.collect(true)?;
-
-        let lambda_list_probe = make_string(ctx, &runtime, &[])?;
-        assert_eq!(ncl_object::string_length(ctx, lambda_list_probe)?, 0);
-        let Some(probe_root) = roots.get_mut(2) else {
-            return Err(ObjectError::Layout);
-        };
-        *probe_root = lambda_list_probe;
-        ctx.collect(true)?;
-
-        // The probe leaves 20 words, below one 22-word registration name string.
-        let registration_error = ncl_printer::register(ctx, &runtime).unwrap_err();
-        assert_capacity_exceeded(registration_error, "printer registration");
-
-        for root in roots.iter_mut().skip(2) {
-            *root = Word::NIL;
-        }
-        ctx.collect(true)?;
-        assert!(
-            runtime
-                .function(ctx, "COMMON-LISP", "COPY-PPRINT-DISPATCH")
-                .is_none(),
-            "COPY-PPRINT-DISPATCH must remain unregistered after allocation failure"
-        );
-
-        ncl_printer::register(ctx, &runtime)?;
-        assert!(
-            runtime
-                .function(ctx, "COMMON-LISP", "COPY-PPRINT-DISPATCH")
-                .is_some(),
-            "COPY-PPRINT-DISPATCH should be registered after releasing heap pressure"
-        );
-        Ok(())
+        register_printer_with_reserved_heap(
+            ctx,
+            &runtime,
+            roots,
+            RELEASED_EMPTY_ROOTS,
+            EMPTY_RESERVE_ROOTS,
+        )
     });
     assert!(
         result.is_ok(),
         "unexpected printer registration error: {result:?}"
     );
+}
+
+fn register_printer_with_reserved_heap(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    roots: &mut [Word],
+    released_empty_roots: usize,
+    empty_reserve_roots: usize,
+) -> Result<(), ObjectError> {
+    for root in roots.iter_mut().skip(2).take(empty_reserve_roots) {
+        *root = make_string(ctx, runtime, &[])?;
+    }
+
+    let Some(common_lisp) = roots.first().copied() else {
+        return Err(ObjectError::Layout);
+    };
+    let (first_symbol, _) =
+        Package::from_word(common_lisp).intern(ctx, runtime, "COPY-PPRINT-DISPATCH")?;
+    let Some(copy_symbol) = roots.get(1).copied() else {
+        return Err(ObjectError::Layout);
+    };
+    assert_eq!(first_symbol, copy_symbol);
+    let Some(common_lisp) = roots.first().copied() else {
+        return Err(ObjectError::Layout);
+    };
+    let (second_symbol, _) =
+        Package::from_word(common_lisp).intern(ctx, runtime, "COPY-PPRINT-DISPATCH")?;
+    let Some(copy_symbol) = roots.get(1).copied() else {
+        return Err(ObjectError::Layout);
+    };
+    assert_eq!(second_symbol, copy_symbol);
+    ctx.collect(true)?;
+
+    let mut next_root = 2 + empty_reserve_roots;
+    for words in [65_536, 4_096, 256, 16, 1] {
+        loop {
+            let value = vec!['x'; words - 1];
+            match make_string(ctx, runtime, &value) {
+                Ok(object) => {
+                    let Some(root) = roots.get_mut(next_root) else {
+                        return Err(ObjectError::Layout);
+                    };
+                    *root = object;
+                    next_root += 1;
+                }
+                Err(error) => {
+                    assert_capacity_exceeded(error, "heap fill");
+                    break;
+                }
+            }
+        }
+    }
+
+    for root in roots.iter_mut().skip(2).take(released_empty_roots) {
+        *root = Word::NIL;
+    }
+    ctx.collect(true)?;
+
+    let lambda_list_probe = make_string(ctx, runtime, &[])?;
+    assert_eq!(ncl_object::string_length(ctx, lambda_list_probe)?, 0);
+    let Some(probe_root) = roots.get_mut(2) else {
+        return Err(ObjectError::Layout);
+    };
+    *probe_root = lambda_list_probe;
+    ctx.collect(true)?;
+
+    // The probe leaves 20 words, below one 22-word registration name string.
+    let registration_error = ncl_printer::register(ctx, runtime).unwrap_err();
+    assert_capacity_exceeded(registration_error, "printer registration");
+
+    for root in roots.iter_mut().skip(2) {
+        *root = Word::NIL;
+    }
+    ctx.collect(true)?;
+    assert!(
+        runtime
+            .function(ctx, "COMMON-LISP", "COPY-PPRINT-DISPATCH")
+            .is_none(),
+        "COPY-PPRINT-DISPATCH must remain unregistered after allocation failure"
+    );
+
+    ncl_printer::register(ctx, runtime)?;
+    assert!(
+        runtime
+            .function(ctx, "COMMON-LISP", "COPY-PPRINT-DISPATCH")
+            .is_some(),
+        "COPY-PPRINT-DISPATCH should be registered after releasing heap pressure"
+    );
+    Ok(())
 }
 
 fn assert_capacity_exceeded(error: ObjectError, stage: &str) {

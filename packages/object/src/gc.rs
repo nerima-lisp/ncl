@@ -1,6 +1,5 @@
 //! NCL-GC garbage-collection symbol ownership.
 
-use crate::hash_table::{INDEX, KV, MARKER, REHASH_SIZE, REHASH_THRESHOLD};
 use crate::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, Package, Parameter,
@@ -10,13 +9,6 @@ use crate::{
         reference_words, stream_offset, structure_offset, symbol_offset, widetag,
     },
 };
-
-fn hash_table_layout() -> ncl_sys::ReferenceLayout {
-    ncl_sys::ReferenceLayout {
-        reference_words: reference_words(&[REHASH_SIZE, REHASH_THRESHOLD, MARKER, KV, INDEX]),
-        boxed_from: Some(MARKER + 1),
-    }
-}
 
 fn package_layout() -> ncl_sys::ReferenceLayout {
     ncl_sys::ReferenceLayout {
@@ -70,10 +62,6 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
             ],
         ),
         (widetag::STRING, vec![]),
-        (
-            widetag::HASH_TABLE,
-            vec![REHASH_SIZE, REHASH_THRESHOLD, MARKER, KV, INDEX],
-        ),
         (widetag::STRUCTURE, vec![structure_offset::SLOTS]),
         (
             widetag::INSTANCE,
@@ -137,7 +125,6 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
     ] {
         let layout = match tag {
-            widetag::HASH_TABLE => hash_table_layout(),
             widetag::PACKAGE => package_layout(),
             _ => ncl_sys::ReferenceLayout {
                 reference_words: reference_words(&slots),
@@ -208,17 +195,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hash_table_and_package_layouts_use_header_inclusive_references() {
-        assert_eq!(
-            hash_table_layout().reference_words,
-            [
-                REHASH_SIZE + 1,
-                REHASH_THRESHOLD + 1,
-                MARKER + 1,
-                KV + 1,
-                INDEX + 1,
-            ]
-        );
+    fn package_layout_uses_header_inclusive_references() {
         assert_eq!(
             package_layout().reference_words,
             reference_words(&crate::package::reference_words())
@@ -228,7 +205,6 @@ mod tests {
                 .reference_words
                 .contains(&(crate::package::DOCUMENTATION + 1))
         );
-        assert_eq!(hash_table_layout().boxed_from, Some(MARKER + 1));
         assert_eq!(package_layout().boxed_from, Some(crate::package::NAME + 1));
     }
 

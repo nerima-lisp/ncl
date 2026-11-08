@@ -1,6 +1,5 @@
 use super::{HashTest, Weakness};
-use crate::ObjectError;
-use ncl_sys::Word;
+use ncl_object::{ObjectError, Word};
 
 pub(super) fn probe(hash: u64, step: usize, capacity: usize) -> usize {
     (usize::try_from(hash).unwrap_or(0).wrapping_add(step)) & (capacity - 1)

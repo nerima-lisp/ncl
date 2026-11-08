@@ -120,7 +120,7 @@ pub enum WordView {
     Character(u32),
     Cons(Cons),
     Symbol(Symbol),
-    HashTable(crate::hash_table::HashTable),
+    HashTable(Word),
     String(StringObject),
     SimpleVector(Word),
     SpecializedArray(Word),
@@ -182,7 +182,7 @@ impl WordView {
             Self::Character(value) => Word::character(value),
             Self::Cons(value) => value.into(),
             Self::Symbol(value) => value.into(),
-            Self::HashTable(value) => value.into(),
+            Self::HashTable(value) => value,
             Self::String(value) => value.into(),
             Self::SimpleVector(value) => value,
             Self::SpecializedArray(value) => value,
@@ -209,9 +209,7 @@ impl From<ObjectRef> for WordView {
             ObjectRef::Character(value) => Self::Character(value),
             ObjectRef::Cons(value) => Self::Cons(Cons::from_word(value)),
             ObjectRef::Symbol(value) => Self::Symbol(Symbol::from_word(value)),
-            ObjectRef::HashTable(value) => {
-                Self::HashTable(crate::hash_table::HashTable::from_word(value))
-            }
+            ObjectRef::HashTable(value) => Self::HashTable(value),
             ObjectRef::String(value) => Self::String(StringObject::from_word(value)),
             ObjectRef::SimpleVector(value) => Self::SimpleVector(value),
             ObjectRef::SpecializedArray(value) => Self::SpecializedArray(value),

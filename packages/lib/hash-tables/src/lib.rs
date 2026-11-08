@@ -1,4 +1,4 @@
-//! Common Lisp array and hash-table builtins.
+//! Common Lisp hash-table builtins.
 
 #![forbid(unsafe_code)]
 
@@ -76,7 +76,16 @@ pub(crate) fn register_one_ncl(
     Ok(())
 }
 
-/// Register the implemented hash-table and array builtins owned by this crate.
+/// Register the hash-table heap layout with the runtime.
+///
+/// # Errors
+///
+/// Returns the layout registration error if it cannot be installed.
+pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
+    ncl_hash_tables::register_layouts(runtime)
+}
+
+/// Register the implemented hash-table builtins owned by this crate.
 ///
 /// # Errors
 ///

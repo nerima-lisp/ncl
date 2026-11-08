@@ -83,3 +83,9 @@ pub fn classify_object(ctx: &ThreadContext, word: Word) -> ObjectRef {
         None => classify(word),
     }
 }
+
+/// Return the heap widetag of a word, when it is a valid header object.
+#[must_use]
+pub fn object_widetag(ctx: &ThreadContext, word: Word) -> Option<u8> {
+    ncl_sys::object_widetag(&ctx.thread, word)
+}

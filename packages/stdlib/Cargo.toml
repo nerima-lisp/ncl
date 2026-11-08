@@ -18,7 +18,7 @@ ncl-lib-numbers = { path = "../lib/numbers" }
 ncl-lib-arrays = { path = "../lib/arrays" }
 ncl-lib-sequences = { path = "../lib/sequences" }
 ncl-lib-strings = { path = "../lib/strings" }
-ncl-lib-hash-arrays = { path = "../lib/hash-arrays" }
+ncl-lib-hash-tables = { path = "../lib/hash-tables" }
 ncl-lib-streams = { path = "../lib/streams" }
 ncl-lib-pathnames = { path = "../lib/pathnames" }
 ncl-lib-packages = { path = "../lib/packages" }

@@ -1,4 +1,4 @@
-use ncl_object::hash_table::{HashTable, HashTest, Weakness};
+use ncl_hash_tables::{HashTable, HashTest, Weakness};
 use ncl_object::package::{nil, truth};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{

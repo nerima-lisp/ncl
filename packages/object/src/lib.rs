@@ -15,7 +15,6 @@ mod control_extensions;
 mod function;
 mod function_call;
 pub(crate) mod gc;
-pub mod hash_table;
 mod instance;
 mod keyword_builtins;
 pub mod layout;
@@ -46,7 +45,7 @@ pub use builtin::{
     NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
 };
 pub use builtin_package::BuiltinPackage;
-pub use classify::{ObjectRef, classify, classify_object};
+pub use classify::{ObjectRef, classify, classify_object, object_widetag};
 pub use code::code_slot;
 pub use code::{
     CodeObject, code_constants, code_debug, code_entry, code_size, code_stack_map, make_code_object,
@@ -75,13 +74,13 @@ pub use number::{
     make_bignum_from_limbs, make_complex, make_double, make_ratio,
 };
 pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, ratio_numerator};
-pub use object_access::{get, put};
+pub use object_access::{fix, get, put};
 pub use object_error::ObjectError;
 pub use package::{FindStatus, Package};
 pub use place::{PlaceExpander, SetfExpansion};
 pub use primitives::{allocate, car, cdr, make_cons, make_symbol};
 pub use rooted_words::HeapRootedWords;
-pub(crate) use roots::finish_root;
+pub use roots::finish_root;
 pub use roots::{
     HeapRootedWord, pop_heap_root, pop_root, push_heap_root, push_root, try_pop_root,
     try_push_root, unregister_heap_root,

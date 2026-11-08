@@ -158,6 +158,7 @@ fn numeric_ranges_keep_open_and_closed_bounds_and_three_way_results() -> Result<
     assert_eq!(arena.subtype(inner_id, integer)?, SubtypeRelation::Yes);
     assert_eq!(arena.subtype(inner_id, float)?, SubtypeRelation::No);
     assert_eq!(arena.subtype(integer, inner_id)?, SubtypeRelation::No);
+    // Opaque membership cannot prove a numeric relation in HIR's three-valued lattice (docs/src/design/hir.md).
     let opaque_member = arena.member(vec![MemberValue::OpaqueObject {
         owner: CompilationUnitId::new(0),
         index: 0,

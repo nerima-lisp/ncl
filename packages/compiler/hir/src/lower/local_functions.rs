@@ -7,6 +7,7 @@ use crate::node::LocalFunctionDefinition;
 
 use super::lambda::{
     CaptureBinding, bind_captures, capture_bindings, capture_values, lambda_params,
+    required_signature,
 };
 use super::ops::VALUE_CELL_VALUE_FIELD;
 use super::{FunctionLowerer, LowerError};
@@ -40,11 +41,7 @@ impl FunctionLowerer<'_> {
             let signature = self
                 .form
                 .lambda_signature_for_local_function(binding)
-                .cloned()
-                .ok_or(LowerError::Unsupported {
-                    node,
-                    operation: "local-function-without-signature-metadata",
-                })?;
+                .map_or_else(|| required_signature(&definition.parameters), Clone::clone);
             let function = self.lower_local_function(node, definition, &signature, &captures)?;
             if kind == LocalFunctionKind::Labels {
                 let cell = self

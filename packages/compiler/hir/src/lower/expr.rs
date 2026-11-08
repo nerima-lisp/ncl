@@ -11,8 +11,31 @@ use super::{FunctionLowerer, LowerError};
 impl FunctionLowerer<'_> {
     pub(super) fn node(&mut self, id: crate::ids::NodeId) -> Result<ValueId, LowerError> {
         if let Some(value) = self.values.get(&id).copied() {
+            let use_block = self.hir_block;
+            let definition_block = self.node_blocks.get(&id).copied();
+            if !self.node_available_in_block(use_block, definition_block) {
+                return Err(LowerError::NodeValueNotAvailableInBlock {
+                    node: id,
+                    use_block,
+                    definition_block,
+                });
+            }
             return Ok(value);
         }
+        if !self.lowering_nodes.insert(id) {
+            return Err(LowerError::CyclicNode(id));
+        }
+        let lowered = self.lower_node(id);
+        let _ = self.lowering_nodes.remove(&id);
+        let value = lowered?;
+        let _ = self.values.insert(id, value);
+        if let Some(block) = self.hir_block {
+            let _ = self.node_blocks.insert(id, block);
+        }
+        Ok(value)
+    }
+
+    fn lower_node(&mut self, id: crate::ids::NodeId) -> Result<ValueId, LowerError> {
         let node = self
             .form
             .nodes()
@@ -29,49 +52,17 @@ impl FunctionLowerer<'_> {
                 then_branch,
                 else_branch,
             } => self.conditional(test, then_branch, else_branch)?,
-            NodeKind::Sequence {
-                forms,
-                body_scope: _,
-            } => self.sequence(&forms)?,
+            NodeKind::Sequence { forms, .. } => self.sequence(&forms)?,
             NodeKind::Block { body, .. } => self.lower_block(id, &body)?,
             NodeKind::Let {
                 kind,
                 bindings,
-                initializer_scopes: _,
-                binding_scopes: _,
-                body_scope: _,
-                body,
-            } => self.let_form(kind, &bindings, &body)?,
-            NodeKind::MultipleValues(MultipleValueOperation::Produce { values }) => {
-                self.produce_values(&values)?
-            }
-            NodeKind::MultipleValues(MultipleValueOperation::Prog1 { first, rest }) => {
-                self.prog1(first, &rest)?
-            }
-            NodeKind::MultipleValues(MultipleValueOperation::Bind {
-                value,
-                bindings,
                 body,
                 ..
-            }) => self.multiple_value_bind(value, &bindings, &body)?,
-            NodeKind::MultipleValues(MultipleValueOperation::Return { values }) => {
-                self.produce_values(&values)?
-            }
-            NodeKind::MultipleValues(MultipleValueOperation::Call {
-                function,
-                arguments,
-            }) => self.multiple_value_call(function, &arguments)?,
+            } => self.let_form(kind, &bindings, &body)?,
+            NodeKind::MultipleValues(operation) => self.multiple_values(operation)?,
             NodeKind::CompileTimeForm { situations, form } => {
-                if situations.iter().any(|situation| {
-                    matches!(
-                        situation,
-                        CompileTimeSituation::Execute | CompileTimeSituation::Eval
-                    )
-                }) {
-                    self.node(form)?
-                } else {
-                    self.word_constant(Constant::Nil)?
-                }
+                self.compile_time_form(&situations, form)?
             }
             NodeKind::TypeAssertion { value, .. } if self.node_policy(id).safety().value() == 0 => {
                 self.node(value)?
@@ -79,24 +70,13 @@ impl FunctionLowerer<'_> {
             NodeKind::FunctionReference { target } => self.function_reference(id, target)?,
             NodeKind::ClosureReference { function } => self.node(function)?,
             NodeKind::LoadTimeValue { form, read_only } => {
-                let Some(form_node) = self.form.nodes().get(form) else {
-                    return Err(LowerError::InvalidNode(form));
-                };
-                match &form_node.kind {
-                    NodeKind::Literal(
-                        crate::node::Literal::Nil
-                        | crate::node::Literal::True
-                        | crate::node::Literal::Symbol(_)
-                        | crate::node::Literal::Number(_)
-                        | crate::node::Literal::Character(_),
-                    ) => self.node(form)?,
-                    NodeKind::Literal(_) if read_only => self.node(form)?,
-                    _ => return self.unsupported(id, "load-time-value-with-runtime-form"),
-                }
+                self.load_time_value(id, form, read_only)?
             }
             NodeKind::Lambda {
-                body_scope, body, ..
-            } => self.lambda_value(id, body_scope, &body)?,
+                parameters,
+                body_scope,
+                body,
+            } => self.lambda_value(id, &parameters, body_scope, &body)?,
             NodeKind::LocalFunctions {
                 kind,
                 definitions,
@@ -129,22 +109,83 @@ impl FunctionLowerer<'_> {
                 ..
             } => self.type_assertion(id, value, expected_type)?,
             NodeKind::KnownFunctionOperation { .. } => {
-                return self.unsupported(id, "known-function-operation");
+                return Self::unsupported(id, "known-function-operation");
             }
             NodeKind::SequenceOperation { .. } => {
-                return self.unsupported(id, "sequence-operation");
+                return Self::unsupported(id, "sequence-operation");
             }
-            NodeKind::ArrayOperation { .. } => return self.unsupported(id, "array-operation"),
-            NodeKind::RuntimeCheck { .. } => return self.unsupported(id, "runtime-check"),
-            NodeKind::CheckType { value, .. } => {
-                return Err(LowerError::UnmappedHirValue { node: id, value });
-            }
+            NodeKind::ArrayOperation { .. } => return Self::unsupported(id, "array-operation"),
+            NodeKind::RuntimeCheck { .. } => return Self::unsupported(id, "runtime-check"),
+            NodeKind::CheckType {
+                value,
+                expected_type,
+                ..
+            } => self.check_type(id, value, expected_type)?,
             NodeKind::TopLevelDefinition { .. } => {
-                return self.unsupported(id, "top-level-definition");
+                return Self::unsupported(id, "top-level-definition");
             }
         };
-        let _ = self.values.insert(id, value);
         Ok(value)
+    }
+
+    fn multiple_values(
+        &mut self,
+        operation: MultipleValueOperation,
+    ) -> Result<ValueId, LowerError> {
+        match operation {
+            MultipleValueOperation::Produce { values }
+            | MultipleValueOperation::Return { values } => self.produce_values(&values),
+            MultipleValueOperation::Prog1 { first, rest } => self.prog1(first, &rest),
+            MultipleValueOperation::Bind {
+                value,
+                bindings,
+                body,
+                ..
+            } => self.multiple_value_bind(value, &bindings, &body),
+            MultipleValueOperation::Call {
+                function,
+                arguments,
+            } => self.multiple_value_call(function, &arguments),
+        }
+    }
+
+    fn compile_time_form(
+        &mut self,
+        situations: &[CompileTimeSituation],
+        form: crate::ids::NodeId,
+    ) -> Result<ValueId, LowerError> {
+        if situations.iter().any(|situation| {
+            matches!(
+                situation,
+                CompileTimeSituation::Execute | CompileTimeSituation::Eval
+            )
+        }) {
+            self.node(form)
+        } else {
+            self.word_constant(Constant::Nil)
+        }
+    }
+
+    fn load_time_value(
+        &mut self,
+        node: crate::ids::NodeId,
+        form: crate::ids::NodeId,
+        read_only: bool,
+    ) -> Result<ValueId, LowerError> {
+        let Some(form_node) = self.form.nodes().get(form) else {
+            return Err(LowerError::InvalidNode(form));
+        };
+        match &form_node.kind {
+            NodeKind::Literal(
+                crate::node::Literal::Nil
+                | crate::node::Literal::True
+                | crate::node::Literal::Symbol(_)
+                | crate::node::Literal::Number(_)
+                | crate::node::Literal::Character(_),
+            ) => self.node(form),
+            NodeKind::Literal(_) if read_only => self.node(form),
+            _ => Self::unsupported(node, "load-time-value-with-runtime-form"), // check-added-lines: allow(wildcard) runtime load-time forms must fail closed
+        }
     }
 
     fn variable(
@@ -192,7 +233,7 @@ impl FunctionLowerer<'_> {
                     })?;
                 } else {
                     if self.branch_depth != 0 {
-                        return self.unsupported(node, "uncelled-assignment-in-conditional");
+                        return Self::unsupported(node, "uncelled-assignment-in-conditional");
                     }
                     let _ = self.lexical_values.insert(binding, value);
                 }
@@ -325,14 +366,14 @@ impl FunctionLowerer<'_> {
             .map(|argument| self.node(*argument))
             .collect::<Result<Vec<_>, _>>()?;
         let argc = self.argument_count(values.len())?;
-        let mut args = Vec::with_capacity(values.len() + 1);
-        args.push(argc);
-        args.extend(values);
+        let mut call_args = Vec::with_capacity(values.len() + 1);
+        call_args.push(argc);
+        call_args.extend(values);
         self.push_none(OpKind::Safepoint)?;
         self.push_one(
             OpKind::CallClosure {
                 closure,
-                args,
+                args: call_args,
                 named_symbol,
             },
             Ty::Word,

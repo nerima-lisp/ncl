@@ -9,8 +9,16 @@ fn register_sb_symbol_propagates_malformed_source_package_error() {
     let source = runtime
         .ensure_package(&mut ctx, BuiltinPackage::NclTest.as_str())
         .unwrap_or_else(|error| panic!("NCL-TEST package: {error:?}"));
-    crate::object_access::put(&mut ctx, source, crate::package::INTERNAL, crate::Word::NIL)
-        .unwrap_or_else(|error| panic!("corrupt source package fixture: {error:?}"));
+    crate::object_access::put(
+        &mut ctx,
+        source,
+        crate::package::INTERNAL,
+        crate::Word::fixnum(0),
+    )
+    .unwrap_or_else(|error| panic!("corrupt source package fixture: {error:?}"));
+    runtime
+        .release_package_symbols(source)
+        .unwrap_or_else(|error| panic!("release package symbol index: {error:?}"));
 
     assert_eq!(
         runtime.register_sb_symbol(
@@ -20,6 +28,6 @@ fn register_sb_symbol_propagates_malformed_source_package_error() {
             BuiltinName::new("R6-MALFORMED-SOURCE"),
             false,
         ),
-        Err(ObjectError::TypeError)
+        Err(ObjectError::Layout)
     );
 }

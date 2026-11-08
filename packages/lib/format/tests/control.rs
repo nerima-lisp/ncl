@@ -38,7 +38,20 @@ fn run(
     (sink.into_string(), consumed)
 }
 
-#[test]
+fn assert_error(
+    control: &str,
+    arguments: &[Word],
+    expected: &FormatErrorKind,
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+) {
+    let parsed = parse(control).expect("control");
+    let mut sink = StringSink::new();
+    let error = execute(&parsed, arguments, ctx, runtime, &mut sink).expect_err("execution");
+    assert_eq!(&error.kind, expected, "{control}");
+}
+
+#[test] // CLHS 22.3.7.2
 fn selects_conditional_clauses_by_index_and_default_clause() {
     let (runtime, mut ctx) = context();
     for (selector, expected) in [(0, "zero"), (1, "one"), (2, "many")] {
@@ -67,7 +80,7 @@ fn selects_conditional_clauses_by_index_and_default_clause() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.7.2
 fn selects_boolean_and_at_sign_conditionals() {
     let (runtime, mut ctx) = context();
     assert_eq!(
@@ -89,7 +102,7 @@ fn selects_boolean_and_at_sign_conditionals() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.7.4/.5
 fn iterates_over_a_list_and_remaining_arguments() {
     let (runtime, mut ctx) = context();
     let first = string(&runtime, &mut ctx, "a");
@@ -110,7 +123,7 @@ fn iterates_over_a_list_and_remaining_arguments() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.7.4/.5
 fn iterates_over_sublist_arguments_in_both_modes() {
     let (runtime, mut ctx) = context();
     let a = string(&runtime, &mut ctx, "a");
@@ -130,7 +143,7 @@ fn iterates_over_sublist_arguments_in_both_modes() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.7.4/.5
 fn closing_colon_forces_one_iteration() {
     let (runtime, mut ctx) = context();
     assert_eq!(
@@ -140,7 +153,7 @@ fn closing_colon_forces_one_iteration() {
     assert_eq!(run("~@{x~:}", &[], &mut ctx, &runtime), ("x".to_owned(), 0),);
 }
 
-#[test]
+#[test] // CLHS 22.3.7.6
 fn recursive_format_uses_a_list_or_the_current_arguments() {
     let (runtime, mut ctx) = context();
     let control = string(&runtime, &mut ctx, "<~A>");
@@ -161,7 +174,23 @@ fn recursive_format_uses_a_list_or_the_current_arguments() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.7.6, 22.3.9.2
+fn recursive_colon_escape_flows_out_to_the_last_enclosing_sublist() {
+    let (runtime, mut ctx) = context();
+    let nested_control = string(&runtime, &mut ctx, "~:^");
+    let empty = list(&runtime, &mut ctx, &[]);
+    let first_text = string(&runtime, &mut ctx, "first");
+    let second_text = string(&runtime, &mut ctx, "second");
+    let first = list(&runtime, &mut ctx, &[nested_control, empty, first_text]);
+    let second = list(&runtime, &mut ctx, &[nested_control, empty, second_text]);
+    let rows = list(&runtime, &mut ctx, &[first, second]);
+    assert_eq!(
+        run("~:{~?~A!~}done", &[rows], &mut ctx, &runtime),
+        ("first!done".to_owned(), 1),
+    );
+}
+
+#[test] // CLHS 22.3.7.6
 fn recursive_format_accepts_function_controls_only_in_list_mode() {
     let (runtime, mut ctx) = context();
     ncl_lib_streams::register(&runtime).expect("streams");
@@ -192,6 +221,19 @@ fn recursive_format_accepts_function_controls_only_in_list_mode() {
         ),
         ("<item>tail".to_owned(), 3),
     );
+    let improper_arguments = make_cons(&mut ctx, &runtime, nested_control, Word::fixnum(9))
+        .expect("improper function argument list");
+    let parsed = parse("~?").expect("control");
+    let mut sink = StringSink::new();
+    let error = execute(
+        &parsed,
+        &[formatter, improper_arguments],
+        &mut ctx,
+        &runtime,
+        &mut sink,
+    )
+    .expect_err("improper function argument list");
+    assert_eq!(error.kind, FormatErrorKind::ImproperList);
 
     for (control, arguments) in [
         ("~@?", vec![formatter]),
@@ -207,7 +249,71 @@ fn recursive_format_accepts_function_controls_only_in_list_mode() {
     }
 }
 
-#[test]
+#[test] // CLHS 22.3.7.6, 22.3.9.2
+fn recursive_string_controls_validate_lists_and_translate_nested_escapes() {
+    let (runtime, mut ctx) = context();
+    let escaping = string(&runtime, &mut ctx, "before~^after");
+    let empty_arguments = list(&runtime, &mut ctx, &[]);
+    assert_eq!(
+        run("~?tail", &[escaping, empty_arguments], &mut ctx, &runtime),
+        ("beforetail".to_owned(), 2),
+    );
+    assert_error(
+        "~?",
+        &[],
+        &FormatErrorKind::MissingArgument,
+        &mut ctx,
+        &runtime,
+    );
+    let missing_nested_argument = string(&runtime, &mut ctx, "~A");
+    assert_error(
+        "~?",
+        &[missing_nested_argument, empty_arguments],
+        &FormatErrorKind::MissingArgument,
+        &mut ctx,
+        &runtime,
+    );
+    let invalid_control = string(&runtime, &mut ctx, "~");
+    let improper_arguments = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .expect("improper argument list");
+    assert_error(
+        "~?",
+        &[escaping],
+        &FormatErrorKind::MissingArgument,
+        &mut ctx,
+        &runtime,
+    );
+    assert_error(
+        "~?",
+        &[escaping, improper_arguments],
+        &FormatErrorKind::ImproperList,
+        &mut ctx,
+        &runtime,
+    );
+    let parsed = parse("~?").expect("control");
+    let mut sink = StringSink::new();
+    let error = execute(
+        &parsed,
+        &[invalid_control, empty_arguments],
+        &mut ctx,
+        &runtime,
+        &mut sink,
+    )
+    .expect_err("invalid nested control syntax");
+    assert!(matches!(error.kind, FormatErrorKind::Parse(_)));
+
+    for control in ["~:?", "~1?"] {
+        assert_error(
+            control,
+            &[escaping, empty_arguments],
+            &FormatErrorKind::InvalidDirectiveUse,
+            &mut ctx,
+            &runtime,
+        );
+    }
+}
+
+#[test] // CLHS 22.3.8.1
 fn case_conversion_applies_to_captured_body_output() {
     let (runtime, mut ctx) = context();
     let value = string(&runtime, &mut ctx, "hELLO wOrLD");
@@ -224,7 +330,7 @@ fn case_conversion_applies_to_captured_body_output() {
     }
 }
 
-#[test]
+#[test] // CLHS 22.3.7.1
 fn star_moves_the_argument_pointer_in_all_modes() {
     let (runtime, mut ctx) = context();
     let a = string(&runtime, &mut ctx, "a");
@@ -245,7 +351,7 @@ fn star_moves_the_argument_pointer_in_all_modes() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.9.2
 fn up_arrow_escapes_at_top_level_iteration_and_conditional() {
     let (runtime, mut ctx) = context();
     assert_eq!(
@@ -277,7 +383,7 @@ fn up_arrow_escapes_at_top_level_iteration_and_conditional() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.9.2
 fn colon_up_arrow_continues_until_the_last_sublist() {
     let (runtime, mut ctx) = context();
     let a = string(&runtime, &mut ctx, "a");
@@ -326,16 +432,28 @@ fn colon_up_arrow_continues_until_the_last_sublist() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.9.2
 fn rejects_colon_up_arrow_without_colon_iteration() {
     let (runtime, mut ctx) = context();
-    let control = parse("~:^ ").expect("control");
+    for control in ["~:^ ", "~<~:^~>"] {
+        let parsed = parse(control).expect("control");
+        let mut sink = StringSink::new();
+        let error = execute(&parsed, &[], &mut ctx, &runtime, &mut sink)
+            .expect_err("colon up-arrow requires a colon iteration scope");
+        assert_eq!(
+            error.kind,
+            FormatErrorKind::InvalidDirectiveUse,
+            "{control}"
+        );
+    }
+    let control = parse("~:<~:^~:>").expect("logical block control");
     let mut sink = StringSink::new();
-    let error = execute(&control, &[], &mut ctx, &runtime, &mut sink).expect_err("invalid use");
+    let error = execute(&control, &[Word::NIL], &mut ctx, &runtime, &mut sink)
+        .expect_err("logical block is not a sublist iteration");
     assert_eq!(error.kind, FormatErrorKind::InvalidDirectiveUse);
 }
 
-#[test]
+#[test] // CLHS 22.3.9.2
 fn colon_up_arrow_requires_the_nearest_iteration_to_be_colon_mode() {
     let (runtime, mut ctx) = context();
     let nested = parse("~:{~{~:^~}~}").expect("control");
@@ -349,7 +467,7 @@ fn colon_up_arrow_requires_the_nearest_iteration_to_be_colon_mode() {
     assert_eq!(error.kind, FormatErrorKind::InvalidDirectiveUse);
 }
 
-#[test]
+#[test] // CLHS 22.3.5.2, 22.3.9.2
 fn colon_up_arrow_escapes_the_local_logical_block_body() {
     let (runtime, mut ctx) = context();
     let a = string(&runtime, &mut ctx, "a");

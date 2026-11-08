@@ -106,6 +106,11 @@ impl Runtime {
         })
     }
 
+    /// Check whether a package name is available for this package.
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::PackageConflict`] when another package owns the name, or an object
+    /// error if the name is invalid or registry storage is unavailable.
     pub fn check_package_name(
         &self,
         ctx: &mut ThreadContext,
@@ -122,9 +127,15 @@ impl Runtime {
         {
             return Err(ObjectError::PackageConflict);
         }
+        drop(packages);
         Ok(())
     }
 
+    /// Register a package under its name and optionally as a nickname.
+    ///
+    /// # Errors
+    /// Returns an object error if the name conflicts, the package metadata is malformed, or
+    /// registry storage is unavailable.
     pub fn register_package_name(
         &self,
         ctx: &mut ThreadContext,
@@ -151,6 +162,10 @@ impl Runtime {
         })
     }
 
+    /// Remove a package name from the runtime registry.
+    ///
+    /// # Errors
+    /// Returns an object error if the name is invalid or registry storage is unavailable.
     pub fn unregister_package_name(
         &self,
         ctx: &ThreadContext,
@@ -199,6 +214,7 @@ impl Runtime {
                     .ok_or(ObjectError::Layout)?;
             }
         }
+        drop(packages);
         Ok(None)
     }
 
@@ -223,6 +239,7 @@ impl Runtime {
                 return Ok(Some(package.as_word()));
             }
         }
+        drop(packages);
         Ok(None)
     }
 

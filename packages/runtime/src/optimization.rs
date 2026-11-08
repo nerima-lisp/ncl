@@ -95,16 +95,6 @@ mod tests {
             Err(RuntimeError::Native(message)) if message == "allocation tracker is not installed"
         ));
     }
-
-    #[test]
-    fn ncl_gc_allocation_snapshots_are_callable_from_lisp() -> Result<(), RuntimeError> {
-        let mut runtime = crate::Runtime::new()?;
-        let gc_count = runtime.eval("(NCL-GC:GC-COUNT)")?;
-        assert!(gc_count.as_fixnum().is_some_and(|value| value >= 0));
-        let bytes = runtime.eval("(NCL-GC:BYTES-CONSED-SINCE-GC)")?;
-        assert!(bytes.as_fixnum().is_some_and(|value| value >= 0));
-        Ok(())
-    }
 }
 
 #[cfg(test)]

@@ -9,29 +9,14 @@
     clippy::panic,
     clippy::as_conversions
 )]
-#![expect(
-    unused_crate_dependencies,
-    reason = "This target includes source modules by path to test private invariants"
-)]
-
-#[path = "../src/arena.rs"]
-/// The typed arena used by the type model.
-pub mod arena;
-#[path = "../src/cl_type.rs"]
-/// The compiler-owned Common Lisp type lattice.
-pub mod cl_type;
-#[path = "../src/ids.rs"]
-/// Typed identities used by the HIR arenas.
-pub mod ids;
-
 use std::error::Error;
 
-use cl_type::{
-    ArrayDimensions, ArrayType, BuiltinType, ClTypeError, ClTypeKind, FunctionParameters,
+use ncl_hir::cl_type::{
+    self, ArrayDimensions, ArrayType, BuiltinType, ClTypeError, ClTypeKind, FunctionParameters,
     FunctionType, MemberValue, NumericBound, NumericDomain, NumericRange, NumericRangeError,
     NumericValue, OpaqueOperand, SubtypeRelation, TypeArena,
 };
-use ids::{CompilationUnitId, FormId, SymbolId, TypeId, TypeSpecConstId};
+use ncl_hir::ids::{CompilationUnitId, FormId, SymbolId, TypeId, TypeSpecConstId};
 
 const fn form(index: u32) -> FormId {
     FormId::new(CompilationUnitId::new(0), index)

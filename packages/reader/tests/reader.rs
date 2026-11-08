@@ -8,6 +8,7 @@ use ncl_object::{
     classify, classify_object, make_cons, make_string, ratio_denominator, string_length,
     string_ref, symbol_name, symbol_package,
 };
+use ncl_packages::PackageListOperations;
 use ncl_reader::{ReadOptions, ReadtableCase, read, read_from_string};
 
 const EVAL_PARAMETERS: &[ncl_object::Parameter] = &[ncl_object::Parameter {

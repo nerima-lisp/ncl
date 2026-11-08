@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use self::compound::{array_relation, array_to_named, function_relation, multiple_values_relation};
 use self::disjoint::disjoint_relation;
 use self::member::{
-    member_to_member, member_to_named, member_to_range, member_to_union, named_to_member,
-    range_to_member,
+    member_to_member, member_to_named, member_to_range, member_to_type, member_to_union,
+    named_to_member, range_to_member,
 };
 use self::named::named_relation;
 use self::numeric::{named_to_range, numeric_relation, range_to_named};
@@ -96,6 +96,7 @@ fn subtype_inner(
         (ClTypeKind::NumericRange(range), ClTypeKind::Member(values)) => {
             range_to_member(*range, values)
         }
+        (ClTypeKind::Member(values), _) => member_to_type(arena, values, sup),
         (ClTypeKind::Union(subs), _) => {
             combine_all(subs.iter().map(|id| subtype_inner(arena, *id, sup, cache)))
         }

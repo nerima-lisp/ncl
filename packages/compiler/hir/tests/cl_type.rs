@@ -20,6 +20,8 @@ use ncl_hir::ids::{CompilationUnitId, FormId, SymbolId, TypeId, TypeSpecConstId}
 
 #[path = "cl_type/numeric.rs"]
 mod numeric;
+#[path = "cl_type/relation_edges.rs"]
+mod relation_edges;
 #[path = "cl_type/relations.rs"]
 mod relations;
 

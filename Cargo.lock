@@ -174,6 +174,7 @@ dependencies = [
  "ncl-lib-streams",
  "ncl-lib-strings",
  "ncl-object",
+ "ncl-packages",
  "ncl-printer",
  "ncl-types",
 ]

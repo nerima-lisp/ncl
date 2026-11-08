@@ -7,9 +7,13 @@ fn echo_condition_handler(
     _runtime: std::ptr::NonNull<()>,
     _context: &mut ThreadContext,
     handler: Word,
-    _arguments: &[Word],
+    arguments: &[Word],
 ) -> Result<Word, ObjectError> {
-    Ok(handler)
+    if arguments.is_empty() {
+        Ok(handler)
+    } else {
+        Err(ObjectError::Layout)
+    }
 }
 
 #[test]
@@ -46,7 +50,7 @@ fn pending_error_payloads_keep_source_flags_in_sync() {
         Err(ObjectError::Layout)
     );
     let mut runtime_marker = ();
-    context.set_evaluator_runtime(&mut runtime_marker);
+    context.set_evaluator_runtime(std::ptr::addr_of_mut!(runtime_marker));
     assert_eq!(context.invoke_condition_handler(handler, &[]), Ok(handler));
     context.clear_evaluator_runtime();
 }
@@ -93,10 +97,10 @@ fn taking_pending_runtime_errors_drains_all_three_sources() -> Result<(), Object
     let mut context = ThreadContext::new();
     context.register(&runtime)?;
     let common_lisp_user = runtime
-        .find_package(&mut context, "COMMON-LISP-USER")
+        .find_package(&context, "COMMON-LISP-USER")
         .ok_or(ObjectError::Layout)?;
     let common_lisp = runtime
-        .find_package(&mut context, "COMMON-LISP")
+        .find_package(&context, "COMMON-LISP")
         .ok_or(ObjectError::Layout)?;
     let use_list = crate::object_access::get(
         &mut context,

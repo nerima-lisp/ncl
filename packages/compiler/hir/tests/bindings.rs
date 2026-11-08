@@ -358,7 +358,8 @@ fn control_flow_requires_one_terminator_and_local_successors() -> Result<(), Box
 }
 
 #[test]
-fn completed_control_flow_exposes_entry_blocks_and_terminators() -> Result<(), Box<dyn Error>> {
+fn completed_control_flow_exposes_dominators_for_reachable_and_unreachable_blocks()
+-> Result<(), Box<dyn Error>> {
     let owner = form(5);
     let mut nodes = NodeArena::new(owner);
     let function = function_node(owner, &mut nodes)?;
@@ -369,6 +370,7 @@ fn completed_control_flow_exposes_entry_blocks_and_terminators() -> Result<(), B
     let entry = builder.create_block(function)?;
     let if_true = builder.create_block(function)?;
     let if_false = builder.create_block(function)?;
+    let unreachable = builder.create_block(function)?;
     builder.append_operation(entry, operation)?;
     builder.set_terminator(
         entry,
@@ -390,14 +392,36 @@ fn completed_control_flow_exposes_entry_blocks_and_terminators() -> Result<(), B
             values: vec![operation],
         },
     )?;
+    builder.set_terminator(unreachable, Terminator::Unreachable)?;
     let graph = builder.finish()?;
     let flow = graph.function(function);
     assert!(flow.is_some());
     if let Some(flow) = flow {
         assert_eq!(flow.function(), function);
         assert_eq!(flow.entry(), entry);
-        assert_eq!(flow.blocks(), &[entry, if_true, if_false]);
+        assert_eq!(flow.blocks(), &[entry, if_true, if_false, unreachable]);
     }
+    // The HIR CFG contract defines dominance for data-flow analysis (docs/src/design/hir.md).
+    let Some(dominators) = graph.dominators(function) else {
+        return Err("missing dominator sets".into());
+    };
+    assert!(matches!(
+        dominators.get(&entry),
+        Some(blocks) if blocks.len() == 1 && blocks.contains(&entry)
+    ));
+    assert!(matches!(
+        dominators.get(&if_true),
+        Some(blocks) if blocks.len() == 2 && blocks.contains(&entry) && blocks.contains(&if_true)
+    ));
+    assert!(matches!(
+        dominators.get(&if_false),
+        Some(blocks) if blocks.len() == 2 && blocks.contains(&entry) && blocks.contains(&if_false)
+    ));
+    assert!(matches!(
+        dominators.get(&unreachable),
+        Some(blocks) if blocks.len() == 1 && blocks.contains(&unreachable)
+    ));
+    assert_eq!(graph.dominators(condition), None);
     assert_eq!(graph.functions().len(), 1);
     let block = graph.block(entry);
     assert!(block.is_some());

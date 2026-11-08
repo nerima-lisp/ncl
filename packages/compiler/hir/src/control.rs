@@ -1,5 +1,9 @@
 //! Structured non-local exits and per-form control-flow graphs.
 
+#[path = "control/dominance.rs"]
+mod dominance;
+
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -135,6 +139,16 @@ impl ControlFlowGraph {
     #[must_use]
     pub fn functions(&self) -> &[FunctionFlow] {
         &self.functions
+    }
+
+    /// Returns the dominator set for every block in `function`'s control flow.
+    ///
+    /// Unreachable blocks are dominated only by themselves. Returns `None` if
+    /// `function` has no registered control-flow graph.
+    #[must_use]
+    pub fn dominators(&self, function: NodeId) -> Option<HashMap<BlockId, HashSet<BlockId>>> {
+        let flow = self.function(function)?;
+        Some(dominance::compute(self, flow))
     }
 }
 

@@ -1,5 +1,8 @@
 use ncl_compiler_front::hir_builder::{HirBuildError, UnsupportedHirForm};
-use ncl_hir::NodeKind;
+use ncl_hir::{
+    BindingError, ClTypeError, ControlError, FormError, IdError, NodeKind,
+    OptimizationQualityError, SymbolError,
+};
 
 use super::common::{context, source_origin};
 
@@ -94,5 +97,45 @@ fn flet_return_from_keeps_its_enclosing_block_target_in_hir()
     form.verify(builder.symbols())?;
     // CLHS BLOCK permits RETURN-FROM from an invoked FLET function in its dynamic extent.
     // https://www.lispworks.com/documentation/HyperSpec/Body/s_block.htm
+    Ok(())
+}
+
+#[test]
+fn source_errors_preserve_their_layer_when_mapped_to_the_front_bridge()
+-> Result<(), Box<dyn std::error::Error>> {
+    let index = usize::try_from(u64::from(u32::MAX) + 1)?;
+    let id_error = IdError::IndexOverflow { index };
+
+    assert_eq!(
+        HirBuildError::from(FormError::InvalidFunctionSignature),
+        HirBuildError::Form(FormError::InvalidFunctionSignature)
+    );
+    assert_eq!(
+        HirBuildError::from(SymbolError::InvalidIdentityShape),
+        HirBuildError::Symbol(SymbolError::InvalidIdentityShape)
+    );
+    assert_eq!(
+        HirBuildError::from(BindingError::Id(id_error)),
+        HirBuildError::Binding(BindingError::Id(id_error))
+    );
+    assert_eq!(
+        HirBuildError::from(ControlError::Id(id_error)),
+        HirBuildError::Control(ControlError::Id(id_error))
+    );
+    assert_eq!(
+        HirBuildError::from(ClTypeError::Id(id_error)),
+        HirBuildError::Type(ClTypeError::Id(id_error))
+    );
+    assert_eq!(
+        HirBuildError::from(OptimizationQualityError::OutOfRange(4)),
+        HirBuildError::Policy(OptimizationQualityError::OutOfRange(4))
+    );
+    assert_eq!(HirBuildError::from(id_error), HirBuildError::Id(id_error));
+
+    let displayed = HirBuildError::Unrepresentable(UnsupportedHirForm::UnknownTag);
+    assert_eq!(
+        displayed.to_string(),
+        "front-to-HIR bridge failed: Unrepresentable(UnknownTag)"
+    );
     Ok(())
 }

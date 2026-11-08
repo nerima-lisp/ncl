@@ -479,6 +479,9 @@ impl Drop for Runtime {
     }
 }
 #[cfg(test)]
+#[path = "tests/condition_conversion.rs"]
+mod condition_conversion_tests;
+#[cfg(test)]
 mod tests_runtime;
 #[cfg(test)]
 mod tests_uninterned_symbols;

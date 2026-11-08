@@ -109,3 +109,7 @@ mod tests {
         assert!(bytes.as_fixnum().is_some_and(|value| value >= 0));
     }
 }
+
+#[cfg(test)]
+#[path = "tests/optimization.rs"]
+mod coverage_tests;

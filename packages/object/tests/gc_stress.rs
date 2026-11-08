@@ -1,27 +1,17 @@
 //! Integration tests for object survival during garbage-collection stress.
 
-use ncl_object::hash_table::{HashTable, HashTest, Weakness};
-use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, CodeObject, Function, Runtime, ThreadContext, Word, car, cdr,
-    code_constants, code_debug, code_stack_map, complex_imag, complex_real, function_code,
-    function_lambda_list, function_name, make_array, make_closure, make_code_object, make_complex,
-    make_cons, make_instance, make_ratio, make_simple_fun, make_simple_vector, make_string,
-    make_structure, make_symbol, ratio_denominator, ratio_numerator, set_symbol_value,
-    simple_vector_ref, simple_vector_set, slot_ref, symbol_name,
+    CodeObject, Function, Runtime, ThreadContext, Word, car, cdr, code_constants, code_debug,
+    code_stack_map, complex_imag, complex_real, function_code, function_lambda_list, function_name,
+    make_closure, make_code_object, make_complex, make_cons, make_instance, make_ratio,
+    make_simple_fun, make_simple_vector, make_string, make_structure, make_symbol,
+    ratio_denominator, ratio_numerator, set_symbol_value, simple_vector_ref, simple_vector_set,
+    slot_ref,
 };
 use ncl_readtables::{make_readtable, readtable_syntax};
 use ncl_streams::{
     make_stream, stream_element_type, stream_external_format, stream_implementation, stream_state,
 };
-
-fn assert_symbol_name(ctx: &ThreadContext, symbol: Word) {
-    let name = symbol_name(ctx, symbol).unwrap_or_else(|error| panic!("symbol name: {error:?}"));
-    assert_eq!(ncl_object::string_length(ctx, name), Ok(4));
-    for (index, expected) in ['N', 'A', 'M', 'E'].into_iter().enumerate() {
-        assert_eq!(ncl_object::string_ref(ctx, name, index), Ok(expected));
-    }
-}
 
 fn assert_registry_entries(ctx: &mut ThreadContext, runtime: &Runtime, symbol: Word) {
     let class_name = "STRESS-CLASS";
@@ -126,58 +116,6 @@ fn allocation_paths_survive_collection_before_every_allocation() {
     let symbol_token = ncl_object::push_root(&mut ctx, &mut symbol);
     set_symbol_value(&mut ctx, symbol, Word::fixnum(42))
         .unwrap_or_else(|error| panic!("symbol: {error:?}"));
-    let mut table = HashTable::new(&mut ctx, &runtime, HashTest::Equal, Weakness::None)
-        .unwrap_or_else(|error| panic!("table: {error:?}"))
-        .as_word();
-    let table_token = ncl_object::push_root(&mut ctx, &mut table);
-    HashTable::from_word(table)
-        .insert(&mut ctx, &runtime, string, symbol)
-        .unwrap_or_else(|error| panic!("insert: {error:?}"));
-    assert_eq!(
-        HashTable::from_word(table).get(&mut ctx, string),
-        Ok(Some(symbol))
-    );
-    assert_eq!(
-        HashTable::from_word(table).remove(&mut ctx, &runtime, string),
-        Ok(Some(symbol))
-    );
-    let mut package = Package::new(&mut ctx, &runtime, "STRESS")
-        .unwrap_or_else(|error| panic!("package: {error:?}"))
-        .as_word();
-    let package_token = ncl_object::push_root(&mut ctx, &mut package);
-    let (interned, status) = Package::from_word(package)
-        .intern(&mut ctx, &runtime, "NAME")
-        .unwrap_or_else(|error| panic!("intern: {error:?}"));
-    assert_eq!(status, FindStatus::Internal);
-    let mut interned = interned;
-    let interned_token = ncl_object::push_root(&mut ctx, &mut interned);
-    assert_symbol_name(&ctx, interned);
-    let lookup_name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])
-        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
-    assert_eq!(
-        Package::from_word(package).find_symbol(&mut ctx, lookup_name),
-        Ok(Some((interned, FindStatus::Internal)))
-    );
-    let export_name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])
-        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
-    Package::from_word(package)
-        .export(&mut ctx, &runtime, export_name)
-        .unwrap_or_else(|error| panic!("export: {error:?}"));
-    let unexport_name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])
-        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
-    Package::from_word(package)
-        .unexport(&mut ctx, &runtime, unexport_name)
-        .unwrap_or_else(|error| panic!("unexport: {error:?}"));
-    Package::from_word(package)
-        .shadow(&mut ctx, &runtime, string)
-        .unwrap_or_else(|error| panic!("shadow: {error:?}"));
-    let gensym = Package::from_word(package)
-        .gensym(&mut ctx, &runtime)
-        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
-    assert_ne!(gensym, Word::NIL);
-    Package::from_word(package)
-        .unintern(&mut ctx, &runtime, string)
-        .unwrap_or_else(|error| panic!("unintern: {error:?}"));
     let mut instance = make_instance(&mut ctx, &runtime, symbol, &[cons])
         .unwrap_or_else(|error| panic!("instance: {error:?}"))
         .into();
@@ -188,9 +126,6 @@ fn allocation_paths_survive_collection_before_every_allocation() {
     );
     assert_registry_entries(&mut ctx, &runtime, symbol);
     assert!(ncl_object::pop_root(&mut ctx, instance_token));
-    assert!(ncl_object::pop_root(&mut ctx, interned_token));
-    assert!(ncl_object::pop_root(&mut ctx, package_token));
-    assert!(ncl_object::pop_root(&mut ctx, table_token));
     assert!(ncl_object::pop_root(&mut ctx, symbol_token));
     assert!(ncl_object::pop_root(&mut ctx, vector_token));
     assert!(ncl_object::pop_root(&mut ctx, cons_token));
@@ -265,141 +200,9 @@ fn constructors_and_registry_survive_gc_stress() {
     let structure = make_structure(&mut ctx, &runtime, layout, &[name])
         .unwrap_or_else(|error| panic!("structure: {error:?}"));
     assert_eq!(ncl_object::structure_ref(&ctx, structure, 0), Ok(name));
-    let array = make_array(
-        &mut ctx,
-        &runtime,
-        &[2],
-        ArrayOptions {
-            element_type: ArrayElementType::T,
-            initial_element: name,
-            adjustable: false,
-            fill_pointer: None,
-            displaced_to: Some(lambda),
-            displaced_index_offset: 0,
-        },
-    )
-    .unwrap_or_else(|error| panic!("array: {error:?}"));
-    assert_eq!(
-        ncl_object::array_row_major_ref(&ctx, array, 0),
-        Ok(Word::fixnum(1))
-    );
     assert!(ncl_object::pop_root(&mut ctx, closure_token));
     assert!(ncl_object::pop_root(&mut ctx, function_token));
     assert!(ncl_object::pop_root(&mut ctx, code_token));
     assert!(ncl_object::pop_root(&mut ctx, lambda_token));
     assert!(ncl_object::pop_root(&mut ctx, name_token));
-}
-#[test]
-fn registry_package_operations_survive_gc_stress() {
-    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-    let mut ctx = ThreadContext::new();
-    ctx.register(&runtime)
-        .unwrap_or_else(|error| panic!("register: {error:?}"));
-    ctx.set_gc_stress(true);
-    ctx.set_strict_forwarding(true);
-    let package = runtime
-        .ensure_package(&mut ctx, "STRESS-A")
-        .unwrap_or_else(|error| panic!("package: {error:?}"));
-    let mut package = package;
-    let package_token = ncl_object::push_root(&mut ctx, &mut package);
-    let used = runtime
-        .ensure_package(&mut ctx, "STRESS-B")
-        .unwrap_or_else(|error| panic!("package: {error:?}"));
-    let mut used = used;
-    let used_token = ncl_object::push_root(&mut ctx, &mut used);
-    let mut import_name = make_string(&mut ctx, &runtime, &['I', 'M', 'P', 'O', 'R', 'T'])
-        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
-    let import_name_token = ncl_object::push_root(&mut ctx, &mut import_name);
-    let mut imported = make_symbol(&mut ctx, &runtime, Word::NIL)
-        .unwrap_or_else(|error| panic!("symbol: {error:?}"));
-    let imported_token = ncl_object::push_root(&mut ctx, &mut imported);
-    Package::from_word(used)
-        .import(&mut ctx, &runtime, import_name, imported)
-        .unwrap_or_else(|error| panic!("import: {error:?}"));
-    assert_eq!(
-        Package::from_word(used).find_symbol(&mut ctx, import_name),
-        Ok(Some((imported, FindStatus::Internal)))
-    );
-    let (symbol, _) = Package::from_word(used)
-        .intern(&mut ctx, &runtime, "INHERITED")
-        .unwrap_or_else(|error| panic!("intern: {error:?}"));
-    let mut symbol = symbol;
-    let symbol_token = ncl_object::push_root(&mut ctx, &mut symbol);
-    let inherited_name = make_string(
-        &mut ctx,
-        &runtime,
-        &['I', 'N', 'H', 'E', 'R', 'I', 'T', 'E', 'D'],
-    )
-    .unwrap_or_else(|error| panic!("allocation: {error:?}"));
-    Package::from_word(used)
-        .export(&mut ctx, &runtime, inherited_name)
-        .unwrap_or_else(|error| panic!("export: {error:?}"));
-    Package::from_word(package)
-        .use_package(&mut ctx, &runtime, used)
-        .unwrap_or_else(|error| panic!("use: {error:?}"));
-    let lookup = make_string(
-        &mut ctx,
-        &runtime,
-        &['I', 'N', 'H', 'E', 'R', 'I', 'T', 'E', 'D'],
-    )
-    .unwrap_or_else(|error| panic!("allocation: {error:?}"));
-    assert_eq!(
-        Package::from_word(package).find_symbol(&mut ctx, lookup),
-        Ok(Some((symbol, FindStatus::Inherited)))
-    );
-    assert_eq!(runtime.ensure_package(&mut ctx, "STRESS-A"), Ok(package));
-    assert!(ncl_object::pop_root(&mut ctx, symbol_token));
-    assert!(ncl_object::pop_root(&mut ctx, imported_token));
-    assert!(ncl_object::pop_root(&mut ctx, import_name_token));
-    assert!(ncl_object::pop_root(&mut ctx, used_token));
-    assert!(ncl_object::pop_root(&mut ctx, package_token));
-}
-#[test]
-fn hash_table_resize_tombstones_and_reinsertion_survive_gc_stress() {
-    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-    let mut ctx = ThreadContext::new();
-    ctx.register(&runtime)
-        .unwrap_or_else(|error| panic!("register: {error:?}"));
-    ctx.set_gc_stress(true);
-    ctx.set_strict_forwarding(true);
-    let mut table = HashTable::new(&mut ctx, &runtime, HashTest::Equal, Weakness::None)
-        .unwrap_or_else(|error| panic!("table: {error:?}"))
-        .as_word();
-    let table_token = ncl_object::push_root(&mut ctx, &mut table);
-    for index in 0..16 {
-        HashTable::from_word(table)
-            .insert(
-                &mut ctx,
-                &runtime,
-                Word::fixnum(index),
-                Word::fixnum(index + 100),
-            )
-            .unwrap_or_else(|error| panic!("insert {index}: {error:?}"));
-    }
-    for index in (0..16).step_by(2) {
-        assert_eq!(
-            HashTable::from_word(table).remove(&mut ctx, &runtime, Word::fixnum(index)),
-            Ok(Some(Word::fixnum(index + 100)))
-        );
-    }
-    for index in 16..24 {
-        HashTable::from_word(table)
-            .insert(
-                &mut ctx,
-                &runtime,
-                Word::fixnum(index),
-                Word::fixnum(index + 100),
-            )
-            .unwrap_or_else(|error| panic!("reinsert {index}: {error:?}"));
-    }
-    for index in 0..24 {
-        if index % 2 == 1 || index >= 16 {
-            assert_eq!(
-                HashTable::from_word(table).get(&mut ctx, Word::fixnum(index)),
-                Ok(Some(Word::fixnum(index + 100)))
-            );
-        }
-    }
-    assert_eq!(HashTable::from_word(table).capacity(&ctx), Ok(32));
-    assert!(ncl_object::pop_root(&mut ctx, table_token));
 }

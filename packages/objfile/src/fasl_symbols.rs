@@ -62,9 +62,7 @@ pub fn encode(symbols: &[FaslSymbol]) -> Result<Vec<u8>, FaslError> {
         section_size = section_size
             .checked_add(record_size)
             .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
-        if section_size > MAX_SECTION_BYTES {
-            return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
-        }
+        check_section_size(section_size, None)?;
     }
 
     let count = u32::try_from(symbols.len())
@@ -86,12 +84,7 @@ pub fn encode(symbols: &[FaslSymbol]) -> Result<Vec<u8>, FaslError> {
 
 /// Decodes the canonical symbol section. `base_offset` is its file offset.
 pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslSymbol>, FaslError> {
-    if bytes.len() > MAX_SECTION_BYTES {
-        return Err(FaslError::at(
-            FaslRejectReason::ResourceLimitExceeded,
-            base_offset,
-        ));
-    }
+    check_section_size(bytes.len(), Some(base_offset))?;
     let mut reader = SectionReader::new(bytes, base_offset, FaslRejectReason::InvalidReference);
     let count_offset = reader.absolute_position();
     let count = usize::try_from(reader.u32()?)
@@ -193,6 +186,16 @@ const fn check_record_count(count: usize) -> Result<(), FaslError> {
     Ok(())
 }
 
+fn check_section_size(size: usize, offset: Option<usize>) -> Result<(), FaslError> {
+    if size <= MAX_SECTION_BYTES {
+        return Ok(());
+    }
+    Err(offset.map_or_else(
+        || FaslError::new(FaslRejectReason::ResourceLimitExceeded),
+        |offset| FaslError::at(FaslRejectReason::ResourceLimitExceeded, offset),
+    ))
+}
+
 fn write_text(output: &mut SectionWriter, value: &str) -> Result<(), FaslError> {
     let length = u32::try_from(value.len())
         .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
@@ -243,6 +246,20 @@ mod tests {
             package: package.to_owned(),
             name: name.to_owned(),
         }
+    }
+
+    #[test]
+    fn symbol_section_size_boundary_preserves_encoder_and_decoder_errors() {
+        assert_eq!(check_section_size(MAX_SECTION_BYTES, None), Ok(()));
+        assert_eq!(
+            check_section_size(MAX_SECTION_BYTES + 1, None),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+        );
+        assert_eq!(check_section_size(MAX_SECTION_BYTES, Some(320)), Ok(()));
+        assert_eq!(
+            check_section_size(MAX_SECTION_BYTES + 1, Some(320)),
+            Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 320))
+        );
     }
 
     #[test]
@@ -383,7 +400,15 @@ mod tests {
     #[test]
     fn symbol_decoder_rejects_unknown_tags_invalid_text_counts_and_trailing_bytes() {
         let valid = must_succeed(encode(&[symbol(0, SymbolBindingKind::Lisp, "P", "A")]));
-
+        for prefix_end in 0..valid.len() {
+            assert!(matches!(
+                decode(&valid[..prefix_end], 320),
+                Err(FaslError {
+                    reason: FaslRejectReason::InvalidReference,
+                    ..
+                })
+            ));
+        }
         let mut unknown_kind = valid.clone();
         unknown_kind[8..12].copy_from_slice(&3_u32.to_le_bytes());
         assert_eq!(

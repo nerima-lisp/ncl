@@ -137,7 +137,7 @@ pub fn encode(groups: &[FaslConstantGroup]) -> Result<Vec<u8>, FaslError> {
 }
 
 pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslConstantGroup>, FaslError> {
-    if bytes.len() > MAX_SECTION_BYTES {
+    if section_size_exceeds_limit(bytes.len()) {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
             base_offset,
@@ -186,10 +186,14 @@ fn checked_section_growth(current: usize, added: usize) -> Result<usize, FaslErr
     let size = current
         .checked_add(added)
         .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
-    if size > MAX_SECTION_BYTES {
+    if section_size_exceeds_limit(size) {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
     Ok(size)
+}
+
+const fn section_size_exceeds_limit(size: usize) -> bool {
+    size > MAX_SECTION_BYTES
 }
 
 const fn check_record_count(count: usize) -> Result<(), FaslError> {

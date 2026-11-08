@@ -680,6 +680,35 @@ fn package_nickname_intern_and_import_update_metadata() {
     assert_eq!(package.remove_nickname(&mut ctx, nickname), Ok(false));
     assert_eq!(package.nicknames(&ctx), Ok(Word::NIL));
 
+    let other_target = Package::new(&mut ctx, &runtime, "LOCAL-OTHER")
+        .unwrap_or_else(|error| panic!("other target: {error:?}"));
+    let local_target = Package::new(&mut ctx, &runtime, "LOCAL-TARGET")
+        .unwrap_or_else(|error| panic!("local target: {error:?}"));
+    let other_nickname = string(&mut ctx, &runtime, "OTHER");
+    let local_nickname = string(&mut ctx, &runtime, "LOCAL");
+    let other_entry =
+        ncl_object::make_cons(&mut ctx, &runtime, other_nickname, other_target.as_word())
+            .unwrap_or_else(|error| panic!("other local nickname: {error:?}"));
+    let local_entry =
+        ncl_object::make_cons(&mut ctx, &runtime, local_nickname, local_target.as_word())
+            .unwrap_or_else(|error| panic!("local nickname: {error:?}"));
+    let local_tail = ncl_object::make_cons(&mut ctx, &runtime, local_entry, Word::NIL)
+        .unwrap_or_else(|error| panic!("local nickname tail: {error:?}"));
+    let local_entries = ncl_object::make_cons(&mut ctx, &runtime, other_entry, local_tail)
+        .unwrap_or_else(|error| panic!("local nickname entries: {error:?}"));
+    package
+        .set_local_nicknames(&mut ctx, local_entries)
+        .unwrap_or_else(|error| panic!("set local nicknames: {error:?}"));
+    assert_eq!(
+        package.resolve_local_nickname(&ctx, ncl_object::StringObject::from_word(local_nickname)),
+        Ok(Some(local_target))
+    );
+    let missing_nickname = string(&mut ctx, &runtime, "MISSING");
+    assert_eq!(
+        package.resolve_local_nickname(&ctx, ncl_object::StringObject::from_word(missing_nickname)),
+        Ok(None)
+    );
+
     let name = string(&mut ctx, &runtime, "IMPORTED");
     let uninterned = ncl_object::make_symbol(&mut ctx, &runtime, name)
         .unwrap_or_else(|error| panic!("uninterned symbol: {error:?}"));

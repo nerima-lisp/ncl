@@ -386,7 +386,21 @@ mod tests {
             bytes[range].copy_from_slice(&value.to_le_bytes());
             assert_bad(&bytes, 500, &layout, offset);
         }
+        let mut invalid_wire_id = valid.clone();
+        invalid_wire_id[4..8].copy_from_slice(&1_u32.to_le_bytes());
+        assert_bad(&invalid_wire_id, 500, &layout, 504);
         assert_bad(&valid, 500, &[FaslCodeLayout { id: 1, ..layout[0] }], 504);
+        for (range, offset) in [(0..4, 500), (8..12, 508)] {
+            let mut excessive = valid.clone();
+            excessive[range].copy_from_slice(&1_048_577_u32.to_le_bytes());
+            assert_eq!(
+                decode_section(&excessive, 500, &layout),
+                Err(FaslError::at(
+                    FaslRejectReason::ResourceLimitExceeded,
+                    offset
+                ))
+            );
+        }
     }
 
     #[test]
@@ -419,13 +433,15 @@ mod tests {
         ])]);
         unsorted[33..37].copy_from_slice(&6_u32.to_le_bytes());
         assert_bad(&unsorted, 500, &layout, 533);
-        assert!(matches!(
-            decode_section(&valid[..28], 500, &layout),
-            Err(FaslError {
-                reason: FaslRejectReason::InvalidSafepointMap,
-                ..
-            })
-        ));
+        for end in 0..valid.len() {
+            assert!(matches!(
+                decode_section(&valid[..end], 500, &layout),
+                Err(FaslError {
+                    reason: FaslRejectReason::InvalidSafepointMap,
+                    ..
+                })
+            ));
+        }
     }
 
     #[test]
@@ -463,5 +479,22 @@ mod tests {
         ] {
             assert_eq!(encode_section(&[group(vec![bad])]), invalid);
         }
+        let groups = vec![group(vec![]); MAX_RECORDS + 1];
+        assert_eq!(
+            encode_section(&groups),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+        );
+        drop(groups);
+
+        let empty = SafepointEntry {
+            slot_bitmap: Vec::new(),
+            register_ids: Vec::new(),
+            ..entry()
+        };
+        let entries = vec![empty; MAX_RECORDS + 1];
+        assert_eq!(
+            validate_entries(&entries),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+        );
     }
 }

@@ -158,6 +158,14 @@ fn numeric_ranges_keep_open_and_closed_bounds_and_three_way_results() -> Result<
     assert_eq!(arena.subtype(inner_id, integer)?, SubtypeRelation::Yes);
     assert_eq!(arena.subtype(inner_id, float)?, SubtypeRelation::No);
     assert_eq!(arena.subtype(integer, inner_id)?, SubtypeRelation::No);
+    let opaque_member = arena.member(vec![MemberValue::OpaqueObject {
+        owner: CompilationUnitId::new(0),
+        index: 0,
+    }])?;
+    assert_eq!(
+        arena.subtype(opaque_member, outer_id)?,
+        SubtypeRelation::Unknown
+    );
     assert_eq!(arena.subtype(inner_id, rational)?, SubtypeRelation::Yes);
     Ok(())
 }

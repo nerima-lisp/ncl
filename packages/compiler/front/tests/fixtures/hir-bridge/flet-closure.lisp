@@ -1,2 +1,2 @@
-(flet ((identity (value) value))
-  (funcall (lambda (argument) (identity argument)) 7))
+(flet ((local-callable (value) value))
+  (funcall (funcall (lambda () #'local-callable)) 7))

@@ -499,15 +499,25 @@ class CompileBenchmarkTests(unittest.TestCase):
         self.assertEqual(report_with_missing_profile_data["status"], "partial")
         self.assertEqual(report_with_missing_rss["status"], "partial")
 
-    def test_partial_report_is_written_and_fails_the_runner(self):
+    def test_partial_report_is_written_and_runner_succeeds(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "compile.json"
             with patch("compile_benchmark.run_benchmark", return_value={"status": "partial"}):
                 status = compile_benchmark_main([
                     "--ncl", "ncl", "--sbcl", "sbcl", "--mode", "light", "--output", str(output)
                 ])
-            self.assertEqual(status, 1)
+            self.assertEqual(status, 0)
             self.assertEqual(output.read_text(encoding="utf-8"), '{\n  "status": "partial"\n}\n')
+
+    def test_error_report_is_written_and_runner_fails(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "compile.json"
+            with patch("compile_benchmark.run_benchmark", return_value={"status": "error"}):
+                status = compile_benchmark_main([
+                    "--ncl", "ncl", "--sbcl", "sbcl", "--mode", "light", "--output", str(output)
+                ])
+            self.assertEqual(status, 1)
+            self.assertEqual(output.read_text(encoding="utf-8"), '{\n  "status": "error"\n}\n')
 
 
 class SupervisorTests(unittest.TestCase):

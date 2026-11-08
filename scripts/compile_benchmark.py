@@ -84,7 +84,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write(rendered)
     else:
         _write_report(args.output, report)
-    return 0 if report["status"] == "complete" else 1
+    return 0 if report["status"] in ("complete", "partial") else 1
 
 
 if __name__ == "__main__":

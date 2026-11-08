@@ -1,6 +1,12 @@
 #![allow(missing_docs)]
 
-use std::process::{Command, Output};
+use std::{
+    io::Write,
+    process::{Command, Output, Stdio},
+};
+
+// CLHS Function +, section 12.1.1, defines the result of this numeric sum.
+const ADDITION_OUTPUT: &str = "3\n";
 
 fn profiler() -> Command {
     Command::new(env!("CARGO_BIN_EXE_ncl-profiler"))
@@ -31,7 +37,7 @@ fn help_and_version_describe_the_instrumented_runner() {
 fn eval_with_diagnostics_returns_a_value_and_per_pass_metrics() {
     let result = output(profiler().args(["--opt-diagnostics", "--eval", "(+ 1 2)"]));
     assert!(result.status.success(), "{result:?}");
-    assert_eq!(String::from_utf8_lossy(&result.stdout), "3\n");
+    assert_eq!(String::from_utf8_lossy(&result.stdout), ADDITION_OUTPUT);
 
     let stderr = String::from_utf8_lossy(&result.stderr);
     let pass_lines = stderr
@@ -44,6 +50,32 @@ fn eval_with_diagnostics_returns_a_value_and_per_pass_metrics() {
             .iter()
             .all(|line| { line.contains("elapsed_ns=") && line.contains("allocated_bytes=") })
     );
+}
+
+#[test]
+fn valid_optimization_modes_preserve_the_eval_result() {
+    for mode in ["default", "off"] {
+        let option = format!("--optimization={mode}");
+        let result = output(profiler().args([option.as_str(), "--eval", "(+ 1 2)"]));
+
+        assert!(result.status.success(), "mode={mode}: {result:?}");
+        assert_eq!(String::from_utf8_lossy(&result.stdout), ADDITION_OUTPUT);
+        assert!(result.stderr.is_empty(), "mode={mode}: {:?}", result.stderr);
+    }
+}
+
+#[test]
+fn optimization_off_with_diagnostics_keeps_the_result_without_pass_events() {
+    let result = output(profiler().args([
+        "--opt-diagnostics",
+        "--optimization=off",
+        "--eval",
+        "(+ 1 2)",
+    ]));
+
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(String::from_utf8_lossy(&result.stdout), ADDITION_OUTPUT);
+    assert!(result.stderr.is_empty());
 }
 
 #[test]
@@ -64,6 +96,131 @@ fn script_mode_executes_the_file_without_printing_its_result() {
         String::from_utf8_lossy(&result.stdout),
         "profiler-script-ran\n"
     );
+}
+
+#[test]
+fn invalid_optimization_mode_reports_the_mode_error() {
+    let result = output(profiler().args(["--optimization=fast", "--eval", "(+ 1 2)"]));
+
+    assert_eq!(result.status.code(), Some(2));
+    assert!(result.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&result.stderr),
+        "ncl-profiler: unsupported optimization mode \"fast\"\n"
+    );
+}
+
+#[test]
+fn eval_without_source_reports_the_missing_argument() {
+    let result = output(profiler().arg("--eval"));
+
+    assert_eq!(result.status.code(), Some(2));
+    assert!(result.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&result.stderr),
+        "--eval requires a source string\n"
+    );
+}
+
+#[test]
+fn eval_with_extra_source_reports_the_argument_limit() {
+    let result = output(profiler().args(["--eval", "(+ 1 2)", "(+ 3 4)"]));
+
+    assert_eq!(result.status.code(), Some(2));
+    assert!(result.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&result.stderr),
+        "--eval accepts exactly one source string\n"
+    );
+}
+
+#[test]
+fn load_mode_prints_the_loaded_form_result() {
+    let path = std::env::temp_dir().join(format!("ncl-profiler-load-{}.lisp", std::process::id()));
+    std::fs::write(&path, "(+ 1 2)")
+        .unwrap_or_else(|error| panic!("source file creation failed: {error}"));
+    let path = path.to_string_lossy().into_owned();
+
+    let result = output(profiler().args(["--load", &path]));
+    std::fs::remove_file(&path).unwrap_or_else(|error| panic!("source cleanup failed: {error}"));
+
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(String::from_utf8_lossy(&result.stdout), ADDITION_OUTPUT);
+    assert!(result.stderr.is_empty());
+}
+
+#[test]
+fn compile_file_mode_prints_the_compiled_form_result() {
+    let path = std::env::temp_dir().join(format!(
+        "ncl-profiler-compile-file-{}.lisp",
+        std::process::id()
+    ));
+    std::fs::write(&path, "(+ 1 2)")
+        .unwrap_or_else(|error| panic!("source file creation failed: {error}"));
+    let path = path.to_string_lossy().into_owned();
+    let fasl = std::path::Path::new(&path).with_extension("fasl");
+
+    let result = output(profiler().args(["--compile-file", &path]));
+    std::fs::remove_file(&path).unwrap_or_else(|error| panic!("source cleanup failed: {error}"));
+    if fasl.exists() {
+        std::fs::remove_file(&fasl).unwrap_or_else(|error| panic!("FASL cleanup failed: {error}"));
+    }
+
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(String::from_utf8_lossy(&result.stdout), ADDITION_OUTPUT);
+    assert!(result.stderr.is_empty());
+}
+
+#[test]
+fn repl_evaluates_a_complete_multiline_form_before_eof() {
+    let mut command = profiler();
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|error| panic!("failed to start ncl-profiler REPL: {error}"));
+    let Some(mut stdin) = child.stdin.take() else {
+        panic!("REPL stdin is piped");
+    };
+    stdin
+        .write_all(b"(+ 1\n2)\n")
+        .unwrap_or_else(|error| panic!("failed to write REPL input: {error}"));
+    drop(stdin);
+
+    let result = child
+        .wait_with_output()
+        .unwrap_or_else(|error| panic!("failed to collect REPL output: {error}"));
+
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(String::from_utf8_lossy(&result.stdout), ADDITION_OUTPUT);
+    assert_eq!(String::from_utf8_lossy(&result.stderr), "> > > ");
+}
+
+#[test]
+fn invalid_eval_reports_a_runtime_error_without_stdout() {
+    let result = output(profiler().args(["--eval", ")"]));
+
+    assert_eq!(result.status.code(), Some(1));
+    assert!(result.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.starts_with("ncl-profiler: "), "{stderr}");
+    assert!(stderr.len() > "ncl-profiler: \n".len(), "{stderr}");
+}
+
+#[test]
+fn load_missing_file_reports_a_runtime_error_without_stdout() {
+    let path = std::env::temp_dir()
+        .join(format!("ncl-profiler-missing-{}.lisp", std::process::id()))
+        .with_extension("absent.lisp");
+    let path = path.to_string_lossy().into_owned();
+    let result = output(profiler().args(["--load", &path]));
+
+    assert_eq!(result.status.code(), Some(1));
+    assert!(result.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.starts_with("ncl-profiler: "), "{stderr}");
+    assert!(stderr.len() > "ncl-profiler: \n".len(), "{stderr}");
 }
 
 #[test]

@@ -58,10 +58,11 @@ jobs:
       - name: Run cl-bench comparison
         id: cl_bench
         if: always() && steps.build.outcome == 'success' && steps.micro_test.outcome == 'success' && steps.sbcl.outcome == 'success'
-        continue-on-error: true
         shell: bash
         run: |
-          runner_args=(--ncl target/release/ncl --sbcl "$SBCL_BIN" --output results/cl-bench.json)
+          runner_args=(--ncl target/release/ncl --sbcl "$SBCL_BIN" \
+            --ncl-revision "$GITHUB_SHA" --ncl-revision-source GITHUB_SHA \
+            --output results/cl-bench.json)
           if [[ "$BENCH_MODE" == 'light' ]]; then
             runner_args+=(--benchmark FIB --benchmark FRPOLY/FIXNUM \
               --benchmark CLOS/methodcalls --benchmark TAK --benchmark TRTAK)
@@ -109,14 +110,9 @@ jobs:
       - name: Run micro benchmarks
         id: micro_bench
         if: always() && steps.build.outcome == 'success' && steps.micro_test.outcome == 'success' && steps.sbcl.outcome == 'success'
-        continue-on-error: true
         shell: bash
         run: |
-          if [[ "$BENCH_MODE" == 'light' ]]; then
-            runs=1
-          else
-            runs=5
-          fi
+          runs=5
           if python3 scripts/micro_bench.py \
             --ncl target/release/ncl --sbcl "$SBCL_BIN" \
             --runs "$runs" --output results/micro.json \
@@ -162,7 +158,6 @@ jobs:
       - name: Run compile-file corpus
         id: compile_bench
         if: always() && steps.build.outcome == 'success' && steps.micro_test.outcome == 'success' && steps.sbcl.outcome == 'success'
-        continue-on-error: true
         shell: bash
         run: |
           if python3 scripts/compile_benchmark.py \
@@ -212,6 +207,9 @@ jobs:
         if: always()
         env:
           RESULT_DIR: results
+          CL_BENCH_OUTCOME: ${{ steps.cl_bench.outcome }}
+          MICRO_BENCH_OUTCOME: ${{ steps.micro_bench.outcome }}
+          COMPILE_BENCH_OUTCOME: ${{ steps.compile_bench.outcome }}
         run: |
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
@@ -220,6 +218,57 @@ jobs:
 
           root = Path(os.environ["RESULT_DIR"])
           print(f"## Performance benchmarks ({os.environ.get('BENCH_MODE', 'unknown')} mode)\n")
+
+          outcomes = {
+              "cl-bench": os.environ.get("CL_BENCH_OUTCOME", "unknown"),
+              "micro suite": os.environ.get("MICRO_BENCH_OUTCOME", "unknown"),
+              "compile-file": os.environ.get("COMPILE_BENCH_OUTCOME", "unknown"),
+          }
+
+          def row_counts(rows):
+              rows = [row for row in rows if isinstance(row, dict)]
+              failed = sum(row.get("status") == "failed" for row in rows)
+              return failed, len(rows)
+
+          def print_row_summary(report, label):
+              if label == "cl-bench":
+                  rows = []
+                  for run in report.get("runs", []):
+                      if not isinstance(run, dict) or run.get("phase") != "measurement":
+                          continue
+                      benchmarks = run.get("benchmarks", {})
+                      if isinstance(benchmarks, dict):
+                          rows.extend(benchmarks.values())
+                      elif isinstance(benchmarks, list):
+                          rows.extend(benchmarks)
+                  failed, total = row_counts(rows)
+                  disabled = sum(isinstance(row, dict) and row.get("status") == "disabled" for row in rows)
+                  print(f"Measurement rows failed: `{failed}/{total}`; disabled rows: `{disabled}`\n")
+                  return
+              if label == "micro suite":
+                  rows = []
+                  cases = report.get("cases", {})
+                  case_values = cases.values() if isinstance(cases, dict) else cases
+                  for case in case_values:
+                      if not isinstance(case, dict):
+                          continue
+                      engines = case.get("engines", {})
+                      engine_values = engines.values() if isinstance(engines, dict) else engines
+                      for engine in engine_values:
+                          if isinstance(engine, dict):
+                              rows.extend(engine.get("samples", []))
+                  failed, total = row_counts(rows)
+                  print(f"Sample rows failed: `{failed}/{total}`\n")
+                  return
+              runtimes = report.get("runtimes", {})
+              if isinstance(runtimes, dict):
+                  for runtime, details in runtimes.items():
+                      if not isinstance(details, dict):
+                          continue
+                      files = details.get("files", [])
+                      failed, total = row_counts(files)
+                      print(f"{runtime} file rows failed: `{failed}/{total}`")
+                  print()
 
           def print_diagnostic(path, label):
               if not path.is_file():
@@ -236,17 +285,20 @@ jobs:
           for filename, label in (("cl-bench.json", "cl-bench"), ("micro.json", "micro suite"), ("compile.json", "compile-file")):
               path = root / filename
               if not path.is_file():
-                  print(f"| {label} | no report (runner failed or was skipped) |\n")
+                  print(f"### {label}\n")
+                  print(f"Runner: `{outcomes[label]}`; report: `missing`; failed rows: `n/a`\n")
                   print_diagnostic(root / f"{path.stem}-diagnostic.json", label)
                   continue
               try:
                   report = json.loads(path.read_text(encoding="utf-8"))
               except (OSError, json.JSONDecodeError):
-                  print(f"| {label} | report is unreadable |\n")
+                  print(f"### {label}\n")
+                  print(f"Runner: `{outcomes[label]}`; report: `unreadable`; failed rows: `n/a`\n")
                   print_diagnostic(root / f"{path.stem}-diagnostic.json", label)
                   continue
               print(f"### {label}\n")
-              print(f"Status: `{report.get('status', 'unknown')}`\n")
+              print(f"Runner: `report generated` (step outcome: `{outcomes[label]}`); report status: `{report.get('status', 'unknown')}`\n")
+              print_row_summary(report, label)
               if isinstance(report.get("error"), str):
                   error = " ".join(report["error"].split()).replace("`", "'")[:500]
                   print(f"Error: `{error}`\n")

@@ -5,6 +5,9 @@ use crate::{
 };
 use ncl_ir::{Constant, ConstantIndex, Function, Op, OpKind, Terminator, Ty, ValueId};
 
+#[path = "manager/pass_execution_tests.rs"]
+mod pass_execution_tests;
+
 #[derive(Debug)]
 struct TogglePass {
     changed: bool,
@@ -457,5 +460,28 @@ fn conservative_guards_and_manager_edges_are_exercised() {
                 }
             )
             .fixture()
+    );
+}
+
+#[test]
+fn pass_event_display_includes_rollback_allocation_and_error_details() {
+    let event = crate::PassEvent {
+        iteration: 2,
+        function: None,
+        pass: "sccp".to_owned(),
+        changed: None,
+        verification: crate::PassVerification::RolledBack("verifier rejected output".to_owned()),
+        elapsed: std::time::Duration::from_nanos(7),
+        allocated_bytes: Some(64),
+        error: Some("verifier rejected output".to_owned()),
+    };
+
+    assert_eq!(
+        event.to_string(),
+        concat!(
+            "ncl-opt iteration=2 function=- pass=\"sccp\" changed=failed ",
+            "verification=rolled-back elapsed_ns=7 allocated_bytes=64 ",
+            "error=\"verifier rejected output\""
+        )
     );
 }

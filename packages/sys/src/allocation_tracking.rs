@@ -191,7 +191,7 @@ impl Drop for AllocationTrackingScope {
     reason = "test fixtures use constant-valid layouts and non-nested scopes"
 )]
 mod tests {
-    use super::{AllocationTrackingAllocator, AllocationTrackingScope};
+    use super::{AllocationTrackingAllocator, AllocationTrackingError, AllocationTrackingScope};
     use std::alloc::{GlobalAlloc, Layout};
 
     #[test]
@@ -219,6 +219,37 @@ mod tests {
         // SAFETY: `resized` was returned by realloc with this layout.
         unsafe { allocator.dealloc(resized, Layout::from_size_align(16, 8).expect("layout")) };
         assert_eq!(scope.allocated_bytes(), Some(28));
+    }
+
+    #[test]
+    fn second_active_scope_is_rejected_without_stopping_the_first() {
+        let result = std::thread::spawn(|| {
+            let allocator = AllocationTrackingAllocator;
+            allocator.activate();
+            let layout = Layout::from_size_align(8, 8).expect("valid layout");
+            let scope = AllocationTrackingScope::start().expect("scope starts");
+            let second_scope = AllocationTrackingScope::start();
+            let rejected = matches!(
+                second_scope,
+                Err(AllocationTrackingError::ScopeAlreadyActive)
+            );
+            // SAFETY: the layout is valid and the pointer is deallocated below.
+            let pointer = unsafe { allocator.alloc(layout) };
+            let bytes = scope.allocated_bytes();
+            if !pointer.is_null() {
+                // SAFETY: `pointer` was allocated with this allocator and layout.
+                unsafe { allocator.dealloc(pointer, layout) };
+            }
+            (rejected, !pointer.is_null(), bytes)
+        })
+        .join()
+        .expect("tracking worker completes");
+
+        assert_eq!(
+            result,
+            (true, true, Some(8)),
+            "the rejected second scope leaves the original counter active"
+        );
     }
 
     #[test]

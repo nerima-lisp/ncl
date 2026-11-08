@@ -113,7 +113,15 @@ class FakeRunner:
 
 
 class OptimizationBaselineTests(unittest.TestCase):
-    def _run(self, root, *, fail_one_benchmark=False, benchmarks=None):
+    def _run(
+        self,
+        root,
+        *,
+        fail_one_benchmark=False,
+        benchmarks=None,
+        ncl_revision=None,
+        ncl_revision_source=None,
+    ):
         benchmark_names = baseline._select_benchmarks(benchmarks)
         fake_runner = FakeRunner(
             root,
@@ -131,6 +139,8 @@ class OptimizationBaselineTests(unittest.TestCase):
                 pairs=5,
                 sbcl_samples=5,
                 benchmarks=benchmarks,
+                ncl_revision=ncl_revision,
+                ncl_revision_source=ncl_revision_source,
             )
         checkout.assert_called_once_with("cl-bench", root / "cache")
         return report, fake_runner
@@ -141,6 +151,7 @@ class OptimizationBaselineTests(unittest.TestCase):
         self.assertEqual(baseline.SBCL_VERSION, "2.6.10")
         self.assertEqual(arguments.sbcl, "sbcl")
         self.assertIsNone(arguments.ncl_revision)
+        self.assertIsNone(arguments.ncl_revision_source)
         self.assertEqual(arguments.pairs, 5)
         self.assertEqual(arguments.sbcl_samples, 5)
         with self.assertRaises(SystemExit):
@@ -475,20 +486,35 @@ class OptimizationBaselineTests(unittest.TestCase):
                     timeout=baseline.INFO_TIMEOUT,
                 )
 
-    def test_explicit_ncl_revision_is_used_for_external_binary(self):
+    def test_explicit_ncl_revision_source_is_recorded_for_external_binary(self):
         revision = "a" * 40
         with patch.object(baseline, "_timed_command") as timed_command:
-            record = baseline._revision_record(revision)
+            record = baseline._revision_record(revision, "GITHUB_SHA")
 
         timed_command.assert_not_called()
         self.assertEqual(record, {
             "commit": revision,
             "status": "passed",
-            "source": "explicit NCL executable build revision",
+            "source": "GITHUB_SHA",
             "wall_seconds": 0.0,
         })
         with self.assertRaisesRegex(ValueError, "commit SHA"):
             baseline._revision_record("not-a-commit")
+
+    def test_explicit_revision_source_is_present_in_the_report(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            revision = "b" * 40
+            report, runner = self._run(
+                root,
+                benchmarks=["fib"],
+                ncl_revision=revision,
+                ncl_revision_source="GITHUB_SHA",
+            )
+
+        self.assertEqual(report["build_revision"]["commit"], revision)
+        self.assertEqual(report["build_revision"]["source"], "GITHUB_SHA")
+        self.assertEqual(runner.revision_commands, [])
 
 
 if __name__ == "__main__":

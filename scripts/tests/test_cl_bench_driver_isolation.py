@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -449,15 +449,18 @@ class DriverCheckpointEnvironmentTests(unittest.TestCase):
             self.assertEqual(checkpoint.read_text(encoding="utf-8"), "preserve this\n")
 
     def test_checkpoint_environment_is_removed_before_child_launch(self) -> None:
+        child = MagicMock()
+        child.returncode = 0
+        child.communicate.return_value = ("", "")
         with patch.dict(os.environ, {driver_supervisor.CHECKPOINT_ENV: "/tmp/checkpoint.jsonl"}):
             with patch.object(
                 driver_supervisor.subprocess,
-                "run",
-                return_value=subprocess.CompletedProcess(["ncl"], 0, "", ""),
-            ) as run:
+                "Popen",
+                return_value=child,
+            ) as popen:
                 driver_supervisor._run_child(["ncl"], Path("."))
 
-        child_environment = run.call_args.kwargs["env"]
+        child_environment = popen.call_args.kwargs["env"]
         self.assertNotIn(driver_supervisor.CHECKPOINT_ENV, child_environment)
 
 

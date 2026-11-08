@@ -132,12 +132,15 @@ def _timed_command(
     return result, max(0.0, time.perf_counter() - started)
 
 
-def _revision_record(ncl_revision: str | None = None) -> dict[str, Any]:
+def _revision_record(
+    ncl_revision: str | None = None,
+    ncl_revision_source: str | None = None,
+) -> dict[str, Any]:
     if ncl_revision is not None:
         return {
             "commit": _revision_sha(ncl_revision),
             "status": "passed",
-            "source": "explicit NCL executable build revision",
+            "source": ncl_revision_source or "explicit --ncl-revision argument",
             "wall_seconds": 0.0,
         }
     result, wall_seconds = _timed_command(
@@ -245,12 +248,13 @@ def run_baseline(
     sbcl_samples: int = 5,
     benchmarks: Sequence[str] | None = None,
     ncl_revision: str | None = None,
+    ncl_revision_source: str | None = None,
 ) -> dict[str, Any]:
     if pairs < 5 or sbcl_samples < 5:
         raise ValueError("at least 5 samples are required for each runtime comparison")
     ncl_binary = Path(ncl).expanduser().resolve()
     benchmark_names = _select_benchmarks(benchmarks)
-    revision = _revision_record(ncl_revision)
+    revision = _revision_record(ncl_revision, ncl_revision_source)
     ncl_runtime = _runtime_probe([str(ncl_binary), "--version"], cwd=REPO_ROOT)
     sbcl_runtime = _runtime_probe([sbcl, "--version"], cwd=REPO_ROOT)
     sbcl_version = sbcl_runtime["version"] or ""
@@ -342,6 +346,10 @@ def _parser() -> argparse.ArgumentParser:
         type=_revision_sha,
         help="commit SHA used to build --ncl; defaults to the current workspace revision",
     )
+    parser.add_argument(
+        "--ncl-revision-source",
+        help="source used to obtain --ncl-revision, such as GITHUB_SHA",
+    )
     parser.add_argument("--sbcl", default="sbcl", help=f"SBCL {SBCL_VERSION} executable")
     parser.add_argument("--cache-dir", type=Path, default=Path(".cache/conformance"))
     parser.add_argument("--warmups", type=_positive_count, default=1)
@@ -370,6 +378,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             sbcl_samples=args.sbcl_samples,
             benchmarks=args.benchmarks,
             ncl_revision=args.ncl_revision,
+            ncl_revision_source=args.ncl_revision_source,
         )
     except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as error:
         parser.exit(1, f"optimization-baseline: {error}\n")

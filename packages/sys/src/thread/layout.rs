@@ -7,6 +7,10 @@ pub struct ThreadLayout {
     pub tlab_bump: usize,
     /// Offset of the TLAB allocation limit.
     pub tlab_limit: usize,
+    /// Offset of the cons TLAB allocation cursor.
+    pub cons_tlab_bump: usize,
+    /// Offset of the cons TLAB allocation limit.
+    pub cons_tlab_limit: usize,
     /// Offset of the eight-byte safepoint request word read by generated code.
     pub safepoint_request: usize,
     /// Offset of the eight-byte pending interrupt word.
@@ -31,6 +35,8 @@ pub const fn thread_layout() -> ThreadLayout {
     ThreadLayout {
         tlab_bump: std::mem::offset_of!(Thread, tlab_bump),
         tlab_limit: std::mem::offset_of!(Thread, tlab_limit),
+        cons_tlab_bump: std::mem::offset_of!(Thread, cons_tlab_bump),
+        cons_tlab_limit: std::mem::offset_of!(Thread, cons_tlab_limit),
         safepoint_request: std::mem::offset_of!(Thread, safepoint_request),
         pending: std::mem::offset_of!(Thread, pending),
         mv: std::mem::offset_of!(Thread, mv),

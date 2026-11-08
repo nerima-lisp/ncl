@@ -7,7 +7,30 @@ use ncl_hir::{
     CompilationUnitId, FormId, HirFormBuilder, Literal, MultipleValueOperation, NodeKind,
     SourceFiles, SourceOrigins, SymbolTable, Terminator as HirTerminator,
 };
-use ncl_ir::{Constant, OpKind, Prim};
+use ncl_ir::{Constant, Function, OpKind, Prim};
+
+fn assert_source_order_results(function: &Function) {
+    assert!(function.constants.contains(&Constant::T));
+    assert!(function.constants.contains(&Constant::Nil));
+    let cars = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.ops)
+        .filter(|operation| matches!(&operation.kind, OpKind::Prim { op: Prim::Car, .. }))
+        .filter_map(|operation| operation.results.first().map(|(value, _)| *value))
+        .collect::<Vec<_>>();
+    let cdr_count = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.ops)
+        .filter(|operation| matches!(&operation.kind, OpKind::Prim { op: Prim::Cdr, .. }))
+        .count();
+    assert_eq!(cars.len(), 2);
+    assert_eq!(cdr_count, 2);
+    assert!(function.blocks.iter().flat_map(|block| &block.ops).any(
+        |operation| matches!(&operation.kind, OpKind::SetMultipleValues { values } if values == &cars)
+    ));
+}
 
 #[test]
 fn multiple_value_bind_assigns_values_in_source_order() -> Result<(), Box<dyn Error>> {
@@ -96,27 +119,6 @@ fn multiple_value_bind_assigns_values_in_source_order() -> Result<(), Box<dyn Er
 
     // CLHS MULTIPLE-VALUE-BIND assigns each variable its corresponding returned value.
     // https://www.lispworks.com/documentation/HyperSpec/Body/m_multip.htm
-    assert!(lowered.entry.constants.contains(&Constant::T));
-    assert!(lowered.entry.constants.contains(&Constant::Nil));
-    let cars = lowered
-        .entry
-        .blocks
-        .iter()
-        .flat_map(|block| &block.ops)
-        .filter(|operation| matches!(&operation.kind, OpKind::Prim { op: Prim::Car, .. }))
-        .filter_map(|operation| operation.results.first().map(|(value, _)| *value))
-        .collect::<Vec<_>>();
-    let cdr_count = lowered
-        .entry
-        .blocks
-        .iter()
-        .flat_map(|block| &block.ops)
-        .filter(|operation| matches!(&operation.kind, OpKind::Prim { op: Prim::Cdr, .. }))
-        .count();
-    assert_eq!(cars.len(), 2);
-    assert_eq!(cdr_count, 2);
-    assert!(lowered.entry.blocks.iter().flat_map(|block| &block.ops).any(
-        |operation| matches!(&operation.kind, OpKind::SetMultipleValues { values } if values == &cars)
-    ));
+    assert_source_order_results(&lowered.entry);
     Ok(())
 }

@@ -5,11 +5,11 @@ use super::{
     NumericValue, SubtypeRelation, TypeArena, form, named,
 };
 
-fn integer(value: i64) -> NumericValue {
+const fn integer(value: i64) -> NumericValue {
     NumericValue::Integer(value)
 }
 
-fn bound(value: NumericValue, inclusive: bool) -> NumericBound {
+const fn bound(value: NumericValue, inclusive: bool) -> NumericBound {
     if inclusive {
         NumericBound::inclusive(value)
     } else {
@@ -18,7 +18,7 @@ fn bound(value: NumericValue, inclusive: bool) -> NumericBound {
 }
 
 #[test]
-fn numeric_ranges_reject_mixed_domains_nan_and_empty_endpoints() -> Result<(), Box<dyn Error>> {
+fn numeric_ranges_reject_mixed_domains_nan_and_empty_endpoints() {
     // CLHS 4.2.3 defines INTEGER bounds; empty open intervals contain no values.
     // https://www.lispworks.com/documentation/HyperSpec/Body/04_bc.htm
     assert!(matches!(
@@ -71,7 +71,6 @@ fn numeric_ranges_reject_mixed_domains_nan_and_empty_endpoints() -> Result<(), B
         ),
         Err(NumericRangeError::EmptyInterval)
     );
-    Ok(())
 }
 
 #[test]
@@ -87,7 +86,7 @@ fn signed_zero_and_inclusive_bounds_keep_numeric_membership_results() -> Result<
         ))),
     )?;
     assert_eq!(
-        zero_range.lower().map(|item| item.value()),
+        zero_range.lower().map(NumericBound::value),
         Some(NumericValue::SingleFloat(0))
     );
     let upper = NumericRange::new(

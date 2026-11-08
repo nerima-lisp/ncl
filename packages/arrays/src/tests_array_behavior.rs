@@ -20,8 +20,21 @@ fn multidimensional_displaced_and_adjusted_arrays_preserve_values() -> Result<()
         },
     )?;
     assert_eq!(array_dimensions(&ctx, array)?, vec![2, 2]);
+    assert_eq!(array_element_type(&ctx, array)?, ArrayElementType::T);
+    assert_eq!(array_displacement(&ctx, array)?, (Word::NIL, 0));
+    assert!(adjustable_array_p(&ctx, array)?);
+    assert!(!array_has_fill_pointer_p(&ctx, array)?);
+    assert_eq!(fill_pointer(&ctx, array), Err(ObjectError::TypeError));
     array_row_major_set(&mut ctx, array, 3, Word::fixnum(9))?;
     assert_eq!(array_row_major_ref(&ctx, array, 3)?, Word::fixnum(9));
+    assert_eq!(
+        array_row_major_ref(&ctx, array, 4),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        array_row_major_set(&mut ctx, array, 4, Word::fixnum(1)),
+        Err(ObjectError::TypeError)
+    );
 
     let adjusted = adjust_array(&mut ctx, &runtime, array, &[3, 2], Word::fixnum(7))?;
     assert_ne!(adjusted, array, "adjust-array returns a distinct array");
@@ -80,6 +93,17 @@ fn vector_push_pop_and_invalid_array_operations_return_values() -> Result<(), Ob
             displaced_index_offset: 0,
         },
     )?;
+    assert!(adjustable_array_p(&ctx, vector)?);
+    assert!(array_has_fill_pointer_p(&ctx, vector)?);
+    assert_eq!(fill_pointer(&ctx, vector), Ok(0));
+    assert_eq!(
+        adjust_array(&mut ctx, &runtime, vector, &[1, 1], Word::NIL),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        set_fill_pointer(&mut ctx, vector, 5),
+        Err(ObjectError::TypeError)
+    );
     assert_eq!(vector_push(&mut ctx, vector, Word::fixnum(4))?, Some(0));
     assert_eq!(vector_pop(&mut ctx, vector)?, Word::fixnum(4));
     assert_eq!(vector_pop(&mut ctx, vector), Err(ObjectError::TypeError));
@@ -89,6 +113,65 @@ fn vector_push_pop_and_invalid_array_operations_return_values() -> Result<(), Ob
     );
     assert_eq!(
         array_row_major_ref(&ctx, Word::NIL, 0),
+        Err(ObjectError::TypeError)
+    );
+
+    let fixed = make_array(
+        &mut ctx,
+        &runtime,
+        &[1],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: Some(1),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    assert_eq!(
+        vector_push_extend(&mut ctx, &runtime, fixed, Word::fixnum(8), 1),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        adjust_array(&mut ctx, &runtime, fixed, &[2], Word::NIL),
+        Err(ObjectError::TypeError)
+    );
+
+    let rank_zero = make_array(
+        &mut ctx,
+        &runtime,
+        &[],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    write(
+        &mut ctx,
+        rank_zero,
+        metadata_offset(0, 0),
+        Word::fixnum(0),
+        layout::widetag::NON_SIMPLE_ARRAY,
+    )?;
+    write(
+        &mut ctx,
+        rank_zero,
+        metadata_offset(0, 3),
+        Word::fixnum(
+            i64::try_from(layout::array_offset::FLAG_HAS_FILL_POINTER)
+                .map_err(|_| ObjectError::Layout)?,
+        ),
+        layout::widetag::NON_SIMPLE_ARRAY,
+    )?;
+    assert_eq!(array_dimensions(&ctx, rank_zero)?, Vec::<usize>::new());
+    assert_eq!(vector_push(&mut ctx, rank_zero, Word::fixnum(1)), Ok(None));
+    assert_eq!(
+        vector_push_extend(&mut ctx, &runtime, rank_zero, Word::fixnum(1), 1),
         Err(ObjectError::TypeError)
     );
     Ok(())

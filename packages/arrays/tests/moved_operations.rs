@@ -231,14 +231,21 @@ fn arrays_reject_invalid_options_and_displacement_targets() {
         make_array(&mut context, &runtime, &[1, 1], options(Some(1), None, 0)),
         Err(ObjectError::TypeError)
     );
-    assert!(
-        make_array(
-            &mut context,
-            &runtime,
-            &[2],
-            options(None, Some(Word::TRUE), 0)
-        )
-        .is_ok()
+    let malformed_target = make_array(
+        &mut context,
+        &runtime,
+        &[2],
+        options(None, Some(Word::TRUE), 0),
+    );
+    assert!(malformed_target.is_ok());
+    let malformed_target = malformed_target.unwrap_or(Word::NIL);
+    assert_eq!(
+        array_row_major_ref(&context, malformed_target, 0),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        array_row_major_set(&mut context, malformed_target, 0, Word::NIL),
+        Err(ObjectError::TypeError)
     );
     let empty =
         make_array(&mut context, &runtime, &[0], options(None, None, 0)).unwrap_or(Word::NIL);
@@ -261,6 +268,43 @@ fn arrays_reject_invalid_options_and_displacement_targets() {
     assert_eq!(
         array_row_major_set(&mut context, displaced, 0, Word::NIL),
         Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        ncl_arrays::array_element_type(&context, Word::TRUE),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        ncl_arrays::array_displacement(&context, Word::TRUE),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        array_row_major_ref(&context, Word::TRUE, 0),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        array_row_major_set(&mut context, Word::TRUE, 0, Word::NIL),
+        Err(ObjectError::TypeError)
+    );
+
+    let string = make_string(&mut context, &runtime, &['a'])
+        .unwrap_or_else(|error| panic!("string: {error:?}"));
+    let string_view = make_array(
+        &mut context,
+        &runtime,
+        &[1],
+        ArrayOptions {
+            element_type: ArrayElementType::Character,
+            initial_element: Word::character(u32::from(' ')),
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: Some(string),
+            displaced_index_offset: 0,
+        },
+    )
+    .unwrap_or_else(|error| panic!("string view: {error:?}"));
+    assert_eq!(
+        array_row_major_ref(&context, string_view, 0),
+        Ok(Word::character(u32::from('a')))
     );
 }
 
@@ -333,6 +377,17 @@ fn specialized_arrays_validate_element_type() {
     assert_eq!(specialized_array_ref(&ctx, array, 0), Ok(Word::fixnum(1)));
     assert!(specialized_array_set(&mut ctx, array, 0, Word::fixnum(2)).is_err());
     assert_eq!(
+        ncl_arrays::array_element_type(&ctx, array),
+        Ok(ArrayElementType::Bit)
+    );
+    assert_eq!(
+        ncl_arrays::array_displacement(&ctx, array),
+        Ok((Word::NIL, 0))
+    );
+    assert_eq!(array_row_major_ref(&ctx, array, 0), Ok(Word::fixnum(1)));
+    assert!(array_row_major_set(&mut ctx, array, 0, Word::fixnum(0)).is_ok());
+    assert_eq!(array_row_major_ref(&ctx, array, 0), Ok(Word::fixnum(0)));
+    assert_eq!(
         ncl_object::classify_object(&ctx, array),
         ncl_object::ObjectRef::SpecializedArray(array)
     );
@@ -363,6 +418,41 @@ fn non_simple_arrays_store_dimensions_and_row_major_values() {
     assert_eq!(
         ncl_object::classify_object(&ctx, array),
         ncl_object::ObjectRef::Array(array)
+    );
+
+    let vector = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(3)]).unwrap_or(Word::NIL);
+    assert_eq!(
+        ncl_arrays::array_element_type(&ctx, vector),
+        Ok(ArrayElementType::T)
+    );
+    assert_eq!(
+        ncl_arrays::array_displacement(&ctx, vector),
+        Ok((Word::NIL, 0))
+    );
+    assert_eq!(array_row_major_ref(&ctx, vector, 0), Ok(Word::fixnum(3)));
+    assert!(array_row_major_set(&mut ctx, vector, 0, Word::fixnum(4)).is_ok());
+
+    let string = make_string(&mut ctx, &runtime, &['x']).unwrap_or(Word::NIL);
+    assert_eq!(
+        ncl_arrays::array_element_type(&ctx, string),
+        Ok(ArrayElementType::Character)
+    );
+    assert_eq!(
+        ncl_arrays::array_displacement(&ctx, string),
+        Ok((Word::NIL, 0))
+    );
+    assert_eq!(
+        array_row_major_ref(&ctx, string, 0),
+        Ok(Word::character(u32::from('x')))
+    );
+    assert!(array_row_major_set(&mut ctx, string, 0, Word::character(u32::from('y'))).is_ok());
+    assert_eq!(
+        array_row_major_ref(&ctx, string, 0),
+        Ok(Word::character(u32::from('y')))
+    );
+    assert_eq!(
+        array_row_major_set(&mut ctx, string, 0, Word::fixnum(1)),
+        Err(ObjectError::TypeError)
     );
 }
 

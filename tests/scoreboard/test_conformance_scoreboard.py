@@ -496,7 +496,9 @@ class ScoreboardTests(unittest.TestCase):
                     return_value={"name": "A.1", "chapter": "printer/format", "status": "passed", "process_exit_status": 0},
                 ):
                     with patch.object(inclusion, "_runtime_version", return_value="SBCL 2.6.10"):
-                        report = inclusion.measure_baseline(["sbcl", "--script"], source, 1)
+                        report = inclusion.measure_baseline(
+                            ["sbcl", "--script"], source, 1, source_revision="test-revision",
+                        )
 
         self.assertEqual(
             report["tests"],
@@ -539,6 +541,7 @@ class ScoreboardTests(unittest.TestCase):
                     report = inclusion.measure_tests(
                         ["ncl"], Path(directory), expected, 1, "ncl",
                         shard_index=shard_index, shard_count=shard_count,
+                        source_revision="test-revision",
                     )
 
         self.assertEqual(run_test.call_count, len(selected))
@@ -1019,6 +1022,7 @@ class ScoreboardTests(unittest.TestCase):
                         ["ncl", "--load"], Path(directory),
                         {"A.1": "arrays", "A.2": "arrays", "A.3": "arrays"}, 1, "ncl",
                         jobs=2,
+                        source_revision="test-revision",
                     )
 
         self.assertEqual(run_process.call_count, 3)
@@ -1044,6 +1048,7 @@ class ScoreboardTests(unittest.TestCase):
                     report = inclusion.measure_tests(
                         ["ncl", "--load"], Path(directory),
                         {"ARRAYS.1": "universe"}, 1, "ncl",
+                        source_revision="test-revision",
                     )
 
         self.assertEqual(report["tests"][0]["status"], "harness_error")
@@ -1082,7 +1087,8 @@ class ScoreboardTests(unittest.TestCase):
                     ) as run_process:
                         with patch.object(sys, "stdout") as stdout:
                             status = inclusion.main([
-                                "compare", "--policy", "safety-3", "--command", "ncl --load", "--baseline", str(baseline),
+                                "compare", "--policy", "safety-3", "--source-revision", "test-revision",
+                                "--command", "ncl --load", "--baseline", str(baseline),
                                 "--test", "A.1", "--jobs", "2", "--cache-dir", directory,
                             ])
 

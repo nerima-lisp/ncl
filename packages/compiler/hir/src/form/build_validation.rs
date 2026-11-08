@@ -8,6 +8,45 @@ use super::builder::HirFormBuilder;
 use super::error::FormError;
 use super::metadata::{HirDeclaration, HirQuality, LambdaSignature, LambdaSignatureKey};
 
+type SignatureParameter = (BindingId, Option<(ScopeId, Option<NodeId>)>);
+
+fn signature_parameters(signature: &LambdaSignature) -> Vec<SignatureParameter> {
+    let mut parameters = signature
+        .required
+        .iter()
+        .copied()
+        .map(|binding| (binding, None))
+        .collect::<Vec<_>>();
+    for parameter in &signature.optional {
+        parameters.push((
+            parameter.binding,
+            Some((parameter.initializer_scope, parameter.default)),
+        ));
+        if let Some(supplied_p) = parameter.supplied_p {
+            parameters.push((supplied_p, None));
+        }
+    }
+    if let Some(rest) = signature.rest {
+        parameters.push((rest, None));
+    }
+    for parameter in &signature.keys {
+        parameters.push((
+            parameter.binding,
+            Some((parameter.initializer_scope, parameter.default)),
+        ));
+        if let Some(supplied_p) = parameter.supplied_p {
+            parameters.push((supplied_p, None));
+        }
+    }
+    for parameter in &signature.aux {
+        parameters.push((
+            parameter.binding,
+            Some((parameter.initializer_scope, parameter.default)),
+        ));
+    }
+    parameters
+}
+
 pub(super) trait BuilderValidation {
     fn validate_scope(&self, scope: ScopeId) -> Result<(), FormError>;
     fn validate_type(&self, ty: TypeId) -> Result<(), FormError>;
@@ -66,12 +105,8 @@ impl BuilderValidation for HirFormBuilder {
                 | HirDeclaration::Notinline { names }
                 | HirDeclaration::DynamicExtent { names }
                 | HirDeclaration::Ignore { names }
-                | HirDeclaration::Ignorable { names } => {
-                    for symbol in names {
-                        self.register_symbol(*symbol)?;
-                    }
-                }
-                HirDeclaration::Type { names, .. } => {
+                | HirDeclaration::Ignorable { names }
+                | HirDeclaration::Type { names, .. } => {
                     for symbol in names {
                         self.register_symbol(*symbol)?;
                     }
@@ -121,55 +156,21 @@ impl BuilderValidation for HirFormBuilder {
                 }
                 self.nodes
                     .iter()
-                    .flat_map(|(_, node)| match &node.kind {
+                    .find_map(|(_, node)| match &node.kind {
                         NodeKind::LocalFunctions { definitions, .. } => definitions
                             .iter()
                             .find(|definition| definition.binding == binding)
                             .map(|definition| (definition.definition_scope, definition.body_scope)),
-                        _ => None,
+                        _ => None, // check-added-lines: allow(wildcard) only local-function nodes define these bindings
                     })
-                    .next()
                     .ok_or(FormError::InvalidFunctionSignature)?
             }
         };
         self.validate_scope(definition_scope)?;
         self.validate_scope(body_scope)?;
-        let mut parameters = signature
-            .required
-            .iter()
-            .copied()
-            .map(|binding| (binding, None))
-            .collect::<Vec<_>>();
-        for parameter in &signature.optional {
-            parameters.push((
-                parameter.binding,
-                Some((parameter.initializer_scope, parameter.default)),
-            ));
-            if let Some(supplied_p) = parameter.supplied_p {
-                parameters.push((supplied_p, None));
-            }
-        }
-        if let Some(rest) = signature.rest {
-            parameters.push((rest, None));
-        }
-        for parameter in &signature.keys {
-            parameters.push((
-                parameter.binding,
-                Some((parameter.initializer_scope, parameter.default)),
-            ));
-            if let Some(supplied_p) = parameter.supplied_p {
-                parameters.push((supplied_p, None));
-            }
-        }
-        for parameter in &signature.aux {
-            parameters.push((
-                parameter.binding,
-                Some((parameter.initializer_scope, parameter.default)),
-            ));
-        }
         let mut visible_scope = definition_scope;
         let mut seen_bindings = HashSet::new();
-        for (binding, initializer) in parameters {
+        for (binding, initializer) in signature_parameters(signature) {
             if !seen_bindings.insert(binding) {
                 return Err(FormError::InvalidFunctionSignature);
             }
@@ -177,7 +178,7 @@ impl BuilderValidation for HirFormBuilder {
             let parameter_scope = self
                 .bindings
                 .binding(binding)
-                .map(|info| info.scope())
+                .map(crate::binding::Binding::scope)
                 .ok_or(FormError::InvalidFunctionSignature)?;
             if parameter_scope == definition_scope
                 || !self.scope_is_ancestor(visible_scope, parameter_scope)

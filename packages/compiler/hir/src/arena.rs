@@ -73,7 +73,6 @@ impl<T, I: ArenaIndex> Arena<T, I> {
     }
 
     /// Iterates over entries with their zero-based arena indices.
-    #[must_use]
     pub fn iter(&self) -> impl Iterator<Item = (usize, &T)> {
         self.values.iter().enumerate()
     }

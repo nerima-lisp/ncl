@@ -345,7 +345,7 @@ pub struct SourceOrigins {
 impl SourceOrigins {
     /// Creates an empty origin table for one top-level form.
     #[must_use]
-    pub fn new(form: FormId) -> Self {
+    pub const fn new(form: FormId) -> Self {
         Self {
             form,
             origins: Vec::new(),
@@ -408,7 +408,6 @@ impl SourceOrigins {
     }
 
     /// Iterates over allocated origin identities and records in allocation order.
-    #[must_use]
     pub fn iter(&self) -> impl Iterator<Item = (SourceOriginId, &SourceOrigin)> {
         self.origins.iter().map(|origin| (origin.id, origin))
     }

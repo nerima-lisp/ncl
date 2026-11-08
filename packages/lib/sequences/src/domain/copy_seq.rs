@@ -1,8 +1,9 @@
+use ncl_arrays::{array_element_type, array_has_fill_pointer_p, array_row_major_ref, fill_pointer};
 use ncl_object::{
     ArrayElementType, LispError, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    array_dimensions, classify_object, make_simple_vector, make_specialized_array, with_rooted_slice,
+    array_dimensions, classify_object, make_simple_vector, make_specialized_array,
+    with_rooted_slice,
 };
-use ncl_arrays::{array_element_type, array_has_fill_pointer_p, array_row_major_ref, fill_pointer};
 
 use super::{list, sequence_value};
 

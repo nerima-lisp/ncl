@@ -3,7 +3,7 @@ use ncl_object::{Runtime, ThreadContext, Word, make_cons, rplacd};
 use crate::error::ReadError;
 use crate::input::CharSource;
 
-use super::{ReadOptions, read_form, skip_whitespace};
+use super::{ReadOptions, ReaderLabels, read_form, skip_whitespace};
 
 pub fn read_list(
     ctx: &mut ThreadContext,
@@ -11,7 +11,7 @@ pub fn read_list(
     source: &mut dyn CharSource,
     opts: &ReadOptions,
     rt: &ncl_object::HeapRootedWord,
-    labels: &ncl_object::HeapRootedWord,
+    labels: &mut ReaderLabels,
 ) -> Result<Word, ReadError> {
     let head = ncl_object::HeapRootedWord::new(ctx, Word::NIL)?;
     let tail = ncl_object::HeapRootedWord::new(ctx, Word::NIL)?;
@@ -25,7 +25,7 @@ fn read_list_inner(
     source: &mut dyn CharSource,
     opts: &ReadOptions,
     rt: &ncl_object::HeapRootedWord,
-    labels: &ncl_object::HeapRootedWord,
+    labels: &mut ReaderLabels,
     head: &ncl_object::HeapRootedWord,
     tail: &ncl_object::HeapRootedWord,
 ) -> Result<Word, ReadError> {

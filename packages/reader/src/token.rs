@@ -5,6 +5,7 @@ use ncl_object::{
     make_string, pop_root, push_root, string_length, string_ref, symbol_name, symbol_package,
     symbol_value,
 };
+use ncl_packages::PackageOperations;
 
 use crate::error::ReadError;
 use crate::number::parse_number;

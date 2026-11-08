@@ -2,7 +2,7 @@ use ncl_object::{HeapRootedWord, Runtime, ThreadContext, Word};
 
 use crate::error::ReadError;
 use crate::input::CharSource;
-use crate::reader::{ReadEvaluation, ReadOptions, is_read_suppressed, read_form};
+use crate::reader::{ReadEvaluation, ReadOptions, ReaderLabels, is_read_suppressed, read_form};
 use crate::token::intern_common_lisp;
 use crate::token::refresh_dynamic_reader_options;
 
@@ -12,7 +12,7 @@ pub(super) fn read_eval_dispatch(
     source: &mut dyn CharSource,
     opts: &ReadOptions,
     rt: &HeapRootedWord,
-    labels: &HeapRootedWord,
+    labels: &mut ReaderLabels,
 ) -> Result<Word, ReadError> {
     if is_read_suppressed(ctx, runtime, opts)? {
         if read_form(ctx, runtime, source, opts, rt, labels)?.is_none() {

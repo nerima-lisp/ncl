@@ -7,8 +7,8 @@ use std::path::Path;
 use ncl_object::{
     ArrayElementType, HeapRootedWord, HeapRootedWords, Local, ObjectRef, Runtime, Scope,
     ThreadContext, Word, car, cdr, classify_object, make_complex, make_cons, make_simple_vector,
-    make_specialized_array, make_string, make_structure, make_symbol,
-    simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_name,
+    make_specialized_array, make_string, make_structure, make_symbol, simple_vector_length,
+    simple_vector_ref, string_length, string_ref, symbol_name,
 };
 
 use crate::error::ReadError;
@@ -434,10 +434,7 @@ fn read_label(
 }
 
 /// Read a `#n#` reference to a previously read labelled form.
-fn read_label_ref(
-    labels: &ReaderLabels,
-    label: i64,
-) -> Result<Option<Word>, ReadError> {
+fn read_label_ref(labels: &ReaderLabels, label: i64) -> Result<Option<Word>, ReadError> {
     labels
         .get(&label)
         .map(|value| Some(value.get()))

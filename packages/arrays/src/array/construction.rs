@@ -17,6 +17,42 @@ const fn element_type_code(element_type: ArrayElementType) -> i64 {
     }
 }
 
+fn validated_total(
+    ctx: &ThreadContext,
+    dimensions: &[usize],
+    options: ArrayOptions,
+) -> Result<usize, ObjectError> {
+    if options.fill_pointer.is_some() && dimensions.len() != 1 {
+        return Err(ObjectError::TypeError);
+    }
+    let total = dimensions
+        .iter()
+        .try_fold(1_usize, |size, dimension| size.checked_mul(*dimension))
+        .ok_or(ObjectError::Layout)?;
+    if let Some(value) = options.fill_pointer {
+        let dimension = dimensions.first().ok_or(ObjectError::TypeError)?;
+        if value > *dimension {
+            return Err(ObjectError::TypeError);
+        }
+    }
+    if options.displaced_to.is_some()
+        && total
+            .checked_add(options.displaced_index_offset)
+            .is_none()
+    {
+        return Err(ObjectError::Layout);
+    }
+    validate_element(ctx, options.element_type, options.initial_element)?;
+    if let Some(target) = options.displaced_to
+        && let Ok(target_type) = super::array_element_type(ctx, target)
+        && options.element_type != ArrayElementType::T
+        && options.element_type != target_type
+    {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(total)
+}
+
 /// Allocate a general, possibly displaced, multidimensional array.
 ///
 /// # Errors
@@ -28,6 +64,7 @@ pub fn make_array(
     dimensions: &[usize],
     options: ArrayOptions,
 ) -> Result<Word, ObjectError> {
+    let total = validated_total(ctx, dimensions, options)?;
     let ArrayOptions {
         element_type,
         initial_element,
@@ -36,30 +73,6 @@ pub fn make_array(
         displaced_to,
         displaced_index_offset,
     } = options;
-    if fill_pointer.is_some() && dimensions.len() != 1 {
-        return Err(ObjectError::TypeError);
-    }
-    let total = dimensions
-        .iter()
-        .try_fold(1_usize, |size, dimension| size.checked_mul(*dimension))
-        .ok_or(ObjectError::Layout)?;
-    if let Some(value) = fill_pointer {
-        let dimension = dimensions.first().ok_or(ObjectError::TypeError)?;
-        if value > *dimension {
-            return Err(ObjectError::TypeError);
-        }
-    }
-    if displaced_to.is_some() && total.checked_add(displaced_index_offset).is_none() {
-        return Err(ObjectError::Layout);
-    }
-    validate_element(ctx, element_type, initial_element)?;
-    if let Some(target) = displaced_to
-        && let Ok(target_type) = super::array_element_type(ctx, target)
-        && element_type != ArrayElementType::T
-        && element_type != target_type
-    {
-        return Err(ObjectError::TypeError);
-    }
     let rank = dimensions.len();
     let capacity = if adjustable && fill_pointer.is_some() && displaced_to.is_none() {
         total.checked_mul(2).ok_or(ObjectError::Layout)?

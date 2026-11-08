@@ -31,7 +31,7 @@ impl PackageOperations for Package {
     ) -> Result<bool, ObjectError> {
         let mut package = self.as_word();
         ncl_object::with_root(ctx, &mut package, |ctx, package| {
-            Package::from_word(*package).ensure_unlocked(ctx)?;
+            Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut nickname = nickname;
             ncl_object::with_root(ctx, &mut nickname, |ctx, nickname| {
                 let mut names = get(ctx, *package, widetag::PACKAGE, NICKNAMES)?;
@@ -61,32 +61,32 @@ impl PackageOperations for Package {
     ) -> Result<bool, ObjectError> {
         let mut package = self.as_word();
         ncl_object::with_root(ctx, &mut package, |ctx, package| {
-            Package::from_word(*package).ensure_unlocked(ctx)?;
+            Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             ncl_object::with_root(ctx, &mut name, |ctx, name| {
                 let mut symbol = if let Some(symbol) =
-                    Package::from_word(*package).remove_table_symbol(ctx, runtime, false, *name)?
+                    Self::from_word(*package).remove_table_symbol(ctx, runtime, false, *name)?
                 {
                     symbol
                 } else {
-                    if Package::from_word(*package)
+                    if Self::from_word(*package)
                         .table_symbol(ctx, runtime, true, *name)?
                         .is_some()
                     {
                         return Ok(true);
                     }
                     let Some((symbol, ncl_object::FindStatus::Inherited)) =
-                        Package::from_word(*package).find_symbol(ctx, runtime, *name)?
+                        Self::from_word(*package).find_symbol(ctx, runtime, *name)?
                     else {
                         return Ok(false);
                     };
-                    Package::from_word(*package).import(ctx, runtime, *name, symbol)?;
-                    Package::from_word(*package)
+                    Self::from_word(*package).import(ctx, runtime, *name, symbol)?;
+                    Self::from_word(*package)
                         .remove_table_symbol(ctx, runtime, false, *name)?
                         .ok_or(ObjectError::Layout)?
                 };
                 ncl_object::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    Package::from_word(*package)
+                    Self::from_word(*package)
                         .insert_table_symbol(ctx, runtime, true, *name, *symbol)
                 })?;
                 Ok(true)
@@ -102,16 +102,16 @@ impl PackageOperations for Package {
     ) -> Result<bool, ObjectError> {
         let mut package = self.as_word();
         ncl_object::with_root(ctx, &mut package, |ctx, package| {
-            Package::from_word(*package).ensure_unlocked(ctx)?;
+            Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             ncl_object::with_root(ctx, &mut name, |ctx, name| {
                 let Some(mut symbol) =
-                    Package::from_word(*package).remove_table_symbol(ctx, runtime, true, *name)?
+                    Self::from_word(*package).remove_table_symbol(ctx, runtime, true, *name)?
                 else {
                     return Ok(false);
                 };
                 ncl_object::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    Package::from_word(*package)
+                    Self::from_word(*package)
                         .insert_table_symbol(ctx, runtime, false, *name, *symbol)
                 })?;
                 Ok(true)
@@ -128,7 +128,7 @@ impl PackageOperations for Package {
     ) -> Result<(), ObjectError> {
         let mut package = self.as_word();
         ncl_object::with_root(ctx, &mut package, |ctx, package| {
-            Package::from_word(*package).ensure_unlocked(ctx)?;
+            Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             ncl_object::with_root(ctx, &mut name, |ctx, name| {
                 let mut symbol = symbol;
@@ -140,7 +140,7 @@ impl PackageOperations for Package {
                         ncl_object::layout::symbol_offset::PACKAGE,
                     )?;
                     if let Some((existing, status)) =
-                        Package::from_word(*package).find_symbol(ctx, runtime, *name)?
+                        Self::from_word(*package).find_symbol(ctx, runtime, *name)?
                     {
                         if existing == *symbol {
                             if status != ncl_object::FindStatus::Inherited {
@@ -158,7 +158,7 @@ impl PackageOperations for Package {
                             *package,
                         )?;
                     }
-                    Package::from_word(*package)
+                    Self::from_word(*package)
                         .insert_table_symbol(ctx, runtime, false, *name, *symbol)
                 })
             })
@@ -184,7 +184,7 @@ impl PackageOperations for Package {
                 })
             {
                 let package = ncl_object::cdr(ctx, entry)?;
-                return Package::try_from_word(ctx, package).map(Some);
+                return Self::try_from_word(ctx, package).map(Some);
             }
             entries = next;
         }

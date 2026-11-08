@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use ncl_arrays::{ArrayOptions, array_row_major_set, make_array};
 use ncl_object::{
-    ArrayElementType, HeapRootedWord, ObjectError, Package, Runtime as ObjectRuntime, ThreadContext,
-    Word, make_bignum_from_limbs, make_complex, make_cons, make_double, make_ratio,
+    ArrayElementType, HeapRootedWord, ObjectError, Package, Runtime as ObjectRuntime,
+    ThreadContext, Word, make_bignum_from_limbs, make_complex, make_cons, make_double, make_ratio,
     make_simple_vector, make_specialized_array, make_string,
 };
 
@@ -214,11 +214,11 @@ const fn default_array_element(element_type: ArrayElementType) -> Word {
 mod tests {
     use std::collections::HashMap;
 
+    use ncl_arrays::array_element_type;
     use ncl_ir::{
         ArrayElementType as IrArrayElementType, Constant, ConstantIndex, Function, FunctionId,
         StructureKind,
     };
-    use ncl_arrays::array_element_type;
     use ncl_object::{ArrayElementType, HeapRootedWord, array_dimensions, simple_vector_ref};
 
     use crate::Runtime;

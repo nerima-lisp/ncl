@@ -364,7 +364,7 @@ def _run_test_rows(
 def measure_baseline(
     command: Sequence[str], source: Path, timeout: float, jobs: int = 1,
     shard_index: int | None = None, shard_count: int | None = None,
-    policy: str = "safety-3",
+    policy: str = "safety-3", *, source_revision: str,
 ) -> dict[str, Any]:
     _policy_declaim(policy)
     _validate_shard(shard_index, shard_count)
@@ -398,6 +398,7 @@ def measure_baseline(
     report = _measurement(
         "sbcl", command, source, tests,
         len(sources) + len(disabled) + len(REMOVED_TEST_NAMES), stdout, stderr, policy,
+        source_revision=source_revision,
     )
     report["active"] = len(tests)
     report["active_total"] = len(sources)
@@ -467,10 +468,12 @@ def _measurement(
     stdout: str,
     stderr: str,
     policy: str = "safety-3",
+    *,
+    source_revision: str,
 ) -> dict[str, Any]:
     counts = Counter(test["status"] for test in tests)
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "suite": "ansi-test",
         "implementation": implementation,
         "policy": policy,
@@ -478,6 +481,7 @@ def _measurement(
         "platform": _platform_name(),
         "measured_on": date.today().isoformat(),
         "source_commit": SOURCES["ansi-test"]["commit"],
+        "source_revision": source_revision,
         "registered": registered,
         "active": len(tests),
         "disabled": 0,
@@ -629,7 +633,7 @@ def measure_tests(
     jobs: int = 1,
     shard_index: int | None = None,
     shard_count: int | None = None,
-    policy: str = "safety-3",
+    policy: str = "safety-3", *, source_revision: str,
 ) -> dict[str, Any]:
     _policy_declaim(policy)
     _validate_shard(shard_index, shard_count)
@@ -644,6 +648,7 @@ def measure_tests(
     tests = _run_test_rows(command, source, list(selected.items()), timeout, jobs, policy)
     result = _measurement(
         implementation, command, source, tests, len(selected), "", "", policy,
+        source_revision=source_revision,
     )
     result["registered"] = len(selected)
     result["active"] = len(selected)
@@ -912,6 +917,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for action in ("baseline", "compare"):
         sub = subparsers.add_parser(action)
         sub.add_argument("--policy", choices=tuple(POLICIES), required=True)
+        sub.add_argument("--source-revision", required=True, help="revision of the checked-out NCL source")
         sub.add_argument("--command", required=True, help="interpreter command prefix, for example 'sbcl --script'")
         sub.add_argument("--cache-dir", type=Path, default=Path(".cache/conformance"))
         sub.add_argument("--timeout", type=float, default=900.0, help="process timeout in seconds")
@@ -958,6 +964,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             report = measure_baseline(
                 command, source, args.timeout, args.jobs,
                 args.shard_index, args.shard_count, args.policy,
+                source_revision=args.source_revision,
             )
             prefix = args.output_prefix or Path(
                 f"conformance/baselines/ansi-test-sbcl-{SBCL_VERSION}-{args.policy}-{_platform_slug(report['platform'])}"
@@ -981,6 +988,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = measure_tests(
             command, source, expected, args.timeout, "ncl", getattr(args, "test", None), args.jobs,
             args.shard_index, args.shard_count, args.policy,
+            source_revision=args.source_revision,
         )
         observed = {test["name"]: test for test in report["tests"]}
         comparison_baseline = {name: expected[name] for name in observed}

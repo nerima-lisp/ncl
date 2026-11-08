@@ -347,6 +347,9 @@ class ScoreboardTests(unittest.TestCase):
             policy: self._ansi_policy_report(policy, rows)
             for policy in scoreboard.ANSI_POLICIES
         }
+        for report in ansi_reports.values():
+            report["schema_version"] = 3
+            report["source_revision"] = "test-revision"
         with TemporaryDirectory() as directory:
             report_paths = {}
             for policy, report in ansi_reports.items():
@@ -574,11 +577,12 @@ class ScoreboardTests(unittest.TestCase):
             sbcl_rows = baseline_rows[index]
             sbcl_counts = Counter(row["status"] for row in sbcl_rows)
             sbcl_report = {
-                "schema_version": 2, "suite": "ansi-test", "implementation": "sbcl",
+                "schema_version": 3, "suite": "ansi-test", "implementation": "sbcl",
                 "runtime_version": "SBCL 2.6.10", "policy": policy,
                 "platform": inclusion._platform_name(),
                 "measured_on": date.today().isoformat(),
                 "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+                "source_revision": "test-revision",
                 "registered": len(manifest) + len(inclusion.REMOVED_TEST_NAMES),
                 "active": len(sbcl_rows), "active_total": len(manifest), "disabled": 0,
                 "disabled_tests": [], "removed": len(inclusion.REMOVED_TEST_NAMES),
@@ -603,11 +607,12 @@ class ScoreboardTests(unittest.TestCase):
             ]
             ncl_counts = Counter(row["status"] for row in ncl_rows)
             ncl_report = {
-                "schema_version": 2, "suite": "ansi-test", "implementation": "ncl",
+                "schema_version": 3, "suite": "ansi-test", "implementation": "ncl",
                 "runtime_version": "NCL", "baseline_runtime_version": "SBCL 2.6.10",
                 "policy": policy, "platform": inclusion._platform_name(),
                 "measured_on": date.today().isoformat(),
                 "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+                "source_revision": "test-revision",
                 "registered": len(ncl_rows), "active": len(ncl_rows),
                 "status": "complete", "tests": ncl_rows,
                 "shard_index": index, "shard_count": shard_count,
@@ -634,6 +639,10 @@ class ScoreboardTests(unittest.TestCase):
                 root, 2, baseline_prefix, baseline_json, comparison_json, "safety-3",
             )
             self.assertEqual(inclusion.load_baseline(Path(str(baseline_prefix) + ".txt")), expected)
+            self.assertEqual(baseline["schema_version"], 3)
+            self.assertEqual(comparison["schema_version"], 3)
+            self.assertEqual(baseline["source_revision"], "test-revision")
+            self.assertEqual(comparison["source_revision"], "test-revision")
             self.assertEqual(baseline["active_total"], 20)
             self.assertEqual(baseline["failed"], 1)
             self.assertEqual(comparison["comparison"]["expected"], len(expected))
@@ -644,11 +653,12 @@ class ScoreboardTests(unittest.TestCase):
             self.assertEqual(json.loads(baseline_json.read_text(encoding="utf-8"))["registered"], 22)
             self.assertEqual(json.loads(comparison_json.read_text(encoding="utf-8"))["passed"], len(expected) - 1)
 
-    def test_merge_shards_rejects_missing_source_date_and_platform_mismatches(self):
+    def test_merge_shards_rejects_invalid_date_platform_and_revision_mismatches(self):
         mutations = (
             ("source commit", lambda report: report.update(source_commit="wrong")),
-            ("measurement date", lambda report: report.update(measured_on="1900-01-01")),
+            ("invalid measurement date", lambda report: report.update(measured_on="not-a-date")),
             ("platform", lambda report: report.update(platform="different platform")),
+            ("source revision", lambda report: report.update(source_revision="wrong")),
         )
         for expected_message, mutate in mutations:
             with self.subTest(expected_message=expected_message), TemporaryDirectory() as directory:
@@ -666,7 +676,7 @@ class ScoreboardTests(unittest.TestCase):
     def test_merge_shards_rejects_mixed_policy_and_historical_sbcl_version(self):
         for field, value, expected_message in (
             ("policy", "speed-3-safety-1", "policy"),
-            ("runtime_version", "SBCL 2.6.0", "SBCL 2.6.10"),
+            ("runtime_version", "SBCL 2.6.0", "runtime version"),
         ):
             with self.subTest(field=field), TemporaryDirectory() as directory:
                 root = Path(directory)

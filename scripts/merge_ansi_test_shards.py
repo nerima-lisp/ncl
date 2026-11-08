@@ -31,7 +31,7 @@ def _check_identity(
     shard_count: int,
     policy: str,
 ) -> None:
-    if report.get("schema_version") != 2 or report.get("suite") != "ansi-test":
+    if report.get("schema_version") != 3 or report.get("suite") != "ansi-test":
         raise ValueError("shard report has an unsupported schema or suite")
     if report.get("implementation") != implementation:
         raise ValueError(f"expected {implementation} shard report")
@@ -43,8 +43,8 @@ def _check_identity(
         raise ValueError("shard report optimization policy does not match its artifact")
     if report.get("source_commit") != inclusion.SOURCES["ansi-test"]["commit"]:
         raise ValueError("shard report uses a different ansi-test source commit")
-    if not report.get("platform") or not report.get("measured_on"):
-        raise ValueError("shard report is missing platform or measurement date")
+    if not report.get("platform") or not report.get("measured_on") or not report.get("source_revision"):
+        raise ValueError("shard report is missing platform, measurement date, or source revision")
     try:
         date.fromisoformat(str(report["measured_on"]))
     except ValueError as error:
@@ -56,6 +56,52 @@ def _count_rows(report: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]) ->
     for status in COUNTED_STATUSES:
         if int(report.get(status, -1)) != counts[status]:
             raise ValueError(f"shard {status} count does not match its test rows")
+
+
+def _run_metadata(artifacts_dir: Path) -> tuple[str, str, str]:
+    """Use the earliest shard date so both policy reports share one measurement date."""
+    report_paths = sorted(artifacts_dir.glob("ansi-shard-*/*.json"))
+    if not report_paths:
+        raise ValueError("no ANSI shard reports were supplied")
+
+    measured_dates: list[date] = []
+    platforms: set[str] = set()
+    source_revisions: set[str] = set()
+    runtime_versions: dict[str, set[str]] = {"sbcl": set(), "ncl": set()}
+    for path in report_paths:
+        report = _read_report(path)
+        if report.get("schema_version") != 3 or report.get("suite") != "ansi-test":
+            raise ValueError("shard report has an unsupported schema or suite")
+        measured_on = report.get("measured_on")
+        platform = report.get("platform")
+        source_revision = report.get("source_revision")
+        implementation = report.get("implementation")
+        runtime_version = report.get("runtime_version")
+        if not isinstance(measured_on, str) or not measured_on:
+            raise ValueError("shard report is missing its measurement date")
+        if not isinstance(platform, str) or not platform:
+            raise ValueError("shard report is missing its platform")
+        if not isinstance(source_revision, str) or not source_revision:
+            raise ValueError("shard report is missing its source revision")
+        if implementation not in runtime_versions:
+            raise ValueError("shard report has an unsupported implementation")
+        if not isinstance(runtime_version, str) or not runtime_version:
+            raise ValueError("shard report is missing its runtime version")
+        try:
+            measured_dates.append(date.fromisoformat(measured_on))
+        except ValueError as error:
+            raise ValueError("shard report has an invalid measurement date") from error
+        platforms.add(platform)
+        source_revisions.add(source_revision)
+        runtime_versions[implementation].add(runtime_version)
+
+    if len(platforms) != 1:
+        raise ValueError("ANSI shards differ in platform")
+    if len(source_revisions) != 1:
+        raise ValueError("ANSI shards differ in source revision")
+    if any(len(versions) != 1 for versions in runtime_versions.values()):
+        raise ValueError("ANSI shards differ in runtime version")
+    return min(measured_dates).isoformat(), next(iter(platforms)), next(iter(source_revisions))
 
 
 def _manifest(report: Mapping[str, Any]) -> dict[str, str]:
@@ -197,10 +243,10 @@ def merge_shards(
         baseline_reports.append(_read_report(artifact / "sbcl-report.json"))
         compare_reports.append(_read_report(artifact / "ncl-report.json"))
 
+    measurement_date, run_platform, source_revision = _run_metadata(artifacts_dir)
     baseline_manifest: dict[str, str] | None = None
     baseline_rows: dict[str, Mapping[str, Any]] = {}
     disabled_tests: list[str] | None = None
-    identity: tuple[str, str] | None = None
     for index, report in enumerate(baseline_reports):
         _check_identity(
             report, implementation="sbcl", shard_index=index, shard_count=shard_count,
@@ -208,11 +254,6 @@ def merge_shards(
         )
         if report.get("runtime_version") != f"SBCL {inclusion.SBCL_VERSION}":
             raise ValueError(f"SBCL shard does not use SBCL {inclusion.SBCL_VERSION}")
-        current_identity = (str(report["measured_on"]), str(report["platform"]))
-        if identity is None:
-            identity = current_identity
-        elif current_identity != identity:
-            raise ValueError("SBCL shards differ in measurement date or platform")
         current_manifest = _manifest(report)
         if baseline_manifest is None:
             baseline_manifest = current_manifest
@@ -228,7 +269,7 @@ def merge_shards(
         if overlap:
             raise ValueError(f"duplicate SBCL baseline rows: {', '.join(sorted(overlap)[:3])}")
         baseline_rows.update(current_rows)
-    if baseline_manifest is None or identity is None or disabled_tests is None:
+    if baseline_manifest is None or disabled_tests is None:
         raise ValueError("no complete SBCL shard set was supplied")
     if set(baseline_rows) != set(baseline_manifest):
         raise ValueError("merged SBCL rows do not cover the complete active-test manifest")
@@ -238,14 +279,15 @@ def merge_shards(
     baseline_counts = Counter(row["status"] for row in baseline_tests)
     first_baseline = baseline_reports[0]
     merged_baseline: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "suite": "ansi-test",
         "implementation": "sbcl",
         "runtime_version": f"SBCL {inclusion.SBCL_VERSION}",
         "policy": policy,
-        "platform": identity[1],
-        "measured_on": identity[0],
+        "platform": run_platform,
+        "measured_on": measurement_date,
         "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+        "source_revision": source_revision,
         "registered": first_baseline["registered"],
         "active": len(baseline_tests),
         "active_total": len(baseline_tests),
@@ -282,16 +324,19 @@ def merge_shards(
             policy=policy,
         )
         current_identity = (
-            str(report["measured_on"]), str(report["platform"]), str(report.get("runtime_version", "")),
+            str(report["platform"]), str(report.get("runtime_version", "")),
+            str(report["source_revision"]),
         )
-        if not current_identity[2]:
+        if not current_identity[1]:
             raise ValueError("NCL shard is missing its runtime version")
         if compare_identity is None:
             compare_identity = current_identity
         elif current_identity != compare_identity:
-            raise ValueError("NCL shards differ in date, platform, or runtime version")
-        if current_identity[:2] != identity:
-            raise ValueError("SBCL and NCL shards differ in measurement date or platform")
+            raise ValueError("NCL shards differ in platform, runtime version, or source revision")
+        if current_identity[0] != run_platform:
+            raise ValueError("SBCL and NCL shards differ in platform")
+        if current_identity[2] != source_revision:
+            raise ValueError("SBCL and NCL shards differ in source revision")
         expected_for_shard = {
             name: chapter for name, chapter in passing_baseline.items()
             if inclusion.shard_for_test(name, shard_count) == index
@@ -312,15 +357,16 @@ def merge_shards(
     observed_counts = Counter(row["status"] for row in observed_tests)
     comparison = inclusion.compare_results(passing_baseline, observed_rows)
     merged_comparison: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "suite": "ansi-test",
         "implementation": "ncl",
-        "runtime_version": compare_identity[2],
+        "runtime_version": compare_identity[1],
         "baseline_runtime_version": f"SBCL {inclusion.SBCL_VERSION}",
         "policy": policy,
-        "platform": compare_identity[1],
-        "measured_on": compare_identity[0],
+        "platform": compare_identity[0],
+        "measured_on": measurement_date,
         "source_commit": inclusion.SOURCES["ansi-test"]["commit"],
+        "source_revision": source_revision,
         "registered": len(passing_baseline),
         "active": len(observed_tests),
         "disabled": 0,

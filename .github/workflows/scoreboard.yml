@@ -42,6 +42,8 @@ jobs:
     needs: ncl-build
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      SOURCE_REVISION: ${{ github.sha }}
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -93,6 +95,7 @@ jobs:
         run: |
           python3 scripts/ansi_test_inclusion.py baseline \
             --policy "$POLICY" \
+            --source-revision "$SOURCE_REVISION" \
             --command "$SBCL_BIN --script" \
             --cache-dir "$RUNNER_TEMP/ncl-conformance" \
             --timeout 900 \
@@ -109,6 +112,7 @@ jobs:
           set +e
           python3 scripts/ansi_test_inclusion.py compare \
             --policy "$POLICY" \
+            --source-revision "$SOURCE_REVISION" \
             --command "$RUNNER_TEMP/ncl-release/ncl --load" \
             --baseline "$RUNNER_TEMP/ansi-shard/sbcl-$POLICY.txt" \
             --cache-dir "$RUNNER_TEMP/ncl-conformance" \

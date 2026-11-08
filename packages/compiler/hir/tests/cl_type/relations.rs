@@ -15,6 +15,62 @@ fn member(
 }
 
 #[test]
+fn standardized_type_names_resolve_to_their_builtin_type_identities() {
+    let cases = [
+        ("BOOLEAN", BuiltinType::Boolean),
+        ("SYMBOL", BuiltinType::Symbol),
+        ("KEYWORD", BuiltinType::Keyword),
+        ("PACKAGE", BuiltinType::Package),
+        ("FUNCTION", BuiltinType::Function),
+        ("COMPILED-FUNCTION", BuiltinType::CompiledFunction),
+        ("CONS", BuiltinType::Cons),
+        ("LIST", BuiltinType::List),
+        ("NULL", BuiltinType::Null),
+        ("ATOM", BuiltinType::Atom),
+        ("NUMBER", BuiltinType::Number),
+        ("REAL", BuiltinType::Real),
+        ("RATIONAL", BuiltinType::Rational),
+        ("INTEGER", BuiltinType::Integer),
+        ("FIXNUM", BuiltinType::Fixnum),
+        ("BIGNUM", BuiltinType::Bignum),
+        ("RATIO", BuiltinType::Ratio),
+        ("FLOAT", BuiltinType::Float),
+        ("SHORT-FLOAT", BuiltinType::ShortFloat),
+        ("SINGLE-FLOAT", BuiltinType::SingleFloat),
+        ("DOUBLE-FLOAT", BuiltinType::DoubleFloat),
+        ("LONG-FLOAT", BuiltinType::LongFloat),
+        ("COMPLEX", BuiltinType::Complex),
+        ("CHARACTER", BuiltinType::Character),
+        ("BASE-CHAR", BuiltinType::BaseChar),
+        ("STANDARD-CHAR", BuiltinType::StandardChar),
+        ("EXTENDED-CHAR", BuiltinType::ExtendedChar),
+        ("STRING", BuiltinType::String),
+        ("BASE-STRING", BuiltinType::BaseString),
+        ("SIMPLE-STRING", BuiltinType::SimpleString),
+        ("SIMPLE-BASE-STRING", BuiltinType::SimpleBaseString),
+        ("BIT-VECTOR", BuiltinType::BitVector),
+        ("SIMPLE-BIT-VECTOR", BuiltinType::SimpleBitVector),
+        ("VECTOR", BuiltinType::Vector),
+        ("SIMPLE-VECTOR", BuiltinType::SimpleVector),
+        ("ARRAY", BuiltinType::Array),
+        ("SIMPLE-ARRAY", BuiltinType::SimpleArray),
+        ("SEQUENCE", BuiltinType::Sequence),
+        ("HASH-TABLE", BuiltinType::HashTable),
+        ("STREAM", BuiltinType::Stream),
+        ("RANDOM-STATE", BuiltinType::RandomState),
+        ("RESTART", BuiltinType::Restart),
+        ("STRUCTURE-OBJECT", BuiltinType::Structure),
+    ];
+
+    // CLHS 4.2.3 specifies the Common Lisp type names represented by this table.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/04_bc.htm
+    for (name, expected) in cases {
+        assert_eq!(BuiltinType::from_name(name), Some(expected));
+    }
+    assert_eq!(BuiltinType::from_name("IMPLEMENTATION-TYPE"), None);
+}
+
+#[test]
 fn named_subtypes_follow_numeric_sequence_and_character_relations() -> Result<(), Box<dyn Error>> {
     let mut arena = TypeArena::new(form(103))?;
     let cases = [

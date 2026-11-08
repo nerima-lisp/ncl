@@ -1,11 +1,12 @@
 //! Reconstruction of a saved object graph into a destination runtime.
 
-use ncl_object::hash_table::{HashTable, HashTest, Weakness};
+use ncl_hash_tables::{HashTable, HashTest, Weakness};
 use ncl_object::{
     Package, Runtime, ThreadContext, Word, allocate, function_offset, make_cons, make_string,
     make_symbol, pop_root, push_root, widetag,
 };
 use ncl_sys::CodePtr;
+use ncl_packages::PackageOperations;
 
 use crate::error::ImageError;
 use crate::format::ImageFile;

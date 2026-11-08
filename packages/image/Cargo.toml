@@ -7,10 +7,13 @@ license.workspace = true
 
 [dependencies]
 ncl-object = { path = "../object" }
+ncl-hash-tables = { path = "../hash-tables" }
+ncl-packages = { path = "../packages" }
 ncl-objfile = { path = "../objfile" }
 ncl-sys = { path = "../sys" }
 
 [dev-dependencies]
+ncl-arrays = { path = "../arrays" }
 ncl-ownership = { path = "../ownership" }
 ncl-readtables = { path = "../readtables" }
 ncl-streams = { path = "../streams" }

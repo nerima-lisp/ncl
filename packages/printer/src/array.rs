@@ -1,8 +1,8 @@
 //! Array and vector printing.
 
+use ncl_arrays::array_row_major_ref;
 use ncl_object::{
-    Word, array_dimensions, array_row_major_ref, simple_vector_length, simple_vector_ref,
-    specialized_array_ref,
+    Word, array_dimensions, simple_vector_length, simple_vector_ref, specialized_array_ref,
 };
 
 use crate::circle::specialized_length;

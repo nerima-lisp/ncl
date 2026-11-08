@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
+use ncl_arrays::{ArrayOptions, array_row_major_set, make_array};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, HeapRootedWord, ObjectError, Package, Runtime as ObjectRuntime,
-    ThreadContext, Word, array_row_major_set, make_array, make_bignum_from_limbs, make_complex,
-    make_cons, make_double, make_ratio, make_simple_vector, make_specialized_array, make_string,
+    ArrayElementType, HeapRootedWord, ObjectError, Package, Runtime as ObjectRuntime, ThreadContext,
+    Word, make_bignum_from_limbs, make_complex, make_cons, make_double, make_ratio,
+    make_simple_vector, make_specialized_array, make_string,
 };
 
 use crate::RuntimeError;
@@ -217,6 +218,7 @@ mod tests {
         ArrayElementType as IrArrayElementType, Constant, ConstantIndex, Function, FunctionId,
         StructureKind,
     };
+    use ncl_arrays::array_element_type;
     use ncl_object::{ArrayElementType, HeapRootedWord, array_dimensions, simple_vector_ref};
 
     use crate::Runtime;
@@ -296,7 +298,7 @@ mod tests {
                 .map_err(|error| format!("array {index}: {error:?}"))?;
             // check-added-lines: allow(panic) test-only assertions
             assert_eq!(
-                ncl_object::array::array_element_type(&runtime.context, array)
+                array_element_type(&runtime.context, array)
                     .map_err(|error| format!("array element type {index}: {error:?}"))?,
                 expected
             );
@@ -315,7 +317,7 @@ mod tests {
                 .map_err(|error| format!("empty array {index}: {error:?}"))?;
             // check-added-lines: allow(panic) test-only assertions
             assert_eq!(
-                ncl_object::array::array_element_type(&runtime.context, array)
+                array_element_type(&runtime.context, array)
                     .map_err(|error| format!("empty array element type {index}: {error:?}"))?,
                 expected
             );

@@ -1,4 +1,5 @@
 use ncl_compiler_front::{Expr, Literal, NumberLiteral, SymbolRef, TypeSpecifier};
+use ncl_hir::cl_type::NumericValue;
 use ncl_hir::{BuiltinType, ClTypeKind, HirForm, NodeKind, OpaqueOperand, SubtypeRelation, TypeId};
 
 use super::common::{TestResult, build, context};
@@ -33,7 +34,7 @@ fn asserted_types(form: &HirForm) -> TestResult<Vec<(TypeId, ClTypeKind)>> {
     form.nodes()
         .iter()
         .filter_map(|(_, node)| match &node.kind {
-            NodeKind::TypeAssertion { expected_type, .. } => Some(*expected_type),
+            NodeKind::TypeAssertion { asserted_type, .. } => Some(*asserted_type),
             _ => None,
         })
         .map(|id| {
@@ -159,7 +160,7 @@ fn member_integer_and_cons_specifiers_preserve_members_and_bounds() -> TestResul
     assert_eq!(lower_bounded.lower(), None);
     assert_eq!(
         lower_bounded.upper().map(|bound| bound.value()),
-        Some(ncl_hir::NumericValue::Integer(10))
+        Some(NumericValue::Integer(10))
     );
     let ClTypeKind::NumericRange(upper_bounded) = &at(&actual, 3)?.1 else {
         return Err(
@@ -168,7 +169,7 @@ fn member_integer_and_cons_specifiers_preserve_members_and_bounds() -> TestResul
     };
     assert_eq!(
         upper_bounded.lower().map(|bound| bound.value()),
-        Some(ncl_hir::NumericValue::Integer(-2))
+        Some(NumericValue::Integer(-2))
     );
     assert_eq!(upper_bounded.upper(), None);
     assert!(matches!(&at(&actual, 4)?.1, ClTypeKind::Cons { .. }));

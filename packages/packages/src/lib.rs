@@ -17,11 +17,7 @@ pub trait PackageListOperations {
     ) -> Result<bool, ObjectError>;
 
     /// Remove a package from this package's use list.
-    fn unuse_package(
-        self,
-        ctx: &mut ThreadContext,
-        package: Word,
-    ) -> Result<bool, ObjectError>;
+    fn unuse_package(self, ctx: &mut ThreadContext, package: Word) -> Result<bool, ObjectError>;
 
     /// Remove a symbol with the given name from this package.
     fn unintern(
@@ -48,11 +44,7 @@ pub trait PackageListOperations {
     ) -> Result<(), ObjectError>;
 
     /// Remove a package nickname.
-    fn remove_nickname(
-        self,
-        ctx: &mut ThreadContext,
-        nickname: Word,
-    ) -> Result<bool, ObjectError>;
+    fn remove_nickname(self, ctx: &mut ThreadContext, nickname: Word) -> Result<bool, ObjectError>;
 }
 
 /// CLHS operations over package symbols, exports, and local nicknames.

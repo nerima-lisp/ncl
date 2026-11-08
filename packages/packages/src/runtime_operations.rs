@@ -1,5 +1,5 @@
-use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, car, cdr, put};
 use ncl_object::package::{NAME, NICKNAMES};
+use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, car, cdr, put};
 
 /// CLHS operations that update the runtime's package registry.
 pub trait RuntimePackageOperations {

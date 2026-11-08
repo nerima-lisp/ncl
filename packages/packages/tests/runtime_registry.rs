@@ -10,7 +10,10 @@ fn package_lifecycle_and_class_registry_preserve_names() -> Result<(), ObjectErr
     ctx.register(&runtime)?;
 
     let common_lisp = runtime.ensure_package(&mut ctx, "CL")?;
-    assert_eq!(runtime.ensure_package(&mut ctx, "COMMON-LISP")?, common_lisp);
+    assert_eq!(
+        runtime.ensure_package(&mut ctx, "COMMON-LISP")?,
+        common_lisp
+    );
     assert_eq!(runtime.find_package(&ctx, "CL"), Some(common_lisp));
 
     let package = runtime.ensure_package(&mut ctx, "REGISTRY-LIFECYCLE")?;
@@ -47,6 +50,9 @@ fn common_lisp_user_has_standard_cl_user_nickname() -> Result<(), ObjectError> {
         .find_package(&ctx, "COMMON-LISP-USER")
         .ok_or(ObjectError::Layout)?;
 
-    assert_eq!(runtime.find_package(&ctx, "CL-USER"), Some(common_lisp_user));
+    assert_eq!(
+        runtime.find_package(&ctx, "CL-USER"),
+        Some(common_lisp_user)
+    );
     Ok(())
 }

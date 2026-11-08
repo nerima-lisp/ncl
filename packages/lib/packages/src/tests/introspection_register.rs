@@ -88,11 +88,7 @@ fn package_iteration_reports_malformed_symbol_tables() -> Result<(), ObjectError
     assert!(all_package_iteration_symbols(&mut ctx, &runtime).is_err());
 
     let bad_symbol = ensure_package(&mut ctx, &runtime, "N25-ITERATION-BAD-SYMBOL")?;
-    ctx.write_object_slot(
-        bad_symbol.as_word(),
-        PACKAGE_INTERNAL_SLOT,
-        Word::fixnum(0),
-    )?;
+    ctx.write_object_slot(bad_symbol.as_word(), PACKAGE_INTERNAL_SLOT, Word::fixnum(0))?;
     assert_eq!(
         package_iteration_symbols_for(
             &mut ctx,

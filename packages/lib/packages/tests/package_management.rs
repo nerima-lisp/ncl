@@ -1,11 +1,11 @@
 //! Regression test for package deletion preserving locked package state.
 
 use ncl_lib_packages::register as register_package_builtins;
-use ncl_packages::RuntimePackageOperations;
 use ncl_object::{
     FunctionObject, ObjectError, Package, Runtime, ThreadContext, Word, make_cons, make_string,
     pop_root, push_root,
 };
+use ncl_packages::RuntimePackageOperations;
 
 #[test]
 fn locked_delete_leaves_the_package_object_and_registered_names_unchanged()

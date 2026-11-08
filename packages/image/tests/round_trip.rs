@@ -5,8 +5,8 @@
 
 use std::collections::HashSet;
 
-use ncl_image::{load, save};
 use ncl_hash_tables::{HashTable, HashTest, Weakness};
+use ncl_image::{load, save};
 use ncl_object::{
     BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, CodeObject, Function,
     FunctionObject, ObjectRef, Package, Runtime, ThreadContext, Word, car, cdr, classify_object,
@@ -31,6 +31,7 @@ struct Graph {
 
 /// Build the acceptance object graph and return its rooted roots.
 fn build_graph(runtime: &Runtime, ctx: &mut ThreadContext) -> Graph {
+    ncl_hash_tables::register_layouts(runtime).unwrap();
     let mut string = make_string(ctx, runtime, &['h', 'i']).unwrap();
     let string_token = push_root(ctx, &mut string);
 
@@ -99,6 +100,7 @@ fn round_trip(
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
+    ncl_hash_tables::register_layouts(&runtime).unwrap();
     let loaded = load(&image, &runtime, &mut ctx).unwrap();
     (runtime, ctx, loaded.roots)
 }

@@ -226,11 +226,11 @@ mod private_tests {
             Ok(bytes) => bytes,
             Err(error) => panic!("valid debug variables rejected: {error}"),
         };
-        bytes[68] = b'z';
-        bytes[84] = b'a';
+        bytes[64] = b'z';
+        bytes[80] = b'a';
         assert_eq!(
             decode_section(&bytes, 0, &layout()),
-            Err(FaslError::at(FaslRejectReason::InvalidDebugRecord, 65))
+            Err(FaslError::at(FaslRejectReason::InvalidDebugRecord, 76))
         );
     }
 

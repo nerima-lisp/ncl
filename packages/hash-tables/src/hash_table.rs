@@ -2,8 +2,7 @@
 
 use ncl_object::{
     ObjectError, RootSlot, Runtime, ThreadContext, Word, allocate, finish_root, fix, get,
-    make_simple_vector, object_widetag, put, simple_vector_length, simple_vector_ref,
-    simple_vector_set, widetag,
+    make_simple_vector, put, simple_vector_length, simple_vector_ref, simple_vector_set, widetag,
 };
 
 mod equality;
@@ -16,7 +15,32 @@ use options::{
 pub use support::sxhash;
 use support::{decode_test, decode_weakness, probe};
 
-ncl_object::word_newtype!(HashTable);
+/// A typed handle to a heap-resident Common Lisp hash table.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HashTable(Word);
+
+impl HashTable {
+    /// Wrap an object word as a hash-table handle.
+    ///
+    /// The caller must ensure the word has the hash-table widetag.
+    #[must_use]
+    pub const fn from_word(value: Word) -> Self {
+        Self(value)
+    }
+
+    /// Return the underlying tagged object word.
+    #[must_use]
+    pub const fn as_word(self) -> Word {
+        self.0
+    }
+}
+
+impl From<HashTable> for Word {
+    fn from(value: HashTable) -> Self {
+        value.0
+    }
+}
 
 /// Register the heap layout used by hash-table objects.
 ///
@@ -44,9 +68,13 @@ fn hash_table_layout() -> ncl_object::ReferenceLayout {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(i64)]
 pub enum HashTest {
+    /// Compare keys by object identity.
     Eq = 0,
+    /// Compare keys by identity or numeric value.
     Eql = 1,
+    /// Compare strings and conses by content.
     Equal = 2,
+    /// Compare strings and numeric values without case or representation differences.
     Equalp = 3,
 }
 
@@ -54,10 +82,15 @@ pub enum HashTest {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(i64)]
 pub enum Weakness {
+    /// Keep keys and values strongly reachable.
     None = 0,
+    /// Keep values only while their keys are reachable.
     Key = 1,
+    /// Keep keys only while their values are reachable.
     Value = 2,
+    /// Keep each entry while both key and value are reachable.
     KeyAndValue = 3,
+    /// Keep each entry while either key or value is reachable.
     KeyOrValue = 4,
 }
 
@@ -87,12 +120,14 @@ impl HashTable {
     pub fn try_from_word_view(
         view: ncl_object::WordView,
     ) -> Result<Self, ncl_object::TypeError> {
-        match view {
-            ncl_object::WordView::HashTable(word) => Ok(Self::from_word(word)),
-            _ => Err(ncl_object::TypeError {
-                datum: view.as_word(),
+        let datum = view.as_word();
+        if let ncl_object::WordView::HashTable(word) = view {
+            Ok(Self::from_word(word))
+        } else {
+            Err(ncl_object::TypeError {
+                datum,
                 expected: ncl_object::ObjectType::HashTable,
-            }),
+            })
         }
     }
 
@@ -122,8 +157,25 @@ impl HashTable {
                     let table = allocate(ctx, runtime, widetag::HASH_TABLE, 13)?;
                     let epoch = ctx.heap_epoch();
                     for (slot, value) in [
-                        (TEST, Word::fixnum(test as i64)),
-                        (WEAKNESS, Word::fixnum(weakness as i64)),
+                        (
+                            TEST,
+                            Word::fixnum(match test {
+                                HashTest::Eq => 0,
+                                HashTest::Eql => 1,
+                                HashTest::Equal => 2,
+                                HashTest::Equalp => 3,
+                            }),
+                        ),
+                        (
+                            WEAKNESS,
+                            Word::fixnum(match weakness {
+                                Weakness::None => 0,
+                                Weakness::Key => 1,
+                                Weakness::Value => 2,
+                                Weakness::KeyAndValue => 3,
+                                Weakness::KeyOrValue => 4,
+                            }),
+                        ),
                         (COUNT, Word::fixnum(0)),
                         (CAPACITY, fix(capacity)?),
                         (
@@ -283,24 +335,24 @@ impl HashTable {
             let entry = simple_vector_ref(ctx, index, slot)?
                 .as_fixnum()
                 .ok_or(ObjectError::Layout)?;
-            let position = match entry {
-                EMPTY | TOMBSTONE => {
-                    let free = table.read_i64(ctx, FREE_HEAD)?;
-                    if free >= 0 {
-                        let position = usize::try_from(free).map_err(|_| ObjectError::Layout)?;
-                        let next = simple_vector_ref(ctx, kv, position * 2 + 1)?
-                            .as_fixnum()
-                            .ok_or(ObjectError::Layout)?;
-                        put(ctx, table.0, FREE_HEAD, Word::fixnum(next))?;
-                        position
-                    } else {
-                        let position = table.read_usize(ctx, HIGH_WATER)?;
-                        put(ctx, table.0, HIGH_WATER, fix(position + 1)?)?;
-                        position
-                    }
+            let position = if entry == EMPTY || entry == TOMBSTONE {
+                let free = table.read_i64(ctx, FREE_HEAD)?;
+                if free >= 0 {
+                    let position = usize::try_from(free).map_err(|_| ObjectError::Layout)?;
+                    let next = simple_vector_ref(ctx, kv, position * 2 + 1)?
+                        .as_fixnum()
+                        .ok_or(ObjectError::Layout)?;
+                    put(ctx, table.0, FREE_HEAD, Word::fixnum(next))?;
+                    position
+                } else {
+                    let position = table.read_usize(ctx, HIGH_WATER)?;
+                    put(ctx, table.0, HIGH_WATER, fix(position + 1)?)?;
+                    position
                 }
-                entry if entry >= 0 => usize::try_from(entry).map_err(|_| ObjectError::Layout)?,
-                _ => return Err(ObjectError::Layout),
+            } else if entry >= 0 {
+                usize::try_from(entry).map_err(|_| ObjectError::Layout)?
+            } else {
+                return Err(ObjectError::Layout);
             };
             simple_vector_set(ctx, kv, position * 2, key)?;
             simple_vector_set(ctx, kv, position * 2 + 1, value)?;
@@ -318,10 +370,14 @@ impl HashTable {
             }
             Ok(())
         })();
-        assert!(ncl_object::pop_root(ctx, value_token));
-        assert!(ncl_object::pop_root(ctx, key_token));
-        assert!(ncl_object::pop_root(ctx, table_token));
-        result
+        let value_popped = ncl_object::pop_root(ctx, value_token);
+        let key_popped = ncl_object::pop_root(ctx, key_token);
+        let table_popped = ncl_object::pop_root(ctx, table_token);
+        if value_popped && key_popped && table_popped {
+            result
+        } else {
+            Err(ObjectError::Layout)
+        }
     }
     /// Remove a key and return its value when present.
     ///

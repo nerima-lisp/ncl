@@ -8,6 +8,9 @@ use ncl_hir::{
 };
 use ncl_ir::{Constant, ConstantIndex, Function, OpKind, StructureKind, Terminator, ValueId};
 
+#[path = "lowering_coverage/lambda_defaults.rs"]
+mod lambda_defaults;
+
 type TestResult<T> = Result<T, Box<dyn Error>>;
 
 fn context(form_index: u32, source: &str) -> TestResult<(FormId, HirFormBuilder, SymbolTable)> {

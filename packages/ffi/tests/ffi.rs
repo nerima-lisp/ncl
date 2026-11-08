@@ -1,7 +1,7 @@
-#![allow(
+#![expect(
     clippy::indexing_slicing,
     clippy::unwrap_used,
-    reason = "tests assert on concrete values and errors"
+    reason = "Tests assert concrete FFI values and errors; the boxed callback fixture contains one known argument, so values[0] reads that fixed slot."
 )]
 
 //! Foreign calls, dynamic loading, unmanaged memory, roots, and conditions.

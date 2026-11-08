@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on concrete values")]
+#![expect(clippy::unwrap_used, reason = "tests assert on concrete values")]
 
 //! System area pointer arithmetic and comparisons.
 

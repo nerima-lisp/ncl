@@ -96,7 +96,7 @@ impl std::fmt::Display for FfiError {
 
 impl std::error::Error for FfiError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        #[allow(
+        #[expect(
             clippy::wildcard_enum_match_arm,
             reason = "non-exhaustive errors require a forward-compatible fallback"
         )]
@@ -135,7 +135,7 @@ impl FfiError {
     /// on its declared `Result<(), ObjectError>` signature.
     #[must_use]
     pub fn into_object_error(self) -> ObjectError {
-        #[allow(
+        #[expect(
             clippy::wildcard_enum_match_arm,
             reason = "non-exhaustive errors require a forward-compatible fallback"
         )]

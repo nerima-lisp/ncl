@@ -223,10 +223,6 @@ fn boolean_value(value: Word) -> Result<bool, FfiError> {
 }
 
 /// Decode a Lisp value into an `f32`, accepting a single- or double-float.
-#[allow(
-    clippy::cast_possible_truncation,
-    reason = "a double-float passed where a float is declared narrows by design"
-)]
 fn single_value(ctx: &ThreadContext, value: Word) -> Result<f32, FfiError> {
     if value.lowtag() == LOWTAG_SINGLE_FLOAT {
         let bits = (value.bits() >> 4) & 0xFFFF_FFFF;
@@ -258,7 +254,7 @@ fn double_value_of(ctx: &ThreadContext, value: Word) -> Result<f64, FfiError> {
 
 const LOWTAG_SINGLE_FLOAT: u8 = 2;
 
-#[allow(
+#[expect(
     clippy::as_conversions,
     clippy::cast_possible_truncation,
     reason = "the foreign single-float ABI explicitly narrows a double value"

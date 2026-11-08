@@ -1,7 +1,7 @@
-#![allow(
+#![expect(
     clippy::panic,
     clippy::unwrap_used,
-    reason = "tests assert on concrete values"
+    reason = "Alien tests use valid type specifications, then panic if a structure or union constructor returns the wrong variant; unwrap checks expected conversions."
 )]
 
 //! Alien type parsing, layout, and marshalling.

@@ -224,11 +224,14 @@ impl crate::Runtime {
                     functions: &functions,
                     undefined_function_stub: self.evaluator.state.undefined_function_stub,
                 };
-                if cfg!(target_arch = "aarch64") {
-                    ncl_codegen::compile_function_aarch64_preserving_multiple_values(function, &abi)
-                } else {
-                    ncl_codegen::compile_function_x86_64_preserving_multiple_values(function, &abi)
-                }
+                #[cfg(target_arch = "aarch64")]
+                let result = ncl_codegen::compile_function_aarch64_preserving_multiple_values(
+                    function, &abi,
+                );
+                #[cfg(not(target_arch = "aarch64"))]
+                let result =
+                    ncl_codegen::compile_function_x86_64_preserving_multiple_values(function, &abi);
+                result
             };
             drop(functions);
             result
@@ -251,47 +254,32 @@ impl crate::Runtime {
         &mut self,
         compiled: &mut [(&ncl_ir::Function, (CodePtr, CodeObjectMetadata))],
     ) -> Result<(), RuntimeError> {
-        let registration =
-            compiled
-                .iter()
-                .enumerate()
-                .try_for_each(|(index, (_, (code, metadata)))| {
-                    self.context
-                        .thread_access()
-                        .register_code(code, metadata.clone())
-                        .map_err(|error| (index, error))
-                });
-        if let Err((index, error)) = registration {
-            self.unregister_native_metadata(compiled, index);
-            return Err(error.into());
-        }
-        let sealing = compiled
-            .iter_mut()
-            .try_for_each(|(_, (code, _))| seal_code(code));
-        if let Err(error) = sealing {
-            self.unregister_native_metadata(compiled, compiled.len());
-            return Err(error.into());
-        }
-        let synchronization = compiled
-            .iter_mut()
-            .try_for_each(|(_, (code, _))| synchronize_code(code));
-        if let Err(error) = synchronization {
-            self.unregister_native_metadata(compiled, compiled.len());
-            return Err(error.into());
-        }
-        let code_activation = compiled
-            .iter_mut()
-            .try_for_each(|(_, (code, _))| activate_code(code));
-        if let Err(error) = code_activation {
-            self.unregister_native_metadata(compiled, compiled.len());
-            return Err(error.into());
-        }
-        let registry_activation = compiled
-            .iter()
-            .try_for_each(|(_, (code, _))| activate_code_registry(code));
-        if let Err(error) = registry_activation {
-            self.unregister_native_metadata(compiled, compiled.len());
-            return Err(error.into());
+        let mut registered = 0;
+        let publication = (|| -> Result<(), RuntimeError> {
+            for (_, (code, metadata)) in compiled.iter() {
+                self.context
+                    .thread_access()
+                    .register_code(code, metadata.clone())?;
+                registered += 1;
+            }
+            for (_, (code, _)) in compiled.iter_mut() {
+                seal_code(code)?;
+            }
+            for (_, (code, _)) in compiled.iter_mut() {
+                synchronize_code(code)?;
+            }
+            for (_, (code, _)) in compiled.iter_mut() {
+                activate_code(code)?;
+            }
+            for (_, (code, _)) in compiled.iter() {
+                activate_code_registry(code)?;
+            }
+            Ok(())
+        })();
+
+        if let Err(error) = publication {
+            self.unregister_native_metadata(compiled, registered);
+            return Err(error);
         }
         Ok(())
     }

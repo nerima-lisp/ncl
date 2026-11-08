@@ -1,0 +1,6 @@
+(defun micro-case (iterations)
+  (let ((offset 7))
+    (let ((function (lambda (value) (+ value offset)))
+          (sum 0))
+      (dotimes (index iterations sum)
+        (incf sum (funcall function index))))))

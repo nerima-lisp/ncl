@@ -1,0 +1,340 @@
+name: Performance benchmarks
+
+on:
+  pull_request:
+  push:
+    branches: ["cand/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmarks:
+    name: NCL performance report
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      BENCH_MODE: ${{ github.event_name == 'workflow_dispatch' && 'full' || 'light' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Create result directory
+        run: mkdir -p results
+      - name: Build release NCL
+        id: build
+        run: cargo build --locked --release -p ncl --bins
+      - name: Verify generated micro-benchmark layouts
+        id: micro_test
+        run: cargo test --locked -p ncl-codegen --test micro_bench
+      - name: Install SBCL 2.6.10
+        id: sbcl
+        shell: bash
+        run: |
+          archive="$RUNNER_TEMP/sbcl-2.6.10-x86-64-linux-binary.tar.bz2"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            https://sourceforge.net/projects/sbcl/files/sbcl/2.6.10/sbcl-2.6.10-x86-64-linux-binary.tar.bz2/download
+          printf '%s  %s\n' \
+            96e26b0be3aa6ca2a3f03dfd5fc117647fffb96790a9c235e8dcf27df2eba726 \
+            "$archive" | sha256sum --check --strict
+          tar -xjf "$archive" -C "$RUNNER_TEMP"
+          sbcl_dir="$RUNNER_TEMP/sbcl-2.6.10-x86-64-linux"
+          sbcl_prefix="$RUNNER_TEMP/sbcl-2.6.10"
+          (
+            cd "$sbcl_dir"
+            sh ./install.sh --prefix="$sbcl_prefix"
+          )
+          sbcl_bin="$sbcl_prefix/bin/sbcl"
+          sbcl_version="$("$sbcl_bin" --version)"
+          test "$sbcl_version" = "SBCL 2.6.10"
+          printf 'SBCL_BIN=%s\n' "$sbcl_bin" >> "$GITHUB_ENV"
+      - name: Run cl-bench comparison
+        id: cl_bench
+        if: always() && steps.build.outcome == 'success' && steps.micro_test.outcome == 'success' && steps.sbcl.outcome == 'success'
+        shell: bash
+        run: |
+          runner_args=(--ncl target/release/ncl --sbcl "$SBCL_BIN" \
+            --ncl-revision "$GITHUB_SHA" --ncl-revision-source GITHUB_SHA \
+            --output results/cl-bench.json)
+          if [[ "$BENCH_MODE" == 'light' ]]; then
+            runner_args+=(--benchmark FIB --benchmark FRPOLY/FIXNUM \
+              --benchmark CLOS/methodcalls --benchmark TAK --benchmark TRTAK)
+          fi
+          if python3 scripts/optimization_baseline.py "${runner_args[@]}" \
+            >results/cl-bench.stdout.txt 2>results/cl-bench.stderr.txt; then
+            runner_status=0
+          else
+            runner_status=$?
+          fi
+          cat results/cl-bench.stdout.txt
+          cat results/cl-bench.stderr.txt >&2
+          if (( runner_status != 0 )); then
+            python3 - "$runner_status" cl-bench <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          root = Path("results")
+          stem = sys.argv[2]
+          def capture(kind):
+              payload = (root / f"{stem}.{kind}.txt").read_bytes()
+              truncated = len(payload) > 16384
+              if truncated:
+                  payload = payload[-16384:]
+              return payload.decode("utf-8", errors="replace"), truncated
+          stdout, stdout_truncated = capture("stdout")
+          stderr, stderr_truncated = capture("stderr")
+          report = {
+              "schema_version": 1,
+              "status": "runner-error",
+              "runner": stem,
+              "exit_code": int(sys.argv[1]),
+              "stdout": stdout,
+              "stderr": stderr,
+              "stdout_truncated": stdout_truncated,
+              "stderr_truncated": stderr_truncated,
+          }
+          (root / f"{stem}-diagnostic.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+          fi
+          exit "$runner_status"
+      - name: Run micro benchmarks
+        id: micro_bench
+        if: always() && steps.build.outcome == 'success' && steps.micro_test.outcome == 'success' && steps.sbcl.outcome == 'success'
+        shell: bash
+        run: |
+          runs=5
+          if python3 scripts/micro_bench.py \
+            --ncl target/release/ncl --sbcl "$SBCL_BIN" \
+            --runs "$runs" --output results/micro.json \
+            >results/micro.stdout.txt 2>results/micro.stderr.txt; then
+            runner_status=0
+          else
+            runner_status=$?
+          fi
+          cat results/micro.stdout.txt
+          cat results/micro.stderr.txt >&2
+          if (( runner_status != 0 )); then
+            python3 - "$runner_status" micro <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          root = Path("results")
+          stem = sys.argv[2]
+          def capture(kind):
+              payload = (root / f"{stem}.{kind}.txt").read_bytes()
+              truncated = len(payload) > 16384
+              if truncated:
+                  payload = payload[-16384:]
+              return payload.decode("utf-8", errors="replace"), truncated
+          stdout, stdout_truncated = capture("stdout")
+          stderr, stderr_truncated = capture("stderr")
+          report = {
+              "schema_version": 1,
+              "status": "runner-error",
+              "runner": stem,
+              "exit_code": int(sys.argv[1]),
+              "stdout": stdout,
+              "stderr": stderr,
+              "stdout_truncated": stdout_truncated,
+              "stderr_truncated": stderr_truncated,
+          }
+          (root / f"{stem}-diagnostic.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+          fi
+          exit "$runner_status"
+      - name: Run compile-file corpus
+        id: compile_bench
+        if: always() && steps.build.outcome == 'success' && steps.micro_test.outcome == 'success' && steps.sbcl.outcome == 'success'
+        shell: bash
+        run: |
+          if python3 scripts/compile_benchmark.py \
+            --ncl target/release/ncl --sbcl "$SBCL_BIN" \
+            --ncl-profiler target/release/ncl-profiler \
+            --mode "$BENCH_MODE" --output results/compile.json \
+            >results/compile.stdout.txt 2>results/compile.stderr.txt; then
+            runner_status=0
+          else
+            runner_status=$?
+          fi
+          cat results/compile.stdout.txt
+          cat results/compile.stderr.txt >&2
+          if (( runner_status != 0 )); then
+            python3 - "$runner_status" compile <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          root = Path("results")
+          stem = sys.argv[2]
+          def capture(kind):
+              payload = (root / f"{stem}.{kind}.txt").read_bytes()
+              truncated = len(payload) > 16384
+              if truncated:
+                  payload = payload[-16384:]
+              return payload.decode("utf-8", errors="replace"), truncated
+          stdout, stdout_truncated = capture("stdout")
+          stderr, stderr_truncated = capture("stderr")
+          report = {
+              "schema_version": 1,
+              "status": "runner-error",
+              "runner": stem,
+              "exit_code": int(sys.argv[1]),
+              "stdout": stdout,
+              "stderr": stderr,
+              "stdout_truncated": stdout_truncated,
+              "stderr_truncated": stderr_truncated,
+          }
+          (root / f"{stem}-diagnostic.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+          fi
+          exit "$runner_status"
+      - name: Write step summary
+        if: always()
+        env:
+          RESULT_DIR: results
+          CL_BENCH_OUTCOME: ${{ steps.cl_bench.outcome }}
+          MICRO_BENCH_OUTCOME: ${{ steps.micro_bench.outcome }}
+          COMPILE_BENCH_OUTCOME: ${{ steps.compile_bench.outcome }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RESULT_DIR"])
+          print(f"## Performance benchmarks ({os.environ.get('BENCH_MODE', 'unknown')} mode)\n")
+
+          outcomes = {
+              "cl-bench": os.environ.get("CL_BENCH_OUTCOME", "unknown"),
+              "micro suite": os.environ.get("MICRO_BENCH_OUTCOME", "unknown"),
+              "compile-file": os.environ.get("COMPILE_BENCH_OUTCOME", "unknown"),
+          }
+
+          def row_counts(rows):
+              rows = [row for row in rows if isinstance(row, dict)]
+              failed = sum(row.get("status") == "failed" for row in rows)
+              return failed, len(rows)
+
+          def print_row_summary(report, label):
+              if label == "cl-bench":
+                  rows = []
+                  for run in report.get("runs", []):
+                      if not isinstance(run, dict) or run.get("phase") != "measurement":
+                          continue
+                      benchmarks = run.get("benchmarks", {})
+                      if isinstance(benchmarks, dict):
+                          rows.extend(benchmarks.values())
+                      elif isinstance(benchmarks, list):
+                          rows.extend(benchmarks)
+                  failed, total = row_counts(rows)
+                  disabled = sum(isinstance(row, dict) and row.get("status") == "disabled" for row in rows)
+                  print(f"Measurement rows failed: `{failed}/{total}`; disabled rows: `{disabled}`\n")
+                  return
+              if label == "micro suite":
+                  rows = []
+                  cases = report.get("cases", {})
+                  case_values = cases.values() if isinstance(cases, dict) else cases
+                  for case in case_values:
+                      if not isinstance(case, dict):
+                          continue
+                      engines = case.get("engines", {})
+                      engine_values = engines.values() if isinstance(engines, dict) else engines
+                      for engine in engine_values:
+                          if isinstance(engine, dict):
+                              rows.extend(engine.get("samples", []))
+                  failed, total = row_counts(rows)
+                  print(f"Sample rows failed: `{failed}/{total}`\n")
+                  return
+              runtimes = report.get("runtimes", {})
+              if isinstance(runtimes, dict):
+                  for runtime, details in runtimes.items():
+                      if not isinstance(details, dict):
+                          continue
+                      files = details.get("files", [])
+                      failed, total = row_counts(files)
+                      print(f"{runtime} file rows failed: `{failed}/{total}`")
+                  print()
+
+          def print_diagnostic(path, label):
+              if not path.is_file():
+                  return
+              try:
+                  diagnostic = json.loads(path.read_text(encoding="utf-8"))
+              except (OSError, json.JSONDecodeError):
+                  print(f"Runner diagnostic for {label} is unreadable.\n")
+                  return
+              message = diagnostic.get("stderr") or diagnostic.get("stdout") or "no output captured"
+              message = " ".join(str(message).split()).replace("`", "'")[:500]
+              print(f"Runner exit: `{diagnostic.get('exit_code', 'unknown')}`; diagnostic: `{message}`\n")
+
+          for filename, label in (("cl-bench.json", "cl-bench"), ("micro.json", "micro suite"), ("compile.json", "compile-file")):
+              path = root / filename
+              if not path.is_file():
+                  print(f"### {label}\n")
+                  print(f"Runner: `{outcomes[label]}`; report: `missing`; failed rows: `n/a`\n")
+                  print_diagnostic(root / f"{path.stem}-diagnostic.json", label)
+                  continue
+              try:
+                  report = json.loads(path.read_text(encoding="utf-8"))
+              except (OSError, json.JSONDecodeError):
+                  print(f"### {label}\n")
+                  print(f"Runner: `{outcomes[label]}`; report: `unreadable`; failed rows: `n/a`\n")
+                  print_diagnostic(root / f"{path.stem}-diagnostic.json", label)
+                  continue
+              print(f"### {label}\n")
+              print(f"Runner: `report generated` (step outcome: `{outcomes[label]}`); report status: `{report.get('status', 'unknown')}`\n")
+              print_row_summary(report, label)
+              if isinstance(report.get("error"), str):
+                  error = " ".join(report["error"].split()).replace("`", "'")[:500]
+                  print(f"Error: `{error}`\n")
+              print_diagnostic(root / f"{path.stem}-diagnostic.json", label)
+              if isinstance(report.get("sample_runs"), int):
+                  order = report.get("run_order", [])
+                  compile_pairs = sum(isinstance(row, dict) and row.get("phase") == "compile" for row in order)
+                  startup_pairs = sum(isinstance(row, dict) and row.get("phase") == "startup" for row in order)
+                  print(f"Compile samples per file and runtime: `{report['sample_runs']}`; warmups: `{report.get('warmup_runs_per_source', 'n/a')}`; compile order pairs: `{compile_pairs}`; startup order pairs: `{startup_pairs}`; topology: `{report.get('process_topology', 'n/a')}`\n")
+              runtimes = report.get("runtimes")
+              if isinstance(runtimes, dict):
+                  print("| Runtime | Compiled files | Compile median seconds | Compile minimum seconds | Lines/s | Peak RSS bytes | RSS samples | Startup median seconds | Binary size bytes |")
+                  print("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+                  for runtime, metrics in runtimes.items():
+                      if isinstance(metrics, dict):
+                          startup = metrics.get("startup")
+                          startup_median = startup.get("median_seconds", "n/a") if isinstance(startup, dict) else "n/a"
+                          rss_samples = f"{metrics.get('peak_rss_sample_count', 'n/a')}/{metrics.get('peak_rss_expected_sample_count', 'n/a')}"
+                          print(f"| {runtime} | {metrics.get('compiled_file_count', 'n/a')} | {metrics.get('total_compile_seconds', 'n/a')} | {metrics.get('minimum_total_compile_seconds', 'n/a')} | {metrics.get('lines_per_second', 'n/a')} | {metrics.get('peak_rss_bytes', 'n/a')} | {rss_samples} | {startup_median} | {metrics.get('binary_size_bytes', 'n/a')} |")
+                  print()
+              scores = report.get("scores")
+              if isinstance(scores, dict):
+                  ratios = scores.get("ncl_over_sbcl_ratio")
+                  if ratios is not None:
+                      print(f"NCL/SBCL geometric-mean ratios: `{ratios}`\n")
+              profile = report.get("pass_profile")
+              if isinstance(profile, dict):
+                  print(f"Pass profile: `{profile.get('status', 'unknown')}`; allocation bytes available: `{profile.get('allocation_bytes_available', False)}`\n")
+                  for row in profile.get("top_10", []):
+                      print(f"- `{row.get('pass')}`: {row.get('elapsed_ns')} ns, {row.get('allocated_bytes')} bytes")
+                  print()
+          PY
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-${{ github.run_id }}
+          path: results/*.json
+          if-no-files-found: warn

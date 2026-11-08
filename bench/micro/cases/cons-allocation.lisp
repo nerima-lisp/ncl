@@ -1,0 +1,10 @@
+(defvar *micro-cells* nil)
+
+(defun micro-case (iterations)
+  (let ((cells (make-array iterations))
+        (sum 0))
+    (dotimes (index iterations)
+      (setf (aref cells index) (cons index nil))
+      (incf sum))
+    (setf *micro-cells* cells)
+    sum))

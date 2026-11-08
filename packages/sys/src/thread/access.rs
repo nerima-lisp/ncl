@@ -131,6 +131,12 @@ impl<'a> ThreadAccess<'a> {
         crate::heap_epoch(self.thread)
     }
 
+    /// Return the current mutator's requested Lisp-heap bytes since its last collection.
+    #[must_use]
+    pub const fn bytes_cons_since_gc(&self) -> usize {
+        self.thread.bytes_cons
+    }
+
     /// Return the heap's cumulative forwarded-object count for GC stress tests.
     #[cfg(feature = "test-support")]
     #[doc(hidden)]

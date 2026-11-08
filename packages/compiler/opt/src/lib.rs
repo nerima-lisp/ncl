@@ -150,6 +150,8 @@ pub struct PassEvent {
     pub verification: PassVerification,
     /// Wall-clock time spent running the pass, in nanoseconds.
     pub elapsed: Duration,
+    /// Successful Rust allocator request bytes made while running the pass, when measured.
+    pub allocated_bytes: Option<u128>,
     /// Pass or verification failure detail.
     pub error: Option<String>,
 }
@@ -175,6 +177,9 @@ impl Display for PassEvent {
             PassVerification::RolledBack(_) => f.write_str("rolled-back")?,
         }
         write!(f, " elapsed_ns={}", self.elapsed.as_nanos())?;
+        if let Some(allocated_bytes) = self.allocated_bytes {
+            write!(f, " allocated_bytes={allocated_bytes}")?;
+        }
         if let Some(error) = &self.error {
             write!(f, " error={error:?}")?;
         }
@@ -259,6 +264,9 @@ mod dce_tests;
 #[cfg(test)]
 #[path = "gvn_tests.rs"]
 mod gvn_tests;
+#[cfg(test)]
+#[path = "manager_allocation_tests.rs"]
+mod manager_allocation_tests;
 #[cfg(test)]
 #[path = "manager_tests.rs"]
 mod manager_tests;

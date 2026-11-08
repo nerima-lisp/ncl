@@ -113,6 +113,9 @@ impl Context<'_> {
             Some(form) => self.lower_expr(f, form)?,
             None => f.nil()?,
         };
+        if f.is_terminated() {
+            return Ok(value);
+        }
         let thrown_value = if self.preserve_multiple_values {
             Self::capture_multiple_values(f, value)?
         } else {

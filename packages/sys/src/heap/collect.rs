@@ -1,11 +1,18 @@
-use super::{FORWARDED_FLAG, HashMap, HashSet, Object, PageKind, Weakness, Word, scan};
+use super::{FORWARDED_FLAG, HashMap, HashSet, Object, PageKind, Weakness, Word};
 #[path = "collect/weak_cleanup.rs"]
 mod weak_cleanup;
+use crate::heap::pages::{PageError, PageRange};
+#[path = "collect/reclaim.rs"]
+mod reclaim;
+#[path = "collect/roots.rs"]
+mod roots;
 #[path = "collect/weak_mark.rs"]
 mod weak_mark;
-use weak_mark::WeakMarkContext;
+use reclaim::allocate_copy;
 #[path = "collect/constants.rs"]
 mod constants;
+#[path = "collect/finish.rs"]
+mod finish;
 use constants::{
     HASH_TABLE_COUNT, HASH_TABLE_FREE_HEAD, HASH_TABLE_HIGH_WATER, HASH_TABLE_INDEX, HASH_TABLE_KV,
     HASH_TABLE_MARKER, HASH_TABLE_WEAKNESS, HASH_TABLE_WIDETAG, TOMBSTONE, VECTOR_DATA,
@@ -14,106 +21,61 @@ use constants::{
 #[path = "collect/test_support.rs"]
 mod test_support;
 
+struct HashTableCleanupData {
+    weakness: Weakness,
+    key_values: usize,
+    index_vector: usize,
+    marker: u64,
+    high_water: usize,
+}
+
 impl super::Heap {
-    pub(crate) fn collect(&self, full: bool) {
+    #[cfg(test)]
+    pub(crate) fn collect(&self, full: bool) -> Result<(), PageError> {
+        self.collect_with_decommit(full, PageRange::decommit_group)
+    }
+
+    pub(crate) fn collect_with_decommit(
+        &self,
+        full: bool,
+        decommit_group: impl FnMut(&mut PageRange, usize) -> Result<(), PageError>,
+    ) -> Result<(), PageError> {
         let mut state = self.lock_state();
-        state.gc_epoch = state.gc_epoch.wrapping_add(1);
-        for object in &mut state.objects {
-            object.pinned = false;
+        if let Some(error) = state.pending_page_error {
+            return Err(error);
         }
-        let mut live = HashSet::new();
-        let mut stack = Vec::new();
-        let mut weak_kv = HashMap::new();
-        let mut pending_weak_tables = Vec::new();
-        let mut root_slots = state.roots.clone();
-        let mut conservative_values = Vec::new();
-        let mut frame_values = Vec::new();
-        for thread in state.threads.iter().copied() {
-            // SAFETY: registered thread pointers remain valid until unregister_thread.
-            unsafe {
-                root_slots.extend((*thread).roots.iter().copied());
-                // The multiple-value return area (used both for ordinary
-                // multi-value returns and, while a non-local exit is
-                // propagating, for the `catch` tag and thrown value) is a
-                // fixed field on `Thread`, not something callers register
-                // through `push_root`; only its live prefix (`mv_count`)
-                // holds meaningful words.
-                let mv_live = (*thread).mv_count();
-                let mv_base: *mut Word = core::ptr::addr_of_mut!((*thread).mv).cast();
-                for index in 0..mv_live.min(crate::MULTIPLE_VALUE_AREA_WORDS) {
-                    root_slots.push(mv_base.add(index));
-                }
-                let snapshot = (*thread).conservative_snapshot();
-                conservative_values.extend(snapshot);
-                let mut values = Vec::new();
-                if (*thread).has_native_frame_snapshot() {
-                    let _ = (*thread).scan_native_frame(&state.code_registry, |value| {
-                        values.push(value);
-                        value
-                    });
-                } else {
-                    let _ = crate::scan_frame_chain_with_registry(
-                        &mut (*thread).frame_chain,
-                        0,
-                        &state.code_registry,
-                        &mut (*thread).frame_registers,
-                        |value| {
-                            values.push(value);
-                            value
-                        },
-                    );
-                }
-                frame_values.extend(values);
-            }
-        }
-        let mut conservative_indices = Vec::new();
-        for value in conservative_values {
-            if let Some(index) = Self::find_conservative(&state, value) {
-                state.objects[index].pinned = true;
-                conservative_indices.push(index);
-            }
-        }
-        if !full {
-            for (index, _) in state.dirty_cards.clone() {
-                if state.objects.get(index).is_some_and(|object| object.alive) {
-                    stack.push(index);
-                }
-            }
-        }
-        for root in root_slots.iter().copied() {
-            if !root.is_null() {
-                // SAFETY: registered root slots outlive registration.
-                let value = unsafe { *root };
-                if let Some(index) = Self::find(&state, value) {
-                    stack.push(index);
-                }
-            }
-        }
-        stack.extend(conservative_indices);
-        for value in frame_values {
-            if let Some(index) = Self::find(&state, value) {
-                stack.push(index);
-            }
-        }
-        let mut mark = WeakMarkContext {
-            state: &state,
-            full,
-            live: &mut live,
-            stack: &mut stack,
-            weak_kv: &mut weak_kv,
-            pending: &mut pending_weak_tables,
-        };
-        mark.drain();
+        Self::begin_collection_state(&mut state);
+        let roots = Self::snapshot_roots(&state);
+        let mut live = Self::mark_roots(&mut state, &roots, full);
         let moved = Self::move_live_objects(&mut state, &mut live);
         #[cfg(feature = "test-support")]
         let registered_root_slots_before_collection =
-            test_support::snapshot_root_slots(&root_slots);
-        let hooks = Self::finish_collection(&mut state, &root_slots, &moved, &live, full);
+            test_support::snapshot_root_slots(&roots.root_slots);
+        let finish::CollectionFinish {
+            hooks,
+            decommit_result,
+        } = Self::finish_collection(
+            &mut state,
+            &roots.root_slots,
+            &moved,
+            &live,
+            full,
+            decommit_group,
+        );
+        self.available_bytes.store(
+            self.config.dynamic_space_size.saturating_sub(state.used),
+            std::sync::atomic::Ordering::Release,
+        );
+        if let Err(error) = decommit_result {
+            state.pending_page_error = Some(error);
+            self.pending_page_error
+                .store(true, std::sync::atomic::Ordering::Release);
+        }
         #[cfg(feature = "test-support")]
         test_support::record_root_slot_status(
             self,
             &state,
-            &root_slots,
+            &roots.root_slots,
             &moved,
             &registered_root_slots_before_collection,
         );
@@ -121,6 +83,7 @@ impl super::Heap {
         for hook in hooks {
             hook();
         }
+        decommit_result
     }
 
     fn move_live_objects(
@@ -130,125 +93,61 @@ impl super::Heap {
         let mut moved = HashMap::new();
         let original_len = state.objects.len();
         for index in 0..original_len {
-            if !live.contains(&index)
-                || state.objects[index].generation >= 2
-                || state.objects[index].pinned
-            {
+            let Some(source) = state.objects.get(index) else {
+                continue;
+            };
+            if !live.contains(&index) || source.generation >= 2 || source.pinned {
                 continue;
             }
-            let source = &state.objects[index];
-            let mut copy = Object {
-                words: source.words.clone(),
-                kind: source.kind,
-                generation: source.generation,
-                survived: source.survived.saturating_add(1),
-                pinned: source.pinned,
-                weak: source.weak,
-                finalizer: source.finalizer,
+            let words = source.words.len();
+            let old_address = source.start;
+            let kind = source.kind;
+            let generation = source.survived.saturating_add(1).min(2);
+            let survived = source.survived.saturating_add(1);
+            let pinned = source.pinned;
+            let weak = source.weak;
+            let finalizer = source.finalizer;
+            let source_pointer = source.words.as_ptr();
+            let Some((new_address, new_words, page, offset)) =
+                allocate_copy(&mut *state, kind, generation, source_pointer, words)
+            else {
+                continue;
+            };
+            let copy = Object {
+                words: new_words,
+                start: new_address,
+                kind,
+                generation,
+                survived,
+                pinned,
+                weak,
+                finalizer,
                 alive: true,
                 forwarded_to: None,
             };
-            copy.generation = copy.survived.min(2);
-            let old_address = source.words.as_ptr().addr();
-            let new_address = copy.words.as_ptr().addr();
             let new_index = state.objects.len();
-            state.objects[index].forwarded_to = Some(new_index);
-            state.objects[index].alive = false;
-            if state.objects[index].kind != PageKind::Cons {
-                state.objects[index].words[0] |= FORWARDED_FLAG;
-                if state.objects[index].words.len() > 1 {
-                    state.objects[index].words[1] = 0;
+            let Some(source) = state.objects.get_mut(index) else {
+                continue;
+            };
+            let Some(metadata) = state.pages.get_mut(page) else {
+                continue;
+            };
+            source.forwarded_to = Some(new_index);
+            source.alive = false;
+            if source.kind != PageKind::Cons
+                && let Some(header) = source.words.first_mut()
+            {
+                *header |= FORWARDED_FLAG;
+                if let Some(discriminant) = source.words.get_mut(1) {
+                    *discriminant = 0;
                 }
             }
             moved.insert(old_address, new_address);
-            state.object_starts.insert(new_address, new_index);
+            metadata.object_starts.push((offset, new_index));
             state.objects.push(copy);
             live.insert(new_index);
         }
         moved
-    }
-
-    fn finish_collection(
-        state: &mut super::State,
-        root_slots: &[*mut Word],
-        moved: &HashMap<usize, usize>,
-        live: &HashSet<usize>,
-        full: bool,
-    ) -> Vec<fn()> {
-        for root in root_slots.iter().copied().filter(|root| !root.is_null()) {
-            // SAFETY: registered root slots remain valid and uniquely mutable by their owner.
-            let value = unsafe { *root };
-            if let Some(address) = Self::relocated_address(state, moved, value) {
-                // SAFETY: the root slot is registered and points to a valid Word.
-                unsafe {
-                    *root = Self::relocated_word(value, address);
-                }
-            }
-        }
-        for thread in state.threads.iter().copied() {
-            // SAFETY: collection owns the stop-the-world phase, so frame snapshots are stable.
-            unsafe {
-                if (*thread).has_native_frame_snapshot() {
-                    let _ = (*thread).scan_native_frame(&state.code_registry, |value| {
-                        Self::relocated_address(state, moved, value)
-                            .map_or(value, |address| Self::relocated_word(value, address))
-                    });
-                } else {
-                    let _ = crate::scan_frame_chain_with_registry(
-                        &mut (*thread).frame_chain,
-                        0,
-                        &state.code_registry,
-                        &mut (*thread).frame_registers,
-                        |value| {
-                            Self::relocated_address(state, moved, value)
-                                .map_or(value, |address| Self::relocated_word(value, address))
-                        },
-                    );
-                }
-            }
-        }
-        let weak_kv = Self::weak_kv_indices(state, live);
-        for index in 0..state.objects.len() {
-            if !state.objects[index].alive {
-                continue;
-            }
-            if weak_kv.contains_key(&index) {
-                continue;
-            }
-            for slot in scan::layout(state, index) {
-                if state.objects[index].weak.is_some() && slot == 1 {
-                    continue;
-                }
-                if let Some(value) = state.objects[index]
-                    .words
-                    .get(slot)
-                    .copied()
-                    .map(Word::from_bits)
-                    && let Some(address) = Self::relocated_address(state, moved, value)
-                {
-                    state.objects[index].words[slot] = Self::relocated_word(value, address).bits();
-                }
-            }
-        }
-        Self::clear_dead_hash_table_entries(state, moved, live, full);
-        Self::clear_dead_weak_and_collect(state, moved, live, full);
-        state.dirty_cards = state
-            .dirty_cards
-            .iter()
-            .copied()
-            .filter(|(index, _)| {
-                state
-                    .objects
-                    .get(*index)
-                    .is_some_and(|object| object.alive && object.generation > 0)
-            })
-            .collect();
-        let hooks = state.after_gc_hooks.clone();
-        for thread in state.threads.iter().copied() {
-            // SAFETY: collection owns the stop-the-world phase, so mutator snapshots are not changing.
-            unsafe { (*thread).conservative_roots.clear() };
-        }
-        hooks
     }
 
     fn is_hash_table(state: &super::State, index: usize) -> bool {
@@ -302,16 +201,21 @@ impl super::Heap {
             if !state.objects[table].alive {
                 continue;
             }
-            let Some((weakness, kv, index_vector, marker, high_water)) =
-                Self::hash_table_cleanup_data(state, table)
-            else {
+            let Some(cleanup) = Self::hash_table_cleanup_data(state, table) else {
                 continue;
             };
             let mut removed = 0;
-            for position in 0..high_water {
+            for position in 0..cleanup.high_water {
                 removed += usize::from(Self::clear_dead_hash_table_entry(
                     state,
-                    (table, kv, index_vector, marker, weakness, position),
+                    (
+                        table,
+                        cleanup.key_values,
+                        cleanup.index_vector,
+                        cleanup.marker,
+                        cleanup.weakness,
+                        position,
+                    ),
                     moved,
                     live,
                     full,
@@ -321,25 +225,23 @@ impl super::Heap {
         }
     }
 
-    fn hash_table_cleanup_data(
-        state: &super::State,
-        table: usize,
-    ) -> Option<(Weakness, usize, usize, u64, usize)> {
+    fn hash_table_cleanup_data(state: &super::State, table: usize) -> Option<HashTableCleanupData> {
         let weakness = Self::hash_table_weakness(state, table)?;
-        let kv = state.objects[table]
+        let object = state.objects.get(table)?;
+        let key_values = object
             .words
             .get(HASH_TABLE_KV)
             .copied()
             .map(Word::from_bits)
             .and_then(|value| Self::find(state, value))?;
-        let index_vector = state.objects[table]
+        let index_vector = object
             .words
             .get(HASH_TABLE_INDEX)
             .copied()
             .map(Word::from_bits)
             .and_then(|value| Self::find(state, value))?;
-        let marker = state.objects[table].words.get(HASH_TABLE_MARKER).copied()?;
-        let high_water = state.objects[table]
+        let marker = object.words.get(HASH_TABLE_MARKER).copied()?;
+        let high_water = object
             .words
             .get(HASH_TABLE_HIGH_WATER)
             .copied()
@@ -347,7 +249,13 @@ impl super::Heap {
             .and_then(Word::as_fixnum)
             .and_then(|value| usize::try_from(value).ok())
             .unwrap_or(0);
-        Some((weakness, kv, index_vector, marker, high_water))
+        Some(HashTableCleanupData {
+            weakness,
+            key_values,
+            index_vector,
+            marker,
+            high_water,
+        })
     }
 
     fn clear_dead_hash_table_entry(
@@ -492,3 +400,7 @@ impl super::Heap {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "collect/tests.rs"]
+mod tests;

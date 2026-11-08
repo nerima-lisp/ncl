@@ -126,14 +126,14 @@ impl FunctionLowerer<'_> {
         })?;
         let closure = self.load_field(symbol, SYMBOL_FUNCTION_FIELD)?;
         let argc = self.argument_count(arguments.len())?;
-        let mut args = Vec::with_capacity(arguments.len() + 1);
-        args.push(argc);
-        args.extend_from_slice(arguments);
+        let mut call_args = Vec::with_capacity(arguments.len() + 1);
+        call_args.push(argc);
+        call_args.extend_from_slice(arguments);
         self.push_none(OpKind::Safepoint)?;
         self.push_one(
             OpKind::CallClosure {
                 closure,
-                args,
+                args: call_args,
                 named_symbol: named_symbol.then_some(symbol),
             },
             Ty::Word,

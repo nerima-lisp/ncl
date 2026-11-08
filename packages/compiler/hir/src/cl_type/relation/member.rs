@@ -19,6 +19,17 @@ pub(super) fn member_to_union(
         )
     }))
 }
+pub(super) fn member_to_type(
+    arena: &TypeArena,
+    values: &[MemberValue],
+    supertype: TypeId,
+) -> SubtypeRelation {
+    combine_all(
+        values
+            .iter()
+            .map(|value| member_value_subtype(arena, *value, supertype)),
+    )
+}
 fn member_value_subtype(
     arena: &TypeArena,
     value: MemberValue,

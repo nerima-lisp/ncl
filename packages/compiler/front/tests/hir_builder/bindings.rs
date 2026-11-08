@@ -1,4 +1,7 @@
-use ncl_hir::{BindingKind, HirDeclaration, LetKind, NodeKind, VariableTarget};
+use ncl_hir::{
+    BindingId, BindingKind, HirDeclaration, HirForm, LetKind, NodeId, NodeKind, ScopeId,
+    VariableTarget,
+};
 use ncl_ir::{Constant, OpKind};
 use ncl_object::Word;
 
@@ -14,6 +17,309 @@ fn result_is_three_argument_call(function: &ncl_ir::Function, expected: ncl_ir::
                 && matches!(&operation.kind, OpKind::CallClosure { args, .. } if args.len() == 3)
         })
     })
+}
+
+struct LetView<'a> {
+    kind: LetKind,
+    bindings: &'a [ncl_hir::LetBinding],
+    initializer_scopes: &'a [ScopeId],
+    binding_scopes: &'a [ScopeId],
+    body_scope: ScopeId,
+    body: &'a [NodeId],
+}
+
+fn required<T>(value: Option<T>, message: &str) -> TestResult<T> {
+    value.ok_or_else(|| std::io::Error::other(message).into())
+}
+
+fn node<'a>(form: &'a HirForm, id: NodeId, message: &str) -> TestResult<&'a ncl_hir::Node> {
+    required(form.nodes().get(id), message)
+}
+
+fn item<T: Copy>(items: &[T], index: usize, message: &str) -> TestResult<T> {
+    required(items.get(index).copied(), message)
+}
+
+fn let_view<'a>(form: &'a HirForm, id: NodeId, message: &str) -> TestResult<LetView<'a>> {
+    let node = node(form, id, message)?;
+    let NodeKind::Let {
+        kind,
+        bindings,
+        initializer_scopes,
+        binding_scopes,
+        body_scope,
+        body,
+    } = &node.kind
+    else {
+        return Err(std::io::Error::other(message).into());
+    };
+    Ok(LetView {
+        kind: *kind,
+        bindings,
+        initializer_scopes,
+        binding_scopes,
+        body_scope: *body_scope,
+        body,
+    })
+}
+
+fn binding_id(view: &LetView<'_>, message: &str) -> TestResult<BindingId> {
+    Ok(required(view.bindings.first(), message)?.binding)
+}
+
+fn assert_reference(
+    form: &HirForm,
+    id: NodeId,
+    scope: ScopeId,
+    target: VariableTarget,
+) -> TestResult<()> {
+    let node = node(form, id, "variable reference node is missing")?;
+    assert_eq!(node.scope, scope);
+    let NodeKind::VariableReference { target: actual } = &node.kind else {
+        return Err(std::io::Error::other("node is not a variable reference").into());
+    };
+    assert_eq!(*actual, target);
+    Ok(())
+}
+
+fn assert_assignment(
+    form: &HirForm,
+    id: NodeId,
+    scope: ScopeId,
+    target: VariableTarget,
+) -> TestResult<()> {
+    let node = node(form, id, "assignment node is missing")?;
+    assert_eq!(node.scope, scope);
+    let NodeKind::Assignment { target: actual, .. } = &node.kind else {
+        return Err(std::io::Error::other("node is not an assignment").into());
+    };
+    assert_eq!(*actual, target);
+    Ok(())
+}
+
+fn assert_binding_uses(
+    form: &HirForm,
+    id: BindingId,
+    scope: ScopeId,
+    reads: &[NodeId],
+    writes: &[NodeId],
+) -> TestResult<()> {
+    let binding = required(
+        form.bindings().binding(id),
+        "lexical binding record is missing",
+    )?;
+    assert_eq!(binding.kind(), BindingKind::LexicalVariable);
+    assert_eq!(binding.scope(), scope);
+    assert_eq!(binding.reads(), reads);
+    assert_eq!(binding.writes(), writes);
+    Ok(())
+}
+
+fn assert_parallel_let_bindings(form: &HirForm) -> TestResult<()> {
+    let outer = let_view(
+        form,
+        item(form.roots(), 0, "outer LET root is missing")?,
+        "outer LET node is missing",
+    )?;
+    assert_eq!(outer.kind, LetKind::Parallel);
+    let outer_binding = binding_id(&outer, "outer LET binding is missing")?;
+    let outer_binding_scope = item(
+        outer.binding_scopes,
+        0,
+        "outer LET binding scope is missing",
+    )?;
+    let inner = let_view(
+        form,
+        item(outer.body, 0, "inner LET form is missing")?,
+        "inner LET node is missing",
+    )?;
+    assert_eq!(inner.kind, LetKind::Parallel);
+    let inner_binding = binding_id(&inner, "inner LET binding is missing")?;
+    let initializer = required(
+        inner
+            .bindings
+            .first()
+            .and_then(|binding| binding.initializer),
+        "inner LET initializer is missing",
+    )?;
+    let initializer_scope = item(
+        inner.initializer_scopes,
+        0,
+        "inner LET initializer scope is missing",
+    )?;
+
+    // CLHS LET evaluates init forms before introducing its bindings; SETQ assigns to the resolved variable.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_let_l.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_setq.htm
+    assert_eq!(initializer_scope, outer.body_scope);
+    assert_reference(
+        form,
+        initializer,
+        initializer_scope,
+        VariableTarget::Lexical(outer_binding),
+    )?;
+    assert_ne!(outer_binding, inner_binding);
+    assert_binding_uses(
+        form,
+        outer_binding,
+        outer_binding_scope,
+        &[initializer],
+        &[],
+    )?;
+
+    let assignment = item(inner.body, 0, "inner SETQ assignment is missing")?;
+    let read = item(inner.body, 1, "inner lexical read is missing")?;
+    assert_assignment(
+        form,
+        assignment,
+        inner.body_scope,
+        VariableTarget::Lexical(inner_binding),
+    )?;
+    assert_reference(
+        form,
+        read,
+        inner.body_scope,
+        VariableTarget::Lexical(inner_binding),
+    )?;
+    assert_binding_uses(
+        form,
+        inner_binding,
+        item(
+            inner.binding_scopes,
+            0,
+            "inner LET binding scope is missing",
+        )?,
+        &[read],
+        &[assignment],
+    )?;
+    Ok(())
+}
+
+fn assert_parallel_let_mir_value_flow(function: &ncl_ir::Function) -> TestResult<()> {
+    let returned = required(
+        function
+            .blocks
+            .iter()
+            .find_map(|block| match &block.terminator {
+                ncl_ir::Terminator::Return { values } => values.first().copied(),
+                _ => None,
+            }),
+        "lowered LET result is missing",
+    )?;
+    let assigned_cell = required(
+        function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.ops)
+            .find_map(|operation| match &operation.kind {
+                OpKind::StoreField {
+                    object,
+                    field: 0,
+                    value,
+                } if constant_for_value(function, *value) == Some(&Constant::Fixnum(9)) => {
+                    Some(*object)
+                }
+                _ => None,
+            }),
+        "SETQ value was not stored in the lexical cell",
+    )?;
+    assert!(
+        function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.ops)
+            .any(|operation| matches!(
+                &operation.kind,
+                OpKind::LoadField { object, field: 0 }
+                    if *object == assigned_cell
+                        && operation.results.iter().any(|(value, _)| *value == returned)
+            ))
+    );
+    Ok(())
+}
+
+fn assert_special_let_shadow(form: &HirForm) -> TestResult<()> {
+    let outer = let_view(
+        form,
+        item(form.roots(), 0, "declared LET root is missing")?,
+        "declared LET node is missing",
+    )?;
+    let outer_binding = binding_id(&outer, "outer LET binding is missing")?;
+    let outer_binding_scope = item(outer.binding_scopes, 0, "outer binding scope is missing")?;
+    let symbol = required(
+        form.bindings().binding(outer_binding),
+        "outer binding identity is missing",
+    )?
+    .symbol();
+    let inner = let_view(
+        form,
+        item(outer.body, 0, "inner LET form is missing")?,
+        "inner LET node is missing",
+    )?;
+    let inner_binding = binding_id(&inner, "inner LET binding is missing")?;
+    let inner_binding_scope = item(
+        inner.binding_scopes,
+        0,
+        "inner LET binding scope is missing",
+    )?;
+
+    // CLHS SPECIAL makes the declared LET binding dynamic; an inner LET binding shadows it unless redeclared.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/d_specia.htm
+    assert_ne!(outer_binding, inner_binding);
+    let outer_record = required(
+        form.bindings().binding(outer_binding),
+        "outer binding record is missing",
+    )?;
+    assert_eq!(outer_record.scope(), outer_binding_scope);
+    assert!(outer_record.reads().is_empty());
+    assert!(outer_record.writes().is_empty());
+    assert_eq!(
+        form.bindings()
+            .scope_parent(inner_binding_scope)
+            .map_err(|error| std::io::Error::other(error.to_string()))?,
+        Some(outer.body_scope)
+    );
+    assert!(form
+        .scope_metadata()
+        .get(&outer.body_scope)
+        .is_some_and(|metadata| metadata.declarations.iter().any(|declaration| {
+            matches!(declaration, HirDeclaration::Special { names } if names.len() == 1 && names.first() == Some(&symbol))
+        })));
+
+    let assignment = item(inner.body, 0, "inner SETQ assignment is missing")?;
+    let assignment_node = node(form, assignment, "inner SETQ node is missing")?;
+    assert!(matches!(
+        &assignment_node.kind,
+        NodeKind::Assignment {
+            target: VariableTarget::Lexical(binding),
+            ..
+        } if *binding == inner_binding
+    ));
+    let inner_read = item(inner.body, 1, "inner lexical read is missing")?;
+    let inner_read_node = node(form, inner_read, "inner lexical read node is missing")?;
+    assert!(matches!(
+        &inner_read_node.kind,
+        NodeKind::VariableReference {
+            target: VariableTarget::Lexical(binding),
+        } if *binding == inner_binding
+    ));
+    let outer_read = item(outer.body, 1, "outer special read is missing")?;
+    let outer_read_node = node(form, outer_read, "outer special read node is missing")?;
+    assert_eq!(outer_read_node.scope, outer.body_scope);
+    assert!(matches!(
+        &outer_read_node.kind,
+        NodeKind::VariableReference {
+            target: VariableTarget::Special(target),
+        } if *target == symbol
+    ));
+    let inner_record = required(
+        form.bindings().binding(inner_binding),
+        "inner binding record is missing",
+    )?;
+    assert_eq!(inner_record.scope(), inner_binding_scope);
+    assert_eq!(inner_record.reads(), &[inner_read]);
+    assert_eq!(inner_record.writes(), &[assignment]);
+    Ok(())
 }
 
 #[test]
@@ -131,174 +437,9 @@ fn parallel_let_initializer_reads_outer_binding_and_setq_updates_inner_binding()
         &expr,
         "(let ((x 4))\n  (let ((x x))\n    (setq x 9)\n    x))\n",
     )?;
-
-    let root = form
-        .roots()
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("outer LET root is missing"))?;
-    let outer_node = form
-        .nodes()
-        .get(root)
-        .ok_or_else(|| std::io::Error::other("outer LET node is missing"))?;
-    let NodeKind::Let {
-        kind: LetKind::Parallel,
-        bindings: outer_bindings,
-        binding_scopes: outer_binding_scopes,
-        body_scope: outer_body_scope,
-        body: outer_body,
-        ..
-    } = &outer_node.kind
-    else {
-        return Err(std::io::Error::other("outer form is not a parallel LET").into());
-    };
-    let outer_binding = outer_bindings
-        .first()
-        .ok_or_else(|| std::io::Error::other("outer LET binding is missing"))?
-        .binding;
-    let outer_binding_scope = outer_binding_scopes
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("outer LET binding scope is missing"))?;
-    let inner_id = outer_body
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("inner LET form is missing"))?;
-    let inner_node = form
-        .nodes()
-        .get(inner_id)
-        .ok_or_else(|| std::io::Error::other("inner LET node is missing"))?;
-    let NodeKind::Let {
-        kind: LetKind::Parallel,
-        bindings: inner_bindings,
-        initializer_scopes,
-        binding_scopes,
-        body: inner_body,
-        ..
-    } = &inner_node.kind
-    else {
-        return Err(std::io::Error::other("inner form is not a parallel LET").into());
-    };
-    let inner_binding = inner_bindings
-        .first()
-        .ok_or_else(|| std::io::Error::other("inner LET binding is missing"))?
-        .binding;
-    let initializer = inner_bindings
-        .first()
-        .and_then(|binding| binding.initializer)
-        .ok_or_else(|| std::io::Error::other("inner LET initializer is missing"))?;
-    let initializer_node = form
-        .nodes()
-        .get(initializer)
-        .ok_or_else(|| std::io::Error::other("inner LET initializer node is missing"))?;
-    let initializer_scope = initializer_scopes
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("inner LET initializer scope is missing"))?;
-    let inner_binding_scope = binding_scopes
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("inner LET binding scope is missing"))?;
-
-    // CLHS LET evaluates init forms before introducing its bindings; SETQ assigns to the resolved variable.
-    // https://www.lispworks.com/documentation/HyperSpec/Body/s_let_l.htm
-    // https://www.lispworks.com/documentation/HyperSpec/Body/s_setq.htm
-    assert_eq!(initializer_scope, *outer_body_scope);
-    assert_eq!(initializer_node.scope, initializer_scope);
-    assert!(matches!(
-        &initializer_node.kind,
-        NodeKind::VariableReference {
-            target: VariableTarget::Lexical(binding),
-        } if *binding == outer_binding
-    ));
-    assert_ne!(outer_binding, inner_binding);
-    let outer_record = form
-        .bindings()
-        .binding(outer_binding)
-        .ok_or_else(|| std::io::Error::other("outer lexical binding is missing"))?;
-    assert_eq!(outer_record.kind(), BindingKind::LexicalVariable);
-    assert_eq!(outer_record.scope(), outer_binding_scope);
-    assert_eq!(outer_record.reads(), &[initializer]);
-    assert!(outer_record.writes().is_empty());
-
-    let assignment = inner_body
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("inner SETQ assignment is missing"))?;
-    let assignment_node = form
-        .nodes()
-        .get(assignment)
-        .ok_or_else(|| std::io::Error::other("inner SETQ node is missing"))?;
-    let NodeKind::Assignment {
-        target: VariableTarget::Lexical(assigned_binding),
-        ..
-    } = &assignment_node.kind
-    else {
-        return Err(std::io::Error::other("SETQ does not target a lexical binding").into());
-    };
-    let read = inner_body
-        .get(1)
-        .copied()
-        .ok_or_else(|| std::io::Error::other("inner lexical read is missing"))?;
-    let read_node = form
-        .nodes()
-        .get(read)
-        .ok_or_else(|| std::io::Error::other("inner lexical read node is missing"))?;
-    assert_eq!(*assigned_binding, inner_binding);
-    assert!(matches!(
-        &read_node.kind,
-        NodeKind::VariableReference {
-            target: VariableTarget::Lexical(binding),
-        } if *binding == inner_binding
-    ));
-    let inner_record = form
-        .bindings()
-        .binding(inner_binding)
-        .ok_or_else(|| std::io::Error::other("inner lexical binding is missing"))?;
-    assert_eq!(inner_record.kind(), BindingKind::LexicalVariable);
-    assert_eq!(inner_record.scope(), inner_binding_scope);
-    assert_eq!(inner_record.reads(), &[read]);
-    assert_eq!(inner_record.writes(), &[assignment]);
-
+    assert_parallel_let_bindings(&form)?;
     let (lowered, _) = lower_both_and_verify(&builder, &form, &expr)?;
-    let returned = lowered
-        .entry
-        .blocks
-        .iter()
-        .find_map(|block| match &block.terminator {
-            ncl_ir::Terminator::Return { values } => values.first().copied(),
-            _ => None,
-        })
-        .ok_or_else(|| std::io::Error::other("lowered LET result is missing"))?;
-    let assigned_cell = lowered
-        .entry
-        .blocks
-        .iter()
-        .flat_map(|block| &block.ops)
-        .find_map(|operation| match &operation.kind {
-            OpKind::StoreField {
-                object,
-                field: 0,
-                value,
-            } if constant_for_value(&lowered.entry, *value) == Some(&Constant::Fixnum(9)) => {
-                Some(*object)
-            }
-            _ => None,
-        })
-        .ok_or_else(|| std::io::Error::other("SETQ value was not stored in the lexical cell"))?;
-    assert!(
-        lowered
-            .entry
-            .blocks
-            .iter()
-            .flat_map(|block| &block.ops)
-            .any(|operation| matches!(
-                &operation.kind,
-                OpKind::LoadField { object, field: 0 }
-                    if *object == assigned_cell
-                        && operation.results.iter().any(|(value, _)| *value == returned)
-            ))
-    );
+    assert_parallel_let_mir_value_flow(&lowered.entry)?;
     Ok(())
 }
 
@@ -323,138 +464,6 @@ fn special_declaration_keeps_inner_let_binding_lexical() -> TestResult<()> {
         &expr,
         "(let ((x 1))\n  (declare (special x))\n  (let ((x 2))\n    (setq x 3)\n    x)\n  x)\n",
     )?;
-
-    let root = form
-        .roots()
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("declared LET root is missing"))?;
-    let outer_node = form
-        .nodes()
-        .get(root)
-        .ok_or_else(|| std::io::Error::other("declared LET node is missing"))?;
-    let NodeKind::Let {
-        bindings: outer_bindings,
-        binding_scopes: outer_binding_scopes,
-        body_scope: outer_body_scope,
-        body: outer_body,
-        ..
-    } = &outer_node.kind
-    else {
-        return Err(std::io::Error::other("outer form is not a LET").into());
-    };
-    let outer_binding = outer_bindings
-        .first()
-        .ok_or_else(|| std::io::Error::other("outer LET binding is missing"))?
-        .binding;
-    let outer_binding_scope = outer_binding_scopes
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("outer binding scope is missing"))?;
-    let symbol = form
-        .bindings()
-        .binding(outer_binding)
-        .ok_or_else(|| std::io::Error::other("outer binding identity is missing"))?
-        .symbol();
-    let inner_id = outer_body
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("inner LET form is missing"))?;
-    let inner_node = form
-        .nodes()
-        .get(inner_id)
-        .ok_or_else(|| std::io::Error::other("inner LET node is missing"))?;
-    let NodeKind::Let {
-        bindings: inner_bindings,
-        binding_scopes,
-        body: inner_body,
-        ..
-    } = &inner_node.kind
-    else {
-        return Err(std::io::Error::other("nested form is not a LET").into());
-    };
-    let inner_binding = inner_bindings
-        .first()
-        .ok_or_else(|| std::io::Error::other("inner LET binding is missing"))?
-        .binding;
-    let inner_binding_scope = binding_scopes
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("inner LET binding scope is missing"))?;
-
-    // CLHS SPECIAL makes the declared LET binding dynamic; an inner LET binding shadows it unless redeclared.
-    // https://www.lispworks.com/documentation/HyperSpec/Body/d_specia.htm
-    assert_ne!(outer_binding, inner_binding);
-    let outer_record = form
-        .bindings()
-        .binding(outer_binding)
-        .ok_or_else(|| std::io::Error::other("outer binding record is missing"))?;
-    assert_eq!(outer_record.scope(), outer_binding_scope);
-    assert!(outer_record.reads().is_empty());
-    assert!(outer_record.writes().is_empty());
-    assert_eq!(
-        form.bindings()
-            .scope_parent(inner_binding_scope)
-            .map_err(|error| std::io::Error::other(error.to_string()))?,
-        Some(*outer_body_scope)
-    );
-    assert!(form
-        .scope_metadata()
-        .get(outer_body_scope)
-        .is_some_and(|metadata| metadata.declarations.iter().any(|declaration| {
-            matches!(declaration, HirDeclaration::Special { names } if names.len() == 1 && names.first() == Some(&symbol))
-        })));
-
-    let assignment = inner_body
-        .first()
-        .copied()
-        .ok_or_else(|| std::io::Error::other("inner SETQ assignment is missing"))?;
-    let assignment_node = form
-        .nodes()
-        .get(assignment)
-        .ok_or_else(|| std::io::Error::other("inner SETQ node is missing"))?;
-    assert!(matches!(
-        &assignment_node.kind,
-        NodeKind::Assignment {
-            target: VariableTarget::Lexical(binding),
-            ..
-        } if *binding == inner_binding
-    ));
-    let inner_read = inner_body
-        .get(1)
-        .copied()
-        .ok_or_else(|| std::io::Error::other("inner lexical read is missing"))?;
-    let inner_read_node = form
-        .nodes()
-        .get(inner_read)
-        .ok_or_else(|| std::io::Error::other("inner lexical read node is missing"))?;
-    assert!(matches!(
-        &inner_read_node.kind,
-        NodeKind::VariableReference {
-            target: VariableTarget::Lexical(binding),
-        } if *binding == inner_binding
-    ));
-    let outer_read = outer_body
-        .get(1)
-        .copied()
-        .ok_or_else(|| std::io::Error::other("outer special read is missing"))?;
-    let outer_read_node = form
-        .nodes()
-        .get(outer_read)
-        .ok_or_else(|| std::io::Error::other("outer special read node is missing"))?;
-    assert_eq!(outer_read_node.scope, *outer_body_scope);
-    assert!(matches!(
-        &outer_read_node.kind,
-        NodeKind::VariableReference {
-            target: VariableTarget::Special(target),
-        } if *target == symbol
-    ));
-    let inner_record = form
-        .bindings()
-        .binding(inner_binding)
-        .ok_or_else(|| std::io::Error::other("inner binding record is missing"))?;
-    assert_eq!(inner_record.scope(), inner_binding_scope);
-    assert_eq!(inner_record.reads(), &[inner_read]);
-    assert_eq!(inner_record.writes(), &[assignment]);
+    assert_special_let_shadow(&form)?;
     Ok(())
 }

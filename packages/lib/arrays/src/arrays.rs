@@ -1,7 +1,7 @@
 use ncl_arrays::{
     ArrayElementType, ArrayOptions, adjustable_array_p, array_displacement, array_element_type,
-    array_dimensions, array_has_fill_pointer_p, array_row_major_ref, array_row_major_set,
-    fill_pointer, make_array, vector_pop, vector_push, vector_push_extend,
+    array_has_fill_pointer_p, array_row_major_ref, array_row_major_set, fill_pointer, vector_pop,
+    vector_push, vector_push_extend,
 };
 use ncl_object::package::{nil, truth};
 use ncl_object::{

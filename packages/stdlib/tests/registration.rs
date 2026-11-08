@@ -66,13 +66,15 @@ fn register_all_registers_callable_printer_and_format_builtins() {
         assert!(function.is_some(), "{name} must be callable");
     }
 
-    let car = FunctionObject::try_from(runtime.function(&mut ctx, "COMMON-LISP", "CAR").unwrap())
-        .unwrap();
-    let cons = FunctionObject::try_from(runtime.function(&mut ctx, "COMMON-LISP", "CONS").unwrap())
-        .unwrap();
+    let car_word = runtime.function(&mut ctx, "COMMON-LISP", "CAR").unwrap();
+    let cons_word = runtime.function(&mut ctx, "COMMON-LISP", "CONS").unwrap();
+    let car = FunctionObject::try_from(car_word).unwrap();
+    let cons = FunctionObject::try_from(cons_word).unwrap();
     let first = Word::fixnum(17);
+    let second = Word::fixnum(23);
     let pair = runtime
-        .call_builtin(&mut ctx, cons, &[first, Word::fixnum(23)])
+        .call_builtin(&mut ctx, cons, &[first, second])
         .unwrap();
     assert_eq!(runtime.call_builtin(&mut ctx, car, &[pair]).unwrap(), first);
+    assert_eq!(ncl_object::cdr(&ctx, pair).unwrap(), second);
 }

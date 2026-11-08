@@ -1,5 +1,4 @@
 use crate::os::declarations;
-#[cfg(target_os = "linux")]
 use core::ffi::c_void;
 use core::ffi::{c_int, c_long};
 use core::ptr::NonNull;
@@ -90,7 +89,15 @@ impl CodeArena {
     }
 
     fn reserve(self: &Arc<Self>, len: usize) -> Result<CodeExtent, CodeError> {
-        let mut start = self.next.load(Ordering::Relaxed);
+        let start = self.next.load(Ordering::Relaxed);
+        self.reserve_from(start, len)
+    }
+
+    fn reserve_from(
+        self: &Arc<Self>,
+        mut start: usize,
+        len: usize,
+    ) -> Result<CodeExtent, CodeError> {
         loop {
             let end = start.checked_add(len).ok_or(CodeError::OutOfBounds)?;
             if end > self.len {
@@ -146,15 +153,9 @@ pub(super) fn allocate(bytes: usize) -> Result<CodeExtent, CodeError> {
     let mut active = ACTIVE_ARENA
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some(arena) = active.as_ref().and_then(Weak::upgrade) {
-        match arena.reserve(extent_len) {
-            Ok(extent) => {
-                drop(active);
-                return Ok(extent);
-            }
-            Err(CodeError::CapacityExceeded) => {}
-            Err(error) => return Err(error),
-        }
+    if let Some(extent) = reserve_active(active.as_ref().and_then(Weak::upgrade), extent_len)? {
+        drop(active);
+        return Ok(extent);
     }
 
     let arena = CodeArena::new(arena_len)?;
@@ -162,6 +163,20 @@ pub(super) fn allocate(bytes: usize) -> Result<CodeExtent, CodeError> {
     *active = Some(Arc::downgrade(&arena));
     drop(active);
     Ok(extent)
+}
+
+fn reserve_active(
+    arena: Option<Arc<CodeArena>>,
+    extent_len: usize,
+) -> Result<Option<CodeExtent>, CodeError> {
+    let Some(arena) = arena else {
+        return Ok(None);
+    };
+    match arena.reserve(extent_len) {
+        Ok(extent) => Ok(Some(extent)),
+        Err(CodeError::CapacityExceeded) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 fn page_size() -> Result<usize, CodeError> {
@@ -189,11 +204,15 @@ fn round_up(value: usize, alignment: usize) -> Result<usize, CodeError> {
 fn map_anonymous(len: usize, protection: c_int, flags: c_int) -> Result<usize, CodeError> {
     // SAFETY: null requests an OS-selected page-aligned anonymous mapping.
     let raw = unsafe { declarations::mmap(core::ptr::null_mut(), len, protection, flags, -1, 0) };
+    mapped_address(raw, len)
+}
+
+fn mapped_address(raw: *mut c_void, len: usize) -> Result<usize, CodeError> {
     if raw.addr() == usize::MAX {
         return Err(CodeError::MappingFailed);
     }
     let Some(ptr) = NonNull::new(raw.cast::<u8>()) else {
-        // SAFETY: a zero-address mapping is not representable by CodePtr.
+        // SAFETY: `raw` is the successful zero-address result from mmap.
         let _ = unsafe { declarations::munmap(raw, len) };
         return Err(CodeError::MappingFailed);
     };
@@ -312,24 +331,36 @@ fn jit_region() -> Result<&'static JitRegion, CodeError> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "allocator invariant tests must fail when setup or reservation fails"
+)]
 mod tests {
     use super::*;
     use std::sync::Barrier;
     use std::thread;
 
     #[test]
-    fn mmap_rejects_zero_length() {
+    fn mapping_results_reject_failure_and_release_null_mappings() {
+        let len = page_size().expect("page size unavailable");
         assert!(matches!(
             map_anonymous(0, PROT_READ, MAP_PRIVATE | MAP_ANON),
             Err(CodeError::MappingFailed)
         ));
+
+        assert_eq!(
+            mapped_address(core::ptr::null_mut(), len),
+            Err(CodeError::MappingFailed)
+        );
+
+        let failed = core::ptr::with_exposed_provenance_mut::<c_void>(usize::MAX);
+        assert_eq!(mapped_address(failed, len), Err(CodeError::MappingFailed));
     }
 
     #[test]
     fn oversized_code_uses_a_dedicated_arena() {
-        let page = page_size().unwrap_or_else(|error| panic!("page size unavailable: {error:?}"));
-        let extent = allocate(ARENA_SIZE + 1)
-            .unwrap_or_else(|error| panic!("oversized allocation failed: {error:?}"));
+        let page = page_size().expect("page size unavailable");
+        let extent = allocate(ARENA_SIZE + 1).expect("oversized allocation failed");
         assert_eq!(extent.ptr.as_ptr().addr() % page, 0);
         #[cfg(not(target_os = "macos"))]
         assert!(extent.len > ARENA_SIZE);
@@ -339,9 +370,8 @@ mod tests {
     fn concurrent_reservations_return_non_overlapping_extents() {
         const THREADS: usize = 32;
 
-        let page = page_size().unwrap_or_else(|error| panic!("page size unavailable: {error:?}"));
-        let arena = CodeArena::new(page * THREADS)
-            .unwrap_or_else(|error| panic!("arena allocation failed: {error:?}"));
+        let page = page_size().expect("page size unavailable");
+        let arena = CodeArena::new(page * THREADS).expect("arena allocation failed");
         let start = Arc::new(Barrier::new(THREADS));
         let mut workers = Vec::with_capacity(THREADS);
 
@@ -352,33 +382,62 @@ mod tests {
                 start.wait();
                 arena
                     .reserve(page)
-                    .unwrap_or_else(|error| panic!("extent reservation failed: {error:?}"))
-                    .ptr
-                    .as_ptr()
-                    .addr()
+                    .ok()
+                    .map(|extent| extent.ptr.as_ptr().addr())
             }));
         }
 
-        let mut addresses = workers
+        let addresses = workers
             .into_iter()
-            .map(|worker| {
-                worker
-                    .join()
-                    .unwrap_or_else(|_| panic!("reservation worker panicked"))
-            })
+            .map(|worker| worker.join().ok().flatten())
             .collect::<Vec<_>>();
+        assert!(addresses.iter().all(Option::is_some));
+        let mut addresses = addresses.into_iter().flatten().collect::<Vec<_>>();
         addresses.sort_unstable();
         assert!(addresses.windows(2).all(|pair| pair[1] - pair[0] == page));
     }
 
     #[test]
+    fn reservation_retries_after_a_stale_cursor_snapshot() {
+        let page = page_size().expect("page size unavailable");
+        let arena = CodeArena::new(page * 3).expect("arena allocation failed");
+        let stale_cursor = arena.next.load(Ordering::Relaxed);
+
+        let first = arena.reserve(page).expect("first reservation failed");
+        let second = arena
+            .reserve_from(stale_cursor, page)
+            .expect("stale cursor reservation should retry");
+
+        assert_eq!(first.ptr.as_ptr().addr() + page, second.ptr.as_ptr().addr());
+        assert_eq!(arena.next.load(Ordering::Relaxed), page * 2);
+    }
+
+    #[test]
+    fn reservation_reports_checked_cursor_overflow() {
+        let page = page_size().expect("page size unavailable");
+        let arena = CodeArena::new(page).expect("arena allocation failed");
+
+        arena.next.store(usize::MAX, Ordering::Relaxed);
+        assert!(matches!(arena.reserve(page), Err(CodeError::OutOfBounds)));
+    }
+
+    #[test]
+    fn active_arena_propagates_non_capacity_errors() {
+        let page = page_size().expect("page size unavailable");
+        let arena = CodeArena::new(page).expect("arena allocation failed");
+
+        arena.next.store(usize::MAX, Ordering::Relaxed);
+        assert!(matches!(
+            reserve_active(Some(arena), page),
+            Err(CodeError::OutOfBounds)
+        ));
+    }
+
+    #[test]
     fn arena_reports_capacity_when_it_cannot_reserve_an_extent() {
-        let page = page_size().unwrap_or_else(|error| panic!("page size unavailable: {error:?}"));
-        let arena = CodeArena::new(page)
-            .unwrap_or_else(|error| panic!("arena allocation failed: {error:?}"));
-        let _extent = arena
-            .reserve(page)
-            .unwrap_or_else(|error| panic!("first reservation failed: {error:?}"));
+        let page = page_size().expect("page size unavailable");
+        let arena = CodeArena::new(page).expect("arena allocation failed");
+        let _extent = arena.reserve(page).expect("first reservation failed");
         assert!(matches!(
             arena.reserve(page),
             Err(CodeError::CapacityExceeded)

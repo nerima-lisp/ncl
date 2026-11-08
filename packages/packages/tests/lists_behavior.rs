@@ -1,3 +1,5 @@
+//! Package list operations and behavior.
+
 #![expect(
     clippy::expect_used,
     reason = "package tests assert on valid fixture construction"

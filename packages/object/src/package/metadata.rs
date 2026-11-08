@@ -5,6 +5,11 @@ use crate::{LispError, ObjectError, PackageError, ThreadContext};
 use ncl_sys::Word;
 
 impl Package {
+    /// Ensure this package is not locked for mutation.
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::TypeError`] and sets a pending locked-package error when the
+    /// package is locked. Returns an object error if its lock metadata cannot be read.
     pub fn ensure_unlocked(self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
         if self.is_locked(ctx)? {
             ctx.set_pending_lisp_error(LispError::PackageError(PackageError::Locked));

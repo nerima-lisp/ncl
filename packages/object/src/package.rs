@@ -143,6 +143,11 @@ impl Package {
         get(ctx, self.0, widetag::PACKAGE, USED_BY)
     }
 
+    /// Look up a symbol in the package's internal or external table.
+    ///
+    /// # Errors
+    /// Returns an object error if the package table or symbol name is malformed, or registry
+    /// storage is unavailable.
     pub fn table_symbol(
         self,
         ctx: &ThreadContext,
@@ -160,6 +165,11 @@ impl Package {
             .find_map(|(entry_name, symbol)| (entry_name == key).then_some(symbol)))
     }
 
+    /// Insert a symbol into the package's internal or external table.
+    ///
+    /// # Errors
+    /// Returns an object error if the package table or symbol name is malformed, or registry
+    /// storage is unavailable.
     pub fn insert_table_symbol(
         self,
         ctx: &mut ThreadContext,
@@ -168,8 +178,8 @@ impl Package {
         name: Word,
         symbol: Word,
     ) -> Result<(), ObjectError> {
-        let mut roots = [self.0, name, symbol];
-        crate::with_rooted_slice(ctx, &mut roots, |ctx, roots| {
+        let roots = [self.0, name, symbol];
+        crate::with_rooted_slice(ctx, &roots, |ctx, roots| {
             let package = roots.first().copied().ok_or(ObjectError::Layout)?;
             let name = roots.get(1).copied().ok_or(ObjectError::Layout)?;
             let symbol = roots.get(2).copied().ok_or(ObjectError::Layout)?;
@@ -183,6 +193,11 @@ impl Package {
         })
     }
 
+    /// Remove a symbol from the package's internal or external table.
+    ///
+    /// # Errors
+    /// Returns an object error if the package table or symbol name is malformed, or registry
+    /// storage is unavailable.
     pub fn remove_table_symbol(
         self,
         ctx: &mut ThreadContext,
@@ -190,8 +205,8 @@ impl Package {
         external: bool,
         name: Word,
     ) -> Result<Option<Word>, ObjectError> {
-        let mut roots = [self.0, name];
-        crate::with_rooted_slice(ctx, &mut roots, |ctx, roots| {
+        let roots = [self.0, name];
+        crate::with_rooted_slice(ctx, &roots, |ctx, roots| {
             let package = roots.first().copied().ok_or(ObjectError::Layout)?;
             let name = roots.get(1).copied().ok_or(ObjectError::Layout)?;
             let key = string_text(ctx, name)?;

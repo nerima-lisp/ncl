@@ -58,6 +58,7 @@ impl Runtime {
         {
             packages.push(symbols);
         }
+        drop(packages);
         Ok(())
     }
 
@@ -71,15 +72,19 @@ impl Runtime {
             .package_symbols
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
-        let Some(packages) = packages.iter().find(|entry| entry.package.get() == package) else {
-            return Ok(None);
-        };
-        let table = if external {
-            &packages.external
-        } else {
-            &packages.internal
-        };
-        Ok(table.get(name).map(RootedWord::get))
+        let symbol = packages
+            .iter()
+            .find(|entry| entry.package.get() == package)
+            .and_then(|package| {
+                let table = if external {
+                    &package.external
+                } else {
+                    &package.internal
+                };
+                table.get(name).map(RootedWord::get)
+            });
+        drop(packages);
+        Ok(symbol)
     }
 
     pub(crate) fn package_symbols_indexed(&self, package: Word) -> bool {
@@ -98,6 +103,7 @@ impl Runtime {
         if !self.package_is_registered(package) {
             return Ok(());
         }
+        let symbol = RootedWord::new(&self.heap, symbol);
         let mut packages = self
             .package_symbols
             .lock()
@@ -111,7 +117,8 @@ impl Runtime {
         } else {
             &mut package_symbols.internal
         };
-        table.insert(name, RootedWord::new(&self.heap, symbol));
+        table.insert(name, symbol);
+        drop(packages);
         Ok(())
     }
 
@@ -138,15 +145,21 @@ impl Runtime {
             &mut package_symbols.internal
         };
         table.remove(name);
+        drop(packages);
         Ok(())
     }
 
+    /// Release the runtime's indexed symbols for a package.
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::Storage`] if the package registry lock is unavailable.
     pub fn release_package_symbols(&self, package: Word) -> Result<(), ObjectError> {
         let mut packages = self
             .package_symbols
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         packages.retain(|entry| entry.package.get() != package);
+        drop(packages);
         Ok(())
     }
 }

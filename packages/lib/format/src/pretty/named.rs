@@ -30,8 +30,9 @@ pub(super) fn execute(
         &symbol_name.chars().collect::<Vec<_>>(),
     )
     .map_err(|_| FormatError::at(directive, FormatErrorKind::InvalidDirectiveUse))?;
+    let runtime = state.runtime;
     let found = with_root(state.ctx, &mut symbol_name, |ctx, name| {
-        Package::from_word(package).find_symbol(ctx, *name)
+        Package::from_word(package).find_symbol(ctx, runtime, *name)
     })
     .map_err(|_| FormatError::at(directive, FormatErrorKind::InvalidDirectiveUse))?;
     let Some((mut symbol, status)) = found else {
@@ -48,7 +49,6 @@ pub(super) fn execute(
     }
     let parameters = state.parameters(directive)?;
     let value = state.take_argument(directive)?;
-    let runtime = state.runtime;
     let mut failure = None;
     let rooted = with_root(state.ctx, &mut symbol, |ctx, symbol| {
         let mut value = value;

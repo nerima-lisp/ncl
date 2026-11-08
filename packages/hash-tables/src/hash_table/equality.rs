@@ -293,7 +293,7 @@ mod tests {
         );
         assert_eq!(
             hash_key(&context, HashTest::Eq, Word::fixnum(4)),
-            Ok(super::sxhash(Word::fixnum(4)))
+            Ok(super::super::sxhash(Word::fixnum(4)))
         );
     }
 }

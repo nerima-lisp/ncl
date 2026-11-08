@@ -129,20 +129,17 @@ pub(super) fn constant_conditional_signature(
     ))
 }
 
-fn constant_for_value(function: &ncl_ir::Function, value: ValueId) -> Option<&Constant> {
-    function
+pub(super) fn constant_for_value(function: &ncl_ir::Function, value: ValueId) -> Option<&Constant> {
+    let operation = function
         .blocks
         .iter()
         .flat_map(|block| &block.ops)
-        .find_map(|op| {
-            if op.results.iter().any(|(result, _)| *result == value)
-                && let OpKind::Const { result } = &op.kind
-            {
-                function.constants.get(usize::try_from(result.0).ok()?)
-            } else {
-                None
-            }
-        })
+        .find(|op| op.results.iter().any(|(result, _)| *result == value))?;
+    match &operation.kind {
+        OpKind::Const { result } => function.constants.get(usize::try_from(result.0).ok()?),
+        OpKind::Convert { value, .. } => constant_for_value(function, *value),
+        _ => None,
+    }
 }
 
 fn fixnum_constant_in_block(function: &ncl_ir::Function, id: ncl_ir::BlockId) -> Option<i64> {

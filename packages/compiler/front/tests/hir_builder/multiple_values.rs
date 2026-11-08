@@ -1,7 +1,10 @@
-use ncl_ir::{Constant, OpKind};
+use ncl_ir::{Constant, OpKind, Terminator as MirTerminator};
 use ncl_object::Word;
 
-use super::common::{TestResult, build, context, has_node, lower_both_and_verify};
+use super::common::{
+    TestResult, build, constant_for_value, context, has_node, lower_both_and_verify,
+};
+use super::control::named_call_position;
 
 #[test]
 fn multiple_value_call_passes_each_returned_value_to_its_function() -> TestResult<()> {
@@ -30,20 +33,69 @@ fn multiple_value_call_passes_each_returned_value_to_its_function() -> TestResul
 
     // CLHS MULTIPLE-VALUE-CALL passes every value from each form to its function.
     // https://www.lispworks.com/documentation/HyperSpec/Body/s_multip.htm
-    assert!(lowered.entry.constants.contains(&Constant::Fixnum(1)));
-    assert!(lowered.entry.constants.contains(&Constant::Fixnum(2)));
-    for name in ["CAPTURE-MULTIPLE-VALUES", "MULTIPLE-VALUE-CALL-LIST"] {
-        assert!(lowered.entry.constants.iter().any(|constant| matches!(
-            constant,
-            Constant::Symbol { package, name: actual }
-                if package == "NCL-EXT" && actual == name
-        )));
-    }
-    assert!(lowered.entry.blocks.iter().any(|block| {
-        block.ops.iter().any(|operation| {
-            matches!(&operation.kind, OpKind::CallClosure { args, named_symbol: None, .. } if args.len() == 3)
+    let produced_values = lowered
+        .entry
+        .blocks
+        .iter()
+        .flat_map(|block| &block.ops)
+        .find_map(|operation| match &operation.kind {
+            OpKind::SetMultipleValues { values } if values.len() == 2 => Some(values),
+            _ => None,
         })
-    }));
+        .ok_or_else(|| std::io::Error::other("two produced values are missing"))?;
+    let first_value = produced_values
+        .first()
+        .copied()
+        .ok_or_else(|| std::io::Error::other("primary value is missing"))?;
+    let second_value = produced_values
+        .get(1)
+        .copied()
+        .ok_or_else(|| std::io::Error::other("secondary value is missing"))?;
+    assert_eq!(
+        constant_for_value(&lowered.entry, first_value),
+        Some(&Constant::Fixnum(1))
+    );
+    assert_eq!(
+        constant_for_value(&lowered.entry, second_value),
+        Some(&Constant::Fixnum(2))
+    );
+    let (capture_block, capture_index) =
+        named_call_position(&lowered.entry, "NCL-EXT", "CAPTURE-MULTIPLE-VALUES", false)
+            .ok_or_else(|| std::io::Error::other("multiple-value capture is missing"))?;
+    let (call_block, call_index) =
+        named_call_position(&lowered.entry, "NCL-EXT", "MULTIPLE-VALUE-CALL-LIST", false)
+            .ok_or_else(|| std::io::Error::other("multiple-value function call is missing"))?;
+    assert_eq!(capture_block, call_block);
+    let block = lowered
+        .entry
+        .blocks
+        .iter()
+        .find(|block| block.id == call_block)
+        .ok_or_else(|| std::io::Error::other("multiple-value call block is missing"))?;
+    let capture_operation = block
+        .ops
+        .get(capture_index)
+        .ok_or_else(|| std::io::Error::other("capture operation is missing"))?;
+    let capture_args = match &capture_operation.kind {
+        OpKind::CallClosure { args, .. } => args,
+        _ => return Err(std::io::Error::other("capture is not a closure call").into()),
+    };
+    assert_eq!(capture_args.get(1), Some(&first_value));
+    let captured_values = capture_operation
+        .results
+        .first()
+        .map(|(value, _)| *value)
+        .ok_or_else(|| std::io::Error::other("captured value list is missing"))?;
+    let call_args = match &block
+        .ops
+        .get(call_index)
+        .ok_or_else(|| std::io::Error::other("multiple-value call is missing"))?
+        .kind
+    {
+        OpKind::CallClosure { args, .. } => args,
+        _ => return Err(std::io::Error::other("multiple-value call is not a closure call").into()),
+    };
+    assert_eq!(call_args.get(2), Some(&captured_values));
     Ok(())
 }
 
@@ -63,5 +115,18 @@ fn zero_values_use_nil_as_the_primary_value() -> TestResult<()> {
             matches!(&operation.kind, OpKind::SetMultipleValues { values } if values.is_empty())
         })
     }));
+    let returned = lowered
+        .entry
+        .blocks
+        .iter()
+        .find_map(|block| match &block.terminator {
+            MirTerminator::Return { values } => values.first().copied(),
+            _ => None,
+        })
+        .ok_or_else(|| std::io::Error::other("single-value result is missing"))?;
+    assert_eq!(
+        constant_for_value(&lowered.entry, returned),
+        Some(&Constant::Nil)
+    );
     Ok(())
 }

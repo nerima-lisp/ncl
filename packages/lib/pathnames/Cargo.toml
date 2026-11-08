@@ -10,6 +10,7 @@ ncl-object = { path = "../../object" }
 ncl-clos = { path = "../../clos" }
 ncl-types = { path = "../../types" }
 ncl-conditions = { path = "../../conditions" }
+ncl-hash-tables = { path = "../../hash-tables" }
 ncl-lib-strings = { path = "../strings" }
 ncl-sys = { path = "../../sys" }
 

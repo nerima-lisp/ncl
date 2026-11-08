@@ -193,7 +193,7 @@ fn allow_other_keys(
     Ok(false)
 }
 
-#[allow(
+#[expect(
     clippy::wildcard_enum_match_arm,
     reason = "ObjectRef is non-exhaustive; other object kinds cannot be limits"
 )]

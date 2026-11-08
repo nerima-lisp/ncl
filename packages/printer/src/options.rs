@@ -66,7 +66,6 @@ macro_rules! mode {
             $off,
         }
 
-        #[allow(dead_code)]
         impl $name {
             const fn as_bool(self) -> bool {
                 matches!(self, Self::$on)
@@ -86,7 +85,15 @@ mode!(CircleMode, Circle, NoCircle);
 mode!(PrettyMode, Pretty, Plain);
 mode!(ArrayMode, Contents, Opaque);
 mode!(GensymMode, WithPrefix, WithoutPrefix);
-mode!(CircleSharingMode, OnlyShared, AllOccurrences);
+/// How `*print-circle-not-shared*` controls circle labels.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CircleSharingMode {
+    /// Label objects only when they are shared.
+    OnlyShared,
+    /// Label every occurrence.
+    AllOccurrences,
+}
 
 /// How `*print-case*` renders symbol names.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

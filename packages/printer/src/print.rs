@@ -19,13 +19,6 @@ const DEFAULT_MARGIN: usize = 80;
 /// The printer state for one [`write()`] call.
 pub struct Printer<'a> {
     pub(crate) ctx: &'a mut ThreadContext,
-    // The current printing path allocates nothing on the Lisp heap, so it never
-    // needs the runtime; the field stays so array and dispatch printing can
-    // reach it without an API change.
-    #[allow(
-        dead_code,
-        reason = "reserved for the pprint-dispatch and stream layers"
-    )]
     pub(crate) runtime: &'a Runtime,
     pub(crate) sink: &'a mut dyn CharSink,
     pub(crate) options: PrintOptions,
@@ -191,7 +184,7 @@ impl<'a> Printer<'a> {
         Ok(text)
     }
 
-    #[allow(
+    #[expect(
         clippy::wildcard_enum_match_arm,
         reason = "ObjectRef is non-exhaustive and the printer has an opaque fallback"
     )]

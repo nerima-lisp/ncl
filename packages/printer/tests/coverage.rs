@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on printer output")]
+#![expect(clippy::unwrap_used, reason = "Tests assert on printer output.")]
 
 //! The ownership gate: `ncl-printer` must register every symbol it owns.
 

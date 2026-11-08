@@ -1,5 +1,6 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on builtin output")]
-#![allow(missing_docs)]
+//! Integration tests for printer builtin registration and output.
+
+#![expect(clippy::unwrap_used, reason = "Tests assert on builtin output.")]
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,

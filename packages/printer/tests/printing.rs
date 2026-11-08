@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on printer output")]
+#![expect(clippy::unwrap_used, reason = "Tests assert on printer output.")]
 
 //! Printing tests for each object kind and the `*print-*` options.
 //!

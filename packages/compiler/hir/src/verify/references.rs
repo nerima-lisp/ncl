@@ -3,11 +3,11 @@
 use std::collections::HashSet;
 
 use super::{Verifier, VerifyError};
-use crate::binding::{Binding, BindingKind, ScopeId};
+use crate::binding::{BindingKind, ScopeId};
 use crate::ids::{
     BindingId, BlockId, NodeId, SourceOriginId, SymbolId, TypeId, TypeSpecConstId, ValueId,
 };
-use crate::node::{CallTarget, Literal, VariableTarget};
+use crate::node::{CallTarget, Literal, Node, VariableTarget};
 
 impl Verifier<'_> {
     pub(super) fn parameters(

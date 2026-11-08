@@ -4,6 +4,7 @@ use std::error::Error;
 
 use super::control;
 use super::node;
+use super::node::MultipleValueOperation;
 use super::source;
 use super::{
     CleanupId, CompilationUnitId, FactAuthorization, FactCertainty, FactDomain, FactProvenance,
@@ -165,8 +166,7 @@ fn an_equivalent_guard_must_be_an_existing_checked_type_node() -> Result<(), Box
 #[test]
 fn multiple_value_bind_uses_a_private_body_scope() -> Result<(), Box<dyn Error>> {
     let mut fixture = Fixture::new(18)?;
-    let symbol = SymbolId::try_from_index(fixture.form.compilation_unit(), 4)?;
-    let _ = fixture.symbols.insert(symbol);
+    let symbol = fixture.insert_symbols_through(4)?;
     let body_scope = fixture.bindings.push_scope(fixture.root)?;
     let binding = fixture.bindings.bind_variable(body_scope, symbol)?;
     let reference = fixture.add_node(
@@ -190,16 +190,10 @@ fn multiple_value_bind_uses_a_private_body_scope() -> Result<(), Box<dyn Error>>
     assert_eq!(fixture.verify(&cfg), Ok(()));
 
     let mut invalid = Fixture::new(19)?;
-    let symbol = SymbolId::try_from_index(invalid.form.compilation_unit(), 5)?;
-    let _ = invalid.symbols.insert(symbol);
+    let symbol = invalid.insert_symbols_through(5)?;
     let body_scope = invalid.bindings.push_scope(invalid.root)?;
     let binding = invalid.bindings.bind_variable(body_scope, symbol)?;
-    let reference = invalid.add_node(
-        invalid.root,
-        NodeKind::VariableReference {
-            target: node::VariableTarget::Lexical(binding),
-        },
-    )?;
+    let wrong_scope = invalid.add_node(invalid.root, NodeKind::Literal(node::Literal::Nil))?;
     let value = invalid.add_node(invalid.root, NodeKind::Literal(node::Literal::Nil))?;
     let _ = invalid.add_node(
         invalid.root,
@@ -207,7 +201,7 @@ fn multiple_value_bind_uses_a_private_body_scope() -> Result<(), Box<dyn Error>>
             value,
             bindings: vec![binding],
             body_scope,
-            body: vec![reference],
+            body: vec![wrong_scope],
         }),
     )?;
     let function = invalid.add_lambda(invalid.root)?;
@@ -222,8 +216,7 @@ fn multiple_value_bind_uses_a_private_body_scope() -> Result<(), Box<dyn Error>>
 #[test]
 fn nonempty_binders_cannot_reuse_the_parent_scope() -> Result<(), Box<dyn Error>> {
     let mut lambda = Fixture::new(20)?;
-    let symbol = SymbolId::try_from_index(lambda.form.compilation_unit(), 6)?;
-    let _ = lambda.symbols.insert(symbol);
+    let symbol = lambda.insert_symbols_through(6)?;
     let parameter = lambda.bindings.bind_variable(lambda.root, symbol)?;
     let function = lambda.add_node(
         lambda.root,
@@ -240,8 +233,7 @@ fn nonempty_binders_cannot_reuse_the_parent_scope() -> Result<(), Box<dyn Error>
     ));
 
     let mut parallel = Fixture::new(21)?;
-    let symbol = SymbolId::try_from_index(parallel.form.compilation_unit(), 7)?;
-    let _ = parallel.symbols.insert(symbol);
+    let symbol = parallel.insert_symbols_through(7)?;
     let binding = parallel.bindings.bind_variable(parallel.root, symbol)?;
     let _ = parallel.add_node(
         parallel.root,

@@ -151,7 +151,7 @@ impl OptimizationPolicy {
         subtype: SubtypeRelation,
         equivalent_guard: bool,
     ) -> bool {
-        self.safety.0 >= 1 && subtype != SubtypeRelation::Yes && !equivalent_guard
+        self.safety.0 >= 1 && !matches!(subtype, SubtypeRelation::Yes) && !equivalent_guard
     }
 
     /// Whether a dynamic argument-count check must remain in the HIR.

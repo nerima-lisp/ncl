@@ -281,6 +281,10 @@ impl Verifier<'_> {
                     self.child(node.scope, *branch)?;
                 }
             }
+            NodeKind::Sequence { body_scope, forms } => {
+                self.scope_descendant(node.scope, *body_scope)?;
+                self.body_scope(*body_scope, forms)?;
+            }
             NodeKind::Block { name, body } => {
                 self.symbol(*name)?;
                 self.children(node.scope, body)?;
@@ -339,9 +343,11 @@ impl Verifier<'_> {
             NodeKind::TypeAssertion {
                 value,
                 asserted_type,
+                expected_type,
             } => {
                 self.child(node.scope, *value)?;
                 self.ty(*asserted_type)?;
+                self.type_constant(*expected_type)?;
             }
             NodeKind::KnownFunctionOperation {
                 function,
@@ -377,7 +383,9 @@ impl Verifier<'_> {
                 self.symbol(*name)?;
                 self.child(node.scope, *value)?;
             }
-            NodeKind::CompileTimeForm { form, .. } => self.child(node.scope, *form)?,
+            NodeKind::CompileTimeForm { form, .. } | NodeKind::LoadTimeValue { form, .. } => {
+                self.child(node.scope, *form)?;
+            }
         }
         Ok(())
     }

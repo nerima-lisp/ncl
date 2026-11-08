@@ -127,6 +127,10 @@ impl Verifier<'_> {
                 self.child(scope, *function)?;
                 self.children(scope, arguments)
             }
+            MultipleValueOperation::Prog1 { first, rest } => {
+                self.child(scope, *first)?;
+                self.children(scope, rest)
+            }
         }
     }
     pub(super) fn exit_target(&self, target: ExitTarget) -> Result<(), VerifyError> {

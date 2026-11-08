@@ -1,4 +1,7 @@
-#![allow(clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "These tests construct valid source or IR fixtures, so unwrap and expect failures identify a broken test case."
+)]
 
 use super::*;
 use crate::FunctionPass;
@@ -150,7 +153,7 @@ fn declared_fixnum_hints_keep_guards_and_speed_zero_disables_specialization() {
 }
 
 #[test]
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "keeps the handler fixture and its scalar guard assertions together"
 )]
@@ -270,7 +273,7 @@ fn pass_keeps_tag_check_for_a_catch_payload() {
 }
 
 #[test]
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "keeps the progv fixture and its scalar guard assertions together"
 )]
@@ -482,7 +485,7 @@ fn object_constants_do_not_claim_a_non_numeric_type() {
 }
 
 #[test]
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "keeps the branch graph and its joined scalar assertions together"
 )]

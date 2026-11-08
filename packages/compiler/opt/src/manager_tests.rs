@@ -350,7 +350,10 @@ fn observer_reports_pass_failures() {
 }
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The optimization pass keeps one worklist transfer and its dependent state updates in a single ordered operation."
+)]
 fn conservative_guards_and_manager_edges_are_exercised() {
     let mut invalid = leaf();
     invalid.blocks[0].ops.push(Op {

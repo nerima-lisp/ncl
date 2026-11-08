@@ -4,7 +4,10 @@ use ncl_ir::{Constant, ConstantIndex, Op, OpKind, Terminator, ValueId};
 use std::collections::HashMap;
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The optimization pass keeps one worklist transfer and its dependent state updates in a single ordered operation."
+)]
 fn remap_helpers_cover_ir_shapes() {
     let values = HashMap::from([(ValueId(0), ValueId(9))]);
     let mut constants = HashMap::new();

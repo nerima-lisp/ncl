@@ -116,11 +116,7 @@ fn remap_constant(
     else {
         return index;
     };
-    #[allow(clippy::manual_unwrap_or, clippy::option_if_let_else)]
-    let mapped_index = match u32::try_from(caller_constants.len()) {
-        Ok(value) => value,
-        Err(_) => u32::MAX,
-    };
+    let mapped_index = u32::try_from(caller_constants.len()).unwrap_or(u32::MAX);
     let mapped = ConstantIndex(mapped_index);
     constants.insert(index, mapped);
     let slot = caller_constants.len();

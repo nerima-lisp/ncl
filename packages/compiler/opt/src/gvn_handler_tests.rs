@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 use super::{Fixture, GlobalValueNumbering, Module};
 use crate::FunctionPass;
 use ncl_ir::{

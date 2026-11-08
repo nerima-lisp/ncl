@@ -102,7 +102,10 @@ impl Sccp {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "The optimization pass keeps one worklist transfer and its dependent state updates in a single ordered operation."
+    )]
     fn eval_op(function: &mut Function, states: &HashMap<ValueId, State>, op: &Op) -> State {
         match &op.kind {
             OpKind::Const { result }

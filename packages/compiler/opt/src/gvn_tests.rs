@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 use super::{Evidence, FunctionFacts, GlobalValueNumbering, Module, ScalarFact, ScalarType};
 use crate::FunctionPass;
 use std::fmt::Debug;

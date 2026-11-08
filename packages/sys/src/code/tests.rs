@@ -479,6 +479,8 @@ fn frame_chain_keeps_return_pc_low_bits_for_safepoint_lookup() {
 }
 
 mod cache_synchronization;
+mod frame_decoding;
 mod frame_scanning;
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 mod invocation;
+mod registry_state;

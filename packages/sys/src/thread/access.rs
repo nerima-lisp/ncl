@@ -319,3 +319,6 @@ impl<'a> ThreadAccess<'a> {
         )
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -439,7 +439,7 @@ fn malformed_array_constants_return_errors() -> Result<(), String> {
 }
 
 #[test]
-fn typed_runtime_errors_keep_their_display_and_incomplete_read_contract() -> Result<(), String> {
+fn typed_runtime_errors_keep_their_display_and_incomplete_read_contract() {
     let code_error = RuntimeError::from(CodeError::OutOfBounds);
     assert_eq!(
         code_error.to_string(),
@@ -459,7 +459,6 @@ fn typed_runtime_errors_keep_their_display_and_incomplete_read_contract() -> Res
 
     assert!(RuntimeError::Read(ncl_reader::ReadError::UnexpectedEof).is_incomplete_read());
     assert!(!RuntimeError::Native("failure".to_owned()).is_incomplete_read());
-    Ok(())
 }
 
 #[test]

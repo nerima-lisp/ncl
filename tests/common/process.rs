@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
 
-pub(super) fn output(command: &mut Command) -> Output {
+pub fn output(command: &mut Command) -> Output {
     let child = match command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -16,7 +16,7 @@ pub(super) fn output(command: &mut Command) -> Output {
     wait_with_timeout(child)
 }
 
-pub(super) fn wait_with_timeout(mut child: Child) -> Output {
+pub fn wait_with_timeout(mut child: Child) -> Output {
     let deadline = Instant::now() + CHILD_TIMEOUT;
     loop {
         match child.try_wait() {

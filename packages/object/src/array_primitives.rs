@@ -1,4 +1,7 @@
-use crate::{ObjectError, ObjectRef, ThreadContext, Word, classify_object, get, layout};
+use crate::{
+    Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, Word, allocate, classify_object, get,
+    layout, put, with_roots,
+};
 
 /// Element type tags represented by specialized array objects.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -34,6 +37,80 @@ impl ArrayElementType {
             _ => Err(ObjectError::Layout),
         }
     }
+}
+
+/// Validate a value against the element tag in an array representation.
+///
+/// # Errors
+/// Returns [`ObjectError::TypeError`] when the value does not match the tag.
+pub fn validate_array_element(
+    ctx: &ThreadContext,
+    element_type: ArrayElementType,
+    value: Word,
+) -> Result<Word, ObjectError> {
+    let valid = match element_type {
+        ArrayElementType::Bit => matches!(value.as_fixnum(), Some(0 | 1)),
+        ArrayElementType::Character | ArrayElementType::BaseChar => value.is_character(),
+        ArrayElementType::Fixnum => value.as_fixnum().is_some(),
+        ArrayElementType::Signed => matches!(
+            classify_object(ctx, value),
+            ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)
+        ),
+        ArrayElementType::Unsigned => match classify_object(ctx, value) {
+            ObjectRef::Fixnum(value) => value >= 0,
+            ObjectRef::Bignum(value) => !crate::bignum_sign(ctx, Bignum::from_word(value))?,
+            _ => false,
+        },
+        ArrayElementType::SingleFloat | ArrayElementType::DoubleFloat | ArrayElementType::T => true,
+    };
+    valid.then_some(value).ok_or(ObjectError::TypeError)
+}
+
+/// Allocate a specialized array from its element tag and initial representation words.
+///
+/// # Errors
+/// Returns [`ObjectError`] when the element tag, values, or allocation are invalid.
+pub fn make_specialized_array(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    element_type: ArrayElementType,
+    values: &[Word],
+) -> Result<Word, ObjectError> {
+    if element_type == ArrayElementType::T {
+        return Err(ObjectError::TypeError);
+    }
+    for value in values.iter().copied() {
+        validate_array_element(ctx, element_type, value)?;
+    }
+    with_roots(ctx, values, |ctx, values| {
+        let object = allocate(
+            ctx,
+            runtime,
+            layout::widetag::SPECIALIZED_ARRAY,
+            values.len().checked_add(2).ok_or(ObjectError::Layout)?,
+        )?;
+        put(
+            ctx,
+            object,
+            layout::specialized_array_offset::ELEMENT_TYPE,
+            Word::fixnum(i64::from(element_type as u8)),
+        )?;
+        put(
+            ctx,
+            object,
+            layout::specialized_array_offset::LENGTH,
+            Word::fixnum(i64::try_from(values.len()).map_err(|_| ObjectError::Layout)?),
+        )?;
+        for (index, value) in values.iter().copied().enumerate() {
+            put(
+                ctx,
+                object,
+                layout::specialized_array_offset::DATA + index,
+                *value,
+            )?;
+        }
+        Ok(object)
+    })
 }
 
 /// Return the dimensions encoded in an array object's representation.

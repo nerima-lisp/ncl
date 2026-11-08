@@ -47,7 +47,10 @@ pub use builtin::{
     NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
 };
 pub use builtin_package::BuiltinPackage;
-pub use array_primitives::{ArrayElementType, array_dimensions, specialized_array_element_type};
+pub use array_primitives::{
+    ArrayElementType, array_dimensions, make_specialized_array, specialized_array_element_type,
+    validate_array_element,
+};
 pub use classify::{ObjectRef, classify, classify_object, object_widetag};
 pub use code::code_slot;
 pub use code::{

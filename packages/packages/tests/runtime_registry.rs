@@ -19,11 +19,23 @@ fn package_lifecycle_and_class_registry_preserve_names() -> Result<(), ObjectErr
     assert_eq!(runtime.find_package(&ctx, "CL"), Some(common_lisp));
 
     let package = runtime.ensure_package(&mut ctx, "REGISTRY-LIFECYCLE")?;
+    let initial_name = make_string(&mut ctx, &runtime, &['I', 'N', 'I', 'T', 'I', 'A', 'L'])?;
+    let old_nickname = make_string(&mut ctx, &runtime, &['O', 'L', 'D'])?;
+    let old_nicknames = make_cons(&mut ctx, &runtime, old_nickname, Word::NIL)?;
+    runtime.rename_package(
+        &mut ctx,
+        Package::from_word(package),
+        initial_name,
+        old_nicknames,
+    )?;
+    assert_eq!(runtime.find_package(&ctx, "OLD"), Some(package));
     let nickname = make_string(&mut ctx, &runtime, &['R', 'L'])?;
     let nicknames = make_cons(&mut ctx, &runtime, nickname, Word::NIL)?;
     let renamed = make_string(&mut ctx, &runtime, &['R', 'E', 'N', 'A', 'M', 'E', 'D'])?;
     runtime.rename_package(&mut ctx, Package::from_word(package), renamed, nicknames)?;
     assert_eq!(runtime.find_package(&ctx, "REGISTRY-LIFECYCLE"), None);
+    assert_eq!(runtime.find_package(&ctx, "INITIAL"), None);
+    assert_eq!(runtime.find_package(&ctx, "OLD"), None);
     assert_eq!(runtime.find_package(&ctx, "RENAMED"), Some(package));
     assert_eq!(runtime.find_package(&ctx, "RL"), Some(package));
     let (symbol, _) = Package::from_word(package).intern(&mut ctx, &runtime, "DELETED-SYMBOL")?;

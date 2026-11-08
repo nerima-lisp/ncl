@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "Lisp-semantic compiler intermediate representation"
 
+[dependencies]
+ncl-ir = { path = "../../ir" }
+
 [[test]]
 name = "arena"
 path = "tests/arena.rs"

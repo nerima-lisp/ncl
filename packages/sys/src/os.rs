@@ -169,6 +169,11 @@ mod signal_control {
     use std::cell::RefCell;
     use std::io;
 
+    mod alternate_stack;
+    mod disposition;
+    mod sigwait;
+    use alternate_stack::AltSignalStackOwner;
+
     #[cfg(target_os = "linux")]
     const SIG_CHLD: c_int = 17;
     #[cfg(target_os = "macos")]
@@ -250,65 +255,37 @@ mod signal_control {
         fn pthread_sigmask(how: c_int, set: *const SigSet, old_set: *mut SigSet) -> c_int;
     }
 
-    #[cfg(target_os = "linux")]
-    unsafe extern "C" {
-        fn __errno_location() -> *mut c_int;
-    }
-
-    #[cfg(target_os = "macos")]
-    unsafe extern "C" {
-        fn __error() -> *mut c_int;
-    }
-
-    fn last_os_error() -> io::Error {
-        #[cfg(target_os = "linux")]
-        // SAFETY: libc returns a pointer to the calling thread's errno slot.
-        let code = unsafe { *__errno_location() };
-        #[cfg(target_os = "macos")]
-        // SAFETY: libc returns a pointer to the calling thread's errno slot.
-        let code = unsafe { *__error() };
-        io::Error::from_raw_os_error(code)
-    }
-
     fn signal_set(signals: &[c_int]) -> io::Result<SigSet> {
-        // SAFETY: zero is a valid initial representation before sigemptyset fills it.
-        let mut set: SigSet = unsafe { core::mem::zeroed() };
-        // SAFETY: set points to correctly sized storage for this target's sigset_t.
-        if unsafe { sigemptyset(&raw mut set) } != 0 {
-            return Err(last_os_error());
-        }
-        for &signal in signals {
-            // SAFETY: set is initialized and signal is a valid target signal number.
-            if unsafe { sigaddset(&raw mut set, signal) } != 0 {
-                return Err(last_os_error());
-            }
-        }
-        Ok(set)
+        disposition::create_signal_set(
+            signals,
+            || {
+                // SAFETY: zero is a valid initial representation before sigemptyset fills it.
+                unsafe { core::mem::zeroed() }
+            },
+            |set| {
+                // SAFETY: set points to correctly sized storage for this target's sigset_t.
+                unsafe { sigemptyset(&raw mut *set) }
+            },
+            |set, signal| {
+                // SAFETY: set is initialized and signal is a valid target signal number.
+                unsafe { sigaddset(&raw mut *set, signal) }
+            },
+            io::Error::last_os_error,
+        )
     }
 
     fn wait_signal_set(signals: &[c_int]) -> io::Result<c_int> {
         let set = signal_set(signals)?;
-        loop {
-            let mut signal = 0;
+        sigwait::wait_signal_set(&set, |set, signal| {
             // SAFETY: set is initialized and signal points to writable integer storage.
-            let result = unsafe { sigwait(&raw const set, &raw mut signal) };
-            if result == 0 {
-                return Ok(signal);
-            }
-            let error = io::Error::from_raw_os_error(result);
-            if error.kind() != io::ErrorKind::Interrupted {
-                return Err(error);
-            }
-        }
+            unsafe { sigwait(&raw const *set, &raw mut *signal) }
+        })
     }
 
     #[cfg(target_os = "linux")]
     fn positive_sysconf(name: c_int, fallback: usize) -> usize {
         // SAFETY: sysconf accepts the Linux signal-stack configuration selectors.
-        usize::try_from(unsafe { sysconf(name) })
-            .ok()
-            .filter(|value| *value > 0)
-            .unwrap_or(fallback)
+        alternate_stack::positive_sysconf(unsafe { sysconf(name) }, fallback)
     }
 
     fn required_alt_signal_stack_size() -> io::Result<usize> {
@@ -322,61 +299,46 @@ mod signal_control {
 
         // SAFETY: getpagesize has no pointer preconditions.
         let page_size = unsafe { getpagesize() };
-        let page_size = usize::try_from(page_size)
-            .ok()
-            .filter(|size| *size > 0)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid page size"))?;
-        let base_size = minimum.max(recommended);
-        let rounded_size = base_size
-            .checked_add(page_size - 1)
-            .map(|size| size / page_size * page_size)
-            .ok_or_else(|| io::Error::other("signal stack size overflow"))?;
-        rounded_size
-            .checked_add(ALT_SIGNAL_HANDLER_RESERVE)
-            .ok_or_else(|| io::Error::other("signal stack size overflow"))
+        alternate_stack::required_alt_signal_stack_size(
+            minimum,
+            recommended,
+            page_size,
+            ALT_SIGNAL_HANDLER_RESERVE,
+        )
     }
 
     fn current_alt_signal_stack() -> io::Result<AltSignalStack> {
         // SAFETY: all fields in the supported `stack_t` layouts are valid when zeroed.
         let mut current: AltSignalStack = unsafe { core::mem::zeroed() };
-        // SAFETY: current points to writable stack_t storage; null requests a query only.
-        if unsafe { sigaltstack(core::ptr::null(), &raw mut current) } != 0 {
-            return Err(last_os_error());
-        }
+        alternate_stack::query_alternate_signal_stack(
+            // SAFETY: current points to writable stack_t storage; null requests a query only.
+            unsafe { sigaltstack(core::ptr::null(), &raw mut current) },
+            io::Error::last_os_error,
+        )?;
         Ok(current)
-    }
-
-    struct AltSignalStackOwner {
-        memory: Option<Box<[u8]>>,
     }
 
     impl Drop for AltSignalStackOwner {
         fn drop(&mut self) {
-            let Some(memory) = self.memory.take() else {
-                return;
-            };
-            let Ok(current) = current_alt_signal_stack() else {
-                core::mem::forget(memory);
-                return;
-            };
-            if current.sp != memory.as_ptr().cast_mut().cast() {
-                return;
-            }
-            if current.flags & SS_ONSTACK != 0 {
-                core::mem::forget(memory);
-                return;
-            }
-            if current.flags & SS_DISABLE == 0 {
-                let disabled = AltSignalStack {
-                    sp: core::ptr::null_mut(),
-                    size: 0,
-                    flags: SS_DISABLE,
-                };
-                // SAFETY: the current thread owns this alternate stack, and it is not active.
-                if unsafe { sigaltstack(&raw const disabled, core::ptr::null_mut()) } != 0 {
-                    core::mem::forget(memory);
-                }
-            }
+            alternate_stack::release_alternate_signal_stack(
+                self.memory.take(),
+                || current_alt_signal_stack().map(|current| (current.sp as usize, current.flags)),
+                SS_DISABLE,
+                SS_ONSTACK,
+                || {
+                    let disabled = AltSignalStack {
+                        sp: core::ptr::null_mut(),
+                        size: 0,
+                        flags: SS_DISABLE,
+                    };
+                    // SAFETY: the current thread owns this alternate stack, and it is not active.
+                    alternate_stack::query_alternate_signal_stack(
+                        unsafe { sigaltstack(&raw const disabled, core::ptr::null_mut()) },
+                        io::Error::last_os_error,
+                    )
+                },
+                core::mem::forget,
+            );
         }
     }
 
@@ -389,51 +351,55 @@ mod signal_control {
     fn ensure_alt_signal_stack() -> io::Result<usize> {
         let required = required_alt_signal_stack_size()?;
         let current = current_alt_signal_stack()?;
-        if current.flags & SS_DISABLE == 0 && current.size >= required {
-            return Ok(current.size);
-        }
-        if current.flags & SS_ONSTACK != 0 {
-            return Err(io::Error::from_raw_os_error(1));
-        }
-
-        ALT_SIGNAL_STACK
-            .try_with(|owner| {
-                let mut owner = owner.try_borrow_mut().map_err(|_| {
-                    io::Error::new(
-                        io::ErrorKind::WouldBlock,
-                        "alternate signal stack is borrowed",
-                    )
-                })?;
-                let mut memory = vec![0_u8; required].into_boxed_slice();
-                let stack = AltSignalStack {
-                    sp: memory.as_mut_ptr().cast(),
-                    size: memory.len(),
-                    flags: 0,
-                };
-                // SAFETY: memory remains owned by thread-local storage for the stack's lifetime.
-                if unsafe { sigaltstack(&raw const stack, core::ptr::null_mut()) } != 0 {
-                    return Err(last_os_error());
-                }
-                owner.memory = Some(memory);
-                Ok(required)
-            })
-            .map_err(|_| io::Error::other("alternate signal stack TLS unavailable"))?
+        alternate_stack::ensure_alternate_signal_stack(
+            required,
+            current.size,
+            current.flags,
+            SS_DISABLE,
+            SS_ONSTACK,
+            |required| {
+                alternate_stack::map_alternate_signal_stack_tls(ALT_SIGNAL_STACK.try_with(
+                    |owner| {
+                        alternate_stack::register_alternate_signal_stack(
+                            owner,
+                            required,
+                            |pointer, size| {
+                                let stack = AltSignalStack {
+                                    sp: pointer.cast(),
+                                    size,
+                                    flags: 0,
+                                };
+                                // SAFETY: memory remains owned by thread-local storage for the stack's lifetime.
+                                alternate_stack::query_alternate_signal_stack(
+                                    unsafe { sigaltstack(&raw const stack, core::ptr::null_mut()) },
+                                    io::Error::last_os_error,
+                                )
+                            },
+                        )
+                    },
+                ))
+            },
+        )
     }
 
     const extern "C" fn sigchld_wait_handler(_: c_int) {}
+
     fn set_signal_disposition(signal: c_int, handler: usize) -> io::Result<()> {
         // SAFETY: zeroed storage is valid for sigaction's integer, pointer, and sigset fields.
         let mut action: SigAction = unsafe { core::mem::zeroed() };
         action.handler = handler;
-        // SAFETY: action.mask has the target's sigset_t layout.
-        if unsafe { sigemptyset(&raw mut action.mask) } != 0 {
-            return Err(last_os_error());
-        }
-        // SAFETY: action has a valid handler and empty mask for this target's sigaction ABI.
-        if unsafe { sigaction(signal, &raw const action, core::ptr::null_mut()) } != 0 {
-            return Err(last_os_error());
-        }
-        Ok(())
+        disposition::install_signal_disposition(
+            &mut action,
+            |action| {
+                // SAFETY: action.mask has the target's sigset_t layout.
+                unsafe { sigemptyset(&raw mut action.mask) }
+            },
+            |action| {
+                // SAFETY: action has a valid handler and empty mask for this target's sigaction ABI.
+                unsafe { sigaction(signal, &raw const *action, core::ptr::null_mut()) }
+            },
+            io::Error::last_os_error,
+        )
     }
 
     impl crate::Thread {
@@ -461,10 +427,7 @@ mod signal_control {
             // SAFETY: set is initialized and old_set is null because its prior value is unused.
             let result =
                 unsafe { pthread_sigmask(SIG_BLOCK, &raw const set, core::ptr::null_mut()) };
-            if result != 0 {
-                return Err(io::Error::from_raw_os_error(result));
-            }
-            Ok(())
+            disposition::block_control_signal_mask(result)
         }
         /// Wait for one blocked control signal.
         /// # Errors

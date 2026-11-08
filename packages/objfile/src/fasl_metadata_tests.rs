@@ -43,6 +43,14 @@ mod private_tests {
         bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
     }
 
+    fn policy_count_offset(metadata: &FaslMetadata) -> usize {
+        4 + 4 + metadata.semantic_version.len() + 32 + 4 + 4 + metadata.target_triple.len() + 32
+    }
+
+    fn feature_count_offset(metadata: &FaslMetadata) -> usize {
+        policy_count_offset(metadata) + 4 + metadata.policies.len() * 4
+    }
+
     fn metadata_string(bytes: &[u8], base: usize) -> Result<String, FaslError> {
         Cursor::new(bytes, base).string()
     }
@@ -182,16 +190,10 @@ mod private_tests {
     fn metadata_rejects_over_limit_count_and_string_length_headers() {
         let metadata = metadata_fixture();
         let valid = must_succeed(encode(&metadata));
-        let policy_count_offset = 4
-            + 4
-            + metadata.semantic_version.len()
-            + 32
-            + 4
-            + 4
-            + metadata.target_triple.len()
-            + 32;
-        let feature_count_offset = policy_count_offset + 4 + metadata.policies.len() * 4;
-        for count_offset in [policy_count_offset, feature_count_offset] {
+        for count_offset in [
+            policy_count_offset(&metadata),
+            feature_count_offset(&metadata),
+        ] {
             let mut oversized_count = valid.clone();
             write_u32(&mut oversized_count, count_offset, 1_048_577);
             assert_eq!(
@@ -209,6 +211,145 @@ mod private_tests {
             decode(&oversized_string, 320),
             Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 324))
         );
+    }
+
+    #[test]
+    fn metadata_decoder_rejects_invalid_wire_fields_and_incomplete_records() {
+        let metadata = metadata_fixture();
+        let valid = must_succeed(encode(&metadata));
+        let policy_count = policy_count_offset(&metadata);
+
+        let mut bad_schema = valid.clone();
+        write_u32(&mut bad_schema, 0, 2);
+        assert_eq!(
+            decode(&bad_schema, 320),
+            Err(FaslError::at(FaslRejectReason::MalformedMetadata, 320))
+        );
+
+        let mut bad_reserved = valid.clone();
+        bad_reserved[policy_count + 4 + 3] = 1;
+        assert_eq!(
+            decode(&bad_reserved, 320),
+            Err(FaslError::at(
+                FaslRejectReason::MalformedMetadata,
+                320 + policy_count + 4 + 3
+            ))
+        );
+
+        let incomplete_policy_records = &valid[..policy_count + 4];
+        assert_eq!(
+            decode(incomplete_policy_records, 320),
+            Err(FaslError::at(
+                FaslRejectReason::MalformedMetadata,
+                320 + policy_count + 4
+            ))
+        );
+
+        let mut trailing = valid;
+        trailing.push(0);
+        assert_eq!(
+            decode(&trailing, 320),
+            Err(FaslError::at(
+                FaslRejectReason::MalformedMetadata,
+                320 + trailing.len() - 1
+            ))
+        );
+    }
+
+    #[test]
+    fn metadata_decoder_revalidates_canonical_policy_and_feature_records() {
+        let policy_metadata = metadata_fixture();
+        let mut policy_bytes = must_succeed(encode(&policy_metadata));
+        policy_bytes[policy_count_offset(&policy_metadata) + 4 + 2] = 4;
+        assert_eq!(
+            decode(&policy_bytes, 320),
+            Err(FaslError::at(FaslRejectReason::MalformedMetadata, 320))
+        );
+
+        let mut feature_metadata = metadata_fixture();
+        feature_metadata.features = vec![
+            FeatureRecord {
+                name: "a".to_owned(),
+                version: "1".to_owned(),
+            },
+            FeatureRecord {
+                name: "b".to_owned(),
+                version: "1".to_owned(),
+            },
+        ];
+        let mut feature_bytes = must_succeed(encode(&feature_metadata));
+        let second_name = feature_count_offset(&feature_metadata) + 4 + 10 + 4;
+        feature_bytes[second_name] = b'a';
+        assert_eq!(
+            decode(&feature_bytes, 320),
+            Err(FaslError::at(FaslRejectReason::MalformedMetadata, 320))
+        );
+    }
+
+    #[test]
+    fn metadata_validation_enforces_string_and_record_limits() {
+        let oversized = "x".repeat(MAX_STRING_BYTES + 1);
+        let mut long_version = metadata_fixture();
+        long_version.semantic_version = oversized.clone();
+        let resource_limit = FaslError::at(FaslRejectReason::ResourceLimitExceeded, 0);
+        assert_eq!(validate(&long_version), Err(resource_limit));
+        assert_eq!(encode(&long_version), Err(resource_limit));
+        assert_eq!(compiler_identity(&long_version), Err(resource_limit));
+
+        let long_feature = [FeatureRecord {
+            name: oversized,
+            version: "1".to_owned(),
+        }];
+        assert_eq!(feature_fingerprint(&long_feature), Err(resource_limit));
+
+        {
+            let policies = vec![PolicyRecord { id: 1, value: 0 }; MAX_RECORDS + 1];
+            let mut too_many = metadata_fixture();
+            too_many.policies = policies.clone();
+            assert_eq!(validate(&too_many), Err(resource_limit));
+            assert_eq!(policy_fingerprint(&policies), Err(resource_limit));
+        }
+        {
+            let features = vec![
+                FeatureRecord {
+                    name: String::new(),
+                    version: String::new(),
+                };
+                MAX_RECORDS + 1
+            ];
+            let mut too_many = metadata_fixture();
+            too_many.features = features.clone();
+            assert_eq!(validate(&too_many), Err(resource_limit));
+            assert_eq!(feature_fingerprint(&features), Err(resource_limit));
+        }
+    }
+
+    #[test]
+    fn sha256_matches_padding_boundary_vectors() {
+        let empty: &[u8] = b"";
+        let below_padding_boundary = [b'a'; 55];
+        let at_padding_boundary = [b'a'; 56];
+        let full_block = [b'a'; 64];
+        for (input, expected) in [
+            (
+                empty,
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                &below_padding_boundary[..],
+                "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318",
+            ),
+            (
+                &at_padding_boundary[..],
+                "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a",
+            ),
+            (
+                &full_block[..],
+                "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb",
+            ),
+        ] {
+            assert_eq!(hex(sha256(input)), expected);
+        }
     }
 
     #[test]

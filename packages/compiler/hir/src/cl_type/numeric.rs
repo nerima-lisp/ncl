@@ -158,12 +158,7 @@ impl NumericRange {
                     }
                 }
                 Some(Ordering::Less) => {}
-                None => {
-                    return Err(NumericRangeError::DomainMismatch {
-                        expected: domain,
-                        actual: upper.value.domain(),
-                    });
-                }
+                _ => {}
             }
         }
         if domain == NumericDomain::Integer && integer_interval_is_empty(lower, upper) {
@@ -201,9 +196,6 @@ impl NumericRange {
     }
 
     pub(super) fn contains_range(self, other: Self) -> bool {
-        if self.domain != other.domain {
-            return false;
-        }
         match self.domain {
             NumericDomain::Integer => {
                 let (container_lower, container_upper) =
@@ -233,9 +225,6 @@ impl NumericRange {
     }
 
     pub(super) fn is_disjoint(self, other: Self) -> bool {
-        if self.domain != other.domain {
-            return true;
-        }
         match self.domain {
             NumericDomain::Integer => {
                 let (left_lower, left_upper) = integer_range_bounds(self.lower, self.upper);

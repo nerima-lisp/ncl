@@ -52,8 +52,6 @@ pub enum HirBuildError {
     Id(IdError),
     /// The current HIR schema cannot preserve this source form.
     Unrepresentable(UnsupportedHirForm),
-    /// Function lookup returned an identity outside the function namespace.
-    InvalidFunctionBinding(ncl_hir::BindingId),
 }
 
 impl Display for HirBuildError {

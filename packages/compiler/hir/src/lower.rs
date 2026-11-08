@@ -73,8 +73,6 @@ pub enum LowerError {
     },
     /// A TAGBODY has no matching verified control-flow graph.
     MissingTagbodyFlow(NodeId),
-    /// A TAGBODY CFG uses an invalid value-return terminator.
-    InvalidTagbodyReturn(NodeId),
     /// A referenced symbol has no spelling in the symbol table.
     InvalidSymbol(crate::ids::SymbolId),
     /// The requested node has no faithful representation in the current IR.

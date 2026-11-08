@@ -85,18 +85,14 @@ impl Word {
     }
     /// Return the lowtag.
     #[must_use]
-    #[allow(
-        clippy::cast_possible_truncation,
-        reason = "lowtag is defined as the low three bits"
-    )]
     pub const fn lowtag(self) -> u8 {
         (self.0 & LOWTAG_MASK) as u8
     }
     /// Return the untagged address.
     #[must_use]
-    #[allow(
+    #[expect(
         clippy::cast_possible_truncation,
-        reason = "heap addresses are usize-sized on supported targets"
+        reason = "Word is a 64-bit tagged value and supported AArch64 and x86-64 targets use 64-bit pointers."
     )]
     pub const fn address(self) -> usize {
         (self.0 & !LOWTAG_MASK) as usize
@@ -123,9 +119,9 @@ impl Word {
     }
     /// Decode a Unicode scalar value from an immediate character.
     #[must_use]
-    #[allow(
+    #[expect(
         clippy::cast_possible_truncation,
-        reason = "the preceding scalar-range check bounds the value to u32"
+        reason = "the scalar-range check bounds the value before narrowing it to u32"
     )]
     pub const fn as_character(self) -> Option<u32> {
         if self.lowtag() != LowTag::List as u8

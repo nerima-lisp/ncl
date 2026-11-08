@@ -45,7 +45,6 @@ pub unsafe extern "C" fn native_cons(mut thread: NonNull<Thread>, car: Word, cdr
 /// # Safety
 /// `thread` must point to a registered live thread and remain valid for the
 /// duration of the call.
-#[allow(clippy::option_if_let_else, clippy::single_match_else)]
 #[must_use]
 pub unsafe extern "C" fn native_car(mut thread: NonNull<Thread>, value: Word) -> Word {
     // SAFETY: the caller provides a valid registered thread.
@@ -67,16 +66,14 @@ pub unsafe extern "C" fn native_car(mut thread: NonNull<Thread>, value: Word) ->
         });
         return Word::NIL;
     }
-    match read_cons_word(thread, value, 0) {
-        Some(value) => value,
-        None => {
-            thread.set_native_error(NativeError::Invalid {
-                operation: NativeOperation::Car,
-                value,
-            });
-            Word::NIL
-        }
-    }
+    let Some(value) = read_cons_word(thread, value, 0) else {
+        thread.set_native_error(NativeError::Invalid {
+            operation: NativeOperation::Car,
+            value,
+        });
+        return Word::NIL;
+    };
+    value
 }
 
 /// Add two fixnums through the native-entry boundary.

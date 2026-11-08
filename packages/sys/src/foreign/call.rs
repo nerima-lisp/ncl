@@ -438,9 +438,9 @@ const fn argument_register_limits() -> (usize, usize) {
     }
 }
 
-#[allow(
+#[expect(
     clippy::unnecessary_wraps,
-    reason = "the unsupported-target configuration returns an ABI error"
+    reason = "supported targets return ABI results while unsupported targets return UnsupportedAbi"
 )]
 fn invoke(
     function: NonNull<c_void>,

@@ -16,10 +16,6 @@ fn matches_f64(actual: f64, expected: f64) -> bool {
     actual.to_bits() == expected.to_bits()
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "the fixture exercises both ABI register banks and stack arguments"
-)]
 extern "C" fn mixed_stack_arguments(
     first_integer: u32,
     first_double: f64,
@@ -83,10 +79,6 @@ extern "C" fn return_stack_pointer(
 }
 
 #[cfg(target_arch = "aarch64")]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "the fixture places its pointer after all eight AAPCS64 GP registers"
-)]
 extern "C" fn return_stack_pointer(
     _a: u32,
     _b: u32,

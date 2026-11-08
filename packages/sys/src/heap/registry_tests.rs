@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "the test keeps three frame variants side by side"
 )]

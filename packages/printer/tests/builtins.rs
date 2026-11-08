@@ -243,6 +243,26 @@ fn printer_registration_propagates_heap_capacity_failure() {
             *root = make_string(ctx, &runtime, &[])?;
         }
 
+        let Some(common_lisp) = roots.first().copied() else {
+            return Err(ObjectError::Layout);
+        };
+        let (first_symbol, _) =
+            Package::from_word(common_lisp).intern(ctx, &runtime, "COPY-PPRINT-DISPATCH")?;
+        let Some(copy_symbol) = roots.get(1).copied() else {
+            return Err(ObjectError::Layout);
+        };
+        assert_eq!(first_symbol, copy_symbol);
+        let Some(common_lisp) = roots.first().copied() else {
+            return Err(ObjectError::Layout);
+        };
+        let (second_symbol, _) =
+            Package::from_word(common_lisp).intern(ctx, &runtime, "COPY-PPRINT-DISPATCH")?;
+        let Some(copy_symbol) = roots.get(1).copied() else {
+            return Err(ObjectError::Layout);
+        };
+        assert_eq!(second_symbol, copy_symbol);
+        ctx.collect(true)?;
+
         let mut next_root = 2 + EMPTY_RESERVE_ROOTS;
         for words in [65_536, 4_096, 256, 16, 1] {
             loop {
@@ -267,19 +287,6 @@ fn printer_registration_propagates_heap_capacity_failure() {
             *root = Word::NIL;
         }
         ctx.collect(true)?;
-
-        let Some(common_lisp) = roots.first().copied() else {
-            return Err(ObjectError::Layout);
-        };
-        let Some(copy_symbol) = roots.get(1).copied() else {
-            return Err(ObjectError::Layout);
-        };
-        let (first_symbol, _) =
-            Package::from_word(common_lisp).intern(ctx, &runtime, "COPY-PPRINT-DISPATCH")?;
-        assert_eq!(first_symbol, copy_symbol);
-        let (second_symbol, _) =
-            Package::from_word(common_lisp).intern(ctx, &runtime, "COPY-PPRINT-DISPATCH")?;
-        assert_eq!(second_symbol, copy_symbol);
 
         let lambda_list_probe = make_string(ctx, &runtime, &[])?;
         assert_eq!(ncl_object::string_length(ctx, lambda_list_probe)?, 0);

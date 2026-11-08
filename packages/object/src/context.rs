@@ -1,6 +1,7 @@
 //! Per-mutator thread registration and control state.
 
 mod evaluator_access;
+mod evaluator_runtime;
 use evaluator_access::EvaluatorAccessSlot;
 
 use crate::object_access::{get, put};
@@ -106,37 +107,6 @@ impl ThreadContext {
         }
     }
 
-    /// Associate this context with its owning evaluator for the duration of an evaluation.
-    pub const fn set_evaluator_runtime(&mut self, runtime: *mut ()) {
-        self.evaluator_runtime = std::ptr::NonNull::new(runtime);
-    }
-
-    /// Replace the active evaluator and return its previous association.
-    #[must_use]
-    pub const fn replace_evaluator_runtime(
-        &mut self,
-        runtime: *mut (),
-    ) -> Option<std::ptr::NonNull<()>> {
-        let previous = self.evaluator_runtime;
-        self.evaluator_runtime = std::ptr::NonNull::new(runtime);
-        previous
-    }
-
-    /// Clear the evaluator association after an outer evaluation returns.
-    pub const fn clear_evaluator_runtime(&mut self) {
-        self.evaluator_runtime = None;
-    }
-
-    /// Restore an evaluator association saved before nested evaluation.
-    pub const fn restore_evaluator_runtime(&mut self, evaluator: Option<std::ptr::NonNull<()>>) {
-        self.evaluator_runtime = evaluator;
-    }
-
-    #[must_use]
-    pub const fn evaluator_runtime(&self) -> Option<std::ptr::NonNull<()>> {
-        self.evaluator_runtime
-    }
-
     /// Register this context with a runtime.
     ///
     /// The thread state is heap allocated, so moving this context after registration is safe.
@@ -223,7 +193,12 @@ impl ThreadContext {
                 self,
                 runtime,
                 common_lisp,
-                get(self, common_lisp_user, widetag::PACKAGE, crate::package::USE_LIST)?,
+                get(
+                    self,
+                    common_lisp_user,
+                    widetag::PACKAGE,
+                    crate::package::USE_LIST,
+                )?,
             )?;
             put(self, common_lisp_user, crate::package::USE_LIST, used)?;
         }
@@ -234,8 +209,8 @@ impl ThreadContext {
                 found = true;
                 break;
             }
-            used_by = ncl_sys::read_cons_word(&self.thread, used_by, 1)
-                .ok_or(ObjectError::Layout)?;
+            used_by =
+                ncl_sys::read_cons_word(&self.thread, used_by, 1).ok_or(ObjectError::Layout)?;
         }
         if !found {
             let used_by = make_cons(

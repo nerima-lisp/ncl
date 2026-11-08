@@ -21,10 +21,10 @@ impl PackageListOperations for Package {
                 Self::from_word(*package).ensure_unlocked(ctx)?;
                 let mut list = get(ctx, *package_self, widetag::PACKAGE, USE_LIST)?;
                 while list != Word::NIL {
-                    if car(ctx, list)? == *package {
+                    if list_car(ctx, list) == Some(*package) {
                         return Ok(false);
                     }
-                    list = cdr(ctx, list)?;
+                    list = list_cdr(ctx, list)?;
                 }
                 let list = make_cons(
                     ctx,
@@ -35,10 +35,10 @@ impl PackageListOperations for Package {
                 put(ctx, *package_self, USE_LIST, list)?;
                 let mut used_by = get(ctx, *package, widetag::PACKAGE, USED_BY)?;
                 while used_by != Word::NIL {
-                    if car(ctx, used_by)? == *package_self {
+                    if list_car(ctx, used_by) == Some(*package_self) {
                         return Ok(true);
                     }
-                    used_by = cdr(ctx, used_by)?;
+                    used_by = list_cdr(ctx, used_by)?;
                 }
                 let used_by = make_cons(
                     ctx,
@@ -60,10 +60,11 @@ impl PackageListOperations for Package {
             ncl_object::with_root(ctx, &mut package, |ctx, package| {
                 Self::from_word(*package).ensure_unlocked(ctx)?;
                 let removed = remove_from_list(ctx, *package_self, USE_LIST, *package)?;
-                if removed {
-                    remove_from_list(ctx, *package, USED_BY, *package_self)?;
+                if !removed {
+                    return Ok(false);
                 }
-                Ok(removed)
+                remove_from_list(ctx, *package, USED_BY, *package_self)?;
+                Ok(true)
             })
         })
     }
@@ -105,7 +106,21 @@ impl PackageListOperations for Package {
                             Word::NIL,
                         )?;
                     }
-                    remove_from_list(ctx, *package, SHADOWING, *symbol)?;
+                    let mut current = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
+                    let mut previous = Word::NIL;
+                    while current != Word::NIL {
+                        let next = list_cdr(ctx, current)?;
+                        if list_car(ctx, current) == Some(*symbol) {
+                            if previous == Word::NIL {
+                                put(ctx, *package, SHADOWING, next)?;
+                            } else {
+                                rplacd(ctx, previous, next)?;
+                            }
+                            break;
+                        }
+                        previous = current;
+                        current = next;
+                    }
                     Ok(true)
                 })
             })
@@ -154,10 +169,10 @@ impl PackageListOperations for Package {
                     }
                     let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
                     while list != Word::NIL {
-                        if car(ctx, list)? == *symbol {
+                        if list_car(ctx, list) == Some(*symbol) {
                             return Ok(());
                         }
-                        list = cdr(ctx, list)?;
+                        list = list_cdr(ctx, list)?;
                     }
                     let list = make_cons(
                         ctx,
@@ -188,10 +203,10 @@ impl PackageListOperations for Package {
                     Self::from_word(*package).import(ctx, runtime, *name, *symbol)?;
                     let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
                     while list != Word::NIL {
-                        if car(ctx, list)? == *symbol {
+                        if list_car(ctx, list) == Some(*symbol) {
                             return Ok(());
                         }
-                        list = cdr(ctx, list)?;
+                        list = list_cdr(ctx, list)?;
                     }
                     let list = make_cons(
                         ctx,
@@ -215,8 +230,8 @@ fn remove_from_list(
     let mut current = get(ctx, object, widetag::PACKAGE, slot)?;
     let mut previous = Word::NIL;
     while current != Word::NIL {
-        let next = cdr(ctx, current)?;
-        if car(ctx, current)? == target {
+        let next = list_cdr(ctx, current)?;
+        if list_car(ctx, current) == Some(target) {
             if previous == Word::NIL {
                 put(ctx, object, slot, next)?;
             } else {
@@ -228,4 +243,36 @@ fn remove_from_list(
         current = next;
     }
     Ok(false)
+}
+
+fn list_car(ctx: &ThreadContext, list: Word) -> Option<Word> {
+    car(ctx, list).ok()
+}
+
+fn list_cdr(ctx: &ThreadContext, list: Word) -> Result<Word, ObjectError> {
+    cdr(ctx, list).map_err(|_| ObjectError::Layout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn malformed_use_list_returns_layout_error() {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("register: {error:?}"));
+        let package = Package::new(&mut ctx, &runtime, "MALFORMED-USE-LIST")
+            .unwrap_or_else(|error| panic!("package: {error:?}"));
+        let source = Package::new(&mut ctx, &runtime, "MALFORMED-USE-SOURCE")
+            .unwrap_or_else(|error| panic!("source: {error:?}"));
+        put(&mut ctx, package.as_word(), USE_LIST, Word::TRUE)
+            .unwrap_or_else(|error| panic!("malformed use list: {error:?}"));
+
+        assert_eq!(
+            package.use_package(&mut ctx, &runtime, source.as_word()),
+            Err(ObjectError::Layout)
+        );
+    }
 }

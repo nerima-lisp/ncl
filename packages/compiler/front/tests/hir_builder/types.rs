@@ -80,7 +80,7 @@ fn atomic_and_boolean_type_specifiers_build_their_set_operations() -> TestResult
     assert_eq!(at(&actual, 2)?.1, ClTypeKind::Named(BuiltinType::Integer));
     assert!(matches!(&at(&actual, 3)?.1, ClTypeKind::Union(items) if items.len() == 2));
     assert!(matches!(&at(&actual, 4)?.1, ClTypeKind::Intersection(items) if items.len() == 2));
-    assert!(matches!(&at(&actual, 5)?.1, ClTypeKind::Complement(_)));
+    assert_eq!(at(&actual, 5)?.1, ClTypeKind::Any);
     assert_eq!(
         form.types().subtype(at(&actual, 2)?.0, at(&actual, 3)?.0)?,
         SubtypeRelation::Yes

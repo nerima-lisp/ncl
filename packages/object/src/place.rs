@@ -3,6 +3,7 @@
 use crate::runtime::RootedWord;
 use crate::{ObjectError, Runtime, ThreadContext, Word, symbol_name};
 use ncl_sys::Heap;
+use std::sync::Arc;
 
 /// The five values returned by `get-setf-expansion`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -45,7 +46,12 @@ impl SymbolId {
 }
 
 impl PlaceExpanders {
-    pub(crate) fn register(&mut self, heap: &Heap, operator: SymbolId, expander: PlaceExpander) {
+    pub(crate) fn register(
+        &mut self,
+        heap: &Arc<Heap>,
+        operator: SymbolId,
+        expander: PlaceExpander,
+    ) {
         if let Some(entry) = self
             .entries
             .iter_mut()

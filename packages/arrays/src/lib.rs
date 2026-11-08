@@ -1,6 +1,7 @@
 use ncl_object::{
     Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, Word, allocate, classify_object,
-    layout, string_length, string_ref, with_roots,
+    layout, simple_vector_length, simple_vector_ref, simple_vector_set, string_length,
+    string_ref, with_roots,
 };
 /// Options for constructing a non-simple array.
 #[derive(Clone, Copy, Debug)]
@@ -15,11 +16,6 @@ pub struct ArrayOptions {
 mod element_type;
 pub use element_type::ArrayElementType;
 pub(crate) use element_type::validate_element;
-
-mod simple_vector;
-pub use simple_vector::{
-    make_simple_vector, simple_vector_length, simple_vector_ref, simple_vector_set,
-};
 
 mod construction;
 pub use construction::make_array;
@@ -88,13 +84,6 @@ fn widetag(ctx: &ThreadContext, object: Word) -> Option<u8> {
 /// Returns [`ObjectError::Layout`] when a layout has already been registered.
 pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
     for (tag, layout) in [
-        (
-            layout::widetag::SIMPLE_VECTOR,
-            ncl_object::ReferenceLayout {
-                reference_words: layout::reference_words(&[layout::simple_vector_offset::DATA]),
-                boxed_from: Some(layout::simple_vector_offset::DATA + 1),
-            },
-        ),
         (
             layout::widetag::SPECIALIZED_ARRAY,
             ncl_object::ReferenceLayout {

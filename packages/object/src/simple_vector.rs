@@ -1,6 +1,9 @@
-use crate::{ObjectError, Runtime, ThreadContext, Word, allocate, layout, length, read, with_roots, write};
+use crate::{
+    ObjectError, Runtime, ThreadContext, Word, allocate, get, layout, put, with_roots,
+};
 
 /// Allocate a simple vector with contiguous Lisp values.
+///
 /// # Errors
 /// Returns [`ObjectError`] when allocation or layout encoding fails.
 /// # Panics
@@ -20,21 +23,14 @@ pub fn make_simple_vector(
                 .checked_add(1)
                 .ok_or(ObjectError::Layout)?,
         )?;
-        write(
+        put(
             ctx,
             object,
             0,
             Word::fixnum(i64::try_from(rooted_values.len()).map_err(|_| ObjectError::Layout)?),
-            layout::widetag::SIMPLE_VECTOR,
         )?;
         for (index, value) in rooted_values.iter().copied().enumerate() {
-            write(
-                ctx,
-                object,
-                1 + index,
-                *value,
-                layout::widetag::SIMPLE_VECTOR,
-            )?;
+            put(ctx, object, 1 + index, *value)?;
         }
         Ok(object)
     })
@@ -45,7 +41,12 @@ pub fn make_simple_vector(
 /// # Errors
 /// Returns [`ObjectError`] for a non-vector or malformed layout.
 pub fn simple_vector_length(ctx: &ThreadContext, object: Word) -> Result<usize, ObjectError> {
-    length(ctx, object, layout::widetag::SIMPLE_VECTOR, 0)
+    usize::try_from(
+        get(ctx, object, layout::widetag::SIMPLE_VECTOR, 0)?
+            .as_fixnum()
+            .ok_or(ObjectError::Layout)?,
+    )
+    .map_err(|_| ObjectError::Layout)
 }
 
 /// Read a simple-vector element.
@@ -60,7 +61,7 @@ pub fn simple_vector_ref(
     if index >= simple_vector_length(ctx, object)? {
         return Err(ObjectError::TypeError);
     }
-    read(ctx, object, 1 + index, layout::widetag::SIMPLE_VECTOR)
+    get(ctx, object, layout::widetag::SIMPLE_VECTOR, 1 + index)
 }
 
 /// Write a simple-vector element.
@@ -76,12 +77,5 @@ pub fn simple_vector_set(
     if index >= simple_vector_length(ctx, object)? {
         return Err(ObjectError::TypeError);
     }
-    write(
-        ctx,
-        object,
-        1 + index,
-        value,
-        layout::widetag::SIMPLE_VECTOR,
-    )
+    put(ctx, object, 1 + index, value)
 }
-

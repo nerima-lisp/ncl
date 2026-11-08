@@ -1,14 +1,13 @@
 use ncl_arrays::{
     ArrayElementType, ArrayOptions, adjustable_array_p, array_displacement, array_element_type,
     array_dimensions, array_has_fill_pointer_p, array_row_major_ref, array_row_major_set,
-    fill_pointer, make_array,
-    simple_vector_ref, simple_vector_set, vector_pop, vector_push, vector_push_extend,
+    fill_pointer, make_array, vector_pop, vector_push, vector_push_extend,
 };
 use ncl_object::package::{nil, truth};
 use ncl_object::{
     BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
     ObjectError, ObjectRef, Parameter, ParameterType, Runtime, ThreadContext, Word,
-    classify_object, make_cons, pop_root, push_root,
+    classify_object, make_cons, pop_root, push_root, simple_vector_ref, simple_vector_set,
 };
 
 use super::{register_one, register_one_ncl, symbol_text};

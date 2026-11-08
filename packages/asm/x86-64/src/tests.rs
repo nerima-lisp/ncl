@@ -66,10 +66,12 @@ fn labels_are_patched() {
     assert!(a.emit(&Inst::Jmp(l)).is_ok());
     assert!(a.emit(&Inst::Nop(1)).is_ok());
     a.bind(l);
-    let blob = match a.finish() {
-        Ok(blob) => blob,
-        Err(error) => panic!("bound forward label must finish: {error:?}"),
-    };
+    let result = a.finish();
+    assert!(
+        result.is_ok(),
+        "bound forward label must finish: {result:?}"
+    );
+    let Ok(blob) = result else { return };
     assert_eq!(blob.bytes, &[0xe9, 1, 0, 0, 0, 0x90]);
     assert_eq!(blob.fixups.first().map(|f| f.kind), Some(FixupKind::Rel32));
 }
@@ -83,10 +85,12 @@ fn backward_branches_are_patched() {
     let jcc_target = a.new_label();
     a.bind(jcc_target);
     assert!(a.emit(&Inst::Jcc(Cond::Ne, jcc_target)).is_ok());
-    let blob = match a.finish() {
-        Ok(blob) => blob,
-        Err(error) => panic!("bound backward labels must finish: {error:?}"),
-    };
+    let result = a.finish();
+    assert!(
+        result.is_ok(),
+        "bound backward labels must finish: {result:?}"
+    );
+    let Ok(blob) = result else { return };
     assert_eq!(
         blob.bytes,
         &[
@@ -175,8 +179,10 @@ fn golden_corpus_covers_all_groups() {
         .flat_map(|file| file.lines())
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
     {
-        let Some((_, bytes)) = line.split_once(" => ") else {
-            panic!("golden separator");
+        let separator = line.split_once(" => ");
+        assert!(separator.is_some(), "golden separator");
+        let Some((_, bytes)) = separator else {
+            continue;
         };
         assert!(!bytes.is_empty());
         for byte in bytes.split_whitespace() {

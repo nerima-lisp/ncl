@@ -325,47 +325,13 @@ fn initialization_method_expansion_installs_the_base_generic() -> Result<(), Obj
     Ok(())
 }
 
-#[test]
-fn long_form_method_combination_expansion_stores_definition_and_builder() -> Result<(), ObjectError>
-{
-    let (runtime, mut context) = setup()?;
-    let mut scope = Scope::new(&mut context);
-    let define = scope.intern(&runtime, COMMON_LISP, "DEFINE-METHOD-COMBINATION")?;
-    let name = scope.intern(&runtime, "NCL", "WEIGHTED-PROBE")?;
-    let group = scope.intern(&runtime, "NCL", "POSITIVE-METHODS")?;
-    let qualifier = scope.intern(&runtime, "KEYWORD", "POSITIVE")?;
-    let define_word = scope.get(define).as_word();
-    let name_word = scope.get(name).as_word();
-    let group_word = scope.get(group).as_word();
-    let qualifier_word = scope.get(qualifier).as_word();
-    let group_pattern = make_list(&mut scope, &runtime, &[qualifier_word])?;
-    let group_pattern_word = scope.get(group_pattern).as_word();
-    let group_spec = make_list(&mut scope, &runtime, &[group_word, group_pattern_word])?;
-    let group_spec_word = scope.get(group_spec).as_word();
-    let group_specs = make_list(&mut scope, &runtime, &[group_spec_word])?;
-    let group_definitions_word = scope.get(group_specs).as_word();
-    let form = make_list(
-        &mut scope,
-        &runtime,
-        &[
-            define_word,
-            name_word,
-            Word::NIL,
-            group_definitions_word,
-            Word::fixnum(23),
-        ],
-    )?;
-    let mut form_word = scope.get(form).as_word();
-    let _form_root = ncl_object::push_heap_root(&runtime, &mut form_word);
-    drop(scope);
-
-    let input = [form_word];
-    let args = BuiltinArgs::new(&input);
-    let mut values = MultipleValues::new();
-    let mut expansion_word =
-        define_method_combination_macro_builtin(&mut context, &runtime, &args, &mut values)?;
-    let _expansion_root = ncl_object::push_heap_root(&runtime, &mut expansion_word);
-    let mut scope = Scope::new(&mut context);
+fn assert_long_form_method_combination_expansion(
+    runtime: &Runtime,
+    context: &mut ThreadContext,
+    expansion_word: Word,
+    lambda_list_word: Word,
+) -> Result<(), ObjectError> {
+    let mut scope = Scope::new(context);
     let expansion = list_words(&mut scope, expansion_word)?;
     assert_eq!(symbol_name_string(scope.context(), expansion[0])?, "PROGN");
     assert_eq!(expansion.len(), 5);
@@ -387,13 +353,24 @@ fn long_form_method_combination_expansion_stores_definition_and_builder() -> Res
     let helper_body = list_words(&mut scope, helper[3])?;
     assert_eq!(symbol_name_string(scope.context(), helper_body[0])?, "LET");
     let bindings = list_words(&mut scope, helper_body[1])?;
-    let binding = list_words(&mut scope, bindings[0])?;
-    let positive_methods = scope.intern(&runtime, "NCL", "POSITIVE-METHODS")?;
-    assert_eq!(binding[0], scope.get(positive_methods).as_word());
-    let nth_form = list_words(&mut scope, binding[1])?;
-    assert_eq!(symbol_name_string(scope.context(), nth_form[0])?, "NTH");
-    assert_eq!(nth_form[1], Word::fixnum(0));
-    assert_eq!(symbol_name_string(scope.context(), nth_form[2])?, "GROUPS");
+    assert_eq!(bindings.len(), 2);
+    let positive_binding = list_words(&mut scope, bindings[0])?;
+    let positive_methods = scope.intern(runtime, "NCL", "POSITIVE-METHODS")?;
+    assert_eq!(positive_binding[0], scope.get(positive_methods).as_word());
+    let positive_nth = list_words(&mut scope, positive_binding[1])?;
+    assert_eq!(symbol_name_string(scope.context(), positive_nth[0])?, "NTH");
+    assert_eq!(positive_nth[1], Word::fixnum(0));
+    assert_eq!(
+        symbol_name_string(scope.context(), positive_nth[2])?,
+        "GROUPS"
+    );
+    let zero_binding = list_words(&mut scope, bindings[1])?;
+    let zero_methods = scope.intern(runtime, "NCL", "ZERO-METHODS")?;
+    assert_eq!(zero_binding[0], scope.get(zero_methods).as_word());
+    let zero_nth = list_words(&mut scope, zero_binding[1])?;
+    assert_eq!(symbol_name_string(scope.context(), zero_nth[0])?, "NTH");
+    assert_eq!(zero_nth[1], Word::fixnum(1));
+    assert_eq!(symbol_name_string(scope.context(), zero_nth[2])?, "GROUPS");
 
     let body = list_words(&mut scope, helper_body[2])?;
     assert_eq!(symbol_name_string(scope.context(), body[0])?, "APPLY");
@@ -407,8 +384,9 @@ fn long_form_method_combination_expansion_stores_definition_and_builder() -> Res
         symbol_name_string(scope.context(), lambda_form[0])?,
         "LAMBDA"
     );
-    assert_eq!(lambda_form[1], Word::NIL);
+    assert_eq!(lambda_form[1], lambda_list_word);
     assert_eq!(lambda_form[2], Word::fixnum(23));
+    assert_eq!(lambda_form[3], Word::fixnum(29));
     assert_eq!(symbol_name_string(scope.context(), body[2])?, "OPTIONS");
 
     let stored_definition = list_words(&mut scope, expansion[2])?;
@@ -431,6 +409,72 @@ fn long_form_method_combination_expansion_stores_definition_and_builder() -> Res
         "WEIGHTED-PROBE"
     );
     Ok(())
+}
+
+#[test]
+fn long_form_method_combination_expansion_stores_definition_and_builder() -> Result<(), ObjectError>
+{
+    // CLHS 7.6.6.3: each group variable receives the applicable methods matching its specifier.
+    let (runtime, mut context) = setup()?;
+    let mut scope = Scope::new(&mut context);
+    let define = scope.intern(&runtime, COMMON_LISP, "DEFINE-METHOD-COMBINATION")?;
+    let name = scope.intern(&runtime, "NCL", "WEIGHTED-PROBE")?;
+    let positive_group = scope.intern(&runtime, "NCL", "POSITIVE-METHODS")?;
+    let zero_group = scope.intern(&runtime, "NCL", "ZERO-METHODS")?;
+    let qualifier = scope.intern(&runtime, "KEYWORD", "POSITIVE")?;
+    let zero_qualifier = scope.intern(&runtime, "KEYWORD", "ZERO")?;
+    let argument = scope.intern(&runtime, "NCL", "ARGUMENT")?;
+    let define_word = scope.get(define).as_word();
+    let name_word = scope.get(name).as_word();
+    let positive_group_word = scope.get(positive_group).as_word();
+    let zero_group_word = scope.get(zero_group).as_word();
+    let qualifier_word = scope.get(qualifier).as_word();
+    let zero_qualifier_word = scope.get(zero_qualifier).as_word();
+    let positive_pattern = make_list(&mut scope, &runtime, &[qualifier_word])?;
+    let positive_pattern_word = scope.get(positive_pattern).as_word();
+    let positive_spec = make_list(
+        &mut scope,
+        &runtime,
+        &[positive_group_word, positive_pattern_word],
+    )?;
+    let positive_spec_word = scope.get(positive_spec).as_word();
+    let zero_pattern = make_list(&mut scope, &runtime, &[zero_qualifier_word])?;
+    let zero_pattern_word = scope.get(zero_pattern).as_word();
+    let zero_spec = make_list(&mut scope, &runtime, &[zero_group_word, zero_pattern_word])?;
+    let zero_spec_word = scope.get(zero_spec).as_word();
+    let group_specs = make_list(&mut scope, &runtime, &[positive_spec_word, zero_spec_word])?;
+    let group_definitions_word = scope.get(group_specs).as_word();
+    let argument_word = scope.get(argument).as_word();
+    let lambda_list = make_list(&mut scope, &runtime, &[argument_word])?;
+    let lambda_list_word = scope.get(lambda_list).as_word();
+    let form = make_list(
+        &mut scope,
+        &runtime,
+        &[
+            define_word,
+            name_word,
+            lambda_list_word,
+            group_definitions_word,
+            Word::fixnum(23),
+            Word::fixnum(29),
+        ],
+    )?;
+    let mut form_word = scope.get(form).as_word();
+    let _form_root = ncl_object::push_heap_root(&runtime, &mut form_word);
+    drop(scope);
+
+    let input = [form_word];
+    let args = BuiltinArgs::new(&input);
+    let mut values = MultipleValues::new();
+    let mut expansion_word =
+        define_method_combination_macro_builtin(&mut context, &runtime, &args, &mut values)?;
+    let _expansion_root = ncl_object::push_heap_root(&runtime, &mut expansion_word);
+    assert_long_form_method_combination_expansion(
+        &runtime,
+        &mut context,
+        expansion_word,
+        lambda_list_word,
+    )
 }
 
 #[test]

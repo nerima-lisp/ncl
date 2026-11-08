@@ -15,6 +15,7 @@ mod included_tests {
     const WEIGHTED_BUILDER_ARGUMENTS: &[Parameter] = &[TRACE_ARGUMENT, TRACE_ARGUMENT];
     static TRACE_TEST_LOCK: Mutex<()> = Mutex::new(());
     static METHOD_LOG: Mutex<Vec<i64>> = Mutex::new(Vec::new());
+    static QUALIFIER_PREDICATE_LOG: Mutex<Vec<bool>> = Mutex::new(Vec::new());
 
     fn record_method(event: i64) {
         METHOD_LOG
@@ -32,6 +33,20 @@ mod included_tests {
 
     fn method_log() -> Vec<i64> {
         METHOD_LOG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    fn reset_qualifier_predicate_log() {
+        QUALIFIER_PREDICATE_LOG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
+    }
+
+    fn qualifier_predicate_log() -> Vec<bool> {
+        QUALIFIER_PREDICATE_LOG
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
@@ -145,6 +160,29 @@ mod included_tests {
         let _ = args.required(0)?;
         record_method(10);
         Err(ncl_object::ObjectError::TypeError)
+    }
+
+    fn fast_qualifier_p(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        args: &BuiltinArgs<'_>,
+        values: &mut MultipleValues,
+    ) -> Result<Word, ncl_object::ObjectError> {
+        let mut scope = ncl_object::Scope::new(ctx);
+        let qualifiers = scope.root(Local::<Word>::from_word(args.required(0)?));
+        let qualifiers = scope.list_to_handle_vec(Local::from_word(scope.get(qualifiers).as_word()))?;
+        let fast = scope.intern(runtime, "KEYWORD", "FAST")?;
+        let fast_word = scope.get(fast).as_word();
+        let matches = qualifiers
+            .iter()
+            .any(|qualifier| scope.get(*qualifier).as_word() == fast_word);
+        QUALIFIER_PREDICATE_LOG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(matches);
+        let result = if matches { Word::TRUE } else { Word::NIL };
+        values.set(&[result]);
+        Ok(result)
     }
 
     fn trace_list(
@@ -413,6 +451,26 @@ mod included_tests {
 
     
 
+    fn register_fast_qualifier_predicate(runtime: &Runtime, context: &mut ThreadContext) {
+        let implementation = BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::fixed(&[TRACE_ARGUMENT]),
+                convention: BuiltinConvention::Direct(Arity::exact(1)),
+            },
+            fast_qualifier_p,
+        );
+        runtime
+            .register_builtin(
+                context,
+                BuiltinIdentifier::new(
+                    BuiltinPackage::NclTest,
+                    BuiltinName::new("FAST-QUALIFIER-P"),
+                ),
+                implementation,
+            )
+            .expect("fast qualifier predicate");
+    }
+
     fn class_symbol(runtime: &Runtime, context: &mut ThreadContext, name: &str) -> Word {
         let package = runtime.find_package(context, COMMON_LISP).expect("CL package");
         Package::from_word(package)
@@ -498,6 +556,22 @@ mod included_tests {
         generic: Word,
         positive_weight: i64,
     ) -> Result<(), ncl_object::ObjectError> {
+        install_weighted_method_combination_with_predicate(
+            runtime,
+            context,
+            generic,
+            positive_weight,
+            false,
+        )
+    }
+
+    fn install_weighted_method_combination_with_predicate(
+        runtime: &Runtime,
+        context: &mut ThreadContext,
+        generic: Word,
+        positive_weight: i64,
+        use_predicate: bool,
+    ) -> Result<(), ncl_object::ObjectError> {
         let mut scope = ncl_object::Scope::new(context);
         let combination = scope.intern(runtime, COMMON_LISP, "RANDOMIZED")?;
         let helper = scope.intern(runtime, "NCL-TEST", "WEIGHTED-COMBINATION-FORM")?;
@@ -505,7 +579,9 @@ mod included_tests {
         let zero_variable = scope.intern(runtime, "NCL", "ZERO-METHODS")?;
         let fast_qualifier = scope.intern(runtime, "KEYWORD", "FAST")?;
         let fast_qualifier_word = scope.get(fast_qualifier).as_word();
-        let positive_pattern = {
+        let positive_pattern = if use_predicate {
+            scope.intern(runtime, "NCL-TEST", "FAST-QUALIFIER-P")?
+        } else {
             let values = scope.root_many(&[
                 Local::from_word(Word::fixnum(positive_weight)),
                 Local::from_word(fast_qualifier_word),
@@ -838,6 +914,137 @@ mod included_tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         assert_weighted_dispatch_result(true, 2, 1);
         assert_weighted_dispatch_result(false, 3, 2);
+    }
+
+    #[test]
+    fn custom_method_group_predicate_classifies_applicable_qualifiers() {
+        // CLHS 7.6.6.3: long-form group predicates select methods from their qualifier lists.
+        let _lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (runtime, mut context) = setup();
+        if runtime.function(&mut context, COMMON_LISP, "+").is_none() {
+            ncl_lib_numbers::register(&runtime).expect("numeric functions");
+        }
+        register_trace_methods(&runtime, &mut context);
+        register_fast_qualifier_predicate(&runtime, &mut context);
+        register_weighted_combination_builder(&runtime, &mut context);
+        let generic = define_test_generic(&runtime, &mut context);
+        install_weighted_method_combination_with_predicate(
+            &runtime,
+            &mut context,
+            generic,
+            1,
+            true,
+        )
+        .expect("weighted method combination");
+
+        let integer = class_symbol(&runtime, &mut context, "INTEGER");
+        let general = class_symbol(&runtime, &mut context, "T");
+        let string = class_symbol(&runtime, &mut context, "STRING");
+        let fast = scope_intern(&runtime, &mut context, "KEYWORD", "FAST");
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            integer,
+            &[Word::fixnum(1), fast],
+            "TRACE-SPECIFIC-TWO",
+        )
+        .expect("specific fast method");
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            general,
+            &[Word::fixnum(0)],
+            "TRACE-GENERAL-THREE",
+        )
+        .expect("general method");
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            string,
+            &[Word::fixnum(1), fast],
+            "TRACE-SPECIFIC-TWO",
+        )
+        .expect("inapplicable string method");
+
+        reset_method_log();
+        reset_qualifier_predicate_log();
+        let (result, values) =
+            dispatch_with_values(&runtime, &mut context, generic).expect("weighted result");
+        assert_eq!(result, Word::fixnum(2));
+        assert_eq!(values, [Word::fixnum(2)]);
+        assert_eq!(method_log(), [1]);
+        let mut predicate_results = qualifier_predicate_log();
+        predicate_results.sort_unstable();
+        assert_eq!(predicate_results, [false, true]);
+    }
+
+    #[test]
+    fn weighted_custom_dispatch_preserves_selected_method_multiple_values() {
+        // CLHS 7.6.6.1: the effective method's multiple values are returned by the generic function.
+        let _lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (runtime, mut context) = setup();
+        if runtime.function(&mut context, COMMON_LISP, "+").is_none() {
+            ncl_lib_numbers::register(&runtime).expect("numeric functions");
+        }
+        register_trace_methods(&runtime, &mut context);
+        register_weighted_combination_builder(&runtime, &mut context);
+        let generic = define_test_generic(&runtime, &mut context);
+        install_weighted_method_combination(&runtime, &mut context, generic, 1)
+            .expect("weighted method combination");
+
+        let integer = class_symbol(&runtime, &mut context, "INTEGER");
+        let t = class_symbol(&runtime, &mut context, "T");
+        let fast = scope_intern(&runtime, &mut context, "KEYWORD", "FAST");
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            integer,
+            &[Word::fixnum(1), fast],
+            "TRACE-TRUE-SPECIFIC-MULTI",
+        )
+        .expect("positive specific method");
+        add_test_method(
+            &runtime,
+            &mut context,
+            generic,
+            t,
+            &[Word::fixnum(0)],
+            "TRACE-TRUE-GENERAL-MULTI",
+        )
+        .expect("general method");
+
+        reset_method_log();
+        let (result, values) =
+            dispatch_with_values(&runtime, &mut context, generic).expect("weighted result");
+        assert_eq!(result, Word::TRUE);
+        assert_eq!(values, [Word::TRUE, Word::fixnum(11)]);
+        assert_eq!(method_log(), [1]);
+    }
+
+    #[test]
+    fn method_qualifiers_rejects_a_non_method_value() {
+        // CLHS 7.7 specifies METHOD-QUALIFIERS for method objects.
+        let (runtime, mut context) = setup();
+        let input = [Word::NIL];
+        let args = BuiltinArgs::new(&input);
+        let mut values = MultipleValues::new();
+
+        let result = super::super::mop::method_qualifiers_builtin(
+            &mut context,
+            &runtime,
+            &args,
+            &mut values,
+        );
+
+        assert!(matches!(result, Err(ncl_object::ObjectError::TypeError)));
     }
 
     #[test]

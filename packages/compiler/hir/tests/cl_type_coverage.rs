@@ -216,6 +216,213 @@ fn finite_values_keep_named_union_and_complement_relations_conservative()
 }
 
 #[test]
+fn floating_members_follow_their_common_lisp_numeric_type_families() -> Result<(), Box<dyn Error>> {
+    let mut arena = TypeArena::new(form(205))?;
+    let single_member = arena.member(vec![MemberValue::SingleFloat(0.5_f32.to_bits())])?;
+    let double_member = arena.member(vec![MemberValue::DoubleFloat(0.5_f64.to_bits())])?;
+    let single_float = arena.named(BuiltinType::SingleFloat)?;
+    let double_float = arena.named(BuiltinType::DoubleFloat)?;
+    let float = arena.named(BuiltinType::Float)?;
+    let real = arena.named(BuiltinType::Real)?;
+    let number = arena.named(BuiltinType::Number)?;
+    let integer = arena.named(BuiltinType::Integer)?;
+
+    // CLHS 4.2.3 defines the distinct float formats and their numeric super-types.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/04_bc.htm
+    for supertype in [single_float, float, real, number] {
+        assert_eq!(
+            arena.subtype(single_member, supertype)?,
+            SubtypeRelation::Yes
+        );
+    }
+    for supertype in [double_float, float, real, number] {
+        assert_eq!(
+            arena.subtype(double_member, supertype)?,
+            SubtypeRelation::Yes
+        );
+    }
+    assert_eq!(
+        arena.subtype(single_member, double_float)?,
+        SubtypeRelation::No
+    );
+    assert_eq!(
+        arena.subtype(double_member, single_float)?,
+        SubtypeRelation::No
+    );
+    assert_eq!(arena.subtype(single_member, integer)?, SubtypeRelation::No);
+    assert_eq!(arena.subtype(double_member, integer)?, SubtypeRelation::No);
+
+    let single_range = arena.numeric_range(NumericRange::new(
+        NumericDomain::SingleFloat,
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            0.5_f32.to_bits(),
+        ))),
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            0.5_f32.to_bits(),
+        ))),
+    )?)?;
+    let double_range = arena.numeric_range(NumericRange::new(
+        NumericDomain::DoubleFloat,
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            0.5_f64.to_bits(),
+        ))),
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            0.5_f64.to_bits(),
+        ))),
+    )?)?;
+    assert_eq!(
+        arena.subtype(single_member, single_range)?,
+        SubtypeRelation::Yes
+    );
+    assert_eq!(
+        arena.subtype(double_member, double_range)?,
+        SubtypeRelation::Yes
+    );
+    Ok(())
+}
+
+#[test]
+fn float_intervals_order_negative_values_and_include_both_closed_endpoints()
+-> Result<(), Box<dyn Error>> {
+    let mut arena = TypeArena::new(form(206))?;
+    let single_interval = arena.numeric_range(NumericRange::new(
+        NumericDomain::SingleFloat,
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            (-1.0_f32).to_bits(),
+        ))),
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            1.0_f32.to_bits(),
+        ))),
+    )?)?;
+    let double_interval = arena.numeric_range(NumericRange::new(
+        NumericDomain::DoubleFloat,
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            (-1.0_f64).to_bits(),
+        ))),
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            1.0_f64.to_bits(),
+        ))),
+    )?)?;
+    let single_below = arena.member(vec![MemberValue::SingleFloat((-2.0_f32).to_bits())])?;
+    let single_lower = arena.member(vec![MemberValue::SingleFloat((-1.0_f32).to_bits())])?;
+    let single_zero = arena.member(vec![MemberValue::SingleFloat(0.0_f32.to_bits())])?;
+    let single_upper = arena.member(vec![MemberValue::SingleFloat(1.0_f32.to_bits())])?;
+    let single_above = arena.member(vec![MemberValue::SingleFloat(2.0_f32.to_bits())])?;
+    let double_below = arena.member(vec![MemberValue::DoubleFloat((-2.0_f64).to_bits())])?;
+    let double_lower = arena.member(vec![MemberValue::DoubleFloat((-1.0_f64).to_bits())])?;
+    let double_zero = arena.member(vec![MemberValue::DoubleFloat(0.0_f64.to_bits())])?;
+    let double_upper = arena.member(vec![MemberValue::DoubleFloat(1.0_f64.to_bits())])?;
+    let double_above = arena.member(vec![MemberValue::DoubleFloat(2.0_f64.to_bits())])?;
+
+    // CLHS numeric type intervals include both stated endpoints here.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/04_bc.htm
+    for (member, expected) in [
+        (single_below, SubtypeRelation::No),
+        (single_lower, SubtypeRelation::Yes),
+        (single_zero, SubtypeRelation::Yes),
+        (single_upper, SubtypeRelation::Yes),
+        (single_above, SubtypeRelation::No),
+    ] {
+        assert_eq!(arena.subtype(member, single_interval)?, expected);
+    }
+    for (member, expected) in [
+        (double_below, SubtypeRelation::No),
+        (double_lower, SubtypeRelation::Yes),
+        (double_zero, SubtypeRelation::Yes),
+        (double_upper, SubtypeRelation::Yes),
+        (double_above, SubtypeRelation::No),
+    ] {
+        assert_eq!(arena.subtype(member, double_interval)?, expected);
+    }
+    Ok(())
+}
+
+#[test]
+fn same_format_float_ranges_prove_containment_and_disjointness() -> Result<(), Box<dyn Error>> {
+    let mut arena = TypeArena::new(form(207))?;
+    let single_outer = arena.numeric_range(NumericRange::new(
+        NumericDomain::SingleFloat,
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            0.0_f32.to_bits(),
+        ))),
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            3.0_f32.to_bits(),
+        ))),
+    )?)?;
+    let single_inner = arena.numeric_range(NumericRange::new(
+        NumericDomain::SingleFloat,
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            1.0_f32.to_bits(),
+        ))),
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            2.0_f32.to_bits(),
+        ))),
+    )?)?;
+    let single_after = arena.numeric_range(NumericRange::new(
+        NumericDomain::SingleFloat,
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            4.0_f32.to_bits(),
+        ))),
+        Some(NumericBound::inclusive(NumericValue::SingleFloat(
+            5.0_f32.to_bits(),
+        ))),
+    )?)?;
+    let double_outer = arena.numeric_range(NumericRange::new(
+        NumericDomain::DoubleFloat,
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            (-3.0_f64).to_bits(),
+        ))),
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            (-1.0_f64).to_bits(),
+        ))),
+    )?)?;
+    let double_inner = arena.numeric_range(NumericRange::new(
+        NumericDomain::DoubleFloat,
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            (-2.0_f64).to_bits(),
+        ))),
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            (-1.5_f64).to_bits(),
+        ))),
+    )?)?;
+    let double_before = arena.numeric_range(NumericRange::new(
+        NumericDomain::DoubleFloat,
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            (-5.0_f64).to_bits(),
+        ))),
+        Some(NumericBound::inclusive(NumericValue::DoubleFloat(
+            (-4.0_f64).to_bits(),
+        ))),
+    )?)?;
+    let not_single_after = arena.complement(single_after)?;
+    let not_double_before = arena.complement(double_before)?;
+
+    // CLHS 4.2.3 distinguishes numeric type specifiers and interval endpoints.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/04_bc.htm
+    assert_eq!(
+        arena.subtype(single_inner, single_outer)?,
+        SubtypeRelation::Yes
+    );
+    assert_eq!(
+        arena.subtype(single_outer, single_inner)?,
+        SubtypeRelation::No
+    );
+    assert_eq!(
+        arena.subtype(single_outer, not_single_after)?,
+        SubtypeRelation::Yes
+    );
+    assert_eq!(
+        arena.subtype(double_inner, double_outer)?,
+        SubtypeRelation::Yes
+    );
+    assert_eq!(
+        arena.subtype(double_outer, not_double_before)?,
+        SubtypeRelation::Yes
+    );
+    Ok(())
+}
+
+#[test]
 fn array_axis_constraints_match_each_dimension_and_preserve_vector_relations()
 -> Result<(), Box<dyn Error>> {
     let mut arena = TypeArena::new(form(204))?;

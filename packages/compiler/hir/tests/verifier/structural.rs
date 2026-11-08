@@ -130,8 +130,10 @@ fn node_rejects_an_unknown_source_origin() -> Result<(), Box<dyn Error>> {
 fn an_equivalent_guard_must_be_an_existing_checked_type_node() -> Result<(), Box<dyn Error>> {
     let mut fixture = Fixture::new(17)?;
     let value = ValueId::try_from_index(fixture.form, 0)?;
+    let producer = fixture.add_node(fixture.root, NodeKind::Literal(crate::node::Literal::Nil))?;
     let expected = TypeSpecConstId::try_from_index(fixture.form, 0)?;
     let _ = fixture.values.insert(value);
+    let _ = fixture.value_producers.insert(value, producer);
     let _ = fixture.constants.insert(expected);
     let accepted_type = fixture.types.empty();
     let check = fixture.add_node(
@@ -144,7 +146,7 @@ fn an_equivalent_guard_must_be_an_existing_checked_type_node() -> Result<(), Box
         },
     )?;
     let function = fixture.add_lambda(fixture.root)?;
-    let cfg = conditional_cfg(fixture.form, function, check, false)?;
+    let cfg = conditional_cfg(fixture.form, function, check, false, &[producer], &[])?;
     let _ = fixture.facts.add(FactRecord::new(
         FactDomain::Type,
         0,

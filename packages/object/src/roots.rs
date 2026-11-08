@@ -285,6 +285,8 @@ impl Drop for HeapRootedMutSlice {
 
 /// Pop a thread root and return the callback result.
 ///
+/// # Errors
+/// Returns [`ObjectError::RootStackCorrupted`] if the token is not at the top of the root stack.
 pub fn finish_root<T>(
     ctx: &mut ThreadContext,
     token: RootToken,

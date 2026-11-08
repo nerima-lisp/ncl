@@ -452,6 +452,7 @@ impl Runtime {
                 .lock()
                 .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
             functions.insert(key, RootedWord::new(&self.heap, *function));
+            drop(functions);
             Ok(())
         })
     }

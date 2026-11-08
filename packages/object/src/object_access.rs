@@ -54,6 +54,10 @@ pub fn get(ctx: &ThreadContext, object: Word, tag: u8, slot: usize) -> Result<Wo
     ))
 }
 
+/// Convert a host-sized index to a Lisp fixnum.
+///
+/// # Errors
+/// Returns [`ObjectError::Layout`] if `value` does not fit in a fixnum.
 pub fn fix(value: usize) -> Result<Word, ObjectError> {
     Ok(Word::fixnum(
         i64::try_from(value).map_err(|_| ObjectError::Layout)?,

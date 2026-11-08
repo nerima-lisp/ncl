@@ -182,11 +182,13 @@ impl WordView {
             Self::Character(value) => Word::character(value),
             Self::Cons(value) => value.into(),
             Self::Symbol(value) => value.into(),
-            Self::HashTable(value) => value,
+            Self::HashTable(value)
+            | Self::SimpleVector(value)
+            | Self::SpecializedArray(value)
+            | Self::Array(value)
+            | Self::Readtable(value)
+            | Self::Stream(value) => value,
             Self::String(value) => value.into(),
-            Self::SimpleVector(value) => value,
-            Self::SpecializedArray(value) => value,
-            Self::Array(value) => value,
             Self::Function(value) => value.into(),
             Self::Closure(value) => value.into(),
             Self::Instance(value) => value.into(),
@@ -196,7 +198,6 @@ impl WordView {
             Self::DoubleFloat(value) => value.into(),
             Self::Complex(value) => value.into(),
             Self::Package(value) => value.into(),
-            Self::Readtable(value) | Self::Stream(value) => value,
             Self::Code(value) => value.into(),
             Self::Other { word, .. } | Self::Immediate(word) => word,
         }

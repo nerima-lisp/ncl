@@ -93,34 +93,31 @@ fn numeric_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, O
     if tag == Some(widetag::DOUBLE_FLOAT) {
         return Ok(
             ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(left))?.to_bits()
-                == ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(right))?.to_bits(),
+                == ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(right))?
+                    .to_bits(),
         );
     }
     if tag == Some(widetag::RATIO) {
-        return Ok(
-            numeric_equal(
-                ctx,
-                ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(left))?,
-                ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(right))?,
-            )? && numeric_equal(
-                ctx,
-                ncl_object::ratio_denominator(ctx, ncl_object::Ratio::from_word(left))?,
-                ncl_object::ratio_denominator(ctx, ncl_object::Ratio::from_word(right))?,
-            )?,
-        );
+        return Ok(numeric_equal(
+            ctx,
+            ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(left))?,
+            ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(right))?,
+        )? && numeric_equal(
+            ctx,
+            ncl_object::ratio_denominator(ctx, ncl_object::Ratio::from_word(left))?,
+            ncl_object::ratio_denominator(ctx, ncl_object::Ratio::from_word(right))?,
+        )?);
     }
     if tag == Some(widetag::COMPLEX) {
-        return Ok(
-            numeric_equal(
-                ctx,
-                ncl_object::complex_real(ctx, ncl_object::Complex::from_word(left))?,
-                ncl_object::complex_real(ctx, ncl_object::Complex::from_word(right))?,
-            )? && numeric_equal(
-                ctx,
-                ncl_object::complex_imag(ctx, ncl_object::Complex::from_word(left))?,
-                ncl_object::complex_imag(ctx, ncl_object::Complex::from_word(right))?,
-            )?,
-        );
+        return Ok(numeric_equal(
+            ctx,
+            ncl_object::complex_real(ctx, ncl_object::Complex::from_word(left))?,
+            ncl_object::complex_real(ctx, ncl_object::Complex::from_word(right))?,
+        )? && numeric_equal(
+            ctx,
+            ncl_object::complex_imag(ctx, ncl_object::Complex::from_word(left))?,
+            ncl_object::complex_imag(ctx, ncl_object::Complex::from_word(right))?,
+        )?);
     }
     Ok(false)
 }
@@ -192,7 +189,10 @@ fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectEr
             ncl_object::bignum_limbs(ctx, ncl_object::Bignum::from_word(word))?
                 .into_iter()
                 .fold(
-                    u64::from(ncl_object::bignum_sign(ctx, ncl_object::Bignum::from_word(word))?),
+                    u64::from(ncl_object::bignum_sign(
+                        ctx,
+                        ncl_object::Bignum::from_word(word),
+                    )?),
                     |hash, limb| hash.rotate_left(5) ^ u64::from(limb),
                 ),
         ));
@@ -239,8 +239,8 @@ fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectEr
 
 #[cfg(test)]
 mod tests {
-    use super::{equal, hash_key};
     use super::HashTest;
+    use super::{equal, hash_key};
     use ncl_object::{
         Runtime, ThreadContext, Word, make_bignum_from_i128, make_complex, make_cons, make_double,
         make_ratio, make_string,

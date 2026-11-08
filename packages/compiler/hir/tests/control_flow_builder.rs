@@ -5,7 +5,7 @@ use std::error::Error;
 use ncl_hir::control::{ControlError, ControlFlowBuilder, ExitTarget, Terminator};
 use ncl_hir::ids::{BlockId, CleanupId, CompilationUnitId, FormId, IdError, NodeId};
 
-fn form(index: u32) -> FormId {
+const fn form(index: u32) -> FormId {
     FormId::new(CompilationUnitId::new(12), index)
 }
 
@@ -186,7 +186,9 @@ fn completed_flow_exposes_block_contents_and_unreachable_dominators() -> Result<
         &Terminator::Return { values: Vec::new() }
     );
     assert_eq!(
-        graph.block(dead).map(|block| block.function()),
+        graph
+            .block(dead)
+            .map(ncl_hir::control::BasicBlock::function),
         Some(function)
     );
     let dominators = graph

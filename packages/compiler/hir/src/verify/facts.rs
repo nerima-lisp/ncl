@@ -172,7 +172,7 @@ impl FactStore {
     ///
     /// # Errors
     ///
-    /// Returns VerifyError::Id when the fact index space is exhausted.
+    /// Returns `VerifyError::Id` when the fact index space is exhausted.
     pub fn add(&mut self, fact: FactRecord) -> Result<FactId, VerifyError> {
         let index = u32::try_from(self.records.len()).map_err(|_| {
             VerifyError::Id(IdError::IndexOverflow {
@@ -218,11 +218,11 @@ impl FactStore {
 /// Current epoch for each HIR analysis domain.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct FactEpochs {
-    type_epoch: u64,
-    effect_epoch: u64,
-    escape_epoch: u64,
-    dominance_epoch: u64,
-    control_flow_epoch: u64,
+    types: u64,
+    effects: u64,
+    escapes: u64,
+    dominance: u64,
+    control_flow: u64,
 }
 
 impl FactEpochs {
@@ -230,11 +230,11 @@ impl FactEpochs {
     #[must_use]
     pub const fn current(self, domain: FactDomain) -> u64 {
         match domain {
-            FactDomain::Type => self.type_epoch,
-            FactDomain::Effect => self.effect_epoch,
-            FactDomain::Escape => self.escape_epoch,
-            FactDomain::Dominance => self.dominance_epoch,
-            FactDomain::ControlFlow => self.control_flow_epoch,
+            FactDomain::Type => self.types,
+            FactDomain::Effect => self.effects,
+            FactDomain::Escape => self.escapes,
+            FactDomain::Dominance => self.dominance,
+            FactDomain::ControlFlow => self.control_flow,
         }
     }
 
@@ -242,16 +242,16 @@ impl FactEpochs {
     ///
     /// # Errors
     ///
-    /// Returns EpochOverflow if a domain cannot be advanced.
+    /// Returns `VerifyError::EpochOverflow` if a domain cannot be advanced.
     pub fn after_pass(self, invalidates: &PassInvalidations) -> Result<Self, VerifyError> {
         let mut next = self;
         for domain in invalidates.domains.iter().copied() {
             let epoch = match domain {
-                FactDomain::Type => &mut next.type_epoch,
-                FactDomain::Effect => &mut next.effect_epoch,
-                FactDomain::Escape => &mut next.escape_epoch,
-                FactDomain::Dominance => &mut next.dominance_epoch,
-                FactDomain::ControlFlow => &mut next.control_flow_epoch,
+                FactDomain::Type => &mut next.types,
+                FactDomain::Effect => &mut next.effects,
+                FactDomain::Escape => &mut next.escapes,
+                FactDomain::Dominance => &mut next.dominance,
+                FactDomain::ControlFlow => &mut next.control_flow,
             };
             *epoch = epoch
                 .checked_add(1)

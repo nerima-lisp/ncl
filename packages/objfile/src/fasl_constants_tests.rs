@@ -194,6 +194,18 @@ mod private_tests {
     }
 
     #[test]
+    fn constant_decoder_rejects_fixnums_outside_the_target_range() {
+        for value in [i64::MIN, i64::MAX] {
+            let mut bytes = must_succeed(encode(&[group(vec![FaslConstant::Fixnum(0)])]));
+            bytes[20..28].copy_from_slice(&value.to_le_bytes());
+            assert_eq!(
+                decode(&bytes, 320),
+                Err(FaslError::at(FaslRejectReason::InvalidCodeObject, 340))
+            );
+        }
+    }
+
+    #[test]
     fn bignums_enforce_sign_reserved_bytes_and_normalized_magnitudes() {
         let positive = [group(vec![FaslConstant::Bignum {
             negative: false,

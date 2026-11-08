@@ -130,10 +130,10 @@ impl BuildContext<'_> {
         if assignments.is_empty() {
             return self.node(scope, NodeKind::Literal(ncl_hir::Literal::Nil));
         }
-        if assignments.len() == 1 {
-            if let [assignment] = assignments.as_slice() {
-                return Ok(*assignment);
-            }
+        if assignments.len() == 1
+            && let [assignment] = assignments.as_slice()
+        {
+            return Ok(*assignment);
         }
         self.node(
             scope,
@@ -150,7 +150,9 @@ impl BuildContext<'_> {
         lambda: &LambdaExpr,
     ) -> Result<ncl_hir::NodeId, HirBuildError> {
         if lambda.docstring.is_some() {
-            return Err(HirBuildError::Unsupported(UnsupportedHirForm::Docstring));
+            return Err(HirBuildError::Unrepresentable(
+                UnsupportedHirForm::Docstring,
+            ));
         }
         let (body_scope, signature) = self.lambda_signature(scope, &lambda.lambda_list)?;
         self.push_scope_maps();
@@ -183,7 +185,7 @@ impl BuildContext<'_> {
             || lambda_list.environment.is_some()
             || lambda_list.body.is_some()
         {
-            return Err(HirBuildError::Unsupported(
+            return Err(HirBuildError::Unrepresentable(
                 UnsupportedHirForm::LambdaPattern,
             ));
         }
@@ -191,139 +193,19 @@ impl BuildContext<'_> {
         let mut current = scope;
         let mut required = Vec::with_capacity(lambda_list.required.len());
         for name in &lambda_list.required {
-            let Some(name) = name.symbol() else {
-                return Err(HirBuildError::Unsupported(
-                    UnsupportedHirForm::LambdaPattern,
-                ));
-            };
-            current = self.form.bindings_mut().push_scope(current)?;
-            let symbol = self.intern(name)?;
-            required.push(self.form.bindings_mut().bind_variable(current, symbol)?);
+            required.push(self.push_parameter_scope(&mut current, name)?);
         }
 
-        let mut optional = Vec::with_capacity(lambda_list.optional.len());
-        for parameter in &lambda_list.optional {
-            let Some(name) = parameter.name.symbol() else {
-                return Err(HirBuildError::Unsupported(
-                    UnsupportedHirForm::LambdaPattern,
-                ));
-            };
-            let initializer_scope = current;
-            let default = parameter
-                .default
-                .as_ref()
-                .map(|form| self.lower_expr(form, initializer_scope))
-                .transpose()?;
-            current = self.form.bindings_mut().push_scope(current)?;
-            let binding_symbol = self.intern(name)?;
-            let binding = self
-                .form
-                .bindings_mut()
-                .bind_variable(current, binding_symbol)?;
-            let supplied_p = parameter
-                .supplied_p
-                .as_ref()
-                .map(|parameter| {
-                    let Some(name) = parameter.symbol() else {
-                        return Err(HirBuildError::Unsupported(
-                            UnsupportedHirForm::LambdaPattern,
-                        ));
-                    };
-                    let symbol = self.intern(name)?;
-                    self.form
-                        .bindings_mut()
-                        .bind_variable(current, symbol)
-                        .map_err(HirBuildError::Binding)
-                })
-                .transpose()?;
-            optional.push(LambdaOptional {
-                binding,
-                default,
-                initializer_scope,
-                supplied_p,
-            });
-        }
+        let optional = self.optional_parameters(&mut current, &lambda_list.optional)?;
 
         let rest = if let Some(parameter) = &lambda_list.rest {
-            let Some(name) = parameter.symbol() else {
-                return Err(HirBuildError::Unsupported(
-                    UnsupportedHirForm::LambdaPattern,
-                ));
-            };
-            current = self.form.bindings_mut().push_scope(current)?;
-            let symbol = self.intern(name)?;
-            Some(self.form.bindings_mut().bind_variable(current, symbol)?)
+            Some(self.push_parameter_scope(&mut current, parameter)?)
         } else {
             None
         };
 
-        let mut keys = Vec::with_capacity(lambda_list.keys.len());
-        for parameter in &lambda_list.keys {
-            let Some(name) = parameter.name.symbol() else {
-                return Err(HirBuildError::Unsupported(
-                    UnsupportedHirForm::LambdaPattern,
-                ));
-            };
-            let initializer_scope = current;
-            let default = parameter
-                .default
-                .as_ref()
-                .map(|form| self.lower_expr(form, initializer_scope))
-                .transpose()?;
-            current = self.form.bindings_mut().push_scope(current)?;
-            let keyword = self.intern(&parameter.keyword)?;
-            let binding_symbol = self.intern(name)?;
-            let binding = self
-                .form
-                .bindings_mut()
-                .bind_variable(current, binding_symbol)?;
-            let supplied_p = parameter
-                .supplied_p
-                .as_ref()
-                .map(|parameter| {
-                    let Some(name) = parameter.symbol() else {
-                        return Err(HirBuildError::Unsupported(
-                            UnsupportedHirForm::LambdaPattern,
-                        ));
-                    };
-                    let symbol = self.intern(name)?;
-                    self.form
-                        .bindings_mut()
-                        .bind_variable(current, symbol)
-                        .map_err(HirBuildError::Binding)
-                })
-                .transpose()?;
-            keys.push(LambdaKey {
-                keyword,
-                binding,
-                default,
-                initializer_scope,
-                supplied_p,
-            });
-        }
-
-        let mut aux = Vec::with_capacity(lambda_list.aux.len());
-        for parameter in &lambda_list.aux {
-            let Some(name) = parameter.name.symbol() else {
-                return Err(HirBuildError::Unsupported(
-                    UnsupportedHirForm::LambdaPattern,
-                ));
-            };
-            let initializer_scope = current;
-            let default = parameter
-                .default
-                .as_ref()
-                .map(|form| self.lower_expr(form, initializer_scope))
-                .transpose()?;
-            current = self.form.bindings_mut().push_scope(current)?;
-            let symbol = self.intern(name)?;
-            let binding = self.form.bindings_mut().bind_variable(current, symbol)?;
-            aux.push(LambdaAux {
-                binding,
-                default,
-                initializer_scope,
-            });
-        }
+        let keys = self.key_parameters(&mut current, &lambda_list.keys)?;
+        let aux = self.aux_parameters(&mut current, &lambda_list.aux)?;
 
         if current == scope {
             current = self.form.bindings_mut().push_scope(scope)?;
@@ -339,6 +221,134 @@ impl BuildContext<'_> {
                 aux,
             },
         ))
+    }
+
+    fn optional_parameters(
+        &mut self,
+        current: &mut ncl_hir::ScopeId,
+        parameters: &[crate::lambda_list::OptionalParam],
+    ) -> Result<Vec<LambdaOptional>, HirBuildError> {
+        let mut optional = Vec::with_capacity(parameters.len());
+        for parameter in parameters {
+            Self::validate_parameter(&parameter.name)?;
+            let initializer_scope = *current;
+            let default = parameter
+                .default
+                .as_ref()
+                .map(|form| self.lower_expr(form, initializer_scope))
+                .transpose()?;
+            let binding = self.push_parameter_scope(current, &parameter.name)?;
+            let supplied_p = self.supplied_parameter(*current, parameter.supplied_p.as_ref())?;
+            optional.push(LambdaOptional {
+                binding,
+                default,
+                initializer_scope,
+                supplied_p,
+            });
+        }
+        Ok(optional)
+    }
+
+    fn key_parameters(
+        &mut self,
+        current: &mut ncl_hir::ScopeId,
+        parameters: &[crate::lambda_list::KeyParam],
+    ) -> Result<Vec<LambdaKey>, HirBuildError> {
+        let mut keys = Vec::with_capacity(parameters.len());
+        for parameter in parameters {
+            Self::validate_parameter(&parameter.name)?;
+            let initializer_scope = *current;
+            let default = parameter
+                .default
+                .as_ref()
+                .map(|form| self.lower_expr(form, initializer_scope))
+                .transpose()?;
+            *current = self.form.bindings_mut().push_scope(*current)?;
+            let keyword = self.intern(&parameter.keyword)?;
+            let binding = self.bind_parameter(*current, &parameter.name)?;
+            let supplied_p = self.supplied_parameter(*current, parameter.supplied_p.as_ref())?;
+            keys.push(LambdaKey {
+                keyword,
+                binding,
+                default,
+                initializer_scope,
+                supplied_p,
+            });
+        }
+        Ok(keys)
+    }
+
+    fn aux_parameters(
+        &mut self,
+        current: &mut ncl_hir::ScopeId,
+        parameters: &[crate::lambda_list::AuxParam],
+    ) -> Result<Vec<LambdaAux>, HirBuildError> {
+        let mut aux = Vec::with_capacity(parameters.len());
+        for parameter in parameters {
+            Self::validate_parameter(&parameter.name)?;
+            let initializer_scope = *current;
+            let default = parameter
+                .default
+                .as_ref()
+                .map(|form| self.lower_expr(form, initializer_scope))
+                .transpose()?;
+            let binding = self.push_parameter_scope(current, &parameter.name)?;
+            aux.push(LambdaAux {
+                binding,
+                default,
+                initializer_scope,
+            });
+        }
+        Ok(aux)
+    }
+
+    fn push_parameter_scope(
+        &mut self,
+        current: &mut ncl_hir::ScopeId,
+        parameter: &crate::lambda_list::ParamName,
+    ) -> Result<ncl_hir::BindingId, HirBuildError> {
+        Self::validate_parameter(parameter)?;
+        *current = self.form.bindings_mut().push_scope(*current)?;
+        self.bind_parameter(*current, parameter)
+    }
+
+    fn supplied_parameter(
+        &mut self,
+        scope: ncl_hir::ScopeId,
+        parameter: Option<&crate::lambda_list::ParamName>,
+    ) -> Result<Option<ncl_hir::BindingId>, HirBuildError> {
+        parameter
+            .map(|parameter| self.bind_parameter(scope, parameter))
+            .transpose()
+    }
+
+    fn bind_parameter(
+        &mut self,
+        scope: ncl_hir::ScopeId,
+        parameter: &crate::lambda_list::ParamName,
+    ) -> Result<ncl_hir::BindingId, HirBuildError> {
+        let Some(name) = parameter.symbol() else {
+            return Err(HirBuildError::Unrepresentable(
+                UnsupportedHirForm::LambdaPattern,
+            ));
+        };
+        let symbol = self.intern(name)?;
+        self.form
+            .bindings_mut()
+            .bind_variable(scope, symbol)
+            .map_err(HirBuildError::Binding)
+    }
+
+    const fn validate_parameter(
+        parameter: &crate::lambda_list::ParamName,
+    ) -> Result<(), HirBuildError> {
+        if parameter.symbol().is_some() {
+            Ok(())
+        } else {
+            Err(HirBuildError::Unrepresentable(
+                UnsupportedHirForm::LambdaPattern,
+            ))
+        }
     }
 
     pub(super) fn lower_local_functions(
@@ -367,7 +377,9 @@ impl BuildContext<'_> {
         for (definition, function_binding) in definitions.iter().zip(&group.definitions) {
             let lambda = &definition.lambda;
             if lambda.docstring.is_some() {
-                return Err(HirBuildError::Unsupported(UnsupportedHirForm::Docstring));
+                return Err(HirBuildError::Unrepresentable(
+                    UnsupportedHirForm::Docstring,
+                ));
             }
             let (body_scope, signature) =
                 self.lambda_signature(function_binding.definition_scope, &lambda.lambda_list)?;
@@ -427,12 +439,10 @@ impl BuildContext<'_> {
                     .form
                     .bindings_mut()
                     .binding(binding)
-                    .map(|item| item.kind())
+                    .map(ncl_hir::Binding::kind)
                     != Some(BindingKind::LocalFunction)
                 {
-                    return Err(HirBuildError::Unsupported(
-                        UnsupportedHirForm::FunctionBinding,
-                    ));
+                    return Err(HirBuildError::InvalidFunctionBinding(binding));
                 }
                 Ok(CallTarget::Local(binding))
             }

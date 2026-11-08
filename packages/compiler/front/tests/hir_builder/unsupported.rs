@@ -3,10 +3,10 @@ use ncl_compiler_front::hir_builder::{HirBuildError, HirBuilder, UnsupportedHirF
 use ncl_compiler_front::{Declaration, Expr, Literal, OptimizeQuality, Quality};
 use ncl_hir::{CompilationUnitId, FormId};
 
-use super::common::{fixture_text, source_origin};
+use super::common::{TestResult, fixture_text, source_origin};
 
 #[test]
-fn retained_local_macro_definitions_and_unknown_quality_fail_typed() {
+fn retained_local_macro_definitions_and_unknown_quality_fail_typed() -> TestResult<()> {
     let unit = CompilationUnitId::new(41);
     let mut builder = HirBuilder::new(unit);
     let mut fixture = Fixture::new();
@@ -17,16 +17,16 @@ fn retained_local_macro_definitions_and_unknown_quality_fail_typed() {
     let definition = fixture.list(&[name, lambda_list, quoted_body]);
     let definitions = fixture.list(&[definition]);
     let macrolet = fixture.form("MACROLET", &[definitions]);
-    let expr = fixture.expand(macrolet).expect("expand macrolet fixture");
+    let expr = fixture.expand(macrolet)?;
     let source = fixture_text(
         include_str!("../fixtures/hir-bridge/unsupported.lisp"),
         "(macrolet ((m (x) (quote x)))\n  (m 1))\n(symbol-macrolet ((x y))\n  x)\n",
     );
     let id = FormId::new(unit, 0);
-    let (origins, origin) = source_origin(id, source);
+    let (origins, origin) = source_origin(id, source)?;
     assert!(matches!(
         builder.build_form(id, &expr, origins, origin),
-        Err(HirBuildError::Unsupported(UnsupportedHirForm::Macrolet))
+        Err(HirBuildError::Unrepresentable(UnsupportedHirForm::Macrolet))
     ));
 
     let name = fixture.user("X");
@@ -35,14 +35,12 @@ fn retained_local_macro_definitions_and_unknown_quality_fail_typed() {
     let definitions = fixture.list(&[definition]);
     let body = fixture.user("X");
     let symbol_macrolet = fixture.form("SYMBOL-MACROLET", &[definitions, body]);
-    let expr = fixture
-        .expand(symbol_macrolet)
-        .expect("expand symbol-macrolet fixture");
+    let expr = fixture.expand(symbol_macrolet)?;
     let id = FormId::new(unit, 1);
-    let (origins, origin) = source_origin(id, source);
+    let (origins, origin) = source_origin(id, source)?;
     assert!(matches!(
         builder.build_form(id, &expr, origins, origin),
-        Err(HirBuildError::Unsupported(
+        Err(HirBuildError::Unrepresentable(
             UnsupportedHirForm::SymbolMacrolet
         ))
     ));
@@ -55,11 +53,12 @@ fn retained_local_macro_definitions_and_unknown_quality_fail_typed() {
         }])],
         body: vec![Expr::Constant(Literal::Nil)],
     };
-    let (origins, origin) = source_origin(id, "(locally (declare (optimize (unknown 1))) nil)");
+    let (origins, origin) = source_origin(id, "(locally (declare (optimize (unknown 1))) nil)")?;
     assert!(matches!(
         builder.build_form(id, &expr, origins, origin),
-        Err(HirBuildError::Unsupported(
+        Err(HirBuildError::Unrepresentable(
             UnsupportedHirForm::UnknownOptimizationQuality
         ))
     ));
+    Ok(())
 }

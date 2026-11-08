@@ -6,13 +6,13 @@
 )]
 
 use ncl_lib_format::{FormatErrorKind, execute, parse};
-use ncl_packages::PackageOperations;
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError, Package,
     Parameter as BuiltinParameter, ParameterType, Runtime, ThreadContext, Word, make_string,
     set_symbol_special, set_symbol_value,
 };
+use ncl_packages::PackageOperations;
 use ncl_printer::{CharSink, PrintError, StringSink};
 
 struct FailingSink {

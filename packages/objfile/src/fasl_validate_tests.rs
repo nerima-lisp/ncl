@@ -1,7 +1,11 @@
 use super::*;
+use crate::fasl::{Architecture, FaslV1};
 use crate::fasl_code::FaslCodeObject;
 use crate::fasl_constants::{FaslConstant, FaslConstantGroup};
+use crate::fasl_debug::{DebugFile, DebugRecord};
+use crate::fasl_metadata::FaslMetadata;
 use crate::fasl_records::FaslCodeLayout;
+use crate::fasl_relocation::{FaslRelocation, FaslRelocationKind, FaslRelocationTarget};
 use crate::fasl_stack_map::{SafepointEntry, SafepointGroup};
 use crate::fasl_symbols::{FaslSymbol, SymbolBindingKind};
 use crate::fasl_top_level::FaslTopLevelRecord;
@@ -28,6 +32,81 @@ fn native_symbol(binding_kind: SymbolBindingKind) -> FaslSymbol {
         binding_kind,
         package: "C".to_owned(),
         name: "puts".to_owned(),
+    }
+}
+
+fn fasl_fixture() -> FaslV1<'static> {
+    FaslV1 {
+        architecture: Architecture::X86_64,
+        runtime_abi_version: 1,
+        metadata: FaslMetadata {
+            semantic_version: "1.0.0".to_owned(),
+            compiler_build_identity: [0; 32],
+            codegen_abi_revision: 1,
+            target_triple: "x86_64-unknown-linux-gnu".to_owned(),
+            source_sha256: [0; 32],
+            policies: Vec::new(),
+            features: Vec::new(),
+        },
+        symbols: vec![
+            FaslSymbol {
+                id: 0,
+                binding_kind: SymbolBindingKind::Lisp,
+                package: "CORE".to_owned(),
+                name: "X".to_owned(),
+            },
+            FaslSymbol {
+                id: 1,
+                ..native_symbol(SymbolBindingKind::NativeFunction)
+            },
+        ],
+        constants: vec![FaslConstantGroup {
+            code_object_id: 0,
+            constants: vec![FaslConstant::SymbolReference(0)],
+        }],
+        code: vec![FaslCodeObject {
+            id: 0,
+            entry_offset: 0,
+            frame_words: 2,
+            constant_count: 1,
+            stack_map_count: 0,
+            debug_record_count: 1,
+            code: &CODE,
+        }],
+        relocations: vec![FaslRelocation {
+            code_object_id: 0,
+            write_offset: 0,
+            kind: FaslRelocationKind::Abs64,
+            target_kind: FaslRelocationTarget::NativeFunction,
+            target_index: 1,
+            addend: 0,
+            pair_id: 0,
+        }],
+        stack_maps: vec![SafepointGroup {
+            code_object_id: 0,
+            entries: Vec::new(),
+        }],
+        debug_files: vec![DebugFile {
+            file_id: 0,
+            path: "src/main.lisp".to_owned(),
+        }],
+        debug_records: vec![DebugRecord {
+            code_object_id: 0,
+            pc_start: 0,
+            pc_end: 1,
+            file_id: 0,
+            line: 1,
+            column: 1,
+            source_start: 0,
+            source_end: 1,
+            variables: Vec::new(),
+        }],
+        top_level: vec![FaslTopLevelRecord {
+            ordinal: 0,
+            code_object_id: 0,
+            entry_offset: 0,
+            flags: 1,
+        }],
     }
 }
 
@@ -86,6 +165,71 @@ fn references_validate_symbol_kind_and_all_constant_index_shapes() {
         validate_references(&symbol_reference, &wrong_binding),
         FaslRejectReason::InvalidReference,
     );
+}
+
+#[test]
+fn validate_sections_checks_a_complete_cross_section_fixture() {
+    let mut fasl = fasl_fixture();
+    assert_eq!(validate_sections(&fasl, Some(128)), Ok(()));
+
+    fasl.relocations[0].target_index = 0;
+    assert_eq!(
+        validate_sections(&fasl, Some(128)),
+        Err(FaslError::at(FaslRejectReason::InvalidReference, 132))
+    );
+
+    fasl.relocations[0].target_index = 1;
+    fasl.constants[0].constants[0] = FaslConstant::SymbolReference(1);
+    assert_eq!(
+        validate_sections(&fasl, Some(128)),
+        Err(FaslError::new(FaslRejectReason::InvalidReference))
+    );
+}
+
+#[test]
+fn section_validators_reject_over_limit_record_lists() {
+    {
+        let mut fasl = fasl_fixture();
+        let object = fasl.code[0].clone();
+        fasl.code = vec![object; MAX_RECORDS + 1];
+        assert_reason(
+            validate_sections(&fasl, None),
+            FaslRejectReason::ResourceLimitExceeded,
+        );
+    }
+    {
+        let record = DebugRecord {
+            code_object_id: 0,
+            pc_start: 0,
+            pc_end: 1,
+            file_id: 0,
+            line: 1,
+            column: 1,
+            source_start: 0,
+            source_end: 0,
+            variables: Vec::new(),
+        };
+        let records = vec![record; MAX_RECORDS + 1];
+        assert_reason(
+            validate_record_counts(&[], &[], &[], &records),
+            FaslRejectReason::ResourceLimitExceeded,
+        );
+    }
+    {
+        let records = vec![
+            FaslTopLevelRecord {
+                ordinal: 0,
+                code_object_id: 0,
+                entry_offset: 0,
+                flags: 0,
+            };
+            MAX_RECORDS + 1
+        ];
+        assert_reason(
+            validate_top_level(&records, &[]),
+            FaslRejectReason::ResourceLimitExceeded,
+        );
+    }
 }
 
 #[test]

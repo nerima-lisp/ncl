@@ -7,6 +7,8 @@ use ncl_ir::{Constant, ConstantIndex, Function, Op, OpKind, Terminator, Ty, Valu
 
 #[path = "manager/pass_execution_tests.rs"]
 mod pass_execution_tests;
+#[path = "manager/provenance_tests.rs"]
+mod provenance_tests;
 
 #[derive(Debug)]
 struct TogglePass {

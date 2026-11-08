@@ -12,10 +12,49 @@ fn profiler() -> Command {
     Command::new(env!("CARGO_BIN_EXE_ncl-profiler"))
 }
 
+fn ncl() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_ncl"))
+}
+
 fn output(command: &mut Command) -> Output {
     command
         .output()
         .unwrap_or_else(|error| panic!("failed to run ncl-profiler: {error}"))
+}
+
+fn ncl_output(command: &mut Command) -> Output {
+    command
+        .output()
+        .unwrap_or_else(|error| panic!("failed to run ncl: {error}"))
+}
+
+#[test]
+fn ncl_version_flag_prints_the_current_package_version() {
+    let result = ncl_output(ncl().arg("--version"));
+
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout),
+        format!("ncl {}\n", env!("CARGO_PKG_VERSION"))
+    );
+    assert!(result.stderr.is_empty());
+}
+
+#[test]
+fn ncl_opt_diagnostics_report_timings_without_allocator_metrics() {
+    let result = ncl_output(ncl().args(["--opt-diagnostics", "--eval", "(+ 1 2)"]));
+
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(String::from_utf8_lossy(&result.stdout), ADDITION_OUTPUT);
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    let pass_lines = stderr
+        .lines()
+        .filter(|line| line.starts_with("ncl-opt "))
+        .collect::<Vec<_>>();
+    assert!(!pass_lines.is_empty(), "{stderr}");
+    assert!(pass_lines.iter().all(|line| line.contains("elapsed_ns=")));
+    assert!(!stderr.contains("allocated_bytes="), "{stderr}");
 }
 
 #[test]
@@ -135,6 +174,34 @@ fn eval_with_extra_source_reports_the_argument_limit() {
 }
 
 #[test]
+fn file_modes_report_a_missing_path_before_opening_a_file() {
+    for mode in ["--load", "--script", "--compile-file"] {
+        let result = output(profiler().arg(mode));
+
+        assert_eq!(result.status.code(), Some(2), "{mode}: {result:?}");
+        assert!(result.stdout.is_empty(), "{mode}: {:?}", result.stdout);
+        assert_eq!(
+            String::from_utf8_lossy(&result.stderr),
+            format!("{mode} requires a file path\n")
+        );
+    }
+}
+
+#[test]
+fn file_modes_reject_an_extra_path_before_opening_the_first_file() {
+    for mode in ["--load", "--script", "--compile-file"] {
+        let result = output(profiler().args([mode, "missing.lisp", "extra.lisp"]));
+
+        assert_eq!(result.status.code(), Some(2), "{mode}: {result:?}");
+        assert!(result.stdout.is_empty(), "{mode}: {:?}", result.stdout);
+        assert_eq!(
+            String::from_utf8_lossy(&result.stderr),
+            format!("{mode} accepts exactly one file path\n")
+        );
+    }
+}
+
+#[test]
 fn load_mode_prints_the_loaded_form_result() {
     let path = std::env::temp_dir().join(format!("ncl-profiler-load-{}.lisp", std::process::id()));
     std::fs::write(&path, "(+ 1 2)")
@@ -195,6 +262,34 @@ fn repl_evaluates_a_complete_multiline_form_before_eof() {
     assert!(result.status.success(), "{result:?}");
     assert_eq!(String::from_utf8_lossy(&result.stdout), ADDITION_OUTPUT);
     assert_eq!(String::from_utf8_lossy(&result.stderr), "> > > ");
+}
+
+#[test]
+fn repl_reports_a_runtime_error_and_continues_to_the_next_prompt() {
+    let mut command = profiler();
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|error| panic!("failed to start ncl-profiler REPL: {error}"));
+    let Some(mut stdin) = child.stdin.take() else {
+        panic!("REPL stdin is piped");
+    };
+    stdin
+        .write_all(b")\n")
+        .unwrap_or_else(|error| panic!("failed to write REPL input: {error}"));
+    drop(stdin);
+
+    let result = child
+        .wait_with_output()
+        .unwrap_or_else(|error| panic!("failed to collect REPL output: {error}"));
+
+    assert!(result.status.success(), "{result:?}");
+    assert!(result.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.starts_with("> ncl-profiler: "), "{stderr}");
+    assert!(stderr.ends_with("> "), "{stderr}");
 }
 
 #[test]

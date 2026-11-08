@@ -191,7 +191,7 @@ impl Drop for AllocationTrackingScope {
     reason = "test fixtures use constant-valid layouts and non-nested scopes"
 )]
 mod tests {
-    use super::{AllocationTrackingAllocator, AllocationTrackingError, AllocationTrackingScope};
+    use super::{AllocationTrackingAllocator, AllocationTrackingScope};
     use std::alloc::{GlobalAlloc, Layout};
 
     #[test]
@@ -229,10 +229,9 @@ mod tests {
             let layout = Layout::from_size_align(8, 8).expect("valid layout");
             let scope = AllocationTrackingScope::start().expect("scope starts");
             let second_scope = AllocationTrackingScope::start();
-            let rejected = matches!(
-                second_scope,
-                Err(AllocationTrackingError::ScopeAlreadyActive)
-            );
+            let error_message = second_scope
+                .expect_err("a second active scope is rejected")
+                .to_string();
             // SAFETY: the layout is valid and the pointer is deallocated below.
             let pointer = unsafe { allocator.alloc(layout) };
             let bytes = scope.allocated_bytes();
@@ -240,14 +239,18 @@ mod tests {
                 // SAFETY: `pointer` was allocated with this allocator and layout.
                 unsafe { allocator.dealloc(pointer, layout) };
             }
-            (rejected, !pointer.is_null(), bytes)
+            (error_message, !pointer.is_null(), bytes)
         })
         .join()
         .expect("tracking worker completes");
 
         assert_eq!(
             result,
-            (true, true, Some(8)),
+            (
+                "allocation tracking scope is already active".to_owned(),
+                true,
+                Some(8),
+            ),
             "the rejected second scope leaves the original counter active"
         );
     }
@@ -295,7 +298,14 @@ mod tests {
     fn scope_is_unavailable_without_the_profiling_allocator() {
         // This test uses a separate test process allocator in the test harness;
         // installation state is checked by an isolated helper thread.
-        let unavailable = std::thread::spawn(|| AllocationTrackingScope::start().is_err()).join();
-        assert!(unavailable.is_ok_and(|is_unavailable| is_unavailable));
+        let unavailable = std::thread::spawn(|| {
+            AllocationTrackingScope::start()
+                .expect_err("the tracking allocator has not been installed")
+                .to_string()
+        })
+        .join();
+        assert!(
+            unavailable.is_ok_and(|message| { message == "allocation tracker is not installed" })
+        );
     }
 }

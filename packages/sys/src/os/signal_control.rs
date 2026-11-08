@@ -9,6 +9,10 @@ mod disposition;
 mod sigwait;
 use alternate_stack::AltSignalStackOwner;
 
+#[cfg(test)]
+#[path = "../../tests/signal_control/private.rs"]
+mod private_tests;
+
 #[cfg(target_os = "linux")]
 const SIG_CHLD: c_int = 17;
 #[cfg(target_os = "macos")]
@@ -155,6 +159,7 @@ fn current_alt_signal_stack() -> io::Result<AltSignalStack> {
 
 impl Drop for AltSignalStackOwner {
     fn drop(&mut self) {
+        let disabled_stack_size = self.memory.as_ref().map_or(0, |memory| memory.len());
         alternate_stack::release_alternate_signal_stack(
             self.memory.take(),
             || current_alt_signal_stack().map(|current| (current.sp.addr(), current.flags)),
@@ -163,7 +168,8 @@ impl Drop for AltSignalStackOwner {
             || {
                 let disabled = AltSignalStack {
                     sp: core::ptr::null_mut(),
-                    size: 0,
+                    // A zero-sized disable leaves the stack enabled on Darwin.
+                    size: disabled_stack_size,
                     flags: SS_DISABLE,
                 };
                 // SAFETY: the current thread owns this alternate stack, and it is not active.
@@ -235,6 +241,13 @@ fn set_signal_disposition(signal: c_int, handler: usize) -> io::Result<()> {
     )
 }
 
+fn block_signal_set(signals: &[c_int]) -> io::Result<()> {
+    let set = signal_set(signals)?;
+    // SAFETY: set is initialized and old_set is null because its prior value is unused.
+    let result = unsafe { pthread_sigmask(SIG_BLOCK, &raw const set, core::ptr::null_mut()) };
+    disposition::block_control_signal_mask(result)
+}
+
 impl crate::Thread {
     /// Ignore process-wide `SIGPIPE` so failed writes return `EPIPE` to normal code.
     ///
@@ -256,10 +269,7 @@ impl crate::Thread {
     /// # Errors
     /// Returns an OS error if the signal mask cannot be updated.
     pub fn block_signal_control_set() -> io::Result<()> {
-        let set = signal_set(&[SIG_INT, SIG_TERM, SIG_CHLD])?;
-        // SAFETY: set is initialized and old_set is null because its prior value is unused.
-        let result = unsafe { pthread_sigmask(SIG_BLOCK, &raw const set, core::ptr::null_mut()) };
-        disposition::block_control_signal_mask(result)
+        block_signal_set(&[SIG_INT, SIG_TERM, SIG_CHLD])
     }
     /// Wait for one blocked control signal.
     /// # Errors

@@ -3,19 +3,19 @@ use core::ffi::c_long;
 use std::cell::RefCell;
 use std::io;
 
-pub(crate) struct AltSignalStackOwner {
-    pub(crate) memory: Option<Box<[u8]>>,
+pub(super) struct AltSignalStackOwner {
+    pub(super) memory: Option<Box<[u8]>>,
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn positive_sysconf(value: c_long, fallback: usize) -> usize {
+pub(super) fn positive_sysconf(value: c_long, fallback: usize) -> usize {
     usize::try_from(value)
         .ok()
         .filter(|value| *value > 0)
         .unwrap_or(fallback)
 }
 
-pub(crate) fn required_alt_signal_stack_size(
+pub(super) fn required_alt_signal_stack_size(
     minimum: usize,
     recommended: usize,
     page_size: i32,
@@ -35,7 +35,7 @@ pub(crate) fn required_alt_signal_stack_size(
         .ok_or_else(|| io::Error::other("signal stack size overflow"))
 }
 
-pub(crate) fn query_alternate_signal_stack(
+pub(super) fn query_alternate_signal_stack(
     result: i32,
     last_error: impl FnOnce() -> io::Error,
 ) -> io::Result<()> {
@@ -45,7 +45,7 @@ pub(crate) fn query_alternate_signal_stack(
     Ok(())
 }
 
-pub(crate) fn ensure_alternate_signal_stack(
+pub(super) fn ensure_alternate_signal_stack(
     required: usize,
     current_size: usize,
     current_flags: i32,
@@ -62,7 +62,7 @@ pub(crate) fn ensure_alternate_signal_stack(
     register(required)
 }
 
-pub(crate) fn register_alternate_signal_stack(
+pub(super) fn register_alternate_signal_stack(
     owner: &RefCell<AltSignalStackOwner>,
     required: usize,
     register: impl FnOnce(*mut u8, usize) -> io::Result<()>,
@@ -79,13 +79,13 @@ pub(crate) fn register_alternate_signal_stack(
     Ok(required)
 }
 
-pub(crate) fn map_alternate_signal_stack_tls<T, E>(
+pub(super) fn map_alternate_signal_stack_tls<T, E>(
     result: Result<io::Result<T>, E>,
 ) -> io::Result<T> {
     result.map_err(|_| io::Error::other("alternate signal stack TLS unavailable"))?
 }
 
-pub(crate) fn release_alternate_signal_stack(
+pub(super) fn release_alternate_signal_stack(
     memory: Option<Box<[u8]>>,
     current: impl FnOnce() -> io::Result<(usize, i32)>,
     disabled_flag: i32,

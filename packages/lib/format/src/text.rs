@@ -4,8 +4,10 @@ use ncl_object::{ObjectRef, Word, classify_object};
 use ncl_printer::PrintOptions;
 
 use crate::dispatch::{LineDirective, TextDirective, ValueDirective};
-use crate::executor::{ExecutionState, FormatError, FormatErrorKind, FormatOutput};
-use crate::model::{Directive, Parameter};
+use crate::executor::{
+    ExecutionState, FormatError, FormatErrorKind, FormatOutput, ResolvedParameter,
+};
+use crate::model::Directive;
 
 pub fn execute(
     kind: TextDirective,
@@ -59,8 +61,8 @@ fn execute_value(
     let colinc = parameter(&parameters, 1, 1, directive)?;
     let minpad = parameter(&parameters, 2, 0, directive)?;
     let padchar = match parameters.get(3) {
-        None | Some(Parameter::Unsupplied) => ' ',
-        Some(Parameter::Character(character)) => *character,
+        None | Some(ResolvedParameter::Unsupplied) => ' ',
+        Some(ResolvedParameter::Character(character)) => *character,
         Some(_) => {
             return Err(FormatError::at(
                 directive,
@@ -169,8 +171,8 @@ fn execute_line(
 ) -> Result<(), FormatError> {
     let parameters = state.parameters(directive)?;
     let count = match parameters.first() {
-        None | Some(Parameter::Unsupplied) => 1,
-        Some(Parameter::Integer(value)) if *value >= 0 => usize::try_from(*value)
+        None | Some(ResolvedParameter::Unsupplied) => 1,
+        Some(ResolvedParameter::Integer(value)) if *value >= 0 => usize::try_from(*value)
             .map_err(|_| FormatError::at(directive, FormatErrorKind::InvalidParameter))?,
         Some(_) => {
             return Err(FormatError::at(
@@ -213,14 +215,14 @@ fn execute_line(
 }
 
 fn parameter(
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     index: usize,
     default: i64,
     directive: &Directive,
 ) -> Result<i64, FormatError> {
     match parameters.get(index) {
-        None | Some(Parameter::Unsupplied) => Ok(default),
-        Some(Parameter::Integer(value)) => Ok(*value),
+        None | Some(ResolvedParameter::Unsupplied) => Ok(default),
+        Some(ResolvedParameter::Integer(value)) => Ok(*value),
         Some(_) => Err(FormatError::at(
             directive,
             FormatErrorKind::InvalidParameter,

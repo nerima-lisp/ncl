@@ -1,6 +1,6 @@
 use ncl_object::{Bignum, ObjectRef, Package, bignum_sign, classify_object, symbol_value};
 
-use crate::executor::{ExecutionState, FormatOutput, integer_value};
+use crate::executor::{ExecutionState, FormatOutput, bignum_integer_value};
 use crate::model::Directive;
 use crate::{FormatError, FormatErrorKind};
 
@@ -51,7 +51,7 @@ fn miser_width(state: &mut ExecutionState<'_>) -> Option<usize> {
                 return None;
             }
             Some(
-                integer_value(state.ctx, value)
+                bignum_integer_value(state.ctx, bignum)
                     .and_then(|width| usize::try_from(width).ok())
                     .unwrap_or(usize::MAX),
             )

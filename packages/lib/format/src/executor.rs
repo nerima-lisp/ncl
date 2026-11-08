@@ -1,7 +1,7 @@
 //! Shared execution state and control traversal.
 
 use ncl_object::{
-    ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, classify_object,
+    Bignum, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, classify_object,
 };
 use ncl_printer::{CharSink, PrintError, PrintOptions, StringSink, write};
 
@@ -27,6 +27,13 @@ pub enum FormatErrorKind {
     InvalidDirectiveUse,
     ImproperList,
     Print(PrintError),
+}
+
+#[derive(Clone, Copy)]
+pub enum ResolvedParameter {
+    Integer(i64),
+    Character(char),
+    Unsupplied,
 }
 
 impl FormatError {
@@ -122,27 +129,33 @@ impl ExecutionState<'_> {
     pub(crate) fn parameters(
         &mut self,
         directive: &Directive,
-    ) -> Result<Vec<Parameter>, FormatError> {
+    ) -> Result<Vec<ResolvedParameter>, FormatError> {
         let mut parameters = Vec::with_capacity(directive.parameters.len());
         for parameter in &directive.parameters {
             parameters.push(match parameter {
                 Parameter::Relative => {
                     let value = self.take_argument(directive)?;
                     if value == Word::NIL {
-                        Parameter::Unsupplied
+                        ResolvedParameter::Unsupplied
                     } else {
                         let object = classify_object(self.ctx, value);
                         if let ObjectRef::Character(codepoint) = object {
                             let character = char::from_u32(codepoint).ok_or_else(|| {
                                 FormatError::at(directive, FormatErrorKind::WrongArgumentType)
                             })?;
-                            Parameter::Character(character)
+                            ResolvedParameter::Character(character)
                         } else if let ObjectRef::Fixnum(integer) = object {
-                            Parameter::Integer(integer)
-                        } else if let ObjectRef::Bignum(_) = object {
-                            Parameter::Integer(integer_value(self.ctx, value).ok_or_else(|| {
-                                FormatError::at(directive, FormatErrorKind::InvalidParameter)
-                            })?)
+                            ResolvedParameter::Integer(integer)
+                        } else if let ObjectRef::Bignum(word) = object {
+                            ResolvedParameter::Integer(
+                                bignum_integer_value(self.ctx, Bignum::from_word(word))
+                                    .ok_or_else(|| {
+                                        FormatError::at(
+                                            directive,
+                                            FormatErrorKind::InvalidParameter,
+                                        )
+                                    })?,
+                            )
                         } else {
                             return Err(FormatError::at(
                                 directive,
@@ -155,9 +168,11 @@ impl ExecutionState<'_> {
                     let remaining = i64::try_from(self.remaining()).map_err(|_| {
                         FormatError::at(directive, FormatErrorKind::InvalidParameter)
                     })?;
-                    Parameter::Integer(remaining)
+                    ResolvedParameter::Integer(remaining)
                 }
-                other => *other,
+                Parameter::Integer(value) => ResolvedParameter::Integer(*value),
+                Parameter::Character(value) => ResolvedParameter::Character(*value),
+                Parameter::Unsupplied => ResolvedParameter::Unsupplied,
             });
         }
         Ok(parameters)
@@ -219,13 +234,8 @@ impl FormatOutput<'_> {
         directive: &Directive,
     ) -> Result<(), FormatError> {
         let rendered = Self::render(state, value, options, directive)?;
-        self.write_str(&rendered).map_err(|error| {
-            if matches!(&error.kind, FormatErrorKind::Print(_)) {
-                FormatError::at(directive, error.kind)
-            } else {
-                error
-            }
-        })
+        self.write_str(&rendered)
+            .map_err(|error| FormatError::at(directive, error.kind))
     }
 
     pub(crate) fn render(
@@ -305,15 +315,7 @@ fn locate_output_error(error: FormatError, directive: &Directive) -> FormatError
     }
 }
 
-pub fn integer_value(ctx: &ThreadContext, value: Word) -> Option<i64> {
-    let object = classify_object(ctx, value);
-    if let ObjectRef::Fixnum(integer) = object {
-        return Some(integer);
-    }
-    let ObjectRef::Bignum(word) = object else {
-        return None;
-    };
-    let bignum = ncl_object::Bignum::from_word(word);
+pub fn bignum_integer_value(ctx: &ThreadContext, bignum: Bignum) -> Option<i64> {
     let mut limbs = bignum_limbs(ctx, bignum).ok()?.into_iter();
     let low = limbs.next().unwrap_or_default();
     let high = limbs.next().unwrap_or_default();

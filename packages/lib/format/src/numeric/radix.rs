@@ -2,15 +2,17 @@ use ncl_object::{ObjectRef, Word, classify_object};
 use ncl_printer::{PrintOptions, StringSink, write};
 
 use crate::dispatch::RadixDirective;
-use crate::executor::{ExecutionState, FormatError, FormatErrorKind, FormatOutput, integer_value};
-use crate::model::{Directive, Parameter};
+use crate::executor::{
+    ExecutionState, FormatError, FormatErrorKind, FormatOutput, ResolvedParameter,
+};
+use crate::model::Directive;
 
 pub(super) fn execute(
     kind: RadixDirective,
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
 ) -> Result<(), FormatError> {
     match kind {
         RadixDirective::Decimal => integer(directive, state, output, parameters, 10, 0),
@@ -25,7 +27,7 @@ fn radix(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
 ) -> Result<(), FormatError> {
     if directive.parameters.is_empty() {
         let value = state.take_argument(directive)?;
@@ -42,9 +44,9 @@ fn radix(
     }
 
     let base = match parameters.first() {
-        Some(Parameter::Integer(base)) => *base,
-        None | Some(Parameter::Unsupplied) => 10,
-        Some(Parameter::Character(_) | Parameter::Relative | Parameter::Remaining) => {
+        Some(ResolvedParameter::Integer(base)) => *base,
+        None | Some(ResolvedParameter::Unsupplied) => 10,
+        Some(ResolvedParameter::Character(_)) => {
             return Err(invalid(directive));
         }
     };
@@ -59,7 +61,7 @@ fn integer(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     base: u32,
     offset: usize,
 ) -> Result<(), FormatError> {
@@ -171,11 +173,10 @@ fn render(
 }
 
 fn is_integer(state: &ExecutionState<'_>, value: Word) -> bool {
-    let object = classify_object(state.ctx, value);
-    if matches!(object, ObjectRef::Fixnum(_)) {
-        return integer_value(state.ctx, value).is_some();
-    }
-    matches!(object, ObjectRef::Bignum(_))
+    matches!(
+        classify_object(state.ctx, value),
+        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)
+    )
 }
 
 fn english(decimal: &str, ordinal: bool, directive: &Directive) -> Result<String, FormatError> {
@@ -216,9 +217,6 @@ fn english(decimal: &str, ordinal: bool, directive: &Directive) -> Result<String
     let (negative, digits) = decimal
         .strip_prefix('-')
         .map_or((false, decimal), |d| (true, d));
-    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(wrong_type(directive));
-    }
     let mut chunks = Vec::new();
     for chunk in digits.as_bytes().rchunks(3) {
         let value = chunk
@@ -237,10 +235,8 @@ fn english(decimal: &str, ordinal: bool, directive: &Directive) -> Result<String
         words.push("minus".to_owned());
     }
     for index in (0..=last).rev() {
-        let value = chunks
-            .get(index)
-            .copied()
-            .ok_or_else(|| invalid(directive))?;
+        // check-added-lines: allow(index) rposition returns an index within chunks.
+        let value = chunks[index];
         if value == 0 {
             continue;
         }
@@ -423,33 +419,29 @@ fn roman(decimal: &str, old_style: bool, directive: &Directive) -> Result<String
 }
 
 fn integer_parameter(
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     index: usize,
     directive: &Directive,
 ) -> Result<Option<usize>, FormatError> {
     match parameters.get(index) {
-        None | Some(Parameter::Unsupplied) => Ok(None),
-        Some(Parameter::Integer(value)) => usize::try_from(*value)
+        None | Some(ResolvedParameter::Unsupplied) => Ok(None),
+        Some(ResolvedParameter::Integer(value)) => usize::try_from(*value)
             .map(Some)
             .map_err(|_| invalid(directive)),
-        Some(Parameter::Character(_) | Parameter::Relative | Parameter::Remaining) => {
-            Err(invalid(directive))
-        }
+        Some(ResolvedParameter::Character(_)) => Err(invalid(directive)),
     }
 }
 
 fn character_parameter(
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
     index: usize,
     default: char,
     directive: &Directive,
 ) -> Result<char, FormatError> {
     match parameters.get(index) {
-        None | Some(Parameter::Unsupplied) => Ok(default),
-        Some(Parameter::Character(value)) => Ok(*value),
-        Some(Parameter::Integer(_) | Parameter::Relative | Parameter::Remaining) => {
-            Err(invalid(directive))
-        }
+        None | Some(ResolvedParameter::Unsupplied) => Ok(default),
+        Some(ResolvedParameter::Character(value)) => Ok(*value),
+        Some(ResolvedParameter::Integer(_)) => Err(invalid(directive)),
     }
 }
 

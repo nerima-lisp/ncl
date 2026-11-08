@@ -5,15 +5,17 @@ use super::common::{
     shortest_fraction_digits, sign, signed, signed_parameter, significant_digits,
 };
 use crate::dispatch::FloatingDirective;
-use crate::executor::{ExecutionState, FormatError, FormatErrorKind, FormatOutput};
-use crate::model::{Directive, Parameter};
+use crate::executor::{
+    ExecutionState, FormatError, FormatErrorKind, FormatOutput, ResolvedParameter,
+};
+use crate::model::Directive;
 
 pub(super) fn execute(
     kind: FloatingDirective,
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
 ) -> Result<(), FormatError> {
     match kind {
         FloatingDirective::Fixed => fixed(directive, state, output, parameters),
@@ -27,7 +29,7 @@ fn fixed(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
 ) -> Result<(), FormatError> {
     if parameters.len() > 5 {
         return Err(invalid(directive));
@@ -86,7 +88,7 @@ fn exponential(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
 ) -> Result<(), FormatError> {
     if parameters.len() > 7 {
         return Err(invalid(directive));
@@ -125,7 +127,7 @@ fn general(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
 ) -> Result<(), FormatError> {
     if parameters.len() > 7 {
         return Err(invalid(directive));
@@ -203,7 +205,7 @@ fn monetary(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
-    parameters: &[Parameter],
+    parameters: &[ResolvedParameter],
 ) -> Result<(), FormatError> {
     if parameters.len() > 4 {
         return Err(invalid(directive));

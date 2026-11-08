@@ -7,9 +7,10 @@
 
 use std::collections::HashMap;
 
+use ncl_arrays::{array_element_type, array_row_major_ref};
 use ncl_object::{
     Bignum, Complex, DoubleFloat, Instance, ObjectRef, Package, Ratio, Runtime, ThreadContext,
-    Word, array_dimensions, array_row_major_ref, bignum_limbs, bignum_sign, car, cdr, classify,
+    Word, array_dimensions, bignum_limbs, bignum_sign, car, cdr, classify,
     classify_object, complex_imag, complex_real, double_value, instance_class, ratio_denominator,
     ratio_numerator, simple_vector_length, simple_vector_ref, slot_ref,
     specialized_array_element_type, string_length, string_ref, symbol_name, symbol_package,
@@ -308,7 +309,7 @@ fn array_literal(
     word: Word,
 ) -> Result<Literal, FrontError> {
     let dimensions = array_dimensions(ctx, word)?;
-    let element_type = ncl_object::array::array_element_type(ctx, word)?;
+    let element_type = array_element_type(ctx, word)?;
     let identity = table.array_identity(word);
     let total = dimensions
         .iter()

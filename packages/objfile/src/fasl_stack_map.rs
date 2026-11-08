@@ -53,20 +53,23 @@ pub fn decode_section(
     for expected_id in 0..group_count {
         let id_offset = cursor.absolute_position();
         let code_object_id = cursor.u32()?;
-        if code_object_id as usize != expected_id {
+        if usize::try_from(code_object_id).ok() != Some(expected_id) {
             return Err(FaslError::at(
                 FaslRejectReason::InvalidSafepointMap,
                 id_offset,
             ));
         }
-        let code_object = &code_objects[expected_id];
+        let code_object = code_objects
+            .get(expected_id)
+            .ok_or_else(|| FaslError::at(FaslRejectReason::InvalidSafepointMap, id_offset))?;
         if code_object.id != code_object_id {
             return Err(FaslError::at(
                 FaslRejectReason::InvalidSafepointMap,
                 id_offset,
             ));
         }
-        let code_length = code_object.code.len() as u32;
+        let code_length = u32::try_from(code_object.code.len())
+            .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, id_offset))?;
         let count_offset = cursor.absolute_position();
         let entry_count = bounded_count(cursor.u32()?, count_offset)?;
         if entry_count > cursor.remaining() / HEADER_SIZE {
@@ -102,10 +105,15 @@ pub fn decode_section(
 }
 
 /// Encodes stack-map groups in code-object and increasing-PC order.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "group and entry counts are bounded by MAX_RECORDS before encoding"
+)]
 pub fn encode_section(groups: &[SafepointGroup]) -> Result<Vec<u8>, FaslError> {
     if groups.len() > MAX_RECORDS {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
+    // check-added-lines: allow(as-cast) group count is bounded by MAX_RECORDS.
     let group_count = groups.len() as u32;
     let mut ordered_groups = groups.to_vec();
     ordered_groups.sort_by_key(|group| group.code_object_id);
@@ -118,11 +126,14 @@ pub fn encode_section(groups: &[SafepointGroup]) -> Result<Vec<u8>, FaslError> {
     let mut out = SectionWriter::new();
     out.put_u32(group_count);
     for (expected_id, group) in ordered_groups.iter_mut().enumerate() {
-        if group.code_object_id as usize != expected_id || group.entries.len() > MAX_RECORDS {
+        if usize::try_from(group.code_object_id).ok() != Some(expected_id)
+            || group.entries.len() > MAX_RECORDS
+        {
             return Err(FaslError::new(FaslRejectReason::InvalidSafepointMap));
         }
         group.entries.sort_by_key(|entry| entry.pc_offset);
         validate_entries(&group.entries)?;
+        // check-added-lines: allow(as-cast) entry count is bounded by MAX_RECORDS.
         let entry_count = group.entries.len() as u32;
         out.put_u32(group.code_object_id);
         out.put_u32(entry_count);
@@ -149,9 +160,9 @@ fn decode_entry(cursor: &mut SectionReader<'_>) -> Result<SafepointEntry, FaslEr
     let bitmap_len = usize::from(slot_words).div_ceil(8);
     let bitmap_offset = cursor.absolute_position();
     let slot_bitmap = cursor.take(bitmap_len)?.to_vec();
-    let first_bitmap_byte = slot_bitmap[0];
-    if first_bitmap_byte & 0b0100 == 0
-        || first_bitmap_byte & 0b1011 != 0
+    if slot_bitmap
+        .first()
+        .is_none_or(|byte| byte & 0b0100 == 0 || byte & 0b1011 != 0)
         || unused_bitmap_bits_are_set(&slot_bitmap, slot_words)
     {
         return Err(FaslError::at(
@@ -159,7 +170,12 @@ fn decode_entry(cursor: &mut SectionReader<'_>) -> Result<SafepointEntry, FaslEr
             bitmap_offset,
         ));
     }
-    let register_count = register_mask.count_ones() as usize;
+    let register_count = usize::try_from(register_mask.count_ones()).map_err(|_| {
+        FaslError::at(
+            FaslRejectReason::InvalidSafepointMap,
+            cursor.absolute_position(),
+        )
+    })?;
     let mut register_ids = Vec::with_capacity(register_count);
     for bit in 0..u16::BITS {
         let mask = 1_u16 << bit;
@@ -170,7 +186,10 @@ fn decode_entry(cursor: &mut SectionReader<'_>) -> Result<SafepointEntry, FaslEr
     let mut ordinal = 0;
     for bit in 0..u16::BITS {
         if register_mask & (1_u16 << bit) != 0 {
-            if register_ids[ordinal] != bit as u16 {
+            let register_id = u16::try_from(bit)
+                .ok()
+                .and_then(|expected| register_ids.get(ordinal).map(|actual| *actual == expected));
+            if register_id != Some(true) {
                 return Err(FaslError::at(
                     FaslRejectReason::InvalidSafepointMap,
                     cursor
@@ -227,8 +246,10 @@ fn validate_entry(entry: &SafepointEntry) -> Result<(), FaslError> {
         || entry.slot_words > entry.frame_words
         || entry.word_slot_count > entry.slot_words
         || entry.slot_bitmap.len() != expected_bitmap_len
-        || entry.slot_bitmap[0] & 0b0100 == 0
-        || entry.slot_bitmap[0] & 0b1011 != 0
+        || entry
+            .slot_bitmap
+            .first()
+            .is_none_or(|byte| byte & 0b0100 == 0 || byte & 0b1011 != 0)
         || unused_bitmap_bits_are_set(&entry.slot_bitmap, entry.slot_words)
     {
         return Err(FaslError::new(FaslRejectReason::InvalidSafepointMap));
@@ -237,7 +258,10 @@ fn validate_entry(entry: &SafepointEntry) -> Result<(), FaslError> {
     for bit in 0..u16::BITS {
         let mask = 1_u16 << bit;
         if entry.register_mask & mask != 0 {
-            expected_ids.push(bit as u16);
+            expected_ids.push(
+                u16::try_from(bit)
+                    .map_err(|_| FaslError::new(FaslRejectReason::InvalidSafepointMap))?,
+            );
         }
     }
     if expected_ids != entry.register_ids {
@@ -246,16 +270,20 @@ fn validate_entry(entry: &SafepointEntry) -> Result<(), FaslError> {
     Ok(())
 }
 
-const fn unused_bitmap_bits_are_set(bitmap: &[u8], slot_words: u16) -> bool {
+fn unused_bitmap_bits_are_set(bitmap: &[u8], slot_words: u16) -> bool {
     let used = slot_words % 8;
     if used == 0 {
         return false;
     }
-    bitmap[bitmap.len() - 1] & !((1_u8 << used) - 1) != 0
+    let Some(last) = bitmap.last() else {
+        return true;
+    };
+    last & !((1_u8 << used) - 1) != 0
 }
 
 fn bounded_count(count: u32, offset: usize) -> Result<usize, FaslError> {
-    let count = count as usize;
+    let count = usize::try_from(count)
+        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, offset))?;
     if count > MAX_RECORDS {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
@@ -266,5 +294,5 @@ fn bounded_count(count: u32, offset: usize) -> Result<usize, FaslError> {
 }
 
 #[cfg(test)]
-#[path = "fasl_stack_map_tests.rs"]
+#[path = "tests/fasl_stack_map.rs"]
 mod tests;

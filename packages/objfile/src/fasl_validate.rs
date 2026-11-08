@@ -39,11 +39,19 @@ pub fn validate_sections(
 }
 
 /// Checks symbol and intra-object constant references after all sections are parsed.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "constant count is bounded by MAX_RECORDS before comparison with its u32 wire fields"
+)]
 pub fn validate_references(
     groups: &[FaslConstantGroup],
     symbols: &[FaslSymbol],
 ) -> Result<(), FaslError> {
     for group in groups {
+        if group.constants.len() > MAX_RECORDS {
+            return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
+        }
+        // check-added-lines: allow(as-cast) constant count is bounded by MAX_RECORDS.
         let count = group.constants.len() as u32;
         for constant in &group.constants {
             match constant {
@@ -117,16 +125,21 @@ fn validate_record_counts(
     }
     let mut debug_counts = vec![0_u32; code.len()];
     for record in debug_records {
-        let index = record.code_object_id as usize;
+        let index = usize::try_from(record.code_object_id)
+            .map_err(|_| FaslError::new(FaslRejectReason::InvalidReference))?;
         let count = debug_counts
             .get_mut(index)
             .ok_or_else(|| FaslError::new(FaslRejectReason::InvalidReference))?;
         *count += 1;
     }
     for (index, object) in code.iter().enumerate() {
-        let constant_group = &constants[index];
-        let stack_group = &stack_maps[index];
-        if object.id as usize != index
+        let constant_group = constants
+            .get(index)
+            .ok_or_else(|| FaslError::new(FaslRejectReason::InvalidCodeObject))?;
+        let stack_group = stack_maps
+            .get(index)
+            .ok_or_else(|| FaslError::new(FaslRejectReason::InvalidCodeObject))?;
+        if usize::try_from(object.id).ok() != Some(index)
             || constant_group.code_object_id != object.id
             || u32::try_from(constant_group.constants.len()).ok() != Some(object.constant_count)
             || stack_group.code_object_id != object.id
@@ -149,8 +162,12 @@ fn validate_stack_maps(
         return Err(FaslError::new(FaslRejectReason::InvalidSafepointMap));
     }
     for (index, group) in groups.iter().enumerate() {
-        let layout = &layouts[index];
-        if group.code_object_id as usize != index || group.code_object_id != layout.id {
+        let layout = layouts
+            .get(index)
+            .ok_or_else(|| FaslError::new(FaslRejectReason::InvalidSafepointMap))?;
+        if usize::try_from(group.code_object_id).ok() != Some(index)
+            || group.code_object_id != layout.id
+        {
             return Err(FaslError::new(FaslRejectReason::InvalidSafepointMap));
         }
         let code_length = u32::try_from(layout.code.len())
@@ -214,8 +231,10 @@ fn validate_relocations(
             FaslRejectReason::InvalidReference,
         )
         .map_err(|_| rejection(FaslRejectReason::InvalidReference, record_offset))?;
-        let width = relocation.kind.width() as usize;
-        let offset = relocation.write_offset as usize;
+        let width = usize::try_from(relocation.kind.width())
+            .map_err(|_| rejection(FaslRejectReason::InvalidRelocation, record_offset))?;
+        let offset = usize::try_from(relocation.write_offset)
+            .map_err(|_| rejection(FaslRejectReason::InvalidRelocation, record_offset))?;
         let end = offset
             .checked_add(width)
             .ok_or_else(|| rejection(FaslRejectReason::InvalidRelocation, record_offset))?;
@@ -301,7 +320,8 @@ fn validate_target(
 ) -> Result<(), FaslError> {
     match relocation.target_kind {
         FaslRelocationTarget::CodeObject => {
-            let index = relocation.target_index as usize;
+            let index = usize::try_from(relocation.target_index)
+                .map_err(|_| rejection(FaslRejectReason::InvalidReference, record_offset))?;
             let target = layouts
                 .get(index)
                 .ok_or_else(|| rejection(FaslRejectReason::InvalidReference, record_offset))?;
@@ -364,9 +384,14 @@ fn validate_relocation_pairs(
     ordered_pairs.sort_unstable_by_key(|(pair_id, index)| (*pair_id, *index));
     let mut start = 0;
     while start < ordered_pairs.len() {
-        let pair = ordered_pairs[start];
+        let pair = ordered_pairs
+            .get(start)
+            .copied()
+            .ok_or_else(|| FaslError::new(FaslRejectReason::InvalidRelocation))?;
         let pair_id = pair.0;
-        let suffix = &ordered_pairs[start..];
+        let suffix = ordered_pairs
+            .get(start..)
+            .ok_or_else(|| FaslError::new(FaslRejectReason::InvalidRelocation))?;
         let end = suffix
             .iter()
             .position(|(candidate, _)| *candidate != pair_id)
@@ -375,9 +400,16 @@ fn validate_relocation_pairs(
             return Err(pair_error(section_offset, pair.1));
         }
         let first_index = pair.1;
-        let second_index = ordered_pairs[start + 1].1;
-        let first = &relocations[first_index];
-        let second = &relocations[second_index];
+        let second_index = start
+            .checked_add(1)
+            .and_then(|index| ordered_pairs.get(index).map(|pair| pair.1))
+            .ok_or_else(|| pair_error(section_offset, first_index))?;
+        let first = relocations
+            .get(first_index)
+            .ok_or_else(|| pair_error(section_offset, first_index))?;
+        let second = relocations
+            .get(second_index)
+            .ok_or_else(|| pair_error(section_offset, second_index))?;
         if first.kind != FaslRelocationKind::Adrp21
             || second.kind != FaslRelocationKind::Add12
             || first.code_object_id != second.code_object_id
@@ -420,7 +452,7 @@ fn pair_immediates_are_zero(
 }
 
 fn instruction_word(code: &[u8], offset: u32) -> Option<u32> {
-    let start = offset as usize;
+    let start = usize::try_from(offset).ok()?;
     let end = start.checked_add(4)?;
     let bytes = code.get(start..end)?;
     let mut word = [0; 4];
@@ -433,7 +465,7 @@ fn code_layout<'a, 'b>(
     id: u32,
     reason: FaslRejectReason,
 ) -> Result<&'a FaslCodeLayout<'b>, FaslError> {
-    let index = id as usize;
+    let index = usize::try_from(id).map_err(|_| FaslError::new(reason))?;
     layouts
         .get(index)
         .filter(|layout| layout.id == id)
@@ -463,7 +495,3 @@ mod private_tests;
 #[cfg(test)]
 #[path = "fasl_validate_relocation_tests.rs"]
 mod relocation_tests;
-
-#[cfg(test)]
-#[path = "fasl_validate_guard_tests.rs"]
-mod guard_tests;

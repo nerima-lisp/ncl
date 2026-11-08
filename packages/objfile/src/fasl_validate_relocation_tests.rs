@@ -174,7 +174,7 @@ fn relocation_validation_rejects_targets_architecture_and_pair_shapes() {
 }
 
 #[test]
-fn relocation_targets_validate_code_native_and_constant_references() {
+fn relocation_code_targets_require_valid_indices_and_entry_offsets() {
     let source = [layout()];
     let wrong_code_target = relocation(Kind::PcRel32, Target::CodeObject, 1, 0);
     assert_reason(
@@ -217,7 +217,11 @@ fn relocation_targets_validate_code_native_and_constant_references() {
         ),
         FaslRejectReason::InvalidRelocation,
     );
+}
 
+#[test]
+fn relocation_native_targets_require_native_function_symbols() {
+    let source = [layout()];
     let native = [native_symbol(SymbolBindingKind::NativeFunction)];
     assert_eq!(
         validate_relocations(
@@ -250,7 +254,11 @@ fn relocation_targets_validate_code_native_and_constant_references() {
         ),
         FaslRejectReason::InvalidReference,
     );
+}
 
+#[test]
+fn relocation_constant_targets_require_constant_index32_and_valid_indices() {
+    let source = [layout()];
     for (kind, addend, target_index) in [
         (Kind::Abs64, 0, 0),
         (Kind::ConstantIndex32, 1, 0),

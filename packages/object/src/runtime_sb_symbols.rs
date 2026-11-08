@@ -33,7 +33,7 @@ impl Runtime {
             let mut name_word = make_string(ctx, self, &name.as_str().chars().collect::<Vec<_>>())?;
             with_root(ctx, &mut name_word, |ctx, name_word| {
                 let Some((mut symbol, _)) =
-                    Package::from_word(*source_package).find_symbol(ctx, *name_word)?
+                    Package::from_word(*source_package).find_symbol(ctx, self, *name_word)?
                 else {
                     // check-added-lines: allow(unsupported) Missing symbols must not be interned.
                     return Err(ObjectError::Unsupported);
@@ -42,9 +42,48 @@ impl Runtime {
                     let mut target_package = self.ensure_package(ctx, target.as_str())?;
                     with_root(ctx, &mut target_package, |ctx, target_package| {
                         let package = Package::from_word(*target_package);
-                        package.import(ctx, self, *name_word, *symbol)?;
+                        let existing = package.find_symbol(ctx, self, *name_word)?;
+                        if let Some((existing_symbol, status)) = existing {
+                            if existing_symbol != *symbol {
+                                return Err(ObjectError::PackageConflict);
+                            }
+                            if status != crate::FindStatus::Inherited {
+                                if external && status == crate::FindStatus::Internal {
+                                    package.remove_table_symbol(
+                                        ctx,
+                                        self,
+                                        false,
+                                        *name_word,
+                                    )?;
+                                    package.insert_table_symbol(
+                                        ctx,
+                                        self,
+                                        true,
+                                        *name_word,
+                                        *symbol,
+                                    )?;
+                                }
+                                return Ok(());
+                            }
+                        }
+                        let home = crate::get(
+                            ctx,
+                            *symbol,
+                            crate::widetag::SYMBOL,
+                            crate::layout::symbol_offset::PACKAGE,
+                        )?;
+                        if home == crate::Word::NIL {
+                            crate::put(
+                                ctx,
+                                *symbol,
+                                crate::layout::symbol_offset::PACKAGE,
+                                *target_package,
+                            )?;
+                        }
+                        package.insert_table_symbol(ctx, self, false, *name_word, *symbol)?;
                         if external {
-                            package.export(ctx, self, *name_word)?;
+                            package.remove_table_symbol(ctx, self, false, *name_word)?;
+                            package.insert_table_symbol(ctx, self, true, *name_word, *symbol)?;
                         }
                         if let Some(function) = self.function(ctx, source.as_str(), name.as_str()) {
                             let mut function = function;

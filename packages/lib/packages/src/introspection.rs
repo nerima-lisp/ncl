@@ -16,6 +16,7 @@ use ncl_object::{
     ParameterType, Runtime, StringObject, ThreadContext, Word, classify_object, slot_ref,
     symbol_name,
 };
+use ncl_packages::{PackageListOperations, PackageOperations};
 use std::collections::HashSet;
 
 fn with_rooted_words<T>(
@@ -265,7 +266,7 @@ fn find_symbol(
     let name = string_designator_text(ctx, name.as_word())?;
     let package = package_arg(ctx, runtime, args, 1)?;
     let name_word = ncl_object::make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-    let found = package.find_symbol(ctx, name_word)?;
+    let found = package.find_symbol(ctx, runtime, name_word)?;
     let Some((symbol, status)) = found else {
         values.set(&[Word::NIL, Word::NIL]);
         return Ok(Word::NIL);

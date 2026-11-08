@@ -39,22 +39,22 @@ pub(super) fn execute_up_arrow(directive: &Directive, state: &mut State<'_>) -> 
     if parameters.len() > 3 {
         return Err(invalid_parameter(directive));
     }
-    let values = (0..parameters.len())
-        .map(|index| integer_parameter(&parameters, index, 0, directive))
-        .collect::<Result<Vec<_>, _>>()?;
+    let first = integer_parameter(&parameters, 0, 0, directive)?;
+    let second = integer_parameter(&parameters, 1, 0, directive)?;
+    let third = integer_parameter(&parameters, 2, 0, directive)?;
     let scope = colon_up_arrow_scope(&state.frames);
     if directive.colon && scope.is_none() {
         return Err(invalid_use(directive));
     }
-    let escape = match values.as_slice() {
-        [] if directive.colon && matches!(scope, Some(UpArrowScope::Iteration { .. })) => true,
-        [] => state.remaining() == 0,
-        [value] => *value == 0,
-        [left, right] => left == right,
-        [first, second, third] => first <= second && second <= third,
-        [_first, _second, _third, _fourth, ..] => {
-            return Err(invalid_parameter(directive));
-        }
+    let escape = if parameters.is_empty() {
+        directive.colon && matches!(scope, Some(UpArrowScope::Iteration { .. }))
+            || state.remaining() == 0
+    } else if parameters.len() == 1 {
+        first == 0
+    } else if parameters.len() == 2 {
+        first == second
+    } else {
+        first <= second && second <= third
     };
     if !escape {
         return Ok(Flow::Continue);

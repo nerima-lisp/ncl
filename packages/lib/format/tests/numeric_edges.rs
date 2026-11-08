@@ -227,6 +227,50 @@ fn floating_and_radix_fallbacks_right_pad_composite_values() {
     );
 }
 
+#[test] // CLHS 22.3.3.1
+fn fixed_float_falls_back_to_unquoted_aesthetic_text_without_a_width() {
+    let (runtime, mut ctx) = context();
+    let text = rooted_string(&runtime, &mut ctx, "not a float");
+
+    assert_eq!(run(&runtime, &mut ctx, "~F", &[text.get()]), "not a float");
+}
+
+#[test] // CLHS 22.3.3.1
+fn fixed_float_without_precision_omits_fractional_trailing_zeroes() {
+    let (runtime, mut ctx) = context();
+    let value = rooted_double(&runtime, &mut ctx, 1.2);
+
+    assert_eq!(run(&runtime, &mut ctx, "~5F", &[value.get()]), "  1.2");
+}
+
+#[test] // CLHS 22.3.3.1
+fn fixed_float_uses_width_to_choose_omitted_precision() {
+    let (runtime, mut ctx) = context();
+    let value = rooted_double(&runtime, &mut ctx, 1.2345);
+    let small = rooted_double(&runtime, &mut ctx, 0.5);
+    let carry = rooted_double(&runtime, &mut ctx, 9.99);
+
+    assert_eq!(run(&runtime, &mut ctx, "~4F", &[value.get()]), "1.23");
+    assert_eq!(run(&runtime, &mut ctx, "~4@F", &[value.get()]), "+1.2");
+    assert_eq!(run(&runtime, &mut ctx, "~2F", &[small.get()]), ".5");
+    assert_eq!(run(&runtime, &mut ctx, "~3F", &[carry.get()]), "10.");
+}
+
+#[test] // CLHS 22.3.3.1
+fn fixed_float_removes_a_zero_created_by_rounding_at_omitted_precision() {
+    let (runtime, mut ctx) = context();
+    let value = rooted_double(&runtime, &mut ctx, f64::from_bits(0x0e80_0000_0000_0000));
+
+    let output = run(&runtime, &mut ctx, "~256F", &[value.get()]);
+    let decimal = output.trim();
+    let fraction = decimal.split_once('.').map_or("", |(_, fraction)| fraction);
+
+    assert_eq!(output.chars().count(), 256);
+    assert!(decimal.starts_with("0."));
+    assert!(fraction.ends_with("63"));
+    assert!(!fraction.ends_with('0'));
+}
+
 #[test] // CLHS 22.3.2.2, 22.3.3.1–22.3.3.4
 fn float_ratio_and_parameter_type_errors_remain_typed() {
     let (runtime, mut ctx) = context();

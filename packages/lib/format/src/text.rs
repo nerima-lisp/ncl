@@ -3,102 +3,45 @@
 use ncl_object::{ObjectRef, Word, classify_object};
 use ncl_printer::PrintOptions;
 
+use crate::dispatch::{LineDirective, TextDirective, ValueDirective};
 use crate::executor::{ExecutionState, FormatError, FormatErrorKind, FormatOutput};
-use crate::model::{Directive, DirectiveKind, Parameter};
+use crate::model::{Directive, Parameter};
 
 pub fn execute(
+    kind: TextDirective,
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
 ) -> Result<(), FormatError> {
-    match directive.kind {
-        DirectiveKind::A | DirectiveKind::S | DirectiveKind::W | DirectiveKind::C => {
-            execute_value(directive, state, output)
-        }
-        DirectiveKind::Plural => execute_plural(directive, state, output),
-        DirectiveKind::Percent
-        | DirectiveKind::Ampersand
-        | DirectiveKind::Bar
-        | DirectiveKind::Tilde
-        | DirectiveKind::Newline => execute_line(directive, state, output),
-        DirectiveKind::R
-        | DirectiveKind::D
-        | DirectiveKind::B
-        | DirectiveKind::O
-        | DirectiveKind::X
-        | DirectiveKind::F
-        | DirectiveKind::E
-        | DirectiveKind::G
-        | DirectiveKind::Dollar
-        | DirectiveKind::Underscore
-        | DirectiveKind::LogicalBlock
-        | DirectiveKind::Indent
-        | DirectiveKind::Slash
-        | DirectiveKind::Tab
-        | DirectiveKind::Justification
-        | DirectiveKind::Star
-        | DirectiveKind::Conditional
-        | DirectiveKind::Iteration
-        | DirectiveKind::Recursive
-        | DirectiveKind::CaseConversion
-        | DirectiveKind::UpArrow => Err(FormatError::at(
-            directive,
-            FormatErrorKind::InvalidDirectiveUse,
-        )),
+    match kind {
+        TextDirective::Value(kind) => execute_value(kind, directive, state, output),
+        TextDirective::Character => execute_character(directive, state, output),
+        TextDirective::Plural => execute_plural(directive, state, output),
+        TextDirective::Line(kind) => execute_line(kind, directive, state, output),
     }
 }
 
 fn execute_value(
+    kind: ValueDirective,
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
 ) -> Result<(), FormatError> {
     let parameters = state.parameters(directive)?;
     let value = state.take_argument(directive)?;
-    if directive.kind == DirectiveKind::C {
-        if !parameters.is_empty() {
-            return Err(FormatError::at(
-                directive,
-                FormatErrorKind::InvalidParameter,
-            ));
+    let options = match kind {
+        ValueDirective::Aesthetic => PrintOptions::new().with_escape(false),
+        ValueDirective::Standard => PrintOptions::new().with_escape(true).with_readably(true),
+        ValueDirective::Write => {
+            let mut options = PrintOptions::from_specials(state.ctx, state.runtime);
+            if directive.colon {
+                options = options.with_pretty(true);
+            }
+            if directive.at_sign {
+                options = options.with_level(None).with_length(None);
+            }
+            options
         }
-        let ObjectRef::Character(codepoint) = classify_object(state.ctx, value) else {
-            return Err(FormatError::at(
-                directive,
-                FormatErrorKind::WrongArgumentType,
-            ));
-        };
-        let character = char::from_u32(codepoint)
-            .ok_or_else(|| FormatError::at(directive, FormatErrorKind::WrongArgumentType))?;
-        let name = character_name(character);
-        let rendered = if directive.colon {
-            name
-        } else if directive.at_sign {
-            format!("#\\{name}")
-        } else {
-            character.to_string()
-        };
-        return output.write_str(&rendered);
-    }
-
-    let options = if directive.kind == DirectiveKind::A {
-        PrintOptions::new().with_escape(false)
-    } else if directive.kind == DirectiveKind::S {
-        PrintOptions::new().with_escape(true).with_readably(true)
-    } else if directive.kind == DirectiveKind::W {
-        let mut options = PrintOptions::from_specials(state.ctx, state.runtime);
-        if directive.colon {
-            options = options.with_pretty(true);
-        }
-        if directive.at_sign {
-            options = options.with_level(None).with_length(None);
-        }
-        options
-    } else {
-        return Err(FormatError::at(
-            directive,
-            FormatErrorKind::InvalidDirectiveUse,
-        ));
     };
     let rendered = FormatOutput::render(state, value, &options, directive)?;
     let rendered = if directive.colon && value == Word::NIL {
@@ -106,7 +49,7 @@ fn execute_value(
     } else {
         rendered
     };
-    if directive.kind == DirectiveKind::W && !parameters.is_empty() {
+    if matches!(kind, ValueDirective::Write) && !parameters.is_empty() {
         return Err(FormatError::at(
             directive,
             FormatErrorKind::InvalidParameter,
@@ -154,6 +97,38 @@ fn execute_value(
     output.write_str(&field)
 }
 
+fn execute_character(
+    directive: &Directive,
+    state: &mut ExecutionState<'_>,
+    output: &mut FormatOutput<'_>,
+) -> Result<(), FormatError> {
+    let parameters = state.parameters(directive)?;
+    let value = state.take_argument(directive)?;
+    if !parameters.is_empty() {
+        return Err(FormatError::at(
+            directive,
+            FormatErrorKind::InvalidParameter,
+        ));
+    }
+    let ObjectRef::Character(codepoint) = classify_object(state.ctx, value) else {
+        return Err(FormatError::at(
+            directive,
+            FormatErrorKind::WrongArgumentType,
+        ));
+    };
+    let character = char::from_u32(codepoint)
+        .ok_or_else(|| FormatError::at(directive, FormatErrorKind::WrongArgumentType))?;
+    let name = character_name(character);
+    let rendered = if directive.colon {
+        name
+    } else if directive.at_sign {
+        format!("#\\{name}")
+    } else {
+        character.to_string()
+    };
+    output.write_str(&rendered)
+}
+
 fn execute_plural(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
@@ -187,6 +162,7 @@ fn execute_plural(
 }
 
 fn execute_line(
+    kind: LineDirective,
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
@@ -203,9 +179,9 @@ fn execute_line(
             ));
         }
     };
-    match directive.kind {
-        DirectiveKind::Percent | DirectiveKind::Bar => {
-            let character = if directive.kind == DirectiveKind::Percent {
+    match kind {
+        LineDirective::Percent | LineDirective::Bar => {
+            let character = if matches!(kind, LineDirective::Percent) {
                 '\n'
             } else {
                 '\u{c}'
@@ -214,7 +190,7 @@ fn execute_line(
                 output.write_char(character)?;
             }
         }
-        DirectiveKind::Ampersand => {
+        LineDirective::Ampersand => {
             if count > 0 && !output.line_start {
                 output.write_char('\n')?;
             }
@@ -222,46 +198,15 @@ fn execute_line(
                 output.write_char('\n')?;
             }
         }
-        DirectiveKind::Tilde => {
+        LineDirective::Tilde => {
             for _ in 0..count {
                 output.write_char('~')?;
             }
         }
-        DirectiveKind::Newline => {
+        LineDirective::Newline => {
             if directive.at_sign {
                 output.write_char('\n')?;
             }
-        }
-        DirectiveKind::A
-        | DirectiveKind::S
-        | DirectiveKind::W
-        | DirectiveKind::C
-        | DirectiveKind::R
-        | DirectiveKind::D
-        | DirectiveKind::B
-        | DirectiveKind::O
-        | DirectiveKind::X
-        | DirectiveKind::F
-        | DirectiveKind::E
-        | DirectiveKind::G
-        | DirectiveKind::Dollar
-        | DirectiveKind::Underscore
-        | DirectiveKind::LogicalBlock
-        | DirectiveKind::Indent
-        | DirectiveKind::Slash
-        | DirectiveKind::Tab
-        | DirectiveKind::Justification
-        | DirectiveKind::Star
-        | DirectiveKind::Conditional
-        | DirectiveKind::Iteration
-        | DirectiveKind::Recursive
-        | DirectiveKind::CaseConversion
-        | DirectiveKind::Plural
-        | DirectiveKind::UpArrow => {
-            return Err(FormatError::at(
-                directive,
-                FormatErrorKind::InvalidDirectiveUse,
-            ));
         }
     }
     Ok(())

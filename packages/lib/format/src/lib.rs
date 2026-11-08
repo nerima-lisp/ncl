@@ -5,6 +5,7 @@
 )]
 
 mod control;
+mod dispatch;
 mod executor;
 mod model;
 mod numeric;

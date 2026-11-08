@@ -1,47 +1,23 @@
 use ncl_object::{ObjectRef, Word, classify_object};
 use ncl_printer::{PrintOptions, StringSink, write};
 
+use crate::dispatch::RadixDirective;
 use crate::executor::{ExecutionState, FormatError, FormatErrorKind, FormatOutput, integer_value};
-use crate::model::{Directive, DirectiveKind, Parameter};
+use crate::model::{Directive, Parameter};
 
 pub(super) fn execute(
+    kind: RadixDirective,
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
     parameters: &[Parameter],
 ) -> Result<(), FormatError> {
-    match directive.kind {
-        DirectiveKind::D => integer(directive, state, output, parameters, 10, 0),
-        DirectiveKind::B => integer(directive, state, output, parameters, 2, 0),
-        DirectiveKind::O => integer(directive, state, output, parameters, 8, 0),
-        DirectiveKind::X => integer(directive, state, output, parameters, 16, 0),
-        DirectiveKind::R => radix(directive, state, output, parameters),
-        DirectiveKind::A
-        | DirectiveKind::S
-        | DirectiveKind::W
-        | DirectiveKind::C
-        | DirectiveKind::F
-        | DirectiveKind::E
-        | DirectiveKind::G
-        | DirectiveKind::Dollar
-        | DirectiveKind::Percent
-        | DirectiveKind::Ampersand
-        | DirectiveKind::Bar
-        | DirectiveKind::Tilde
-        | DirectiveKind::Newline
-        | DirectiveKind::Underscore
-        | DirectiveKind::LogicalBlock
-        | DirectiveKind::Indent
-        | DirectiveKind::Slash
-        | DirectiveKind::Tab
-        | DirectiveKind::Justification
-        | DirectiveKind::Star
-        | DirectiveKind::Conditional
-        | DirectiveKind::Iteration
-        | DirectiveKind::Recursive
-        | DirectiveKind::CaseConversion
-        | DirectiveKind::Plural
-        | DirectiveKind::UpArrow => Err(invalid(directive)),
+    match kind {
+        RadixDirective::Decimal => integer(directive, state, output, parameters, 10, 0),
+        RadixDirective::Binary => integer(directive, state, output, parameters, 2, 0),
+        RadixDirective::Octal => integer(directive, state, output, parameters, 8, 0),
+        RadixDirective::Hexadecimal => integer(directive, state, output, parameters, 16, 0),
+        RadixDirective::Radix => radix(directive, state, output, parameters),
     }
 }
 

@@ -90,6 +90,10 @@ mod private_tests {
     fn metadata_size_limit_includes_the_exact_boundary() {
         assert!(!metadata_size_exceeds_limit(MAX_METADATA_BYTES));
         assert!(metadata_size_exceeds_limit(MAX_METADATA_BYTES + 1));
+        assert_eq!(
+            bounded_size_add(MAX_METADATA_BYTES, 1),
+            Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+        );
     }
 
     #[test]
@@ -126,7 +130,7 @@ mod private_tests {
     }
 
     #[test]
-    fn metadata_rejects_noncanonical_feature_and_string_values() {
+    fn metadata_rejects_noncanonical_feature_keys_and_strings() {
         let valid = metadata_fixture();
         let malformed = FaslError::at(FaslRejectReason::MalformedMetadata, 0);
         let duplicate_feature = FeatureRecord {
@@ -197,7 +201,12 @@ mod private_tests {
             assert_eq!(encode(&candidate), Err(malformed), "{case}");
             assert_eq!(feature_fingerprint(&features), Err(malformed), "{case}");
         }
+    }
 
+    #[test]
+    fn metadata_rejects_empty_and_nul_semantic_versions() {
+        let valid = metadata_fixture();
+        let malformed = FaslError::at(FaslRejectReason::MalformedMetadata, 0);
         for (case, value) in [
             ("empty semantic version", String::new()),
             ("NUL in semantic version", "0.1\0.1".to_owned()),
@@ -207,7 +216,11 @@ mod private_tests {
             assert_eq!(validate(&candidate), Err(malformed), "{case}");
             assert_eq!(encode(&candidate), Err(malformed), "{case}");
         }
+    }
 
+    #[test]
+    fn metadata_rejects_invalid_target_triple_values() {
+        let valid = metadata_fixture();
         for (case, value, reason) in [
             (
                 "empty target triple",
@@ -425,6 +438,24 @@ mod private_tests {
         assert_eq!(
             metadata_string(&too_long.to_le_bytes(), base),
             Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, base))
+        );
+    }
+
+    #[test]
+    fn metadata_cursor_reports_truncated_fields_and_range_overflow() {
+        let mut short = Cursor::new(&[], 320);
+        assert_eq!(
+            short.u16(),
+            Err(FaslError::at(FaslRejectReason::MalformedMetadata, 320))
+        );
+        let mut overflow = Cursor {
+            bytes: &[],
+            base: 320,
+            position: 1,
+        };
+        assert_eq!(
+            overflow.take(usize::MAX),
+            Err(FaslError::at(FaslRejectReason::MalformedMetadata, 321))
         );
     }
 }

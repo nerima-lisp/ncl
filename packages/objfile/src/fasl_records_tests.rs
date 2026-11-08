@@ -92,8 +92,8 @@ fn section_reader_primitive_reads_report_truncated_fields_at_absolute_offsets() 
     let mut short_u64 = SectionReader::new(&[0; 7], 1700, reason);
     assert_eq!(short_u64.u64(), Err(FaslError::at(reason, 1700)));
 
-    let mut short_i64 = SectionReader::new(&[0; 7], 1800, reason);
-    assert_eq!(short_i64.i64(), Err(FaslError::at(reason, 1800)));
+    let mut truncated_i64 = SectionReader::new(&[0; 7], 1800, reason);
+    assert_eq!(truncated_i64.i64(), Err(FaslError::at(reason, 1800)));
 }
 
 #[test]

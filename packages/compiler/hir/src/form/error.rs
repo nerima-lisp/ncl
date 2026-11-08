@@ -34,6 +34,8 @@ pub enum FormError {
     ForeignSymbol(SymbolId),
     /// An SSA value belongs to another form.
     ForeignValue(ValueId),
+    /// An SSA value already has a producer node.
+    DuplicateValueProducer(ValueId),
     /// A binding belongs to another form.
     ForeignBinding(BindingId),
     /// A binding or scope does not fit the function signature.

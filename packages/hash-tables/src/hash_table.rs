@@ -117,9 +117,7 @@ impl HashTable {
     /// # Errors
     ///
     /// Returns [`ncl_object::TypeError`] when the view is not a hash table.
-    pub fn try_from_word_view(
-        view: ncl_object::WordView,
-    ) -> Result<Self, ncl_object::TypeError> {
+    pub fn try_from_word_view(view: ncl_object::WordView) -> Result<Self, ncl_object::TypeError> {
         let datum = view.as_word();
         if let ncl_object::WordView::HashTable(word) = view {
             Ok(Self::from_word(word))
@@ -571,8 +569,7 @@ impl HashTable {
                 ctx,
                 self.0,
                 EPOCH,
-                fix(usize::try_from(ctx.heap_epoch())
-                    .map_err(|_| ObjectError::Layout)?)?,
+                fix(usize::try_from(ctx.heap_epoch()).map_err(|_| ObjectError::Layout)?)?,
             )?;
         }
         Ok(())

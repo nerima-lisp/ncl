@@ -1,9 +1,9 @@
 //! Heap-resident open-addressed hash tables.
 
-use ncl_arrays::{make_simple_vector, simple_vector_length, simple_vector_ref, simple_vector_set};
 use ncl_object::{
     ObjectError, RootSlot, Runtime, ThreadContext, Word, allocate, finish_root, fix, get,
-    object_widetag, put, widetag,
+    make_simple_vector, object_widetag, put, simple_vector_length, simple_vector_ref,
+    simple_vector_set, widetag,
 };
 
 mod equality;

@@ -6,6 +6,10 @@ use relocation_wire::{decode as decode_relocations, encode as encode_relocations
 #[path = "fasl_coverage_tests.rs"]
 mod coverage_tests;
 
+#[cfg(test)]
+#[path = "fasl_legacy_edge_tests.rs"]
+mod edge_tests;
+
 /// Architecture encoded by NCL binary formats.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]

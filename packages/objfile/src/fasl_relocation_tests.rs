@@ -55,7 +55,9 @@ fn codecs_check_v1_layout_and_legacy_symbol_records() {
         invalid[field..field + 4].copy_from_slice(&value.to_le_bytes());
         bad_fasl(&invalid);
     }
-    bad_fasl(&valid[..35]);
+    for end in 0..valid.len() {
+        bad_fasl(&valid[..end]);
+    }
 
     let first = item(FaslRelocationKind::PcRel32);
     let second = item(Abs64);
@@ -78,7 +80,12 @@ fn codecs_check_v1_layout_and_legacy_symbol_records() {
         decode(&encoded[..16], 1, 1),
         Ok(vec![relocations[0].clone()])
     );
-    assert!(decode(&encoded[..15], 1, 1).is_err());
+    for end in 0..encoded.len() {
+        assert!(matches!(
+            decode(&encoded[..end], 2, 2),
+            Err(ObjectError::Truncated { .. })
+        ));
+    }
 
     for (offset, value) in [(8, 99_u32), (16, 2)] {
         let mut invalid = encoded.clone();
@@ -94,4 +101,36 @@ fn codecs_check_v1_layout_and_legacy_symbol_records() {
     assert!(decode(&trailing, 2, 2).is_err());
     let too_large = legacy(SymbolRef::Local(0), i64::from(i32::MAX) + 1);
     assert!(encode(&[too_large]).is_err());
+}
+
+#[test]
+fn v1_encoder_rejects_record_count_above_its_bound() {
+    let records = vec![item(Abs64); super::MAX_FASL_RECORDS + 1];
+    assert_eq!(
+        encode_v1_section(&records),
+        Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
+    );
+    assert_eq!(
+        decode_v1_section(&1_048_577_u32.to_le_bytes(), 200),
+        Err(FaslError::at(FaslRejectReason::ResourceLimitExceeded, 200))
+    );
+}
+
+#[test]
+fn relocation_read_helpers_reject_cursor_overflow_and_short_fields() {
+    let mut cursor = usize::MAX;
+    assert_eq!(
+        take::<4>(&[], &mut cursor),
+        Err(ObjectError::Truncated {
+            offset: usize::MAX,
+            needed: 4,
+        })
+    );
+    assert_eq!(
+        take_at::<4>(&[0; 3], 0),
+        Err(ObjectError::Truncated {
+            offset: 0,
+            needed: 4,
+        })
+    );
 }

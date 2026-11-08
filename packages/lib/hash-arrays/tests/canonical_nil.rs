@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Regression coverage for canonical NIL hash keys.
 
 use ncl_object::{FunctionObject, ObjectError, Package, Runtime, ThreadContext, Word};
 

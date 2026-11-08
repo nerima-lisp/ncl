@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on coverage failures")]
+#![expect(clippy::unwrap_used, reason = "tests assert on coverage failures")]
 
 //! Acceptance test for the ownership gate against the embedded table.
 

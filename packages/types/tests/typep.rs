@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on type predicates")]
+#![expect(clippy::unwrap_used, reason = "tests assert on type predicates")]
 
 //! Type predicates for each implemented type.
 

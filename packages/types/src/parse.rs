@@ -198,7 +198,10 @@ fn registered_class_name(
         return Ok(None);
     }
     let name_word = simple_vector_ref(scope.context(), object_word, 0)?;
-    #[allow(clippy::wildcard_enum_match_arm)]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Registered class names must be symbols or strings; other object kinds are rejected."
+    )]
     let name = match classify_object(scope.context(), name_word) {
         ObjectRef::Symbol(_) => {
             string_to_upper(scope.context(), symbol_name(scope.context(), name_word)?)?

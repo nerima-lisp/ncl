@@ -63,7 +63,10 @@ const fn named_subtype(sub: NamedType, sup: NamedType) -> (bool, bool) {
     (false, false)
 }
 
-#[allow(clippy::similar_names)]
+#[expect(
+    clippy::similar_names,
+    reason = "The four bounds distinguish sub- and supertype lower and upper limits."
+)]
 fn range_subtype(
     sub_low: IntegerBound,
     sub_high: IntegerBound,
@@ -202,7 +205,10 @@ const fn is_supertype(sup: NamedType, sub: NamedType) -> bool {
     )
 }
 
-#[allow(clippy::unnested_or_patterns)]
+#[expect(
+    clippy::unnested_or_patterns,
+    reason = "These grouped alternatives encode the disjointness rules between numeric and sequence type families."
+)]
 const fn disjoint(a: NamedType, b: NamedType) -> bool {
     use NamedType::{
         Bignum, Complex, Cons, Fixnum, Float, Integer, Null, Number, Ratio, Rational, Real, Symbol,

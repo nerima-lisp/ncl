@@ -174,7 +174,10 @@ fn member_match(ctx: &ThreadContext, object: Word, items: &[Value]) -> Result<bo
     Ok(false)
 }
 
-#[allow(clippy::similar_names)]
+#[expect(
+    clippy::similar_names,
+    reason = "A cons type checks its car and cdr against separate type specifiers."
+)]
 fn typep_cons(
     ctx: &mut ThreadContext,
     object: Word,
@@ -197,7 +200,10 @@ fn typep_array(
     simple: bool,
 ) -> Result<bool, TypeError> {
     let reference = classify_object(ctx, object);
-    #[allow(clippy::wildcard_enum_match_arm)]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Non-array object kinds fail the array type predicate."
+    )]
     let (is_array, is_simple) = match reference {
         ObjectRef::SimpleVector(_) | ObjectRef::SpecializedArray(_) | ObjectRef::String(_) => {
             (true, true)
@@ -275,7 +281,10 @@ fn dimension_matches(bound: ArrayDimension, actual: usize) -> bool {
 }
 
 fn rank_of(ctx: &ThreadContext, reference: ObjectRef) -> Result<Option<usize>, TypeError> {
-    #[allow(clippy::wildcard_enum_match_arm)]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Non-array object kinds have no array rank."
+    )]
     match reference {
         ObjectRef::SimpleVector(_) | ObjectRef::String(_) | ObjectRef::SpecializedArray(_) => {
             Ok(Some(1))
@@ -289,7 +298,10 @@ fn actual_dimensions(
     ctx: &ThreadContext,
     reference: ObjectRef,
 ) -> Result<Option<Vec<usize>>, TypeError> {
-    #[allow(clippy::wildcard_enum_match_arm)]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Non-array object kinds have no array dimensions."
+    )]
     match reference {
         ObjectRef::SimpleVector(word) => Ok(Some(vec![simple_vector_length(ctx, word)?])),
         ObjectRef::String(word) => Ok(Some(vec![string_length(ctx, word)?])),
@@ -338,7 +350,10 @@ fn is_rational(ctx: &ThreadContext, object: Word) -> bool {
 
 fn is_vector(ctx: &ThreadContext, object: Word) -> Result<bool, TypeError> {
     let reference = classify_object(ctx, object);
-    #[allow(clippy::wildcard_enum_match_arm)]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Non-vector object kinds fail the vector type predicate."
+    )]
     Ok(match reference {
         ObjectRef::SimpleVector(_) | ObjectRef::String(_) | ObjectRef::SpecializedArray(_) => true,
         ObjectRef::Array(word) => array_dimensions(ctx, word)?.len() == 1,
@@ -391,7 +406,10 @@ pub(crate) fn is_keyword(ctx: &ThreadContext, object: Word) -> Result<bool, Type
 }
 
 fn vector_length(ctx: &ThreadContext, object: Word) -> Result<Option<usize>, TypeError> {
-    #[allow(clippy::wildcard_enum_match_arm)]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Non-vector object kinds have no vector length."
+    )]
     match classify_object(ctx, object) {
         ObjectRef::SimpleVector(word) => Ok(Some(simple_vector_length(ctx, word)?)),
         ObjectRef::String(word) => Ok(Some(string_length(ctx, word)?)),
@@ -405,7 +423,6 @@ fn vector_length(ctx: &ThreadContext, object: Word) -> Result<Option<usize>, Typ
     }
 }
 
-#[allow(clippy::float_cmp)]
 fn value_matches(ctx: &ThreadContext, object: Word, value: &Value) -> Result<bool, TypeError> {
     if matches!(value, Value::Opaque(bits) if *bits == object.bits()) {
         return Ok(true);

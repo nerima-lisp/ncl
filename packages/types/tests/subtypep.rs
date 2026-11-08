@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on subtype results")]
+#![expect(clippy::unwrap_used, reason = "tests assert on subtype results")]
 
 //! Representative `subtypep` cases, including uncertain ones.
 

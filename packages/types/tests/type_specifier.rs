@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on parse results")]
+#![expect(clippy::unwrap_used, reason = "tests assert on parse results")]
 
 //! Round-trip tests for type-specifier parsing.
 

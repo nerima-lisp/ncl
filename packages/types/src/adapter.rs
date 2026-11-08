@@ -22,7 +22,10 @@ pub(crate) fn from_word(ctx: &ThreadContext, word: Word) -> Result<Value, TypeEr
     if let Some(value) = word.as_character() {
         return Ok(Value::Character(value));
     }
-    #[allow(clippy::wildcard_enum_match_arm)]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Unsupported heap objects retain their stable identity as opaque values."
+    )]
     match classify_object(ctx, word) {
         ObjectRef::Symbol(_) => Ok(Value::Symbol(string_to_upper(
             ctx,

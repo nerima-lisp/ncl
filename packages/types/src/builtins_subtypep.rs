@@ -1,4 +1,3 @@
-#[allow(clippy::wildcard_enum_match_arm)]
 fn subtypep_with_class_graph(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -84,7 +83,10 @@ fn subtypep_with_class_graph(
     }
 }
 
-#[allow(clippy::wildcard_enum_match_arm)]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Only a single class or named type has one class name; compound forms do not."
+)]
 fn class_name_for_type(spec: &TypeSpecifier) -> Option<&str> {
     match spec {
         TypeSpecifier::Class(name) => Some(name),
@@ -141,7 +143,10 @@ fn class_name_for_type(spec: &TypeSpecifier) -> Option<&str> {
     }
 }
 
-#[allow(clippy::wildcard_enum_match_arm)]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Class descriptors are usable only when their names are symbols or strings."
+)]
 fn registered_class_descriptor(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

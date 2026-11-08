@@ -106,7 +106,10 @@ fn keywordp_builtin(
     Ok(bool_word(result))
 }
 
-#[allow(clippy::wildcard_enum_match_arm)]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Unrecognized object kinds map to the universal type T."
+)]
 fn type_of_name(ctx: &ThreadContext, object: Word) -> Result<&'static str, ObjectError> {
     Ok(match classify_object(ctx, object) {
         ObjectRef::Fixnum(_) => "FIXNUM",
@@ -250,7 +253,6 @@ fn coerce_to_named_fallback(
     Err(ObjectError::TypeError)
 }
 
-#[allow(clippy::too_many_lines)]
 fn coerce_to_named(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -305,7 +307,10 @@ fn coerce_to_named(
     }
 }
 
-#[allow(clippy::wildcard_enum_match_arm)]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Only lists, vectors, and strings have sequence elements in this type system."
+)]
 fn sequence_elements(ctx: &ThreadContext, object: Word) -> Result<Vec<Word>, ObjectError> {
     match classify_object(ctx, object) {
         ObjectRef::SimpleVector(_) => (0..simple_vector_length(ctx, object)?)
@@ -386,7 +391,10 @@ fn coerce_to_string(
     make_string(ctx, runtime, &chars)
 }
 
-#[allow(clippy::wildcard_enum_match_arm)]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Only a one-character string is accepted by character coercion."
+)]
 fn coerce_to_character(ctx: &ThreadContext, object: Word) -> Result<Word, ObjectError> {
     match classify_object(ctx, object) {
         ObjectRef::String(_) if string_length(ctx, object)? == 1 => {
@@ -415,7 +423,10 @@ fn bignum_to_f64(ctx: &ThreadContext, object: Bignum) -> Result<f64, ObjectError
     Ok(if sign { -magnitude } else { magnitude })
 }
 
-#[allow(clippy::wildcard_enum_match_arm)]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Only real numeric representations can be converted to a floating-point value."
+)]
 fn real_to_f64(ctx: &ThreadContext, word: Word) -> Result<f64, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(value) => Ok(fixnum_to_f64(value)),
@@ -439,7 +450,10 @@ fn coerce_to_float(
     make_double(ctx, runtime, value).map(Into::into)
 }
 
-#[allow(clippy::wildcard_enum_match_arm)]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Only function objects, closures, and bound function symbols are function designators."
+)]
 fn coerce_to_function(ctx: &ThreadContext, object: Word) -> Result<Word, ObjectError> {
     match classify_object(ctx, object) {
         ObjectRef::Function(_) | ObjectRef::Closure(_) => Ok(object),

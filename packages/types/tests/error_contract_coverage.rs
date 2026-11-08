@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on type-system behavior")]
+#![expect(clippy::unwrap_used, reason = "tests assert on type-system behavior")]
 
 //! Behavioral checks for type-system errors, membership, and derived types.
 

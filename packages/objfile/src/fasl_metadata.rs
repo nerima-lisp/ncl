@@ -44,28 +44,22 @@ pub struct FeatureRecord {
 
 pub fn encode(metadata: &FaslMetadata) -> Result<Vec<u8>, FaslError> {
     validate(metadata)?;
-    let mut bytes = Vec::new();
-    extend_bounded(&mut bytes, &METADATA_SCHEMA.to_le_bytes())?;
-    append_string(&mut bytes, &metadata.semantic_version)?;
-    extend_bounded(&mut bytes, &metadata.compiler_build_identity)?;
-    extend_bounded(&mut bytes, &metadata.codegen_abi_revision.to_le_bytes())?;
-    append_string(&mut bytes, &metadata.target_triple)?;
-    extend_bounded(&mut bytes, &metadata.source_sha256)?;
-    extend_bounded(
-        &mut bytes,
-        &count_u32(metadata.policies.len())?.to_le_bytes(),
-    )?;
+    let mut bytes = Vec::with_capacity(encoded_size(metadata)?);
+    bytes.extend_from_slice(&METADATA_SCHEMA.to_le_bytes());
+    append_string(&mut bytes, &metadata.semantic_version);
+    bytes.extend_from_slice(&metadata.compiler_build_identity);
+    bytes.extend_from_slice(&metadata.codegen_abi_revision.to_le_bytes());
+    append_string(&mut bytes, &metadata.target_triple);
+    bytes.extend_from_slice(&metadata.source_sha256);
+    bytes.extend_from_slice(&count_u32(metadata.policies.len()).to_le_bytes());
     for policy in &metadata.policies {
-        extend_bounded(&mut bytes, &policy.id.to_le_bytes())?;
-        extend_bounded(&mut bytes, &[policy.value, 0])?;
+        bytes.extend_from_slice(&policy.id.to_le_bytes());
+        bytes.extend_from_slice(&[policy.value, 0]);
     }
-    extend_bounded(
-        &mut bytes,
-        &count_u32(metadata.features.len())?.to_le_bytes(),
-    )?;
+    bytes.extend_from_slice(&count_u32(metadata.features.len()).to_le_bytes());
     for feature in &metadata.features {
-        append_string(&mut bytes, &feature.name)?;
-        append_string(&mut bytes, &feature.version)?;
+        append_string(&mut bytes, &feature.name);
+        append_string(&mut bytes, &feature.version);
     }
     Ok(bytes)
 }
@@ -89,11 +83,16 @@ pub fn decode(bytes: &[u8], file_offset: usize) -> Result<FaslMetadata, FaslErro
     let source_sha256 = cursor.array::<32>()?;
     let policy_count = cursor.count(4)?;
     let mut policies = Vec::with_capacity(policy_count);
-    for _ in 0..policy_count {
-        let offset = cursor.position;
-        let id = cursor.u16()?;
-        let value = cursor.u8()?;
-        if cursor.u8()? != 0 {
+    let policy_bytes_offset = cursor.position;
+    let policy_bytes_length = policy_count * 4;
+    let policy_bytes =
+        &cursor.bytes[policy_bytes_offset..policy_bytes_offset + policy_bytes_length];
+    cursor.position += policy_bytes_length;
+    for (index, record) in policy_bytes.chunks_exact(4).enumerate() {
+        let offset = policy_bytes_offset + index * 4;
+        let id = u16::from_le_bytes([record[0], record[1]]);
+        let value = record[2];
+        if record[3] != 0 {
             return Err(cursor.error_at(FaslRejectReason::MalformedMetadata, offset + 3));
         }
         policies.push(PolicyRecord { id, value });
@@ -133,11 +132,11 @@ pub fn validate(metadata: &FaslMetadata) -> Result<(), FaslError> {
 /// Returns `FaslError` when metadata strings or policy/feature records are invalid.
 pub fn compiler_identity(metadata: &FaslMetadata) -> Result<[u8; 32], FaslError> {
     validate(metadata)?;
-    let mut input = Vec::new();
-    extend_bounded(&mut input, b"NCL-FASL-COMPILER-V1\0")?;
-    append_string(&mut input, &metadata.semantic_version)?;
-    extend_bounded(&mut input, &metadata.compiler_build_identity)?;
-    extend_bounded(&mut input, &metadata.codegen_abi_revision.to_le_bytes())?;
+    let mut input = Vec::with_capacity(61 + metadata.semantic_version.len());
+    input.extend_from_slice(b"NCL-FASL-COMPILER-V1\0");
+    append_string(&mut input, &metadata.semantic_version);
+    input.extend_from_slice(&metadata.compiler_build_identity);
+    input.extend_from_slice(&metadata.codegen_abi_revision.to_le_bytes());
     Ok(sha256(&input))
 }
 
@@ -148,12 +147,12 @@ pub fn compiler_identity(metadata: &FaslMetadata) -> Result<[u8; 32], FaslError>
 /// Returns `FaslError` when a policy ID, value, or order is invalid.
 pub fn policy_fingerprint(policies: &[PolicyRecord]) -> Result<[u8; 32], FaslError> {
     validate_policies(policies, 0)?;
-    let mut input = Vec::new();
-    extend_bounded(&mut input, b"NCL-FASL-POLICY-V1\0")?;
-    extend_bounded(&mut input, &count_u32(policies.len())?.to_le_bytes())?;
+    let mut input = Vec::with_capacity(21 + policies.len() * 6);
+    input.extend_from_slice(b"NCL-FASL-POLICY-V1\0");
+    input.extend_from_slice(&count_u32(policies.len()).to_le_bytes());
     for policy in policies {
-        extend_bounded(&mut input, &policy.id.to_le_bytes())?;
-        extend_bounded(&mut input, &[policy.value, 0])?;
+        input.extend_from_slice(&policy.id.to_le_bytes());
+        input.extend_from_slice(&[policy.value, 0]);
     }
     Ok(sha256(&input))
 }
@@ -165,12 +164,16 @@ pub fn policy_fingerprint(policies: &[PolicyRecord]) -> Result<[u8; 32], FaslErr
 /// Returns `FaslError` when a feature string or record order is invalid.
 pub fn feature_fingerprint(features: &[FeatureRecord]) -> Result<[u8; 32], FaslError> {
     validate_features(features, 0)?;
-    let mut input = Vec::new();
-    extend_bounded(&mut input, b"NCL-FASL-FEATURES-V1\0")?;
-    extend_bounded(&mut input, &count_u32(features.len())?.to_le_bytes())?;
+    let mut size = b"NCL-FASL-FEATURES-V1\0".len() + 4;
     for feature in features {
-        append_string(&mut input, &feature.name)?;
-        append_string(&mut input, &feature.version)?;
+        size = bounded_size_add(size, 8 + feature.name.len() + feature.version.len())?;
+    }
+    let mut input = Vec::with_capacity(size);
+    input.extend_from_slice(b"NCL-FASL-FEATURES-V1\0");
+    input.extend_from_slice(&count_u32(features.len()).to_le_bytes());
+    for feature in features {
+        append_string(&mut input, &feature.name);
+        append_string(&mut input, &feature.version);
     }
     Ok(sha256(&input))
 }
@@ -238,38 +241,38 @@ fn validate_string(value: &str, offset: usize) -> Result<(), FaslError> {
     Ok(())
 }
 
-fn append_string(bytes: &mut Vec<u8>, value: &str) -> Result<(), FaslError> {
-    validate_string(value, 0)?;
-    let length = u32::try_from(value.len())
-        .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
-    extend_bounded(bytes, &length.to_le_bytes())?;
-    extend_bounded(bytes, value.as_bytes())?;
-    Ok(())
+fn append_string(bytes: &mut Vec<u8>, value: &str) {
+    let length = value.len() as u32;
+    bytes.extend_from_slice(&length.to_le_bytes());
+    bytes.extend_from_slice(value.as_bytes());
 }
 
-fn extend_bounded(bytes: &mut Vec<u8>, value: &[u8]) -> Result<(), FaslError> {
-    let end = bytes
-        .len()
-        .checked_add(value.len())
-        .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
-    if metadata_size_exceeds_limit(end) {
+fn encoded_size(metadata: &FaslMetadata) -> Result<usize, FaslError> {
+    let mut size = 4;
+    size = bounded_size_add(size, 4 + metadata.semantic_version.len())?;
+    size = bounded_size_add(size, 32 + 4)?;
+    size = bounded_size_add(size, 4 + metadata.target_triple.len())?;
+    size = bounded_size_add(size, 32 + 4 + metadata.policies.len() * 4)?;
+    size = bounded_size_add(size, 4)?;
+    for feature in &metadata.features {
+        size = bounded_size_add(size, 8 + feature.name.len() + feature.version.len())?;
+    }
+    Ok(size)
+}
+
+fn bounded_size_add(current: usize, added: usize) -> Result<usize, FaslError> {
+    if current > MAX_METADATA_BYTES || added > MAX_METADATA_BYTES - current {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
-    bytes.extend_from_slice(value);
-    Ok(())
+    Ok(current + added)
 }
 
 const fn metadata_size_exceeds_limit(size: usize) -> bool {
     size > MAX_METADATA_BYTES
 }
 
-fn count_u32(count: usize) -> Result<u32, FaslError> {
-    if count > MAX_RECORDS {
-        return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
-    }
-    let count = u32::try_from(count)
-        .map_err(|_| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
-    Ok(count)
+fn count_u32(count: usize) -> u32 {
+    count as u32
 }
 struct Cursor<'a> {
     bytes: &'a [u8],
@@ -315,31 +318,17 @@ impl<'a> Cursor<'a> {
         Ok(value)
     }
 
-    fn u8(&mut self) -> Result<u8, FaslError> {
-        self.take(1)?
-            .first()
-            .copied()
-            .ok_or_else(|| self.error(FaslRejectReason::MalformedMetadata))
-    }
-
-    fn u16(&mut self) -> Result<u16, FaslError> {
-        Ok(u16::from_le_bytes(self.array::<2>()?))
-    }
-
     fn u32(&mut self) -> Result<u32, FaslError> {
         Ok(u32::from_le_bytes(self.array::<4>()?))
     }
 
     fn count(&mut self, minimum_record_size: usize) -> Result<usize, FaslError> {
         let field_offset = self.position;
-        let count = usize::try_from(self.u32()?)
-            .map_err(|_| self.error_at(FaslRejectReason::ResourceLimitExceeded, field_offset))?;
+        let count = self.u32()? as usize;
         if count > MAX_RECORDS {
             return Err(self.error_at(FaslRejectReason::ResourceLimitExceeded, field_offset));
         }
-        let minimum_bytes = count
-            .checked_mul(minimum_record_size)
-            .ok_or_else(|| self.error_at(FaslRejectReason::ResourceLimitExceeded, field_offset))?;
+        let minimum_bytes = count * minimum_record_size;
         if minimum_bytes > self.bytes.len().saturating_sub(self.position) {
             return Err(self.error(FaslRejectReason::MalformedMetadata));
         }
@@ -348,8 +337,7 @@ impl<'a> Cursor<'a> {
 
     fn string(&mut self) -> Result<String, FaslError> {
         let length_offset = self.position;
-        let length = usize::try_from(self.u32()?)
-            .map_err(|_| self.error_at(FaslRejectReason::ResourceLimitExceeded, length_offset))?;
+        let length = self.u32()? as usize;
         if length > MAX_STRING_BYTES {
             return Err(self.error_at(FaslRejectReason::ResourceLimitExceeded, length_offset));
         }

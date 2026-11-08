@@ -1,25 +1,77 @@
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex, RwLock};
 
 use ncl_object::{CodeObject, HeapRootedWord, Runtime as ObjectRuntime, ThreadContext, Word};
 use ncl_sys::{CodePtr, RootToken};
 
 use crate::PublishedFunction;
+use crate::RuntimeError;
+use crate::support::{self, NativeAbi};
+use ncl_sys::{
+    CodeObjectMetadata, SafepointMap, SourceLocation, activate_code, activate_code_registry,
+    alloc_code, seal_code, synchronize_code, write_code,
+};
+
+#[path = "evaluator/function_objects.rs"]
+mod function_objects;
+#[cfg(test)]
+#[path = "evaluator/publication_tests.rs"]
+mod publication_tests;
 
 pub struct EvaluatorState {
-    pub(crate) code: RefCell<Vec<CodePtr>>,
+    pub(crate) code: Mutex<Vec<CodePtr>>,
     pub(crate) undefined_function_stub: usize,
-    pub(crate) functions: RefCell<BTreeMap<u32, PublishedFunction>>,
-    pub(crate) entry_codes: RefCell<BTreeMap<usize, (Box<Word>, RootToken)>>, // check-added-lines: allow(word-table) each code object remains rooted until Runtime::drop
+    pub(crate) functions: RwLock<BTreeMap<u32, PublishedFunction>>,
+}
+
+pub struct NativeCompilation {
+    pub(crate) code: CodePtr,
+    entry_offset: usize,
+    size: usize,
+    frame_size: u32,
+    function_name: String,
+    safepoint_maps: Vec<ncl_codegen::SafepointMap>,
+}
+
+impl NativeCompilation {
+    pub(crate) fn entry_address(&self) -> Result<usize, RuntimeError> {
+        self.code
+            .address()
+            .checked_add(self.entry_offset)
+            .ok_or_else(|| ncl_sys::CodeError::OutOfBounds.into())
+    }
+
+    pub(crate) fn into_metadata(self) -> Result<(CodePtr, CodeObjectMetadata), RuntimeError> {
+        let map_bytes = support::encode_maps(&self.safepoint_maps)?;
+        let safepoint_map = SafepointMap::decode(&map_bytes, self.safepoint_maps.len())?;
+        let metadata = CodeObjectMetadata {
+            entry_offset: self.entry_offset,
+            size: self.size,
+            frame_words: u16::try_from(self.frame_size / 8)
+                .map_err(|_| RuntimeError::Native("frame is too large".to_owned()))?,
+            function_name: self.function_name,
+            source_locations: Vec::<SourceLocation>::new(),
+            constant_slots: Vec::new(),
+            safepoint_map,
+            debug_table: Vec::new(),
+        };
+        Ok((self.code, metadata))
+    }
+}
+
+struct EvaluatorLocalState {
+    entry_codes: RefCell<BTreeMap<usize, (Box<Word>, RootToken)>>, // check-added-lines: allow(word-table) each code object remains rooted until Runtime::drop
     rooted_functions: RefCell<Vec<(Box<Word>, RootToken)>>,
-    pub(crate) pending_undefined_function_condition: RefCell<Option<HeapRootedWord>>,
+    pending_undefined_function_condition: RefCell<Option<HeapRootedWord>>,
 }
 
 #[derive(Clone)]
 pub struct EvaluatorService {
-    pub(crate) state: Rc<EvaluatorState>,
+    pub(crate) state: Arc<EvaluatorState>,
+    local: Rc<EvaluatorLocalState>,
 }
 
 impl fmt::Debug for EvaluatorService {
@@ -33,10 +85,12 @@ impl fmt::Debug for EvaluatorService {
 impl EvaluatorService {
     pub(crate) fn new(code: Vec<CodePtr>, undefined_function_stub: usize) -> Self {
         Self {
-            state: Rc::new(EvaluatorState {
-                code: RefCell::new(code),
+            state: Arc::new(EvaluatorState {
+                code: Mutex::new(code),
                 undefined_function_stub,
-                functions: RefCell::new(BTreeMap::new()),
+                functions: RwLock::new(BTreeMap::new()),
+            }),
+            local: Rc::new(EvaluatorLocalState {
                 entry_codes: RefCell::new(BTreeMap::new()),
                 rooted_functions: RefCell::new(Vec::new()),
                 pending_undefined_function_condition: RefCell::new(None),
@@ -45,7 +99,7 @@ impl EvaluatorService {
     }
 
     pub(crate) fn pending_undefined_function_condition(&self) -> Option<Word> {
-        self.state
+        self.local
             .pending_undefined_function_condition
             .borrow()
             .as_ref()
@@ -53,13 +107,19 @@ impl EvaluatorService {
     }
 
     pub(crate) fn clear_pending_undefined_function_condition(&self) {
-        *self.state.pending_undefined_function_condition.borrow_mut() = None;
+        *self.local.pending_undefined_function_condition.borrow_mut() = None;
+    }
+
+    pub(crate) fn pending_undefined_function_condition_mut(
+        &self,
+    ) -> RefMut<'_, Option<HeapRootedWord>> {
+        self.local.pending_undefined_function_condition.borrow_mut()
     }
 
     pub(crate) fn root_entry_code(&self, context: &mut ThreadContext, entry: usize, code: Word) {
         let mut rooted = Box::new(code);
         let token = ncl_object::push_root(context, &mut rooted);
-        self.state
+        self.local
             .entry_codes
             .borrow_mut()
             .insert(entry, (rooted, token));
@@ -68,14 +128,14 @@ impl EvaluatorService {
     pub(crate) fn root_function(&self, context: &mut ThreadContext, function: Word) {
         let mut rooted = Box::new(function);
         let token = ncl_object::push_root(context, &mut rooted);
-        self.state
+        self.local
             .rooted_functions
             .borrow_mut()
             .push((rooted, token));
     }
 
     pub(crate) fn entry_code(&self, entry: usize) -> Option<Word> {
-        self.state
+        self.local
             .entry_codes
             .borrow()
             .get(&entry)
@@ -83,15 +143,19 @@ impl EvaluatorService {
     }
 
     pub(crate) fn push_code(&self, code: CodePtr) {
-        self.state.code.borrow_mut().push(code);
+        self.state
+            .code
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(code);
     }
 
     pub(crate) fn clear_roots(&self, context: &mut ThreadContext) {
-        let entry_codes = std::mem::take(&mut *self.state.entry_codes.borrow_mut());
+        let entry_codes = std::mem::take(&mut *self.local.entry_codes.borrow_mut());
         for (_, (_, token)) in entry_codes {
             let _ = ncl_object::pop_root(context, token);
         }
-        let rooted_functions = std::mem::take(&mut *self.state.rooted_functions.borrow_mut());
+        let rooted_functions = std::mem::take(&mut *self.local.rooted_functions.borrow_mut());
         for (_, token) in rooted_functions.into_iter().rev() {
             let _ = ncl_object::pop_root(context, token);
         }
@@ -143,6 +207,105 @@ impl EvaluatorAccess {
 }
 
 impl crate::Runtime {
+    pub(crate) fn compile_native(
+        &self,
+        function: &ncl_ir::Function,
+    ) -> Result<NativeCompilation, RuntimeError> {
+        let compiled = {
+            let functions = self
+                .evaluator
+                .state
+                .functions
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let result = {
+                let abi = NativeAbi {
+                    object: &self.object,
+                    functions: &functions,
+                    undefined_function_stub: self.evaluator.state.undefined_function_stub,
+                };
+                if cfg!(target_arch = "aarch64") {
+                    ncl_codegen::compile_function_aarch64_preserving_multiple_values(function, &abi)
+                } else {
+                    ncl_codegen::compile_function_x86_64_preserving_multiple_values(function, &abi)
+                }
+            };
+            drop(functions);
+            result
+        }
+        .map_err(|error| RuntimeError::Native(error.to_string()))?;
+        let mut code = alloc_code(compiled.code.len())?;
+        write_code(&mut code, 0, &compiled.code)?;
+        Ok(NativeCompilation {
+            code,
+            entry_offset: usize::try_from(compiled.entry_offset)
+                .map_err(|_| RuntimeError::Native("entry offset is too large".to_owned()))?,
+            size: compiled.code.len(),
+            frame_size: compiled.frame_size,
+            function_name: function.name.clone(),
+            safepoint_maps: compiled.safepoint_maps,
+        })
+    }
+
+    pub(crate) fn publish_native(
+        &mut self,
+        compiled: &mut [(&ncl_ir::Function, (CodePtr, CodeObjectMetadata))],
+    ) -> Result<(), RuntimeError> {
+        let registration =
+            compiled
+                .iter()
+                .enumerate()
+                .try_for_each(|(index, (_, (code, metadata)))| {
+                    self.context
+                        .thread_access()
+                        .register_code(code, metadata.clone())
+                        .map_err(|error| (index, error))
+                });
+        if let Err((index, error)) = registration {
+            self.unregister_native_metadata(compiled, index);
+            return Err(error.into());
+        }
+        let sealing = compiled
+            .iter_mut()
+            .try_for_each(|(_, (code, _))| seal_code(code));
+        if let Err(error) = sealing {
+            self.unregister_native_metadata(compiled, compiled.len());
+            return Err(error.into());
+        }
+        let synchronization = compiled
+            .iter_mut()
+            .try_for_each(|(_, (code, _))| synchronize_code(code));
+        if let Err(error) = synchronization {
+            self.unregister_native_metadata(compiled, compiled.len());
+            return Err(error.into());
+        }
+        let code_activation = compiled
+            .iter_mut()
+            .try_for_each(|(_, (code, _))| activate_code(code));
+        if let Err(error) = code_activation {
+            self.unregister_native_metadata(compiled, compiled.len());
+            return Err(error.into());
+        }
+        let registry_activation = compiled
+            .iter()
+            .try_for_each(|(_, (code, _))| activate_code_registry(code));
+        if let Err(error) = registry_activation {
+            self.unregister_native_metadata(compiled, compiled.len());
+            return Err(error.into());
+        }
+        Ok(())
+    }
+
+    fn unregister_native_metadata(
+        &mut self,
+        compiled: &[(&ncl_ir::Function, (CodePtr, CodeObjectMetadata))],
+        count: usize,
+    ) {
+        for (_, (code, _)) in compiled.iter().take(count) {
+            self.context.thread_access().unregister_code(code);
+        }
+    }
+
     pub(crate) fn with_evaluator_access<T>(
         &mut self,
         operation: impl FnOnce(&mut Self) -> Result<T, crate::RuntimeError>,

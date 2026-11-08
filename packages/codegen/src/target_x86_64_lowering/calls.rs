@@ -287,6 +287,7 @@ pub fn lower_closure_call(
             )?;
         }
     }
+    // x86-64 TSO makes this ordinary load an acquire load of the function entry.
     emit(
         assembler,
         Inst::MovRM(

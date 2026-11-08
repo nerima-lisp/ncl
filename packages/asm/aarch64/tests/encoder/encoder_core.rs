@@ -57,6 +57,16 @@ fn golden_core_words() {
         ),
         Ok(0x9100_03FD)
     );
+    assert_eq!(
+        encode(
+            &Inst::Ldar {
+                rt: x(17),
+                rn: x(17)
+            },
+            0
+        ),
+        Ok(0xC8DF_FE31)
+    );
 }
 
 #[test]

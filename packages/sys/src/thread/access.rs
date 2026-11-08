@@ -1,6 +1,85 @@
 use super::{RootToken, Thread};
 use crate::{CodeError, CodeObjectMetadata, CodePtr, StorageCondition, Word};
 use core::ptr::NonNull;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Object payload cells that participate in native call publication.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AtomicObjectWordCell {
+    /// The native entry address in a SIMPLE-FUN or CLOSURE object.
+    FunctionEntry,
+    /// The current callable function object in a SYMBOL.
+    SymbolFunction,
+}
+
+impl AtomicObjectWordCell {
+    const fn layout(self) -> (u8, usize) {
+        // These lowtags match the `repr(u8)` discriminants in `LowTag`.
+        match self {
+            Self::FunctionEntry => (7, 0),
+            Self::SymbolFunction => (7, 1),
+        }
+    }
+
+    const fn accepts_widetag(self, widetag: u8) -> bool {
+        match self {
+            Self::FunctionEntry => matches!(widetag, 8 | 9),
+            Self::SymbolFunction => widetag == 1,
+        }
+    }
+}
+
+/// Acquire-load a function entry or symbol function cell.
+#[must_use]
+pub fn load_object_word_acquire(
+    thread: &Thread,
+    object: Word,
+    cell: AtomicObjectWordCell,
+) -> Option<Word> {
+    let slot = atomic_object_word_cell(thread, object, cell)?;
+    // SAFETY: the validated widetag identifies a function or symbol layout whose fixed prefix
+    // contains this cell. The heap retains backing storage until heap destruction, and all shared
+    // accesses to this cell use atomics after object initialization.
+    let entry = unsafe { AtomicU64::from_ptr(slot) }.load(Ordering::Acquire);
+    Some(Word::from_bits(entry))
+}
+
+/// Release-store a function entry or symbol function cell.
+pub fn store_object_word_release(
+    thread: &Thread,
+    object: Word,
+    cell: AtomicObjectWordCell,
+    value: Word,
+) -> bool {
+    let Some(slot) = atomic_object_word_cell(thread, object, cell) else {
+        return false;
+    };
+    // SAFETY: the validated widetag identifies a function or symbol layout whose fixed prefix
+    // contains this cell. The heap retains backing storage until heap destruction, and all shared
+    // accesses to this cell use atomics after object initialization.
+    unsafe { AtomicU64::from_ptr(slot) }.store(value.bits(), Ordering::Release);
+    true
+}
+
+fn atomic_object_word_cell(
+    thread: &Thread,
+    object: Word,
+    cell: AtomicObjectWordCell,
+) -> Option<*mut u64> {
+    let (lowtag, slot) = cell.layout();
+    let widetag = crate::object_widetag(thread, object)?;
+    if object.lowtag() != lowtag || !cell.accepts_widetag(widetag) {
+        return None;
+    }
+    let address = object.address().checked_add(
+        slot.checked_add(1)?
+            .checked_mul(core::mem::size_of::<u64>())?,
+    )?;
+    if address % core::mem::align_of::<AtomicU64>() != 0 {
+        return None;
+    }
+    Some(core::ptr::with_exposed_provenance_mut(address))
+}
 
 /// Restricted access to native, heap, and root operations on a thread.
 ///
@@ -67,7 +146,7 @@ impl<'a> ThreadAccess<'a> {
         crate::register_thread_with_thread(self.thread, thread)
     }
 
-    /// Register published code metadata through this thread.
+    /// Prepare code metadata for PC lookup through this thread.
     ///
     /// # Errors
     /// Returns [`CodeError::NotRegistered`] when this thread has no heap.
@@ -77,6 +156,27 @@ impl<'a> ThreadAccess<'a> {
         metadata: CodeObjectMetadata,
     ) -> Result<(), CodeError> {
         crate::register_code(self.thread, code, metadata)
+    }
+
+    /// Remove code metadata after abandoning an unpublished compilation.
+    pub fn unregister_code(&self, code: &CodePtr) -> Option<CodeObjectMetadata> {
+        crate::unregister_code(self.thread, code)
+    }
+
+    /// Acquire-load a function object's native entry cell.
+    #[must_use]
+    pub fn load_function_entry_acquire(&self, function: Word) -> Option<Word> {
+        load_object_word_acquire(self.thread, function, AtomicObjectWordCell::FunctionEntry)
+    }
+
+    /// Release-store a function object's native entry cell.
+    pub fn store_function_entry_release(&mut self, function: Word, entry: Word) -> bool {
+        store_object_word_release(
+            self.thread,
+            function,
+            AtomicObjectWordCell::FunctionEntry,
+            entry,
+        )
     }
 
     /// Request and publish a safepoint when one is pending.

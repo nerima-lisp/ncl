@@ -618,6 +618,53 @@ fn lowers_multiple_value_forms_through_the_adapter() {
     );
 }
 
+#[test]
+fn named_global_call_keeps_function_cell_value_across_safepoint() {
+    let mut fx = Fixture::new();
+    let list = fx.cl("LIST");
+    let form = fx.list(&[list]);
+    let expr = fx.expand(form).expect("expand direct named call");
+    let lowered = lower_toplevel(&expr).expect("lower direct named call");
+
+    assert_verifies(&lowered.entry);
+    let ops = &lowered.entry.blocks[0].ops;
+    let function_field =
+        u32::try_from(ncl_object::symbol_offset::FUNCTION).expect("function field fits u32");
+    let (load_index, symbol, callee) = ops
+        .iter()
+        .enumerate()
+        .find_map(|(index, op)| match &op.kind {
+            OpKind::LoadField { object, field } if *field == function_field => {
+                Some((index, *object, op.results[0].0))
+            }
+            _ => None,
+        })
+        .expect("load LIST's function cell");
+    let safepoint_index = ops
+        .iter()
+        .position(|op| matches!(op.kind, OpKind::Safepoint))
+        .expect("named call safepoint");
+    let (call_index, closure, named_symbol) = ops
+        .iter()
+        .enumerate()
+        .find_map(|(index, op)| match &op.kind {
+            OpKind::CallClosure {
+                closure,
+                named_symbol,
+                ..
+            } => Some((index, *closure, *named_symbol)),
+            _ => None,
+        })
+        .expect("direct named closure call");
+
+    assert!(load_index < safepoint_index && safepoint_index < call_index);
+    assert_eq!(
+        closure, callee,
+        "call uses the value loaded before the safepoint"
+    );
+    assert_eq!(named_symbol, Some(symbol));
+}
+
 /// Rule: `&optional` lowers to a `LoadArg` and `argc` comparison and default block.
 #[test]
 fn lowers_an_optional_parameter_with_a_default_block() {

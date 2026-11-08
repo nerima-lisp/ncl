@@ -1,5 +1,5 @@
 //! Evaluation, compilation, loading, and registration orchestration.
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ptr::NonNull;
 use std::rc::Rc;
 mod builtin_trampoline;
@@ -34,16 +34,12 @@ pub use native_error::NativeCondition;
 use native_error::native_failure;
 use ncl_compiler_front::{FormExpander, MacroRegistry, lower_toplevel_for_eval};
 use ncl_object::{
-    Function, HeapRootedWord, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word,
-    function_code, make_simple_vector,
+    Function, ObjectError, Runtime as ObjectRuntime, ThreadContext, Word, function_code,
 };
 use ncl_printer::{PrintOptions, StringSink, write};
-use ncl_sys::{
-    CodeObjectMetadata, CodePtr, SafepointMap, SourceLocation, alloc_code,
-    invoke_entry_with_function, publish_code, write_code,
-};
+use ncl_sys::{CodeObjectMetadata, CodePtr, invoke_entry_with_function};
 pub use optimization::{OptimizationMode, RuntimeOptions};
-use support::{NativeAbi, NativeInvocation, RuntimeMacroCaller};
+use support::{NativeInvocation, RuntimeMacroCaller};
 /// A running NCL instance and its published native code.
 #[derive(Debug)]
 pub struct Runtime {
@@ -55,8 +51,6 @@ pub struct Runtime {
     #[cfg(test)]
     entry_codes: EvaluatorService,
 
-    #[cfg(test)]
-    pending_undefined_function_condition: Option<HeapRootedWord>,
     object: Rc<ObjectRuntime>,
 }
 #[derive(Debug)]
@@ -106,8 +100,6 @@ impl Runtime {
             evaluator,
             #[cfg(test)]
             entry_codes,
-            #[cfg(test)]
-            pending_undefined_function_condition: None,
             object,
         })
     }
@@ -207,165 +199,75 @@ impl Runtime {
         for function in &module.functions {
             compiled.push((function, self.compile_native(function)?));
         }
-        for (function, (code, metadata)) in &compiled {
-            let entry = code.address().saturating_add(metadata.entry_offset);
-            self.evaluator
-                .state
-                .functions
-                .borrow_mut()
-                .insert(function.id.0, PublishedFunction { entry });
+        let mut pending_functions = BTreeMap::new();
+        for (function, native) in &compiled {
+            pending_functions.insert(
+                function.id.0,
+                PublishedFunction {
+                    entry: native.entry_address()?,
+                },
+            );
         }
         let mut uninterned_symbols = HashMap::new();
         let mut literal_objects = HashMap::new();
-        for (function, (code, metadata)) in compiled.iter().skip(1) {
-            let entry = code.address().saturating_add(metadata.entry_offset);
-            let (_function_object, entry_code) = self.make_function_object(
+        let mut pending_entry_codes = Vec::with_capacity(compiled.len());
+        let mut function_roots = Vec::with_capacity(compiled.len());
+        for (function, native) in compiled.iter().skip(1) {
+            let entry = native.entry_address()?;
+            let (function_object, entry_code) = self.make_function_object(
                 function,
-                &(code, metadata),
+                native,
+                &pending_functions,
                 &mut uninterned_symbols,
                 &mut literal_objects,
             )?;
-            self.evaluator
-                .root_entry_code(&mut self.context, entry, entry_code);
+            function_roots.push(function_object);
+            pending_entry_codes.push((entry, entry_code));
         }
-        let (entry_code, entry_metadata) = &compiled
+        let (entry_function, entry_address, entry_constants) = {
+            let native = &compiled
+                .first()
+                .ok_or_else(|| RuntimeError::Native("compiled module is empty".to_owned()))?
+                .1;
+            let (entry_function, entry_constants) = self.make_function_object(
+                &entry,
+                native,
+                &pending_functions,
+                &mut uninterned_symbols,
+                &mut literal_objects,
+            )?;
+            let entry_function_word = entry_function.get();
+            function_roots.push(entry_function);
+            let entry_address = native.entry_address()?;
+            (entry_function_word, entry_address, entry_constants)
+        };
+        let mut published = compiled
+            .into_iter()
+            .map(|(function, native)| native.into_metadata().map(|metadata| (function, metadata)))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.publish_native(&mut published)?;
+        self.evaluator
+            .state
+            .functions
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend(pending_functions);
+        for function in function_roots {
+            self.evaluator
+                .root_function(&mut self.context, function.get());
+        }
+        pending_entry_codes.push((entry_address, entry_constants));
+        for (entry, code) in pending_entry_codes {
+            self.evaluator
+                .root_entry_code(&mut self.context, entry, code.get());
+        }
+        let (entry_code, entry_metadata) = &published
             .first()
             .ok_or_else(|| RuntimeError::Native("compiled module is empty".to_owned()))?
             .1;
-        let (entry_function, entry_constants) = self.make_function_object(
-            &entry,
-            &(entry_code, entry_metadata),
-            &mut uninterned_symbols,
-            &mut literal_objects,
-        )?;
-        let entry_address = entry_code
-            .address()
-            .saturating_add(entry_metadata.entry_offset);
-        self.evaluator
-            .root_entry_code(&mut self.context, entry_address, entry_constants);
-        let result = self.invoke_compiled(entry_code, entry_metadata, entry_function)?;
-        for (_, (code, _)) in compiled {
+        let result = self.invoke_compiled(entry_code, entry_metadata, entry_function);
+        for (_, (code, _)) in published {
             self.evaluator.push_code(code);
-        }
-        Ok(result)
-    }
-    fn compile_native(
-        &mut self,
-        function: &ncl_ir::Function,
-    ) -> Result<(CodePtr, CodeObjectMetadata), RuntimeError> {
-        let functions = self.evaluator.state.functions.borrow();
-        let abi = NativeAbi {
-            object: &self.object,
-            functions: &functions,
-            undefined_function_stub: self.evaluator.state.undefined_function_stub,
-        };
-        let compiled = if cfg!(target_arch = "aarch64") {
-            ncl_codegen::compile_function_aarch64_preserving_multiple_values(function, &abi)
-        } else {
-            ncl_codegen::compile_function_x86_64_preserving_multiple_values(function, &abi)
-        }
-        .map_err(|error| RuntimeError::Native(error.to_string()))?;
-        let mut code = alloc_code(compiled.code.len())
-            .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
-        write_code(&mut code, 0, &compiled.code)
-            .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
-        publish_code(&mut code).map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
-        let maps = support::encode_maps(&compiled.safepoint_maps)?;
-        let safepoint_map = SafepointMap::decode(&maps, compiled.safepoint_maps.len())
-            .map_err(|error| RuntimeError::Native(error.to_owned()))?;
-        let metadata = CodeObjectMetadata {
-            entry_offset: usize::try_from(compiled.entry_offset)
-                .map_err(|_| RuntimeError::Native("entry offset is too large".to_owned()))?,
-            size: compiled.code.len(),
-            frame_words: u16::try_from(compiled.frame_size / 8)
-                .map_err(|_| RuntimeError::Native("frame is too large".to_owned()))?,
-            function_name: function.name.clone(),
-            source_locations: Vec::<SourceLocation>::new(),
-            constant_slots: Vec::new(),
-            safepoint_map,
-            debug_table: Vec::new(),
-        };
-        if !compiled.safepoint_maps.is_empty() {
-            self.context
-                .thread_access()
-                .register_code(&code, metadata.clone())
-                .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
-        }
-        Ok((code, metadata))
-    }
-    fn make_function_object(
-        &mut self,
-        function: &ncl_ir::Function,
-        compiled: &(&CodePtr, &CodeObjectMetadata),
-        uninterned_symbols: &mut HashMap<u32, HeapRootedWord>,
-        literal_objects: &mut HashMap<u32, HeapRootedWord>,
-    ) -> Result<(Word, Word), RuntimeError> {
-        let entry = compiled.0.address().saturating_add(compiled.1.entry_offset);
-        let constants = self.make_constants(function, uninterned_symbols, literal_objects)?;
-        let code_object = ncl_object::make_code_object(
-            &mut self.context,
-            &self.object,
-            entry,
-            compiled.1.size,
-            constants,
-            Word::NIL,
-            Word::NIL,
-        )?;
-        let function_object = ncl_object::make_simple_fun(
-            &mut self.context,
-            &self.object,
-            entry,
-            Word::NIL,
-            Word::NIL,
-            code_object,
-        )?;
-        self.evaluator
-            .root_function(&mut self.context, function_object.as_word());
-        Ok((function_object.as_word(), code_object.as_word()))
-    }
-    fn make_constants(
-        &mut self,
-        function: &ncl_ir::Function,
-        uninterned_symbols: &mut HashMap<u32, HeapRootedWord>,
-        literal_objects: &mut HashMap<u32, HeapRootedWord>,
-    ) -> Result<Word, RuntimeError> {
-        let mut values = Vec::with_capacity(function.constants.len());
-        let mut roots = Vec::with_capacity(function.constants.len());
-        for constant in &function.constants {
-            let value = if let ncl_ir::Constant::FunctionEntry(id) = constant {
-                let entry = self
-                    .evaluator
-                    .state
-                    .functions
-                    .borrow()
-                    .get(&id.0)
-                    .ok_or_else(|| {
-                        RuntimeError::Native(format!("function entry {} is unavailable", id.0))
-                    })?
-                    .entry;
-                Word::from_bits(u64::try_from(entry).map_err(|_| {
-                    RuntimeError::Native("function entry does not fit a machine word".to_owned())
-                })?)
-            } else {
-                constants::resolve_constant(
-                    &mut self.context,
-                    &self.object,
-                    constant,
-                    &values,
-                    uninterned_symbols,
-                    literal_objects,
-                )?
-            };
-            values.push(value);
-            let value = values
-                .last_mut()
-                .ok_or_else(|| RuntimeError::Native("constant table append failed".to_owned()))?;
-            roots.push(ncl_object::push_root(&mut self.context, value));
-        }
-        let result =
-            make_simple_vector(&mut self.context, &self.object, &values).map_err(Into::into);
-        for token in roots.into_iter().rev() {
-            let _ = ncl_object::pop_root(&mut self.context, token);
         }
         result
     }
@@ -424,11 +326,7 @@ impl Runtime {
         }
         if let Some(error) = pending_errors.object {
             let mapped_error = {
-                let mut pending = self
-                    .evaluator
-                    .state
-                    .pending_undefined_function_condition
-                    .borrow_mut();
+                let mut pending = self.evaluator.pending_undefined_function_condition_mut();
                 native_error::pending_object_error(context, &self.object, error, &mut pending)?
             };
             return Err(mapped_error);

@@ -211,7 +211,7 @@ const fn default_array_element(element_type: ArrayElementType) -> Word {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     use ncl_ir::{
         ArrayElementType as IrArrayElementType, Constant, ConstantIndex, Function, FunctionId,
@@ -271,7 +271,12 @@ mod tests {
             debug: Vec::new(),
         };
         let table = runtime
-            .make_constants(&function, &mut HashMap::new(), &mut HashMap::new())
+            .make_constants(
+                &function,
+                &BTreeMap::new(),
+                &mut HashMap::new(),
+                &mut HashMap::new(),
+            )
             .map_err(|error| format!("constants: {error:?}"))?;
         let table = HeapRootedWord::new(&runtime.context, table)
             .map_err(|error| format!("root table: {error:?}"))?;

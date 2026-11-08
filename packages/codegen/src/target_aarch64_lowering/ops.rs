@@ -193,23 +193,48 @@ pub fn lower_op(
                     imm: !ncl_sys::LOWTAG_MASK,
                 },
             )?;
-            let offset = match &op.kind {
-                OpKind::LoadField { field, .. } => {
-                    i16::try_from(field.saturating_add(1).saturating_mul(8))
-                        .map_err(|_| CodegenError::FrameOverflow)?
-                }
+            let field_offset = match &op.kind {
+                OpKind::LoadField { field, .. } => field.saturating_add(1).saturating_mul(8),
                 _ => 0,
             };
-            emit(
-                assembler,
-                Inst::Ldr {
-                    rt: Reg(16),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Reg(Reg(16)),
-                        offset,
+            let is_function_cell = matches!(
+                &op.kind,
+                OpKind::LoadField { field, .. }
+                    if usize::try_from(*field).ok() == Some(ncl_object::symbol_offset::FUNCTION)
+            );
+            if is_function_cell {
+                let offset =
+                    u16::try_from(field_offset).map_err(|_| CodegenError::FrameOverflow)?;
+                emit(
+                    assembler,
+                    Inst::AddImm {
+                        rd: RegOrSp::Reg(Reg(16)),
+                        rn: RegOrSp::Reg(Reg(16)),
+                        imm: offset,
+                        shift: false,
                     },
-                },
-            )?;
+                )?;
+                emit(
+                    assembler,
+                    Inst::Ldar {
+                        rt: Reg(16),
+                        rn: Reg(16),
+                    },
+                )?;
+            } else {
+                let offset =
+                    i16::try_from(field_offset).map_err(|_| CodegenError::FrameOverflow)?;
+                emit(
+                    assembler,
+                    Inst::Ldr {
+                        rt: Reg(16),
+                        mem: MemOperand::Unscaled {
+                            base: RegOrSp::Reg(Reg(16)),
+                            offset,
+                        },
+                    },
+                )?;
+            }
             if let Some(result) = result {
                 store_value(assembler, allocation, result, Reg(16))?;
             }

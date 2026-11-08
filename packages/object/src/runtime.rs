@@ -305,13 +305,11 @@ impl Runtime {
             .filter(|entry| entry.implementation.entry == 0)
             .map(|entry| *entry.function)
             .collect();
-        let entry_word = crate::object_access::fix(address)?;
         for function_word in pending {
-            crate::object_access::put(
+            crate::function::set_function_entry(
                 ctx,
-                function_word,
-                crate::function_offset::ENTRY,
-                entry_word,
+                crate::Function::from_word(function_word),
+                address,
             )?;
         }
         Ok(())

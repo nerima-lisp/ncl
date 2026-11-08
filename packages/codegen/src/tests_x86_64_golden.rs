@@ -289,7 +289,8 @@ fn golden_x86_64_memory_ops_untag_addresses_before_function_object_access() {
         .push_op(
             OpKind::LoadField {
                 object: ncl_ir::ValueId(1),
-                field: 1,
+                field: u32::try_from(ncl_object::symbol_offset::FUNCTION)
+                    .expect("symbol function field offset fits u32"),
             },
             &[Ty::Word],
         )
@@ -327,6 +328,7 @@ fn golden_x86_64_memory_ops_untag_addresses_before_function_object_access() {
         4,
         "each Load/LoadField/Store/StoreField address must be untagged"
     );
+    assert!(contains(&compiled.code, &[0x4d, 0x8b, 0x52, 0x10]));
 }
 
 #[test]

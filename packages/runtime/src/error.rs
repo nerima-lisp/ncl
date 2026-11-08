@@ -2,7 +2,7 @@
 
 use crate::NativeCondition;
 use ncl_object::{HeapRootedWord, ObjectError};
-use ncl_sys::NativeError;
+use ncl_sys::{CodeError, NativeError, SafepointMapError};
 
 /// Errors raised while setting up or executing one compilation unit.
 #[derive(Debug)]
@@ -24,6 +24,10 @@ pub enum RuntimeError {
     Lower(ncl_compiler_front::LowerError),
     /// Code generation or executable-memory failure.
     Native(String),
+    /// Executable code publication failure.
+    Code(CodeError),
+    /// Invalid native safepoint-map metadata.
+    SafepointMap(SafepointMapError),
     /// A SIMPLE-ERROR condition preserved across a nested runtime invocation.
     PendingCondition {
         /// The original condition object, kept alive until it is signaled.
@@ -53,6 +57,8 @@ impl std::fmt::Display for RuntimeError {
             Self::Front(error) => write!(f, "front-end error: {error:?}"),
             Self::Lower(error) => write!(f, "lowering error: {error:?}"),
             Self::Native(error) => write!(f, "native error: {error}"),
+            Self::Code(error) => write!(f, "code publication error: {error:?}"),
+            Self::SafepointMap(error) => write!(f, "safepoint map error: {error}"),
             Self::PendingCondition { report, .. } => match report {
                 Some(report) => write!(f, "native error: {report}"),
                 None => write!(f, "pending SIMPLE-ERROR condition"),
@@ -77,6 +83,16 @@ impl RuntimeError {
 impl From<ObjectError> for RuntimeError {
     fn from(value: ObjectError) -> Self {
         Self::Object(value)
+    }
+}
+impl From<CodeError> for RuntimeError {
+    fn from(value: CodeError) -> Self {
+        Self::Code(value)
+    }
+}
+impl From<SafepointMapError> for RuntimeError {
+    fn from(value: SafepointMapError) -> Self {
+        Self::SafepointMap(value)
     }
 }
 impl From<ncl_objfile::ObjectError> for RuntimeError {

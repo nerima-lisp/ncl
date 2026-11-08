@@ -1,4 +1,7 @@
 use super::Runtime;
+use crate::RuntimeError;
+
+mod function_entries_tests;
 use std::collections::{BTreeMap, HashMap};
 
 use ncl_ir::{
@@ -9,6 +12,7 @@ use ncl_object::{
     ArrayElementType, HeapRootedWord, Word, array_dimensions, array_row_major_ref, double_value,
     simple_vector_ref, specialized_array_element_type, specialized_array_ref,
 };
+use ncl_sys::{CodeError, SafepointMapError};
 #[test]
 fn constant_object_aliases_survive_gc_stress_and_strict_forwarding() -> Result<(), String> {
     let mut runtime = Runtime::new().map_err(|error| format!("runtime: {error:?}"))?;
@@ -431,6 +435,29 @@ fn malformed_array_constants_return_errors() -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+#[test]
+fn typed_runtime_errors_keep_their_display_and_incomplete_read_contract() {
+    let code_error = RuntimeError::from(CodeError::OutOfBounds);
+    assert_eq!(
+        code_error.to_string(),
+        "code publication error: OutOfBounds"
+    );
+    assert!(matches!(
+        code_error,
+        RuntimeError::Code(CodeError::OutOfBounds)
+    ));
+
+    let map_error = RuntimeError::from(SafepointMapError::InvalidPc);
+    assert_eq!(map_error.to_string(), "safepoint map error: InvalidPc");
+    assert!(matches!(
+        map_error,
+        RuntimeError::SafepointMap(SafepointMapError::InvalidPc)
+    ));
+
+    assert!(RuntimeError::Read(ncl_reader::ReadError::UnexpectedEof).is_incomplete_read());
+    assert!(!RuntimeError::Native("failure".to_owned()).is_incomplete_read());
 }
 
 #[test]

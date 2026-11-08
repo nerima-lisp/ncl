@@ -207,15 +207,26 @@ impl CodePtr {
         self.sealed = true;
         Ok(())
     }
-    fn synchronize_cache(&mut self) -> Result<(), CodeError> {
+    const fn validate_cache_synchronization(&self) -> Result<(), CodeError> {
         if !self.sealed {
             return Err(CodeError::NotSealed);
         }
         if self.cache_synchronized {
             return Err(CodeError::AlreadySynchronized);
         }
-        #[cfg(target_arch = "x86_64")]
-        {}
+        Ok(())
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    const fn synchronize_cache(&mut self) -> Result<(), CodeError> {
+        self.validate_cache_synchronization()?;
+        self.cache_synchronized = true;
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    fn synchronize_cache(&mut self) -> Result<(), CodeError> {
+        self.validate_cache_synchronization()?;
         #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
         synchronize_aarch64_linux(self.ptr.as_ptr(), self.len)?;
         #[cfg(all(target_arch = "aarch64", target_os = "macos"))]

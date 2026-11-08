@@ -4,8 +4,8 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 
 use ncl_object::{
-    Function, Runtime, ThreadContext, Word, function_entry, make_code_object, make_simple_fun,
-    make_string, make_symbol, symbol_function, symbol_offset,
+    Function, ObjectError, Runtime, ThreadContext, Word, function_entry, make_code_object,
+    make_simple_fun, make_string, make_symbol, symbol_function, symbol_offset,
 };
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
@@ -30,6 +30,61 @@ fn concurrent_symbol_redefinition_and_native_calls_observe_complete_entries() {
         }
         writer.join().unwrap_or_else(|_| panic!("writer panicked"));
     });
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+#[test]
+fn function_entry_accessors_validate_object_layouts() {
+    let fixture = prepare_function_cell_fixture();
+    let mut context = ThreadContext::new();
+    context
+        .register(&fixture.runtime)
+        .unwrap_or_else(|error| panic!("register context: {error:?}"));
+
+    let entry = Word::fixnum(37);
+    {
+        let mut access = context.thread_access();
+        assert!(access.store_function_entry_release(fixture.words.old_function, entry));
+        assert_eq!(
+            access.load_function_entry_acquire(fixture.words.old_function),
+            Some(entry)
+        );
+        assert!(!access.store_function_entry_release(fixture.words.symbol, entry));
+        assert_eq!(
+            access.load_function_entry_acquire(fixture.words.symbol),
+            None
+        );
+    }
+
+    assert_eq!(
+        function_entry(&context, Function::from_word(Word::NIL)),
+        Err(ObjectError::TypeError)
+    );
+    let code = make_code_object(
+        &mut context,
+        &fixture.runtime,
+        0,
+        8,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+    )
+    .unwrap_or_else(|error| panic!("code object: {error:?}"));
+    assert!(matches!(
+        make_simple_fun(
+            &mut context,
+            &fixture.runtime,
+            usize::MAX,
+            Word::NIL,
+            Word::NIL,
+            code,
+        ),
+        Err(ObjectError::Layout)
+    ));
+    assert_eq!(
+        function_entry(&context, Function::from_word(fixture.words.old_function)),
+        Ok(37)
+    );
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]

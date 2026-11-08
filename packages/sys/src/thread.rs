@@ -1,13 +1,16 @@
 use crate::native_error::NativeError;
 use crate::word::Word;
+use core::sync::atomic::AtomicUsize;
 use std::ptr;
 mod access;
 mod control;
 mod gc_state;
+mod heap;
 mod layout;
 mod native;
 mod root_token;
 mod stack;
+mod tlab;
 pub use access::{
     AtomicObjectWordCell, ThreadAccess, load_object_word_acquire, store_object_word_release,
 };
@@ -18,6 +21,7 @@ pub use gc_state::{NativeState, SafepointState};
 use gc_state::{PublishedRootSlot, PublishedThreadGcStateHandle};
 pub use layout::{ThreadLayout, thread_layout};
 pub use root_token::RootToken;
+use tlab::TlabAllocationRecord;
 /// Number of words in the machine-visible multiple-value return area.
 pub const MULTIPLE_VALUE_AREA_WORDS: usize = 20;
 /// Machine-visible mutator context.
@@ -33,7 +37,6 @@ pub struct Thread {
     pub(crate) state: SafepointState,
     native: NativeState,
     pub(crate) safepoint_request: u64,
-    pub(crate) tlab: Vec<u64>,
     pub(crate) bytes_cons: usize,
     interrupt: bool,
     pub(crate) stack_bounds: Option<(usize, usize)>,
@@ -42,6 +45,15 @@ pub struct Thread {
     pub(crate) conservative_roots: Vec<Word>,
     pub(crate) tlab_bump: usize,
     pub(crate) tlab_limit: usize,
+    pub(crate) header_tlab_start: Option<ptr::NonNull<u8>>,
+    pub(crate) cons_tlab_bump: usize,
+    pub(crate) cons_tlab_limit: usize,
+    pub(crate) cons_tlab_start: Option<ptr::NonNull<u8>>,
+    pub(crate) header_tlab_page: Option<usize>,
+    pub(crate) cons_tlab_page: Option<usize>,
+    pub(crate) pending_allocations: Vec<TlabAllocationRecord>,
+    pub(crate) pending_allocation_count: AtomicUsize,
+    pub(crate) reconciled_allocation_count: AtomicUsize,
     pub(crate) mv: [Word; MULTIPLE_VALUE_AREA_WORDS],
     pub(crate) handler: usize,
     pub(crate) cleanup: usize,
@@ -74,7 +86,6 @@ impl Thread {
             state: SafepointState::Running,
             native: NativeState::Lisp,
             safepoint_request: 0,
-            tlab: Vec::new(),
             bytes_cons: 0,
             interrupt: false,
             stack_bounds: None,
@@ -83,6 +94,15 @@ impl Thread {
             conservative_roots: Vec::new(),
             tlab_bump: 0,
             tlab_limit: 0,
+            header_tlab_start: None,
+            cons_tlab_bump: 0,
+            cons_tlab_limit: 0,
+            cons_tlab_start: None,
+            header_tlab_page: None,
+            cons_tlab_page: None,
+            pending_allocations: Vec::new(),
+            pending_allocation_count: AtomicUsize::new(0),
+            reconciled_allocation_count: AtomicUsize::new(0),
             mv: [Word::NIL; MULTIPLE_VALUE_AREA_WORDS],
             handler: 0,
             cleanup: 0,
@@ -101,14 +121,7 @@ impl Thread {
             gc_state: std::sync::OnceLock::new(),
         }
     }
-    /// Return the heap this thread is registered with.
-    #[must_use]
-    pub(crate) fn heap(&self) -> Option<&crate::heap::Heap> {
-        self.heap.map(|heap| {
-            // SAFETY: registration stores this heap pointer for the thread lifetime.
-            unsafe { &*heap }
-        })
-    }
+
     /// Push a precise root. The referenced slot must outlive the token.
     /// Registered threads enter Lisp state before changing the root set.
     pub fn push_root(&mut self, value: &mut Word) -> RootToken {
@@ -295,7 +308,7 @@ impl Thread {
         if let Some(heap) = self.heap {
             // SAFETY: registration stores this thread's heap pointer for its lifetime.
             unsafe {
-                (*heap).collect_with_thread(self, full);
+                let _ = (*heap).collect_with_thread(self, full);
             }
         }
         self.write_back_frame_snapshot();

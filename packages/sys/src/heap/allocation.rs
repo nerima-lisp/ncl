@@ -1,6 +1,12 @@
-use super::{Heap, LARGE_OBJECT, MIN_HEAP_ADDRESS, Object, PageKind, StorageCondition, TypeTag};
+use super::{Heap, LARGE_OBJECT, PageKind, StorageCondition, TypeTag};
 use crate::{Thread, Word};
+use std::sync::atomic::Ordering;
 use std::sync::{MutexGuard, TryLockError};
+#[path = "allocation/large.rs"]
+mod large;
+#[path = "allocation/tlab.rs"]
+mod tlab;
+use tlab::TlabAttempt;
 
 pub struct SlowPathGuard<'a> {
     heap: &'a Heap,
@@ -124,21 +130,36 @@ impl Heap {
         words: usize,
     ) -> Result<CoordinatedAllocation<'_>, StorageCondition> {
         let bytes = self.validate_allocation(thread, words)?;
-        if thread.native_state() == crate::NativeState::Lisp
+        if !self.pending_page_error.load(Ordering::Acquire)
+            && thread.native_state() == crate::NativeState::Lisp
             && thread
                 .bytes_cons
                 .checked_add(bytes)
                 .is_some_and(|debt| debt <= self.config.bytes_considered_between_gcs)
         {
-            match self.allocate_once(thread, kind, tag, words) {
-                Ok(value) => return Ok(CoordinatedAllocation { value, _gate: None }),
-                Err(StorageCondition::CapacityExceeded) => {}
+            match self.allocate_fast(thread, kind, tag, words, false) {
+                Ok(TlabAttempt::Allocated(value)) => {
+                    return Ok(CoordinatedAllocation { value, _gate: None });
+                }
+                Ok(TlabAttempt::NeedsRefill | TlabAttempt::LogFull)
+                | Err(StorageCondition::CapacityExceeded) => {}
                 Err(error) => return Err(error),
             }
         }
 
         let gate = self.acquire_slow_path_gate(thread);
-        let value = self.allocate_after_gate(thread, kind, tag, words, bytes)?;
+        if self.pending_page_error.load(Ordering::Acquire)
+            && self.take_pending_page_error().is_some()
+        {
+            return Err(StorageCondition::PageOperationFailed);
+        }
+        let allocation = self.allocate_after_gate(thread, kind, tag, words, bytes);
+        if self.pending_page_error.load(Ordering::Acquire)
+            && self.take_pending_page_error().is_some()
+        {
+            return Err(StorageCondition::PageOperationFailed);
+        }
+        let value = allocation?;
         Ok(CoordinatedAllocation {
             value,
             _gate: Some(gate),
@@ -159,59 +180,6 @@ impl Heap {
         words.checked_mul(8).ok_or(StorageCondition::InvalidSize)
     }
 
-    fn allocate_once(
-        &self,
-        thread: &mut Thread,
-        kind: PageKind,
-        tag: TypeTag,
-        words: usize,
-    ) -> Result<Word, StorageCondition> {
-        let bytes = words.checked_mul(8).ok_or(StorageCondition::InvalidSize)?;
-        let mut state = self.lock_state();
-        if state
-            .used
-            .checked_add(bytes)
-            .is_none_or(|size| size > self.config.dynamic_space_size)
-        {
-            return Err(StorageCondition::CapacityExceeded);
-        }
-        let mut data = vec![0_u64; words].into_boxed_slice();
-        if kind != PageKind::Cons {
-            let Some(first) = data.first_mut() else {
-                return Err(StorageCondition::InvalidSize);
-            };
-            *first = u64::from(tag.widetag);
-        }
-        let address = data.as_ptr().addr();
-        if address < MIN_HEAP_ADDRESS {
-            return Err(StorageCondition::HeapAddressTooLow);
-        }
-        state.used += bytes;
-        let index = state.objects.len();
-        state.object_starts.insert(address, index);
-        state.objects.push(Object {
-            words: data,
-            kind,
-            generation: if bytes >= LARGE_OBJECT { 2 } else { 0 },
-            survived: 0,
-            pinned: false,
-            weak: None,
-            finalizer: None,
-            alive: true,
-            forwarded_to: None,
-        });
-        drop(state);
-        thread.bytes_cons = thread.bytes_cons.saturating_add(bytes);
-        Ok(Word::pointer(
-            address,
-            if kind == PageKind::Cons {
-                crate::LowTag::List
-            } else {
-                crate::LowTag::OtherPointer
-            },
-        ))
-    }
-
     fn allocate_after_gate(
         &self,
         thread: &mut Thread,
@@ -228,22 +196,84 @@ impl Heap {
             .checked_add(bytes)
             .is_none_or(|debt| debt > self.config.bytes_considered_between_gcs)
         {
-            self.collect_with_gate(thread, false);
+            self.collect_for_allocation(thread, false)?;
             minor_collected = true;
         }
 
         loop {
-            match self.allocate_once(thread, kind, tag, words) {
-                Ok(value) => return Ok(value),
+            if kind == PageKind::Large || bytes >= LARGE_OBJECT {
+                match self.allocate_large_once(thread, words, bytes, tag) {
+                    Ok(value) => return Ok(value),
+                    Err(StorageCondition::CapacityExceeded) if !minor_collected => {
+                        self.collect_for_allocation(thread, false)?;
+                        minor_collected = true;
+                        continue;
+                    }
+                    Err(StorageCondition::CapacityExceeded) if !full_collected => {
+                        self.collect_for_allocation(thread, true)?;
+                        full_collected = true;
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            // The gate prevents another allocation-triggered collection while a native
+            // thread with a stable Safe snapshot consumes its TLAB.
+            match self.allocate_fast(thread, kind, tag, words, true) {
+                Ok(TlabAttempt::Allocated(value)) => return Ok(value),
+                Ok(TlabAttempt::LogFull) => {
+                    if !minor_collected {
+                        self.collect_for_allocation(thread, false)?;
+                        minor_collected = true;
+                        continue;
+                    }
+                    if !full_collected {
+                        self.collect_for_allocation(thread, true)?;
+                        full_collected = true;
+                        continue;
+                    }
+                    return Err(StorageCondition::CapacityExceeded);
+                }
+                Ok(TlabAttempt::NeedsRefill) => match self.refill_tlab(thread, kind) {
+                    Ok(()) => (),
+                    Err(StorageCondition::CapacityExceeded) if !minor_collected => {
+                        self.collect_for_allocation(thread, false)?;
+                        minor_collected = true;
+                    }
+                    Err(StorageCondition::CapacityExceeded) if !full_collected => {
+                        self.collect_for_allocation(thread, true)?;
+                        full_collected = true;
+                    }
+                    Err(error) => return Err(error),
+                },
                 Err(StorageCondition::CapacityExceeded) if !minor_collected => {
-                    self.collect_with_gate(thread, false);
+                    self.collect_for_allocation(thread, false)?;
                     minor_collected = true;
                 }
                 Err(StorageCondition::CapacityExceeded) if !full_collected => {
-                    self.collect_with_gate(thread, true);
+                    self.collect_for_allocation(thread, true)?;
                     full_collected = true;
                 }
                 Err(error) => return Err(error),
+            }
+        }
+    }
+
+    fn collect_for_allocation(
+        &self,
+        thread: &mut Thread,
+        full: bool,
+    ) -> Result<(), StorageCondition> {
+        if self.pending_page_error.load(Ordering::Acquire)
+            && self.take_pending_page_error().is_some()
+        {
+            return Err(StorageCondition::PageOperationFailed);
+        }
+        match self.collect_with_gate(thread, full) {
+            Ok(()) => Ok(()),
+            Err(_page_error) => {
+                let _ = self.take_pending_page_error();
+                Err(StorageCondition::PageOperationFailed)
             }
         }
     }

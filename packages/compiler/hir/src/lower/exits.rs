@@ -1,6 +1,6 @@
 use ncl_ir::{Constant, OpKind, Terminator as IrTerminator, Ty, ValueId};
 
-use crate::control::{ExitTarget, Terminator as HirTerminator};
+use crate::control::Terminator as HirTerminator;
 use crate::ids::{BlockId, NodeId};
 use crate::node::TagbodyTag;
 
@@ -47,7 +47,7 @@ impl FunctionLowerer<'_> {
         value: Option<NodeId>,
     ) -> Result<ValueId, LowerError> {
         let Some(target_info) = self.block_targets.get(&target).copied() else {
-            return self.unsupported(node, "return-from-cross-function-block");
+            return Self::unsupported(node, "return-from-cross-function-block");
         };
         let value = match value {
             Some(value) => self.node(value)?,
@@ -69,16 +69,13 @@ impl FunctionLowerer<'_> {
         node: NodeId,
         tags: &[TagbodyTag],
     ) -> Result<ValueId, LowerError> {
-        let flow =
-            self.form
-                .control_flow()
-                .function(node)
-                .cloned()
-                .ok_or(LowerError::Unsupported {
-                    node,
-                    operation: "tagbody-without-control-flow",
-                })?;
-        let blocks = flow
+        let flow = self
+            .form
+            .control_flow()
+            .function(node)
+            .cloned()
+            .ok_or(LowerError::MissingTagbodyFlow(node))?;
+        let mut blocks = flow
             .blocks()
             .iter()
             .map(|id| {
@@ -87,11 +84,15 @@ impl FunctionLowerer<'_> {
                     .block(*id)
                     .cloned()
                     .map(|block| (*id, block))
-                    .ok_or(LowerError::Ir(
-                        "verified HIR CFG block is missing".to_owned(),
-                    ))
+                    .ok_or_else(|| LowerError::Ir("verified HIR CFG block is missing".to_owned()))
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let dominators = self
+            .form
+            .control_flow()
+            .dominators(node)
+            .ok_or(LowerError::MissingTagbodyFlow(node))?;
+        blocks.sort_by_key(|(id, _)| dominators.get(id).map_or(0, std::collections::HashSet::len));
         let source = self.current_block;
         let base_handlers = self.active_handlers.clone();
         let mut targets = Vec::with_capacity(blocks.len());
@@ -121,9 +122,27 @@ impl FunctionLowerer<'_> {
             }
         }
 
+        let previous_hir_block = self.hir_block;
+        let parent_block_reachable = self.dominance_contexts.last().is_none_or(|context| {
+            self.hir_block.is_some_and(|parent| {
+                context
+                    .dominators
+                    .get(&parent)
+                    .is_some_and(|dominators| dominators.contains(&context.entry))
+            })
+        });
+        let previous_external_values_available = self.external_values_available;
+        self.external_values_available = parent_block_reachable
+            && (self.dominance_contexts.is_empty() || previous_external_values_available);
+        self.dominance_contexts.push(super::DominanceContext {
+            entry: flow.entry(),
+            parent_block: previous_hir_block,
+            dominators,
+        });
         for (hir_id, hir_block) in blocks {
             let mir_id = lookup_tag_target(&targets, hir_id)?;
             self.position(mir_id)?;
+            self.hir_block = Some(hir_id);
             self.active_handlers.clone_from(&base_handlers);
             for operation in hir_block.operations() {
                 if self.is_terminated() {
@@ -135,6 +154,9 @@ impl FunctionLowerer<'_> {
                 self.lower_cfg_terminator(node, hir_block.terminator(), &targets, exit)?;
             }
         }
+        self.hir_block = previous_hir_block;
+        let _ = self.dominance_contexts.pop();
+        self.external_values_available = previous_external_values_available;
 
         for (hir_block, _) in targets {
             let _ = self.tag_targets.remove(&hir_block);
@@ -184,10 +206,7 @@ impl FunctionLowerer<'_> {
             }
             HirTerminator::Return { values } => {
                 if !values.is_empty() {
-                    return Err(LowerError::Unsupported {
-                        node,
-                        operation: "tagbody-return-with-values",
-                    });
+                    return Err(LowerError::InvalidTagbodyReturn(node));
                 }
                 self.terminate(IrTerminator::Jump {
                     target: exit,
@@ -195,26 +214,19 @@ impl FunctionLowerer<'_> {
                 })
             }
             HirTerminator::NonLocalExit {
-                target: ExitTarget::Tag(block),
+                target,
                 values,
                 cleanups,
             } => self
-                .non_local_exit(node, ExitTarget::Tag(*block), values, cleanups)
+                .non_local_exit(node, *target, values, cleanups)
                 .map(|_| ()),
-            HirTerminator::NonLocalExit { .. } => Err(LowerError::Unsupported {
-                node,
-                operation: "tagbody-nonlocal-exit-outside-local-block-or-tag",
-            }),
-            HirTerminator::Unreachable => Err(LowerError::Unsupported {
-                node,
-                operation: "unreachable-hir-cfg-block",
-            }),
+            HirTerminator::Unreachable => self.terminate(IrTerminator::Unreachable),
         }
     }
 
     pub(super) fn go(&mut self, node: NodeId, target: BlockId) -> Result<ValueId, LowerError> {
         let Some((block, active_depth)) = self.tag_targets.get(&target).copied() else {
-            return self.unsupported(node, "go-outside-lowered-tagbody");
+            return Self::unsupported(node, "go-outside-lowered-tagbody");
         };
         let value = self.word_constant(Constant::Nil)?;
         if !self.is_terminated() {

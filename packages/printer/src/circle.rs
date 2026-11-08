@@ -2,8 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
+use ncl_arrays::array_row_major_ref;
 use ncl_object::{
-    ObjectRef, ThreadContext, Word, array_dimensions, array_row_major_ref, car, cdr,
+    ObjectRef, ThreadContext, Word, array_dimensions, car, cdr,
     classify_object, simple_vector_length, simple_vector_ref, specialized_array_ref,
 };
 

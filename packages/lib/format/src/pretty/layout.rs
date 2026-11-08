@@ -42,7 +42,7 @@ pub(super) fn execute_indent(
             ));
         }
     };
-    if output.pretty {
+    if output.pretty && !underscore::miser_mode(state, output) {
         let base = if directive.colon {
             effective_column(output)
         } else {
@@ -157,7 +157,7 @@ fn add_signed(base: usize, amount: i64) -> Option<usize> {
     if amount >= 0 {
         base.checked_add(usize::try_from(amount).ok()?)
     } else {
-        base.checked_sub(usize::try_from(amount.unsigned_abs()).ok()?)
+        Some(base.saturating_sub(usize::try_from(amount.unsigned_abs()).ok()?))
     }
 }
 

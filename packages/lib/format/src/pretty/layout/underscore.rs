@@ -22,10 +22,7 @@ pub(super) fn execute_underscore(
     } else if directive.colon {
         output.column >= output.margin
     } else if directive.at_sign {
-        miser_width(state).is_some_and(|width| {
-            output.column > output.margin
-                && output.block_start >= output.margin.saturating_sub(width)
-        })
+        output.column > output.margin && miser_mode(state, output)
     } else {
         output.column >= output.margin
     };
@@ -33,6 +30,11 @@ pub(super) fn execute_underscore(
         output.write_char('\n')?;
     }
     Ok(())
+}
+
+pub(super) fn miser_mode(state: &mut ExecutionState<'_>, output: &FormatOutput<'_>) -> bool {
+    miser_width(state)
+        .is_some_and(|width| output.block_start >= output.margin.saturating_sub(width))
 }
 
 fn miser_width(state: &mut ExecutionState<'_>) -> Option<usize> {

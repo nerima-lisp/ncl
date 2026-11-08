@@ -8,9 +8,9 @@
 use ncl_lib_format::{FormatErrorKind, execute, parse};
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError, Package,
-    Parameter as BuiltinParameter, ParameterType, Runtime, ThreadContext, Word, make_cons,
-    make_string, set_symbol_special, set_symbol_value,
+    BuiltinName, BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError,
+    ObjectRef, Package, Parameter as BuiltinParameter, ParameterType, Runtime, ThreadContext, Word,
+    classify_object, make_cons, make_string, set_symbol_special, set_symbol_value,
 };
 use ncl_printer::StringSink;
 
@@ -61,6 +61,19 @@ fn execute_text(
     (sink.into_string(), consumed)
 }
 
+fn assert_format_error(
+    control: &str,
+    arguments: &[Word],
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    expected: &FormatErrorKind,
+) {
+    let parsed = parse(control).expect("format control");
+    let mut sink = StringSink::new();
+    let error = execute(&parsed, arguments, ctx, runtime, &mut sink).expect_err("format error");
+    assert_eq!(&error.kind, expected, "{control}");
+}
+
 fn enable_pretty(ctx: &mut ThreadContext, runtime: &Runtime) {
     let package = runtime
         .find_package(ctx, "COMMON-LISP")
@@ -83,12 +96,13 @@ fn set_miser_width(ctx: &mut ThreadContext, runtime: &Runtime, width: Word) {
     set_symbol_value(ctx, symbol, width).expect("set miser width");
 }
 
-#[test]
+#[test] // CLHS 22.3.5.1: conditional newline modes.
 fn underscore_modes_distinguish_linear_fill_miser_and_mandatory_breaks() {
     let (runtime, mut ctx) = context();
     assert_eq!(execute_text("a~:@_b", &[], &mut ctx, &runtime).0, "ab");
     enable_pretty(&mut ctx, &runtime);
     assert_eq!(execute_text("a~:@_b", &[], &mut ctx, &runtime).0, "a\nb");
+    assert_eq!(execute_text("~_tail", &[], &mut ctx, &runtime).0, "tail");
     let exact_margin = "x".repeat(80);
     assert_eq!(
         execute_text(&format!("{exact_margin}~_tail"), &[], &mut ctx, &runtime).0,
@@ -144,7 +158,7 @@ fn underscore_modes_distinguish_linear_fill_miser_and_mandatory_breaks() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.5.3: block and current indentation.
 fn indent_uses_block_or_current_column_and_affects_the_next_line() {
     let (runtime, mut ctx) = context();
     enable_pretty(&mut ctx, &runtime);
@@ -158,7 +172,7 @@ fn indent_uses_block_or_current_column_and_affects_the_next_line() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.6.1: absolute, relative, and section-relative tabulation.
 fn tab_supports_absolute_relative_and_block_relative_stops() {
     let (runtime, mut ctx) = context();
     assert_eq!(execute_text("a~3Tz", &[], &mut ctx, &runtime).0, "a  z");
@@ -180,7 +194,7 @@ fn tab_supports_absolute_relative_and_block_relative_stops() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.5.2: logical-block prefix, body, suffix, and default parentheses.
 fn logical_blocks_apply_prefix_body_suffix_and_default_parentheses() {
     let (runtime, mut ctx) = context();
     let value = string(&runtime, &mut ctx, "item");
@@ -195,7 +209,7 @@ fn logical_blocks_apply_prefix_body_suffix_and_default_parentheses() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.5.2: an @-terminated first separator defines a per-line prefix.
 fn logical_block_at_sign_separator_repeats_prefix_after_each_line_break() {
     let (runtime, mut ctx) = context();
     enable_pretty(&mut ctx, &runtime);
@@ -218,7 +232,7 @@ fn logical_block_at_sign_separator_repeats_prefix_after_each_line_break() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.5.2: the outer @ modifier passes all remaining arguments.
 fn at_sign_logical_block_consumes_all_remaining_arguments() {
     let (runtime, mut ctx) = context();
     assert_eq!(
@@ -232,7 +246,7 @@ fn at_sign_logical_block_consumes_all_remaining_arguments() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.5.2: ~^ exits a logical-block body while preserving its suffix.
 fn logical_block_escape_stops_the_body_and_keeps_the_suffix() {
     let (runtime, mut ctx) = context();
     let value = string(&runtime, &mut ctx, "item");
@@ -243,7 +257,7 @@ fn logical_block_escape_stops_the_body_and_keeps_the_suffix() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.5.2: logical-block escape behavior is distinct from iteration.
 fn logical_block_does_not_make_colon_up_arrow_valid() {
     let (runtime, mut ctx) = context();
     let value = string(&runtime, &mut ctx, "item");
@@ -255,7 +269,7 @@ fn logical_block_does_not_make_colon_up_arrow_valid() {
     assert_eq!(error.kind, FormatErrorKind::InvalidDirectiveUse);
 }
 
-#[test]
+#[test] // CLHS 22.3.5.2: the @ terminator enables fill-style line breaking.
 fn logical_block_fill_terminator_breaks_at_spaces_past_margin() {
     let (runtime, mut ctx) = context();
     enable_pretty(&mut ctx, &runtime);
@@ -267,7 +281,7 @@ fn logical_block_fill_terminator_breaks_at_spaces_past_margin() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.6.2: justification alignment and minimum inter-segment padding.
 fn justification_supports_alignment_padding_and_minimum_internal_padding() {
     let (runtime, mut ctx) = context();
     let value = string(&runtime, &mut ctx, "x");
@@ -295,7 +309,7 @@ fn justification_supports_alignment_padding_and_minimum_internal_padding() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.6.2: only completed clauses are justified after ~^.
 fn justification_escape_keeps_prefix_text_and_justifies_it() {
     let (runtime, mut ctx) = context();
     assert_eq!(
@@ -304,10 +318,10 @@ fn justification_escape_keeps_prefix_text_and_justifies_it() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.6.2: a special prefix is emitted when the justified field will not fit.
 fn justification_prefix_is_emitted_on_a_wrapped_line() {
     let (runtime, mut ctx) = context();
-    let control = format!("{}~5<pre~:;body~>", "x".repeat(78));
+    let control = format!("{}~5<~%pre~:;body~>", "x".repeat(78));
     assert_eq!(
         execute_text(&control, &[], &mut ctx, &runtime).0,
         format!("{}\npre body", "x".repeat(78))
@@ -324,11 +338,19 @@ fn formatter(
     let value = arguments.required(1)?;
     let colon = arguments.required(2)? != Word::NIL;
     let at_sign = arguments.required(3)? != Word::NIL;
-    let parameter = arguments
-        .required(4)?
-        .as_character()
-        .and_then(char::from_u32)
-        .ok_or(ObjectError::TypeError)?;
+    let parameter_word = arguments.required(4)?;
+    let parameter = if parameter_word == Word::NIL {
+        "nil".to_owned()
+    } else {
+        match classify_object(ctx, parameter_word) {
+            ObjectRef::Fixnum(value) => value.to_string(),
+            ObjectRef::Character(value) => char::from_u32(value)
+                .map(|character| character.to_string())
+                .ok_or(ObjectError::TypeError)?,
+            ObjectRef::Bignum(_) => "bignum".to_owned(),
+            _ => return Err(ObjectError::TypeError),
+        }
+    };
     let write_string = runtime
         .function(ctx, "COMMON-LISP", "WRITE-STRING")
         .and_then(|word| FunctionObject::try_from(word).ok())
@@ -345,20 +367,24 @@ fn formatter(
     Ok(value)
 }
 
-#[test]
-fn named_formatter_receives_stream_value_modifiers_and_parameters() {
-    let (runtime, mut ctx) = context();
+fn register_formatter(ctx: &mut ThreadContext, runtime: &Runtime) {
     let descriptor = Builtin {
         lambda_list: LambdaList::fixed(FORMATTER_PARAMETERS),
         convention: BuiltinConvention::Direct(Arity::exact(5)),
     };
     runtime
         .register_builtin(
-            &mut ctx,
+            ctx,
             BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("FORMATTER")),
             BuiltinImplementation::direct(descriptor, formatter),
         )
         .expect("register formatter");
+}
+
+#[test] // CLHS 22.3.5.4: named functions receive the stream, value, modifiers, and parameters.
+fn named_formatter_receives_stream_value_modifiers_and_parameters() {
+    let (runtime, mut ctx) = context();
+    register_formatter(&mut ctx, &runtime);
     let value = string(&runtime, &mut ctx, "x");
     assert_eq!(
         execute_text("~'!:@/NCL-TEST::FORMATTER/", &[value], &mut ctx, &runtime),
@@ -366,29 +392,55 @@ fn named_formatter_receives_stream_value_modifiers_and_parameters() {
     );
 }
 
-#[test]
-fn named_formatter_lookup_errors_are_typed() {
+#[test] // CLHS 22.3.5.4: named functions receive resolved parameters and remaining-argument count.
+fn named_formatter_receives_resolved_parameters_and_remaining_arguments() {
     let (runtime, mut ctx) = context();
+    register_formatter(&mut ctx, &runtime);
     let value = string(&runtime, &mut ctx, "x");
-    let control = parse("~/NCL-TEST::MISSING/").expect("format control");
-    let mut sink = StringSink::new();
-    let error =
-        execute(&control, &[value], &mut ctx, &runtime, &mut sink).expect_err("missing formatter");
-    assert_eq!(error.kind, FormatErrorKind::InvalidDirectiveUse);
+    for (control, arguments, expected) in [
+        ("~4:@/NCL-TEST::FORMATTER/", vec![value], "x:@4"),
+        (
+            "~V@/NCL-TEST::FORMATTER/",
+            vec![Word::fixnum(6), value],
+            "x@6",
+        ),
+        (
+            "~V@/NCL-TEST::FORMATTER/",
+            vec![Word::character(u32::from('!')), value],
+            "x@!",
+        ),
+        ("~,/NCL-TEST::FORMATTER/", vec![value], "xnil"),
+        ("~#/NCL-TEST::FORMATTER/~A", vec![value, value], "x2x"),
+        (
+            "~4611686018427387904/NCL-TEST::FORMATTER/",
+            vec![value],
+            "xbignum",
+        ),
+    ] {
+        assert_eq!(
+            execute_text(control, &arguments, &mut ctx, &runtime).0,
+            expected,
+            "{control}"
+        );
+    }
 }
 
-#[test]
-fn logical_block_prints_non_lists_and_rejects_dotted_lists() {
+#[test] // CLHS 22.3.5.4: named formatter lookup requires an accessible function.
+fn named_formatter_lookup_errors_are_typed() {
     let (runtime, mut ctx) = context();
-    assert_eq!(
-        execute_text("~<pre~;~A~;post~:>", &[Word::fixnum(1)], &mut ctx, &runtime),
-        ("1".into(), 1)
-    );
-    let control = parse("~<~A~:>").expect("format control");
-    let dotted =
-        make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2)).expect("dotted list");
-    let mut sink = StringSink::new();
-    let error = execute(&control, &[dotted], &mut ctx, &runtime, &mut sink)
-        .expect_err("dotted block argument");
-    assert_eq!(error.kind, FormatErrorKind::ImproperList);
+    register_formatter(&mut ctx, &runtime);
+    let value = string(&runtime, &mut ctx, "x");
+    for control in [
+        "~/NCL-TEST::MISSING/",
+        "~/NCL-TEST:FORMATTER/",
+        "~/NO-SUCH-PACKAGE::FORMATTER/",
+    ] {
+        assert_format_error(
+            control,
+            &[value],
+            &mut ctx,
+            &runtime,
+            &FormatErrorKind::InvalidDirectiveUse,
+        );
+    }
 }

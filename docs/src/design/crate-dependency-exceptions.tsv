@@ -1,7 +1,3 @@
 from	to	kind	target	owner_lane
 ncl-compiler-front	ncl-ir	normal		L3-1
 ncl-opt	ncl-ir	normal		L3-1
-ncl-lib-hash-arrays	ncl-object	normal		L2-ch15/18
-ncl-lib-hash-arrays	ncl-types	normal		L2-ch15/18
-ncl-lib-hash-arrays	ncl-conditions	normal		L2-ch15/18
-ncl-stdlib	ncl-lib-hash-arrays	normal		L2-ch15/18

@@ -334,9 +334,7 @@ fn setf_pairs(
         return Err(ObjectError::TypeError);
     }
     ncl_object::with_heap_rooted_slice(ctx, arguments, |ctx, arguments| {
-        let (pairs, []) = arguments.as_chunks::<2>() else {
-            return Err(ObjectError::TypeError);
-        };
+        let (pairs, _) = arguments.as_chunks::<2>();
         if parallel {
             let mut evaluation_bindings = Vec::<HeapRootedWord>::new();
             let mut stores = Vec::new();

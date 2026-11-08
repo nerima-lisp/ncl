@@ -58,6 +58,12 @@ impl<'a> BuildContext<'a> {
         scope: ScopeId,
         symbol: SymbolId,
     ) -> Result<bool, HirBuildError> {
+        let binding_scope = {
+            let bindings = self.form.bindings_mut();
+            bindings
+                .resolve_variable(scope, symbol)?
+                .and_then(|binding| bindings.binding(binding).map(ncl_hir::Binding::scope))
+        };
         let mut current = Some(scope);
         while let Some(candidate) = current {
             if self
@@ -66,6 +72,10 @@ impl<'a> BuildContext<'a> {
                 .is_some_and(|symbols| symbols.contains(&symbol))
             {
                 return Ok(true);
+            }
+            // A local declaration wins above; otherwise this binding shadows outer declarations.
+            if binding_scope == Some(candidate) {
+                return Ok(false);
             }
             current = self.form.bindings_mut().scope_parent(candidate)?;
         }

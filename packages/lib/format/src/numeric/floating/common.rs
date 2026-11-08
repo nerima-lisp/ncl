@@ -108,9 +108,10 @@ pub(super) fn exponential_core(
         magnitude / factor
     };
     let fraction = if scale > 0 {
+        let scale = usize::try_from(scale).map_err(|_| invalid(directive))?;
         digits
-            .checked_sub(usize::try_from(scale).map_err(|_| invalid(directive))?)
-            .and_then(|value| value.checked_add(1))
+            .checked_add(1)
+            .and_then(|value| value.checked_sub(scale))
             .ok_or_else(|| invalid(directive))?
     } else {
         digits
@@ -233,6 +234,7 @@ fn object_text(
     Ok(sink.into_string())
 }
 
+// F/E/$ fall through ~wD to ~A for non-numbers, so minimum-width padding follows the value.
 pub(super) fn fallback(
     directive: &Directive,
     state: &mut ExecutionState<'_>,
@@ -249,17 +251,21 @@ pub(super) fn fallback(
         return output.print(state, word, &options, directive);
     }
     let text = object_text(state, directive, word)?;
-    let mut padded = repeated(' ', width.saturating_sub(text.chars().count()), directive)?;
-    padded.push_str(&text);
+    let spaces = repeated(' ', width.saturating_sub(text.chars().count()), directive)?;
+    let mut padded = text;
+    padded.push_str(&spaces);
     output.write_str(&padded)
 }
 
 pub(super) fn scaled(value: f64, scale: i64, directive: &Directive) -> Result<f64, FormatError> {
     let scale = i32::try_from(scale).map_err(|_| invalid(directive))?;
     let factor = 10.0_f64.powi(scale);
-    let value = value * factor;
-    if factor.is_finite() && factor != 0.0 && (value.is_finite() || value == 0.0) {
-        Ok(value)
+    let scaled = value * factor;
+    if factor.is_finite()
+        && factor != 0.0
+        && (scaled.is_finite() || scaled == 0.0 || !value.is_finite())
+    {
+        Ok(scaled)
     } else {
         Err(invalid(directive))
     }

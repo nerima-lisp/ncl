@@ -10,6 +10,7 @@ mod hir_builder {
     mod common;
     mod control;
     mod declarations;
+    mod dynamic_control;
     mod functions;
     mod identities;
     mod literals;

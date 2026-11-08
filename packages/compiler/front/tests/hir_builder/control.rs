@@ -1,66 +1,25 @@
 use super::common::{
-    TestResult, context, expand_build, fixture_text, has_node, lower_both_and_verify, verify_ir,
+    TestResult, context, expand_build, fixture_text, has_node, lower_both_and_verify,
 };
 use ncl_hir::{MultipleValueOperation, NodeId, NodeKind, Terminator};
 use ncl_ir::{Constant, OpKind};
 use ncl_object::Word;
 
-#[test]
-fn cleanup_and_multiple_value_non_local_exit_are_explicit() -> TestResult<()> {
-    let (id, mut builder, mut fixture) = context(36);
-    let done = fixture.user("DONE");
-    let values = fixture.form("VALUES", &[Word::fixnum(1), Word::fixnum(2)]);
-    let preserved = fixture.form("MULTIPLE-VALUE-PROG1", &[values, Word::fixnum(3)]);
-    let exit = fixture.form("RETURN-FROM", &[done, preserved]);
-    let protected = fixture.form("UNWIND-PROTECT", &[exit, Word::fixnum(4)]);
-    let input = fixture.form("BLOCK", &[done, protected]);
-    let source = fixture_text(
-        include_str!("../fixtures/hir-bridge/control.lisp"),
-        "(block done\n  (unwind-protect\n      (return-from done (multiple-value-prog1 (values 1 2) 3))\n    4))\n",
-    );
-    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
-
-    assert!(has_node(&form, |node| matches!(
-        node,
-        NodeKind::Block { .. }
-    )));
-    assert!(has_node(&form, |node| matches!(
-        node,
-        NodeKind::UnwindProtect { .. }
-    )));
-    assert!(has_node(&form, |node| matches!(
-        node,
-        NodeKind::MultipleValues(MultipleValueOperation::Prog1 { .. })
-    )));
-    assert!(form.nodes().iter().any(|(_, node)| matches!(
-        &node.kind,
-        NodeKind::NonLocalExit { target: ncl_hir::ExitTarget::Block(_), cleanups, .. } if cleanups.len() == 1
-    )));
-    let hir = ncl_hir::lower::lower(&form, builder.symbols())?;
-    let baseline = ncl_compiler_front::lower::lower_toplevel(&expr)?;
-    verify_ir(&hir.entry, "verify HIR MIR")?;
-    verify_ir(&baseline.entry, "verify baseline MIR")?;
-    assert!(emits_named_call(
-        &hir.entry,
-        "NCL-EXT",
-        "CAPTURE-MULTIPLE-VALUES",
-        false,
-    ));
-    assert!(emits_named_call(
-        &hir.entry,
-        "COMMON-LISP",
-        "VALUES-LIST",
-        true,
-    ));
-    Ok(())
-}
-
-fn emits_named_call(
+pub(super) fn emits_named_call(
     function: &ncl_ir::Function,
     package: &str,
     name: &str,
     named_symbol: bool,
 ) -> bool {
+    named_call_block(function, package, name, named_symbol).is_some()
+}
+
+pub(super) fn named_call_block(
+    function: &ncl_ir::Function,
+    package: &str,
+    name: &str,
+    named_symbol: bool,
+) -> Option<ncl_ir::BlockId> {
     let symbol_value = function
         .blocks
         .iter()
@@ -81,9 +40,7 @@ fn emits_named_call(
             }
             op.results.first().map(|(value, _)| *value)
         });
-    let Some(symbol_value) = symbol_value else {
-        return false;
-    };
+    let symbol_value = symbol_value?;
     let function_value = function
         .blocks
         .iter()
@@ -96,27 +53,71 @@ fn emits_named_call(
             .then(|| op.results.first().map(|(value, _)| *value))
             .flatten()
         });
-    let Some(function_value) = function_value else {
-        return false;
-    };
-    function.blocks.iter().any(|block| {
-        block.ops.iter().any(|op| {
-            let OpKind::CallClosure {
-                closure,
-                named_symbol: call_symbol,
-                ..
-            } = &op.kind
-            else {
-                return false;
-            };
-            let symbol_matches = match (named_symbol, call_symbol) {
-                (true, Some(call_symbol)) => *call_symbol == symbol_value,
-                (false, None) => true,
-                _ => false,
-            };
-            *closure == function_value && symbol_matches
-        })
+    let function_value = function_value?;
+    function.blocks.iter().find_map(|block| {
+        block
+            .ops
+            .iter()
+            .any(|op| {
+                let OpKind::CallClosure {
+                    closure,
+                    named_symbol: call_symbol,
+                    ..
+                } = &op.kind
+                else {
+                    return false;
+                };
+                let symbol_matches = match (named_symbol, call_symbol) {
+                    (true, Some(call_symbol)) => *call_symbol == symbol_value,
+                    (false, None) => true,
+                    _ => false,
+                };
+                *closure == function_value && symbol_matches
+            })
+            .then_some(block.id)
     })
+}
+
+pub(super) fn handler_normal_result(
+    function: &ncl_ir::Function,
+    region: &ncl_ir::HandlerRegion,
+) -> bool {
+    function.blocks.iter().any(|block| {
+        let leaves_region = block
+            .ops
+            .iter()
+            .any(|op| matches!(&op.kind, OpKind::LeaveHandler { region: id } if *id == region.id));
+        if !region.protected.contains(&block.id) || !leaves_region {
+            return false;
+        }
+        let ncl_ir::Terminator::Jump { target, args } = &block.terminator else {
+            return false;
+        };
+        args.len() == 1
+            && function
+                .blocks
+                .iter()
+                .find(|merge| merge.id == *target)
+                .and_then(|merge| merge.params.first().map(|parameter| (merge, parameter)))
+                .is_some_and(|(merge, parameter)| {
+                    matches!(
+                        &merge.terminator,
+                        ncl_ir::Terminator::Return { values }
+                            if values.len() == 1 && values.first() == Some(&parameter.value)
+                    )
+                })
+    })
+}
+
+pub(super) fn handler_region(
+    function: &ncl_ir::Function,
+    kind: ncl_ir::HandlerKind,
+) -> TestResult<&ncl_ir::HandlerRegion> {
+    function
+        .handler_regions
+        .iter()
+        .find(|region| region.kind == kind)
+        .ok_or_else(|| std::io::Error::other("handler region is missing").into())
 }
 
 #[test]
@@ -232,96 +233,5 @@ fn catch_throw_and_progv_retain_dynamic_control() -> TestResult<()> {
         NodeKind::MultipleValues(MultipleValueOperation::Call { .. })
     )));
     lower_both_and_verify(&builder, &form, &expr)?;
-    Ok(())
-}
-
-#[test]
-fn unwind_protect_runs_normal_cleanup_and_preserves_protected_values() -> TestResult<()> {
-    let (id, mut builder, mut fixture) = context(56);
-    let protected_name = fixture.user("PROTECTED");
-    let protected = fixture.list(&[protected_name]);
-    let cleanup_name = fixture.user("CLEANUP");
-    let cleanup = fixture.list(&[cleanup_name]);
-    let input = fixture.form("UNWIND-PROTECT", &[protected, cleanup]);
-    let expr = fixture.expand(input)?;
-    let form = super::common::build(
-        &mut builder,
-        id,
-        &expr,
-        "(unwind-protect (protected) (cleanup))",
-    )?;
-    let lowered = ncl_hir::lower::lower(&form, builder.symbols())?;
-    verify_ir(&lowered.entry, "verify normal unwind-protect MIR")?;
-
-    // CLHS requires cleanup forms to run on normal exit while preserving the protected form's values.
-    // https://www.lispworks.com/documentation/HyperSpec/Body/s_unwind.htm
-    assert!(lowered.entry.handler_regions.iter().any(|region| {
-        region.kind == ncl_ir::HandlerKind::UnwindProtect
-            && region.cleanup.is_some()
-            && !region.protected.is_empty()
-    }));
-    assert!(emits_named_call(
-        &lowered.entry,
-        "COMMON-LISP-USER",
-        "PROTECTED",
-        true,
-    ));
-    assert!(emits_named_call(
-        &lowered.entry,
-        "COMMON-LISP-USER",
-        "CLEANUP",
-        true,
-    ));
-    assert!(emits_named_call(
-        &lowered.entry,
-        "NCL-EXT",
-        "CAPTURE-MULTIPLE-VALUES",
-        false,
-    ));
-    assert!(emits_named_call(
-        &lowered.entry,
-        "COMMON-LISP",
-        "VALUES-LIST",
-        true,
-    ));
-    Ok(())
-}
-
-#[test]
-fn unwind_protect_runs_cleanup_when_throw_crosses_a_catch() -> TestResult<()> {
-    let (id, mut builder, mut fixture) = context(57);
-    let tag = Word::fixnum(77);
-    let throw = fixture.form("THROW", &[tag, Word::fixnum(9)]);
-    let cleanup_name = fixture.user("CLEANUP");
-    let cleanup = fixture.list(&[cleanup_name]);
-    let protected = fixture.form("UNWIND-PROTECT", &[throw, cleanup]);
-    let input = fixture.form("CATCH", &[tag, protected]);
-    let expr = fixture.expand(input)?;
-    let form = super::common::build(
-        &mut builder,
-        id,
-        &expr,
-        "(catch 77 (unwind-protect (throw 77 9) (cleanup)))",
-    )?;
-    let lowered = ncl_hir::lower::lower(&form, builder.symbols())?;
-    verify_ir(&lowered.entry, "verify non-local unwind-protect MIR")?;
-
-    // CLHS specifies cleanup execution before a THROW completes its non-local transfer.
-    // https://www.lispworks.com/documentation/HyperSpec/Body/s_unwind.htm
-    // https://www.lispworks.com/documentation/HyperSpec/Body/05_b.htm
-    assert!(lowered.entry.handler_regions.iter().any(|region| {
-        region.kind == ncl_ir::HandlerKind::Catch && !region.protected.is_empty()
-    }));
-    assert!(lowered.entry.handler_regions.iter().any(|region| {
-        region.kind == ncl_ir::HandlerKind::UnwindProtect
-            && region.cleanup.is_some()
-            && !region.protected.is_empty()
-    }));
-    assert!(emits_named_call(
-        &lowered.entry,
-        "COMMON-LISP-USER",
-        "CLEANUP",
-        true,
-    ));
     Ok(())
 }

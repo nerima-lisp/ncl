@@ -325,6 +325,40 @@ fn native_writer_rejects_invalid_section_records() {
 }
 
 #[test]
+fn native_writer_rejects_cross_section_constant_count_mismatches() {
+    let mut fasl = fixture();
+    fasl.constants.push(FaslConstantGroup {
+        code_object_id: 0,
+        constants: vec![crate::fasl_constants::FaslConstant::Nil],
+    });
+    assert_eq!(
+        FaslV1Writer::write(&fasl),
+        Err(FaslError::new(FaslRejectReason::InvalidCodeObject))
+    );
+}
+
+#[test]
+fn native_writer_rejects_duplicate_relocation_sites() {
+    let relocation = crate::fasl_relocation::FaslRelocation {
+        code_object_id: 0,
+        write_offset: 0,
+        kind: crate::fasl_relocation::FaslRelocationKind::Abs64,
+        target_kind: crate::fasl_relocation::FaslRelocationTarget::CodeObject,
+        target_index: 0,
+        addend: 0,
+        pair_id: 0,
+    };
+    let fasl = FaslV1 {
+        relocations: vec![relocation, relocation],
+        ..fixture()
+    };
+    assert_eq!(
+        FaslV1Writer::write(&fasl),
+        Err(FaslError::new(FaslRejectReason::InvalidRelocation))
+    );
+}
+
+#[test]
 fn native_writer_rejects_noncanonical_stack_map_entries() {
     let mut bad_stack_map = fixture();
     bad_stack_map.code.push(FaslCodeObject {
@@ -409,12 +443,10 @@ fn native_writer_propagates_debug_and_top_level_validation_errors() {
 
 #[test]
 fn native_reader_checks_file_size_limit_without_allocating_a_large_buffer() {
+    let max_file_size = must_succeed(usize::try_from(fasl_directory::MAX_FILE_SIZE));
+    assert_eq!(validate_file_size(max_file_size), Ok(()));
     assert_eq!(
-        validate_file_size(fasl_directory::MAX_FILE_SIZE as usize),
-        Ok(())
-    );
-    assert_eq!(
-        validate_file_size(fasl_directory::MAX_FILE_SIZE as usize + 1),
+        validate_file_size(max_file_size + 1),
         Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded))
     );
 }

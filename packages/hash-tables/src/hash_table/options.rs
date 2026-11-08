@@ -18,7 +18,7 @@ pub(super) fn refresh_forwarded_field(
     let value = get(ctx, table.as_word(), widetag::HASH_TABLE, slot)?;
     let forwarded = runtime
         .forwarded_word(value)
-        .or(value.as_fixnum().map(|_| value))
+        .or_else(|| value.as_fixnum().map(|_| value))
         .ok_or(ObjectError::Layout)?;
     if forwarded != value {
         put(ctx, table.as_word(), slot, forwarded)?;

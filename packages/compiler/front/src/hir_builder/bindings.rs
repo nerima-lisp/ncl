@@ -1,8 +1,7 @@
 use ncl_hir::binding::BindingUseKind;
 use ncl_hir::{
-    BindingKind, CallTarget, LambdaAux, LambdaKey, LambdaOptional, LambdaSignature,
-    LetBinding as HirLetBinding, LetKind, LocalFunctionDefinition, LocalFunctionKind, NodeKind,
-    VariableTarget,
+    CallTarget, LambdaAux, LambdaKey, LambdaOptional, LambdaSignature, LetBinding as HirLetBinding,
+    LetKind, LocalFunctionDefinition, LocalFunctionKind, NodeKind, VariableTarget,
 };
 
 use crate::ast::{Expr, LambdaExpr, LetBinding, LocalFunction};
@@ -434,18 +433,7 @@ impl BuildContext<'_> {
             .bindings_mut()
             .resolve_function(scope, symbol_id)?
         {
-            Some(binding) => {
-                if self
-                    .form
-                    .bindings_mut()
-                    .binding(binding)
-                    .map(ncl_hir::Binding::kind)
-                    != Some(BindingKind::LocalFunction)
-                {
-                    return Err(HirBuildError::InvalidFunctionBinding(binding));
-                }
-                Ok(CallTarget::Local(binding))
-            }
+            Some(binding) => Ok(CallTarget::Local(binding)),
             None => Ok(CallTarget::Global(symbol_id)),
         }
     }

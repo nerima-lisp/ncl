@@ -279,12 +279,6 @@ impl Verifier<'_> {
                     return Err(VerifyError::InvalidExitTarget(id));
                 }
             }
-            ExitTarget::Catch(id) => {
-                self.node(id)?;
-                if !matches!(&self.node_ref(id)?.kind, NodeKind::Catch { .. }) {
-                    return Err(VerifyError::InvalidExitTarget(id));
-                }
-            }
             ExitTarget::Function(id) | ExitTarget::Dynamic(id) => self.node(id)?,
             ExitTarget::Tag(id) => self.block(id)?,
         }

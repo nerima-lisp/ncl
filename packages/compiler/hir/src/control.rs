@@ -18,8 +18,6 @@ pub enum ExitTarget {
     Block(NodeId),
     /// A local TAGBODY block.
     Tag(BlockId),
-    /// A dynamically tagged CATCH node.
-    Catch(NodeId),
     /// A function return target.
     Function(NodeId),
     /// A runtime-resolved THROW tag expression.
@@ -409,10 +407,9 @@ fn validate_terminator_references(
 
 fn validate_target_owner(form: FormId, target: ExitTarget) -> Result<(), ControlError> {
     match target {
-        ExitTarget::Block(node)
-        | ExitTarget::Catch(node)
-        | ExitTarget::Function(node)
-        | ExitTarget::Dynamic(node) => validate_node_owner(form, node),
+        ExitTarget::Block(node) | ExitTarget::Function(node) | ExitTarget::Dynamic(node) => {
+            validate_node_owner(form, node)
+        }
         ExitTarget::Tag(block) => validate_block_owner(form, block),
     }
 }

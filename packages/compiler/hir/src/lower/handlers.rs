@@ -148,7 +148,7 @@ impl FunctionLowerer<'_> {
         protected_form: NodeId,
         cleanup_forms: &[NodeId],
     ) -> Result<ValueId, LowerError> {
-        let old_cleanup = self.cleanup_forms.insert(cleanup, cleanup_forms.to_vec());
+        let _ = self.cleanup_forms.insert(cleanup, cleanup_forms.to_vec());
         let outer_handlers = self.active_handlers.clone();
         let id = self.allocate_handler_id()?;
         let region_start = self.handler_regions.len();
@@ -210,11 +210,7 @@ impl FunctionLowerer<'_> {
             parent: None,
         });
         self.active_handlers = outer_handlers;
-        if let Some(old_cleanup) = old_cleanup {
-            let _ = self.cleanup_forms.insert(cleanup, old_cleanup);
-        } else {
-            let _ = self.cleanup_forms.remove(&cleanup);
-        }
+        let _ = self.cleanup_forms.remove(&cleanup);
         if let Some(merge) = merge {
             self.position(merge)?;
         }
@@ -270,7 +266,6 @@ impl FunctionLowerer<'_> {
                 }
                 Ok(value)
             }
-            ExitTarget::Catch(_) => Self::unsupported(node, "non-local-exit-catch-target"),
             ExitTarget::Function(_) => Self::unsupported(node, "non-local-function-return"),
         }
     }
@@ -353,9 +348,7 @@ impl FunctionLowerer<'_> {
 
     pub(super) fn close_handlers_since(&mut self, depth: usize) -> Result<(), LowerError> {
         while self.active_handlers.len() > depth && !self.is_terminated() {
-            let Some(id) = self.active_handlers.last().copied() else {
-                break;
-            };
+            let id = self.active_handlers[self.active_handlers.len() - 1];
             self.leave_handler(id)?;
         }
         Ok(())
@@ -371,7 +364,7 @@ impl FunctionLowerer<'_> {
             .chain(self.created_blocks.iter().skip(first_new_block).copied())
             .collect::<Vec<_>>();
         let candidate_set = candidates.iter().copied().collect::<HashSet<_>>();
-        let nested = self.handler_regions.get(first_new_region..).unwrap_or(&[]);
+        let nested = &self.handler_regions[first_new_region..];
         let mut pending = vec![start];
         let mut reachable = HashSet::new();
         while let Some(block) = pending.pop() {

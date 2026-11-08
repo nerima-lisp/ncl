@@ -21,7 +21,7 @@ impl FunctionLowerer<'_> {
             block: exit,
             active_depth: outer_handlers.len(),
         };
-        let previous = self.block_targets.insert(node, target);
+        let _ = self.block_targets.insert(node, target);
         let value = self.sequence(body)?;
         if !self.is_terminated() {
             let values = self.capture_multiple_values(value)?;
@@ -30,11 +30,7 @@ impl FunctionLowerer<'_> {
                 args: vec![values],
             })?;
         }
-        if let Some(previous) = previous {
-            let _ = self.block_targets.insert(node, previous);
-        } else {
-            let _ = self.block_targets.remove(&node);
-        }
+        let _ = self.block_targets.remove(&node);
         self.active_handlers = outer_handlers;
         self.position(exit)?;
         self.restore_multiple_values(values)
@@ -212,15 +208,10 @@ impl FunctionLowerer<'_> {
                     else_args: Vec::new(),
                 })
             }
-            HirTerminator::Return { values } => {
-                if !values.is_empty() {
-                    return Err(LowerError::InvalidTagbodyReturn(node));
-                }
-                self.terminate(IrTerminator::Jump {
-                    target: exit,
-                    args: Vec::new(),
-                })
-            }
+            HirTerminator::Return { .. } => self.terminate(IrTerminator::Jump {
+                target: exit,
+                args: Vec::new(),
+            }),
             HirTerminator::NonLocalExit {
                 target,
                 values,

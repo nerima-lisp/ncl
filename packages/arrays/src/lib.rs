@@ -20,17 +20,15 @@ pub struct ArrayOptions {
     /// Element offset into the displaced-to array.
     pub displaced_index_offset: usize,
 }
-#[path = "array/element_type.rs"]
-mod element_type;
 pub use ncl_object::{ArrayElementType, array_dimensions, specialized_array_element_type};
-pub(crate) use element_type::validate_element;
+pub(crate) use ncl_object::validate_array_element as validate_element;
 
 #[path = "array/construction.rs"]
 mod construction;
 pub use construction::make_array;
 
 mod specialized_array;
-pub use specialized_array::{make_specialized_array, specialized_array_ref, specialized_array_set};
+pub use specialized_array::{specialized_array_ref, specialized_array_set};
 
 #[path = "array/vector_ops.rs"]
 mod vector_ops;

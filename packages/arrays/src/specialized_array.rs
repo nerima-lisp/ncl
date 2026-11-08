@@ -1,63 +1,9 @@
-use crate::{
-    ArrayElementType, ObjectError, Runtime, ThreadContext, allocate, layout, length, read,
-    validate_element, with_roots, write,
-};
+use crate::{ArrayElementType, ObjectError, ThreadContext, layout, length, read, validate_element, write};
 
 use ncl_object::Word;
 
 fn kind(ctx: &ThreadContext, object: Word) -> Result<ArrayElementType, ObjectError> {
     ArrayElementType::from_word(read(ctx, object, 0, layout::widetag::SPECIALIZED_ARRAY)?)
-}
-
-/// Allocate a specialized array from encoded element words.
-///
-/// # Errors
-///
-/// Returns [`ObjectError`] when the element type or initial values are invalid.
-pub fn make_specialized_array(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    element_type: ArrayElementType,
-    values: &[Word],
-) -> Result<Word, ObjectError> {
-    if element_type == ArrayElementType::T {
-        return Err(ObjectError::TypeError);
-    }
-    for value in values.iter().copied() {
-        validate_element(ctx, element_type, value)?;
-    }
-    with_roots(ctx, values, |ctx, values| {
-        let object = allocate(
-            ctx,
-            runtime,
-            layout::widetag::SPECIALIZED_ARRAY,
-            values.len().checked_add(2).ok_or(ObjectError::Layout)?,
-        )?;
-        write(
-            ctx,
-            object,
-            0,
-            Word::fixnum(i64::from(element_type as u8)),
-            layout::widetag::SPECIALIZED_ARRAY,
-        )?;
-        write(
-            ctx,
-            object,
-            1,
-            Word::fixnum(i64::try_from(values.len()).map_err(|_| ObjectError::Layout)?),
-            layout::widetag::SPECIALIZED_ARRAY,
-        )?;
-        for (index, value) in values.iter().copied().enumerate() {
-            write(
-                ctx,
-                object,
-                2 + index,
-                *value,
-                layout::widetag::SPECIALIZED_ARRAY,
-            )?;
-        }
-        Ok(object)
-    })
 }
 
 /// Read a specialized array element after validating its representation.

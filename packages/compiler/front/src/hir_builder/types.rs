@@ -44,12 +44,12 @@ impl BuildContext<'_> {
         }
 
         let Some(elements) = specifier.list_elements() else {
-            return Err(HirBuildError::Unsupported(
+            return Err(HirBuildError::Unrepresentable(
                 super::UnsupportedHirForm::TypeSpecifier,
             ));
         };
         let Some((Literal::Symbol(operator), operands)) = elements.split_first() else {
-            return Err(HirBuildError::Unsupported(
+            return Err(HirBuildError::Unrepresentable(
                 super::UnsupportedHirForm::TypeSpecifier,
             ));
         };
@@ -87,8 +87,10 @@ impl BuildContext<'_> {
                     .intersection(types)
                     .map_err(HirBuildError::Type)
             }
-            "NOT" if operands.len() == 1 => {
-                let operand = operands[0];
+            "NOT" => {
+                let [operand] = operands else {
+                    return self.opaque_type(operator, source_constant);
+                };
                 let literal = self.literal(operand)?;
                 let constant = self.form.add_type_spec_constant(literal)?;
                 let ty = self.type_from_literal(operand, constant)?;
@@ -102,17 +104,18 @@ impl BuildContext<'_> {
             "INTEGER" => self.integer_type(operands, operator, source_constant),
             "CONS" if operands.len() <= 2 => {
                 let mut ids = [self.form.types_mut().any(); 2];
-                for (index, operand) in operands.iter().enumerate() {
+                for (slot, operand) in ids.iter_mut().zip(operands) {
                     let literal = self.literal(operand)?;
                     let constant = self.form.add_type_spec_constant(literal)?;
-                    ids[index] = self.type_from_literal(operand, constant)?;
+                    *slot = self.type_from_literal(operand, constant)?;
                 }
+                let [car, cdr] = ids;
                 self.form
                     .types_mut()
-                    .cons(ids[0], ids[1])
+                    .cons(car, cdr)
                     .map_err(HirBuildError::Type)
             }
-            _ => self.opaque_type(operator, source_constant),
+            _ => self.opaque_type(operator, source_constant), // check-added-lines: allow(wildcard) unmodeled operators retain opaque specifiers
         }
     }
 
@@ -155,7 +158,7 @@ impl BuildContext<'_> {
                 };
                 MemberValue::Character(value)
             }
-            _ => return Ok(None),
+            _ => return Ok(None), // check-added-lines: allow(wildcard) nonmember literals use the opaque fallback
         }))
     }
 
@@ -172,17 +175,20 @@ impl BuildContext<'_> {
                 .named(BuiltinType::Integer)
                 .map_err(HirBuildError::Type);
         }
-        if operands.len() != 2 {
-            return self.opaque_type(operator, source_constant);
-        }
-        let Some(lower) = integer_bound(operands[0]) else {
+        let [lower_operand, upper_operand] = operands else {
             return self.opaque_type(operator, source_constant);
         };
-        let Some(upper) = integer_bound(operands[1]) else {
+        let Some(lower) = integer_bound(lower_operand) else {
             return self.opaque_type(operator, source_constant);
         };
-        let range =
-            ncl_hir::cl_type::numeric::NumericRange::new(NumericDomain::Integer, lower, upper);
+        let Some(upper) = integer_bound(upper_operand) else {
+            return self.opaque_type(operator, source_constant);
+        };
+        let range = ncl_hir::cl_type::numeric::NumericRange::new(
+            NumericDomain::Integer,
+            lower.into_numeric_bound(),
+            upper.into_numeric_bound(),
+        );
         match range {
             Ok(range) => self
                 .form
@@ -206,13 +212,27 @@ impl BuildContext<'_> {
     }
 }
 
-fn integer_bound(literal: &Literal) -> Option<Option<NumericBound>> {
+enum IntegerBound {
+    Unbounded,
+    Inclusive(NumericBound),
+}
+
+impl IntegerBound {
+    const fn into_numeric_bound(self) -> Option<NumericBound> {
+        match self {
+            Self::Unbounded => None,
+            Self::Inclusive(bound) => Some(bound),
+        }
+    }
+}
+
+fn integer_bound(literal: &Literal) -> Option<IntegerBound> {
     if matches!(literal, Literal::Symbol(symbol) if symbol.is_common_lisp("*")) {
-        return Some(None);
+        return Some(IntegerBound::Unbounded);
     }
     let Literal::Number(NumberLiteral::Fixnum(value)) = literal else {
         return None;
     };
     let value = NumericValue::Integer(*value);
-    Some(Some(NumericBound::inclusive(value)))
+    Some(IntegerBound::Inclusive(NumericBound::inclusive(value)))
 }

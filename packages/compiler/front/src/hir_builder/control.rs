@@ -43,7 +43,9 @@ impl BuildContext<'_> {
     ) -> Result<ncl_hir::NodeId, HirBuildError> {
         let symbol = self.intern(name)?;
         let Some((target, cleanup_depth)) = self.find_block_target(symbol) else {
-            return Err(HirBuildError::Unsupported(UnsupportedHirForm::UnknownBlock));
+            return Err(HirBuildError::Unrepresentable(
+                UnsupportedHirForm::UnknownBlock,
+            ));
         };
         let value = value.map(|form| self.lower_expr(form, scope)).transpose()?;
         let cleanups = self.cleanups_from(cleanup_depth);
@@ -87,7 +89,9 @@ impl BuildContext<'_> {
                 TagbodyItem::Tag(name) => {
                     let symbol = self.intern(name)?;
                     if self.has_current_tag_target(symbol) {
-                        return Err(HirBuildError::Unsupported(UnsupportedHirForm::DuplicateTag));
+                        return Err(HirBuildError::Unrepresentable(
+                            UnsupportedHirForm::DuplicateTag,
+                        ));
                     }
                     let target = if tags.is_empty() && !has_form_before_first_tag {
                         entry
@@ -169,7 +173,9 @@ impl BuildContext<'_> {
     ) -> Result<ncl_hir::NodeId, HirBuildError> {
         let symbol = self.intern(tag)?;
         let Some((target, cleanup_depth)) = self.find_tag_target(symbol) else {
-            return Err(HirBuildError::Unsupported(UnsupportedHirForm::UnknownTag));
+            return Err(HirBuildError::Unrepresentable(
+                UnsupportedHirForm::UnknownTag,
+            ));
         };
         let cleanups = self.cleanups_from(cleanup_depth);
         if cleanups.is_empty() {
@@ -230,11 +236,11 @@ impl BuildContext<'_> {
         cleanup: &[Expr],
     ) -> Result<ncl_hir::NodeId, HirBuildError> {
         let cleanup_id = CleanupId::try_from_index(self.form_id, self.next_cleanup)?;
-        self.next_cleanup = self.next_cleanup.checked_add(1).ok_or_else(|| {
-            HirBuildError::Id(ncl_hir::IdError::IndexOverflow {
+        self.next_cleanup = self.next_cleanup.checked_add(1).ok_or(HirBuildError::Id(
+            ncl_hir::IdError::IndexOverflow {
                 index: self.next_cleanup,
-            })
-        })?;
+            },
+        ))?;
         self.cleanups.push(cleanup_id);
         let protected = self.lower_expr(protected, scope)?;
         self.cleanups.pop();
@@ -307,7 +313,7 @@ impl BuildContext<'_> {
                 values,
                 cleanups,
             },
-            _ => return Ok(None),
+            _ => return Ok(None), // check-added-lines: allow(wildcard) only exit nodes produce this marker
         }))
     }
 }

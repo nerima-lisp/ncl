@@ -53,6 +53,10 @@ fn named_types_preserve_runtime_names_and_shared_subtype_meanings() -> Result<()
     let list = named(&mut arena, BuiltinType::List)?;
     let null = named(&mut arena, BuiltinType::Null)?;
     let sequence = named(&mut arena, BuiltinType::Sequence)?;
+    // CLHS defines INTEGER's numeric hierarchy and CONS/LIST's sequence hierarchy.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_intege.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_cons.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_list.htm
     assert_eq!(arena.subtype(integer, real)?, SubtypeRelation::Yes);
     assert_eq!(arena.subtype(integer, string)?, SubtypeRelation::No);
     assert_eq!(arena.subtype(integer, float)?, SubtypeRelation::No);
@@ -76,6 +80,8 @@ fn boolean_types_flatten_sort_deduplicate_and_cache() -> Result<(), Box<dyn Erro
     let nested = arena.union([string, integer])?;
     let union = arena.union([empty, nested, real])?;
     let same_union = arena.union([real, integer, string, integer])?;
+    // CLHS lists AND, OR, and NOT as standardized compound type specifiers.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/04_bc.htm
     assert_eq!(union, same_union);
     assert_eq!(integer, duplicate_integer);
     assert_eq!(arena.union([union, any])?, any);
@@ -145,6 +151,9 @@ fn numeric_ranges_keep_open_and_closed_bounds_and_three_way_results() -> Result<
     let integer = named(&mut arena, BuiltinType::Integer)?;
     let float = named(&mut arena, BuiltinType::Float)?;
     let rational = named(&mut arena, BuiltinType::Rational)?;
+    // CLHS numeric type specifiers denote intervals with open or closed bounds.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_intege.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_real.htm
     assert_eq!(arena.subtype(inner_id, outer_id)?, SubtypeRelation::Yes);
     assert_eq!(arena.subtype(disjoint_id, outer_id)?, SubtypeRelation::No);
     assert_eq!(arena.subtype(inner_id, integer)?, SubtypeRelation::Yes);
@@ -240,6 +249,9 @@ fn numeric_ranges_use_discrete_integer_and_float_boundaries() -> Result<(), Box<
     let two = arena.member(vec![MemberValue::Integer(2)])?;
     let pair = arena.member(vec![MemberValue::Integer(1), MemberValue::Integer(2)])?;
     let split_union = arena.union([one, two])?;
+    // CLHS INTEGER intervals include discrete integer endpoints; float formats are distinct types.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_intege.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_short_.htm
     assert_eq!(arena.subtype(pair, split_union)?, SubtypeRelation::Yes);
 
     Ok(())
@@ -264,6 +276,9 @@ fn full_float_ranges_match_their_named_type_and_leave_cross_formats_unknown()
     let double_float = named(&mut arena, BuiltinType::DoubleFloat)?;
     let full_double_float =
         arena.numeric_range(NumericRange::new(NumericDomain::DoubleFloat, None, None)?)?;
+    // CLHS defines each float format as a subtype of FLOAT and leaves some relations
+    // implementation-dependent.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_short_.htm
     assert_eq!(
         arena.subtype(single_float, double_float)?,
         SubtypeRelation::Unknown
@@ -289,6 +304,10 @@ fn complement_relations_do_not_infer_disjointness_from_partial_overlap()
     let number = named(&mut arena, BuiltinType::Number)?;
     let not_number = arena.complement(number)?;
     let mixed_member = arena.member(vec![MemberValue::Integer(1), MemberValue::Nil])?;
+    // CLHS defines NOT and MEMBER type specifiers. Unresolved cases stay Unknown by the HIR
+    // lattice contract.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/04_bc.htm
+    // docs/src/design/hir.md
     assert_eq!(
         arena.subtype(mixed_member, not_number)?,
         SubtypeRelation::No
@@ -352,6 +371,9 @@ fn member_types_use_eql_and_reject_foreign_identities() -> Result<(), Box<dyn Er
         MemberValue::DoubleFloat(nan),
     ])?;
     let values = arena.get(member).map(cl_type::ClType::kind);
+    // CLHS MEMBER contains objects according to EQL identity.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_member.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_eql.htm
     assert_eq!(
         values,
         Some(&ClTypeKind::Member(vec![
@@ -414,6 +436,10 @@ fn compound_types_and_opaque_specifiers_retain_structure() -> Result<(), Box<dyn
     let function_type = named(&mut arena, BuiltinType::Function)?;
     let multiple_values = arena.multiple_values([integer, real])?;
 
+    // CLHS defines the compound CONS, ARRAY, FUNCTION, and VALUES type specifiers.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/04_bc.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_cons.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_smp_ar.htm
     assert_eq!(arena.subtype(car_cdr, broad_cons)?, SubtypeRelation::Yes);
     assert_eq!(arena.subtype(array, vector)?, SubtypeRelation::Yes);
     assert_eq!(arena.subtype(array, sequence)?, SubtypeRelation::Yes);
@@ -444,10 +470,13 @@ fn compound_types_and_opaque_specifiers_retain_structure() -> Result<(), Box<dyn
 fn invalid_type_and_symbol_owners_are_rejected() -> Result<(), Box<dyn Error>> {
     let mut arena = TypeArena::new(form(5))?;
     let foreign_type = TypeId::try_from_index(form(6), 0)?;
+    // Form-local IDs from another owner cannot address this arena (docs/src/design/hir.md).
     assert_eq!(
         arena.complement(foreign_type),
         Err(ClTypeError::UnknownType(foreign_type))
     );
+    // Foreign symbols and type constants retain their compilation-unit owners
+    // (docs/src/design/hir.md).
     let foreign_symbol = SymbolId::try_from_index(CompilationUnitId::new(8), 0)?;
     assert_eq!(
         arena.class(foreign_symbol),

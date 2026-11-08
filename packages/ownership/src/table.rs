@@ -152,7 +152,7 @@ fn parse_row(line_number: usize, line: &str) -> Result<Row, OwnershipError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, reason = "tests assert on parser failures")]
+#[expect(clippy::unwrap_used, reason = "tests assert on parser failures")]
 mod tests {
     use super::{Kind, OwnershipError, parse_row, rows_from_str};
 

@@ -74,6 +74,11 @@ pub struct ThreadContext {
     evaluator_access: EvaluatorAccessSlot,
 }
 impl ThreadContext {
+    /// Return the heap's collection epoch for this registered context.
+    #[must_use]
+    pub fn heap_epoch(&self) -> u64 {
+        ncl_sys::heap_epoch(&self.thread)
+    }
     /// Create an unregistered context.
     #[must_use]
     pub fn new() -> Self {

@@ -3,7 +3,7 @@
 #[path = "hash/options.rs"]
 mod options;
 
-use ncl_object::hash_table::{HashTable, HashTest, Weakness};
+use ncl_hash_tables::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ArrayElementType, ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext,
     Word, array_row_major_ref, array_row_major_set, car, cdr, classify_object, double_value,
@@ -78,7 +78,7 @@ fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let table = call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[])?;
     assert_eq!(
@@ -135,7 +135,7 @@ fn hash_builtins_retain_heap_words_under_gc_stress() -> Result<(), ObjectError> 
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
     let mut table = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)?.as_word();
     let table_token = push_root(&mut ctx, &mut table);
     let mut key = make_string(&mut ctx, &runtime, &['K', 'E', 'Y'])?;
@@ -170,7 +170,7 @@ fn hash_table_test_reports_equalp_and_weakness_semantics() -> Result<(), ObjectE
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let mut table = HashTable::new(&mut ctx, &runtime, HashTest::Equalp, Weakness::Key)?.as_word();
     let table_token = push_root(&mut ctx, &mut table);
@@ -217,7 +217,7 @@ fn vector_builtins_cover_simple_and_bit_vectors() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let vector = call(
         &runtime,
@@ -258,7 +258,7 @@ fn array_limits_are_bound_and_adjust_array_accepts_displacement_options() -> Res
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     for name in [
         "ARRAY-RANK-LIMIT",
@@ -330,7 +330,7 @@ fn maphash_accepts_function_designators_and_rejects_other_values() -> Result<(),
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
     let table = call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[])?;
 
     assert_eq!(
@@ -349,7 +349,7 @@ fn array_strides_displacement_and_sbit_setter_are_consistent() -> Result<(), Obj
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let array = make_array(
         &mut ctx,
@@ -420,7 +420,7 @@ fn make_array_character_initial_contents_displacement() -> Result<(), ObjectErro
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let keyword_package = runtime
         .find_package(&ctx, "KEYWORD")
@@ -494,7 +494,7 @@ fn make_array_specialized_types_without_initial_element_are_constructible()
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let keyword_package = runtime
         .find_package(&ctx, "KEYWORD")
@@ -537,7 +537,7 @@ fn make_array_accepts_ansi_element_type_designators_and_rank_zero() -> Result<()
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let keyword_package = runtime
         .find_package(&ctx, "KEYWORD")
@@ -646,7 +646,7 @@ fn class_and_compound_element_types_upgrade_and_reject_nested_deftypes() -> Resu
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
     ncl_clos::register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let common_lisp_package = runtime
         .find_package(&ctx, "COMMON-LISP")
@@ -731,7 +731,7 @@ fn make_array_integer_designators_accept_bignums_and_validate_bounds() -> Result
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let common_lisp_package = runtime
         .find_package(&ctx, "COMMON-LISP")
@@ -822,7 +822,7 @@ fn make_array_nil_element_type_upgrades_to_t() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let keyword_package = runtime
         .find_package(&ctx, "KEYWORD")
@@ -857,7 +857,7 @@ fn array_dimensions_preserves_the_result_across_gc() -> Result<(), ObjectError> 
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let mut array = make_array(
         &mut ctx,
@@ -902,7 +902,7 @@ fn bit_operations_preserve_inputs_and_results_across_gc() -> Result<(), ObjectEr
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
-    ncl_lib_hash_arrays::register(&runtime)?;
+    ncl_lib_hash_tables::register(&runtime)?;
 
     let mut left = make_specialized_array(
         &mut ctx,

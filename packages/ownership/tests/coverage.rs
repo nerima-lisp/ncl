@@ -14,7 +14,8 @@ fn table_for(crate_name: &str) -> &'static str {
         "ncl-lib-format" => include_str!("../../lib/format/ownership.tsv"),
         "ncl-lib-macros" => include_str!("../../lib/macros/ownership.tsv"),
         "ncl-lib-streams" => include_str!("../../lib/streams/ownership.tsv"),
-        "ncl-lib-hash-arrays" => include_str!("../../lib/hash-arrays/ownership.tsv"),
+        "ncl-lib-arrays" => include_str!("../../lib/arrays/ownership.tsv"),
+        "ncl-lib-hash-tables" => include_str!("../../lib/hash-tables/ownership.tsv"),
         _ => "package\tsymbol\tkind\tcrate\tphase\tdirect-expansion\tnotes\n",
     }
 }
@@ -199,7 +200,8 @@ fn macro_variable_and_constant_kinds_require_their_flag_bits() {
         ("ncl-lib-macros", Kind::Macro, "macro bit not set"),
         ("ncl-lib-streams", Kind::Variable, "special bit not set"),
         (
-            "ncl-lib-hash-arrays",
+            "ncl-lib-arrays",
+            "ncl-lib-hash-tables",
             Kind::Constant,
             "constant bit not set",
         ),

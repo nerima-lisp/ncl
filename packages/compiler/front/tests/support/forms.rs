@@ -4,7 +4,11 @@
 //! `ncl-object` values. The fixture allocates conses without rooting them
 //! across later allocations, which is safe here because the tests never
 //! trigger a collection.
-#![allow(clippy::expect_used, clippy::unwrap_used, dead_code)]
+#![expect(
+    clippy::expect_used,
+    dead_code,
+    reason = "Shared form helpers are path-included by six test binaries with different helper use; expect reports invalid fixture construction."
+)]
 
 use ncl_compiler_front::{
     Body, Declaration, Expr, FormExpander, FrontError, LambdaList, LambdaListKind, MacroCaller,

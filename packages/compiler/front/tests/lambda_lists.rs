@@ -1,9 +1,8 @@
 //! Ordinary and macro lambda lists parse into the frozen shape, and malformed
 //! lambda lists are rejected.
-#![allow(
-    clippy::expect_used,
+#![expect(
     clippy::unwrap_used,
-    reason = "integration tests assert on results"
+    reason = "These tests unwrap valid parser and IR fixtures so failures identify the input case."
 )]
 
 #[path = "support/forms.rs"]

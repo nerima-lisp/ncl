@@ -1,8 +1,7 @@
 //! Every Common Lisp special operator parses into the frozen AST.
-#![allow(
-    clippy::expect_used,
+#![expect(
     clippy::unwrap_used,
-    reason = "integration tests assert on results"
+    reason = "These tests unwrap valid parser and IR fixtures so failures identify the input case."
 )]
 
 #[path = "support/forms.rs"]

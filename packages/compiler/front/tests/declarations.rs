@@ -1,8 +1,7 @@
 //! Declaration specifiers parse, and declarations reach the environment.
-#![allow(
-    clippy::expect_used,
+#![expect(
     clippy::unwrap_used,
-    reason = "integration tests assert on results"
+    reason = "These tests unwrap valid parser and IR fixtures so failures identify the input case."
 )]
 
 #[path = "support/forms.rs"]

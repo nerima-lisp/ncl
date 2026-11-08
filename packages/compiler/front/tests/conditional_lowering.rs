@@ -1,8 +1,8 @@
-#![allow(
-    missing_docs,
+//! Tests for conditional-expression lowering and branch construction.
+
+#![expect(
     clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "integration tests assert on lowering results"
+    reason = "These tests use expect to identify invalid lowered fixtures at the affected conditional case."
 )]
 
 #[path = "support/forms.rs"]

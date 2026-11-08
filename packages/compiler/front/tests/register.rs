@@ -1,5 +1,5 @@
 //! Registration interns the owned symbols and sets their kind flags.
-#![allow(
+#![expect(
     clippy::expect_used,
     clippy::unwrap_used,
     reason = "integration tests assert on results"

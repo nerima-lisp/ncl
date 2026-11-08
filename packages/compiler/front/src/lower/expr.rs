@@ -180,7 +180,10 @@ impl Context<'_> {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "The lowering routine emits one IR operation's ordered instruction sequence, keeping its register and stack effects reviewable together."
+    )]
     fn lower_call(
         &mut self,
         f: &mut FunctionLowerer,

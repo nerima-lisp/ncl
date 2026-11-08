@@ -1,9 +1,8 @@
 //! One test per lowering rule in `compiler-pipeline.md` ("front end の lowering
 //! 規則"), each asserting that every generated function passes `ncl_ir::verify`.
-#![allow(
+#![expect(
     clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "integration tests assert on results"
+    reason = "Integration tests use expect to identify the lowering rule whose valid fixture failed."
 )]
 
 #[path = "support/forms.rs"]

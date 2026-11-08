@@ -256,7 +256,7 @@ impl Context<'_> {
         Ok(value)
     }
 
-    #[allow(
+    #[expect(
         clippy::too_many_lines,
         reason = "keeps recursive closure construction together"
     )]

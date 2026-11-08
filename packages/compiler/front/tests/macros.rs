@@ -1,5 +1,5 @@
 //! Macroexpansion through `MacroCaller`, and local macro shadowing.
-#![allow(
+#![expect(
     clippy::expect_used,
     clippy::unwrap_used,
     reason = "integration tests assert on results"

@@ -134,7 +134,7 @@ impl Context<'_> {
         }
         Ok(value)
     }
-    #[allow(
+    #[expect(
         clippy::too_many_lines,
         reason = "keeps fast and escaping tagbody lowering adjacent"
     )]
@@ -278,7 +278,7 @@ impl Context<'_> {
         Ok(value)
     }
 
-    #[allow(
+    #[expect(
         clippy::too_many_lines,
         reason = "handler construction mirrors the block lowering"
     )]

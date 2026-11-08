@@ -1,6 +1,6 @@
 //! Ownership coverage gate: every Phase-1 `ncl-compiler-front` symbol is
 //! registered.
-#![allow(clippy::unwrap_used, reason = "tests assert on coverage failures")]
+#![expect(clippy::unwrap_used, reason = "tests assert on coverage failures")]
 
 const TABLE: &str = include_str!("../ownership.tsv");
 

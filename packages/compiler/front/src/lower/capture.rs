@@ -132,7 +132,7 @@ fn collect_lambda_free(
     }
 }
 
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "one arm per frozen AST variant keeps the walk auditable"
 )]
@@ -346,7 +346,7 @@ fn scan_lambda(lambda: &LambdaExpr, bound: &mut Vec<SymbolRef>, analysis: &mut A
     analysis.lambda_depth -= 1;
 }
 
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "one arm per frozen AST variant keeps the walk auditable"
 )]

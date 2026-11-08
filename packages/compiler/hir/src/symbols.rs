@@ -106,7 +106,9 @@ impl SymbolTable {
                     uninterned_identity: Some(identity),
                 },
             ),
-            _ => return Err(SymbolError::InvalidIdentityShape),
+            (Some(_), Some(_)) | (None, None) => {
+                return Err(SymbolError::InvalidIdentityShape);
+            }
         };
 
         if let Some(id) = self.indices.get(&key).copied() {

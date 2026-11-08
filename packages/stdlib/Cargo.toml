@@ -15,6 +15,7 @@ ncl-printer = { path = "../printer" }
 ncl-conditions = { path = "../conditions" }
 ncl-clos = { path = "../clos" }
 ncl-lib-numbers = { path = "../lib/numbers" }
+ncl-lib-arrays = { path = "../lib/arrays" }
 ncl-lib-sequences = { path = "../lib/sequences" }
 ncl-lib-strings = { path = "../lib/strings" }
 ncl-lib-hash-arrays = { path = "../lib/hash-arrays" }

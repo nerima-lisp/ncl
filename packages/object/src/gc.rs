@@ -7,8 +7,7 @@ use crate::{
     Runtime, ThreadContext, Word,
     layout::{
         code_offset, function_offset, instance_offset, number_offset, readtable_offset,
-        reference_words, simple_vector_offset, specialized_array_offset, stream_offset,
-        structure_offset, symbol_offset, widetag,
+        reference_words, stream_offset, structure_offset, symbol_offset, widetag,
     },
     make_bignum_from_i128, make_string,
 };
@@ -111,7 +110,6 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
             ],
         ),
         (widetag::STRING, vec![]),
-        (widetag::SIMPLE_VECTOR, vec![simple_vector_offset::DATA]),
         (
             widetag::HASH_TABLE,
             vec![REHASH_SIZE, REHASH_THRESHOLD, MARKER, KV, INDEX],
@@ -173,8 +171,6 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
                 code_offset::DEBUG,
             ],
         ),
-        (widetag::SPECIALIZED_ARRAY, vec![]),
-        (widetag::NON_SIMPLE_ARRAY, vec![]),
         (
             widetag::VALUE_CELL,
             vec![crate::layout::value_cell_offset::VALUE],
@@ -186,9 +182,6 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
             _ => ncl_sys::ReferenceLayout {
                 reference_words: reference_words(&slots),
                 boxed_from: match tag {
-                    widetag::SIMPLE_VECTOR => Some(simple_vector_offset::DATA + 1),
-                    widetag::SPECIALIZED_ARRAY => Some(specialized_array_offset::DATA + 1),
-                    widetag::NON_SIMPLE_ARRAY => Some(1),
                     widetag::STRUCTURE => Some(structure_offset::SLOTS + 1),
                     widetag::CLOSURE => Some(function_offset::CAPTURES + 1),
                     _ => None,

@@ -1,7 +1,7 @@
+use ncl_arrays::{ArrayElementType, ArrayOptions, array_row_major_set, make_array};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, Bignum, BuiltinArgs, MultipleValues, ObjectError, ObjectRef,
-    Runtime, ThreadContext, Word, array_row_major_set, bignum_limbs, bignum_sign, classify_object,
-    make_array, with_rooted_slice,
+    Bignum, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    bignum_limbs, bignum_sign, classify_object, with_rooted_slice,
 };
 
 use super::helpers::{dimension_values, flatten_initial_contents, list_values};

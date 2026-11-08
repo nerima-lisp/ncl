@@ -1,7 +1,9 @@
-use crate::array::{length, read, validate_element, write};
-use crate::{ArrayElementType, ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
+use crate::{
+    ArrayElementType, ObjectError, Runtime, ThreadContext, allocate, layout, length, read,
+    validate_element, with_roots, write,
+};
 
-use ncl_sys::Word;
+use ncl_object::Word;
 
 fn kind(ctx: &ThreadContext, object: Word) -> Result<ArrayElementType, ObjectError> {
     ArrayElementType::from_word(read(ctx, object, 0, layout::widetag::SPECIALIZED_ARRAY)?)

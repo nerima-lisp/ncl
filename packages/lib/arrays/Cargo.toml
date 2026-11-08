@@ -1,0 +1,15 @@
+[package]
+name = "ncl-lib-arrays"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ncl-arrays = { path = "../../arrays" }
+ncl-object = { path = "../../object" }
+ncl-types = { path = "../../types" }
+ncl-conditions = { path = "../../conditions" }
+
+[lints]
+workspace = true

@@ -1,5 +1,4 @@
-use crate::{Bignum, ObjectError, ObjectRef, ThreadContext, bignum_sign, classify_object};
-use ncl_sys::Word;
+use ncl_object::{Bignum, ObjectError, ObjectRef, ThreadContext, Word, bignum_sign, classify_object};
 
 /// Element representations supported by the object layer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

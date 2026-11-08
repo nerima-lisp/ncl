@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for compiler optimization options and CLI behavior.
 
 use std::process::{Command, Output, Stdio};
 

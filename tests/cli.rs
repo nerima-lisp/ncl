@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for the NCL command-line interface.
 
 use std::fs;
 use std::io::Write;

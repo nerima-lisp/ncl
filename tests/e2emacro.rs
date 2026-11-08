@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for macro expansion and LOOP forms.
 
 use std::process::{Command, Output, Stdio};
 use std::thread;

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for hash-table builtins, options, and array coverage.
 
 use std::process::Command;
 

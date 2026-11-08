@@ -13,8 +13,10 @@
 //! single-form case that exercises the dynamic-binding region's own
 //! allocation and restore path under both flags without tripping it.
 
-#![allow(missing_docs)]
-#![allow(clippy::expect_used)]
+#![expect(
+    clippy::expect_used,
+    reason = "Dynamic-variable tests expect valid runtime setup and evaluation results."
+)]
 
 mod common;
 

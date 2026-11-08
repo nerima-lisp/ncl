@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for builtin coverage and numeric fast paths.
 
 use std::collections::BTreeSet;
 use std::process::{Command, Output, Stdio};

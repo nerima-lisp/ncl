@@ -1,5 +1,9 @@
-#![allow(missing_docs)]
+//! End-to-end tests for DEFSTRUCT constructors, accessors, and inheritance.
 
+#[expect(
+    dead_code,
+    reason = "This integration target uses only a subset of the shared test helpers."
+)]
 mod common;
 
 use common::{assert_eval_with_stress_on, run_ncl};

@@ -2,8 +2,6 @@
 //! that were previously interned but unbound: `COERCE`, `KEYWORDP`,
 //! `TYPE-OF`, `SUBTYPEP`, and `MAKE-ARRAY`'s `:initial-contents`.
 
-#![allow(missing_docs)]
-
 use std::process::Command;
 
 fn eval(source: &str) -> (bool, String) {

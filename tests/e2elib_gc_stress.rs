@@ -1,11 +1,12 @@
 //! GC-stress coverage for allocating sequence builtins and destructive tree substitutions.
 //! The tree cases retain aliases to conses to catch stale forwarding as well as a lost mutation.
 
-#![allow(missing_docs)]
-
 // This file only needs `assert_eval_with_stress_on`; `common::run_ncl` is
 // used by other test binaries that share this module.
-#[allow(dead_code)]
+#[expect(
+    dead_code,
+    reason = "This integration target imports only the GC-stress helper from the shared test module."
+)]
 mod common;
 
 use common::assert_eval_with_stress_on;

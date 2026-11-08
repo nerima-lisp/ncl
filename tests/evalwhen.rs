@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for EVAL-WHEN compile, load, and execute situations.
 
 use std::fs;
 use std::path::{Path, PathBuf};

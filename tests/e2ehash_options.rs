@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for hash-table test designators and sizing options.
 
 use std::process::{Command, Output};
 

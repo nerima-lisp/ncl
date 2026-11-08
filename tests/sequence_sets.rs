@@ -1,5 +1,9 @@
-#![allow(missing_docs)]
-#![allow(clippy::expect_used)]
+//! End-to-end tests for Common Lisp sequence set operations.
+
+#![expect(
+    clippy::expect_used,
+    reason = "Sequence-set tests expect valid runtime setup and evaluation results."
+)]
 
 use ncl_runtime::Runtime;
 

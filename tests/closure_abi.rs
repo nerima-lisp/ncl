@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for closure calling conventions and captured values.
 
 mod common;
 

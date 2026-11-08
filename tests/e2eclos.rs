@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for CLOS classes, generic functions, and methods.
 
 use std::process::{Command, Output, Stdio};
 use std::thread;

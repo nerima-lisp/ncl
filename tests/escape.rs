@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for escaped strings and characters in CLI output.
 
 use std::process::{Child, Command, Output, Stdio};
 use std::thread;
@@ -55,7 +55,7 @@ fn wait_with_timeout(mut child: Child, source: &str) -> Output {
 }
 
 #[test]
-#[allow(
+#[expect(
     clippy::too_many_lines,
     reason = "table keeps the escape matrix readable"
 )]

@@ -1,5 +1,9 @@
-#![allow(missing_docs)]
-#![allow(clippy::expect_used)]
+//! End-to-end tests for pathname parsing, coercion, and filesystem behavior.
+
+#![expect(
+    clippy::expect_used,
+    reason = "Pathname tests expect valid runtime setup and evaluation results."
+)]
 
 use ncl_runtime::Runtime;
 

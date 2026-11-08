@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for stream builtins and file output.
 
 use std::process::{Command, Output, Stdio};
 

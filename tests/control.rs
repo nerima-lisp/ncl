@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 //! Regression tests for P1-ctl: `IF`/`WHEN`/`UNLESS`/`COND` branch-merge
 //! (A1, `lower_if`), non-tail non-local-exit call arguments (A4, `lower_call`),
 //! and the `LOOP` fixes (B6: default arithmetic-`FOR` init, `WHEN`/`UNLESS`/`IF`

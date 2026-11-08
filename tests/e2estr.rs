@@ -1,5 +1,10 @@
-#![allow(missing_docs)]
-#![allow(clippy::needless_raw_string_hashes, clippy::unicode_not_nfc)]
+//! End-to-end tests for string builtins, Unicode, and printer behavior.
+
+#![expect(
+    clippy::needless_raw_string_hashes,
+    clippy::unicode_not_nfc,
+    reason = "Character cases use raw Lisp forms with embedded quotes and include a decomposed Unicode regression."
+)]
 
 use std::process::{Command, Output, Stdio};
 use std::thread;
@@ -41,7 +46,10 @@ struct BuiltinEntry {
     expected: &'static str,
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The table keeps character built-in inputs and expected outputs together."
+)]
 fn cases() -> Vec<BuiltinEntry> {
     vec![
         BuiltinEntry {

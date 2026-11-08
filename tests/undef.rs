@@ -1,5 +1,9 @@
-#![allow(missing_docs)]
-#![allow(clippy::expect_used)]
+//! End-to-end tests for undefined function conditions and recovery.
+
+#![expect(
+    clippy::expect_used,
+    reason = "The CLI test expects the NCL executable to start successfully."
+)]
 
 use std::process::{Command, Output};
 

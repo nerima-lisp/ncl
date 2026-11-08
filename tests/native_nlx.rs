@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for native non-local exits and callback control errors.
 
 use std::process::{Command, Output, Stdio};
 

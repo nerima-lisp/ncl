@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for Common Lisp sequence functions and edge cases.
 
 use std::process::Command;
 
@@ -14,7 +14,10 @@ fn eval(source: &str) -> (bool, String) {
 }
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "The test keeps the registered sequence built-ins and expected results in one coverage table."
+)]
 fn every_registered_sequence_builtin_runs_through_compiled_code() {
     let cases = [
         ("(atom 1)", "T"),

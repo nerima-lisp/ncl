@@ -1,5 +1,9 @@
-#![allow(missing_docs)]
+//! End-to-end tests for nested function lowering and execution.
 
+#[expect(
+    dead_code,
+    reason = "This integration target uses only a subset of the shared test helpers."
+)]
 mod common;
 
 use common::run_ncl;

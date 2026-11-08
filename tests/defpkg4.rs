@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for Common Lisp package aliases and DEFPACKAGE use lists.
 
 use std::process::Command;
 

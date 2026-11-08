@@ -1,5 +1,9 @@
-#![allow(missing_docs)]
-#![allow(clippy::expect_used)]
+//! End-to-end tests for UNWIND-PROTECT cleanup during non-local exits.
+
+#![expect(
+    clippy::expect_used,
+    reason = "Unwind-protect tests expect valid runtime setup and evaluation results."
+)]
 #![cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 
 use ncl_runtime::Runtime;

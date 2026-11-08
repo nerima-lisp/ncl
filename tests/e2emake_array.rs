@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for MAKE-ARRAY options and array behavior.
 
 use std::process::{Command, Output};
 

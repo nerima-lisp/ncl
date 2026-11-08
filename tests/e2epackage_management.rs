@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! End-to-end tests for package creation, use lists, and symbol ownership.
 
 use std::process::Command;
 

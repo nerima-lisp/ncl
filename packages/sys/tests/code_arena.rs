@@ -236,10 +236,11 @@ fn concurrent_public_allocations_have_disjoint_live_extents() {
     drop(addresses);
     release.wait();
 
-    let all_succeeded = workers
-        .into_iter()
-        .map(|worker| worker.join().unwrap_or(false))
-        .fold(true, |all, succeeded| all && succeeded);
+    let mut all_succeeded = true;
+    for worker in workers {
+        let succeeded = worker.join().unwrap_or(false);
+        all_succeeded &= succeeded;
+    }
     assert_eq!(address_count, THREADS);
     assert!(aligned, "every live allocation must be page-aligned");
     assert!(disjoint, "live code extents must not overlap");
@@ -363,7 +364,7 @@ fn limit_process_address_space() {
         maximum: 0,
     };
     // SAFETY: `previous` is a valid writable Linux rlimit structure.
-    let result = unsafe { getrlimit(RLIMIT_AS, &mut previous) };
+    let result = unsafe { getrlimit(RLIMIT_AS, &raw mut previous) };
     assert_eq!(result, 0, "getrlimit(RLIMIT_AS) should succeed");
 
     let vm_size = proc_status_kib("VmSize").saturating_mul(1024);
@@ -373,7 +374,7 @@ fn limit_process_address_space() {
         maximum: previous.maximum,
     };
     // SAFETY: the new soft limit is no greater than the process's existing hard limit.
-    let result = unsafe { setrlimit(RLIMIT_AS, &limited) };
+    let result = unsafe { setrlimit(RLIMIT_AS, &raw const limited) };
     assert_eq!(result, 0, "setrlimit(RLIMIT_AS) should succeed");
 }
 

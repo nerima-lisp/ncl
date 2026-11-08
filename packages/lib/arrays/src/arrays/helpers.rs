@@ -1,5 +1,5 @@
-use ncl_object::package::Package;
 use ncl_arrays::{ArrayElementType, array_dimensions};
+use ncl_object::package::Package;
 use ncl_object::{
     ObjectError, ObjectRef, Runtime, ThreadContext, Word, car, cdr, simple_vector_length,
     simple_vector_ref, string_length, string_ref,
@@ -54,12 +54,20 @@ pub(super) fn dimension_values(
 }
 
 pub(super) fn array_shape(ctx: &ThreadContext, value: Word) -> Result<Vec<usize>, ObjectError> {
-    match ncl_object::classify_object(ctx, value) {
-        ObjectRef::SimpleVector(vector) => Ok(vec![simple_vector_length(ctx, vector)?]),
-        ObjectRef::String(string) => Ok(vec![string_length(ctx, string)?]),
-        ObjectRef::Array(_) | ObjectRef::SpecializedArray(_) => array_dimensions(ctx, value),
-        _ => Err(ObjectError::TypeError),
+    let classification = ncl_object::classify_object(ctx, value);
+    if let ObjectRef::SimpleVector(vector) = classification {
+        return Ok(vec![simple_vector_length(ctx, vector)?]);
     }
+    if let ObjectRef::String(string) = classification {
+        return Ok(vec![string_length(ctx, string)?]);
+    }
+    if matches!(
+        classification,
+        ObjectRef::Array(_) | ObjectRef::SpecializedArray(_)
+    ) {
+        return array_dimensions(ctx, value);
+    }
+    Err(ObjectError::TypeError)
 }
 
 /// Read one level of a `:initial-contents` nested structure as a flat

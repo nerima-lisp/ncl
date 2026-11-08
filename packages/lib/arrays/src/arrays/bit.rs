@@ -1,11 +1,11 @@
+use super::{
+    ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime,
+    ThreadContext, Word, array_row_major_ref, array_row_major_set, array_shape, classify_object,
+    row_major_index,
+};
 use ncl_arrays::{
     adjustable_array_p, array_displacement, array_element_type, array_has_fill_pointer_p,
     make_array,
-};
-use super::{
-    ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime,
-    ThreadContext, Word, array_row_major_ref, array_row_major_set, array_shape,
-    classify_object, row_major_index,
 };
 use ncl_object::with_roots;
 
@@ -155,7 +155,8 @@ pub(super) fn bit_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let array = args.required(0)?;
-    let index = row_major_index(&array_shape(ctx, array)?, &args.as_slice()[1..])?;
+    let indices = args.as_slice().get(1..).ok_or(ObjectError::TypeError)?;
+    let index = row_major_index(&array_shape(ctx, array)?, indices)?;
     bit_value(ctx, array, index).map(|value| Word::fixnum(i64::from(value)))
 }
 
@@ -167,19 +168,17 @@ pub(super) fn sbit_builtin(
 ) -> Result<Word, ObjectError> {
     let array = args.required(0)?;
     let shape = array_shape(ctx, array)?;
-    let simple_bit_vector = match classify_object(ctx, array) {
-        ObjectRef::SpecializedArray(_) => {
-            array_element_type(ctx, array)? == ArrayElementType::Bit && shape.len() == 1
-        }
-        ObjectRef::Array(_) => {
-            array_element_type(ctx, array)? == ArrayElementType::Bit
-                && shape.len() == 1
-                && !adjustable_array_p(ctx, array)?
-                && !array_has_fill_pointer_p(ctx, array)?
-                && array_displacement(ctx, array)?.0 == Word::NIL
-        }
-        // check-added-lines: allow(wildcard) ObjectRef is non-exhaustive.
-        _ => false,
+    let classification = classify_object(ctx, array);
+    let simple_bit_vector = if let ObjectRef::SpecializedArray(_) = classification {
+        array_element_type(ctx, array)? == ArrayElementType::Bit && shape.len() == 1
+    } else if let ObjectRef::Array(_) = classification {
+        array_element_type(ctx, array)? == ArrayElementType::Bit
+            && shape.len() == 1
+            && !adjustable_array_p(ctx, array)?
+            && !array_has_fill_pointer_p(ctx, array)?
+            && array_displacement(ctx, array)?.0 == Word::NIL
+    } else {
+        false
     };
     if !simple_bit_vector {
         return Err(ObjectError::TypeError);

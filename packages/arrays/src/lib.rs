@@ -1,9 +1,9 @@
 //! Common Lisp array model and operations.
 
 use ncl_object::{
-    ObjectError, ObjectRef, Runtime, ThreadContext, Word, allocate, classify_object, layout,
-    simple_vector_ref, simple_vector_set, specialized_array_ref, specialized_array_set, string_ref,
-    string_set, with_roots,
+    ObjectError, Runtime, ThreadContext, Word, allocate, layout, simple_vector_ref,
+    simple_vector_set, specialized_array_ref, specialized_array_set, string_ref, string_set,
+    with_roots,
 };
 /// Options for constructing a non-simple array.
 #[derive(Clone, Copy, Debug)]
@@ -21,8 +21,8 @@ pub struct ArrayOptions {
     /// Element offset into the displaced-to array.
     pub displaced_index_offset: usize,
 }
-pub use ncl_object::{ArrayElementType, array_dimensions, specialized_array_element_type};
 pub(crate) use ncl_object::validate_array_element as validate_element;
+pub use ncl_object::{ArrayElementType, array_dimensions, specialized_array_element_type};
 
 #[path = "array/construction.rs"]
 mod construction;
@@ -70,14 +70,7 @@ pub(crate) fn length(
 }
 
 fn widetag(ctx: &ThreadContext, object: Word) -> Option<u8> {
-    match classify_object(ctx, object) {
-        ObjectRef::String(_) => Some(layout::widetag::STRING),
-        ObjectRef::SimpleVector(_) => Some(layout::widetag::SIMPLE_VECTOR),
-        ObjectRef::SpecializedArray(_) => Some(layout::widetag::SPECIALIZED_ARRAY),
-        ObjectRef::Array(_) => Some(layout::widetag::NON_SIMPLE_ARRAY),
-        ObjectRef::Other { widetag, .. } => Some(widetag),
-        _ => None,
-    }
+    ncl_object::object_widetag(ctx, object)
 }
 
 /// Register the reference scanning layouts for Lisp arrays.
@@ -130,17 +123,22 @@ pub fn array_element_type(
     ctx: &ThreadContext,
     object: Word,
 ) -> Result<ArrayElementType, ObjectError> {
-    match widetag(ctx, object) {
-        Some(layout::widetag::NON_SIMPLE_ARRAY) => ArrayElementType::from_word(read(
+    let tag = widetag(ctx, object).ok_or(ObjectError::TypeError)?;
+    if tag == layout::widetag::NON_SIMPLE_ARRAY {
+        ArrayElementType::from_word(read(
             ctx,
             object,
             layout::array_offset::ELEMENT_TYPE,
             layout::widetag::NON_SIMPLE_ARRAY,
-        )?),
-        Some(layout::widetag::SPECIALIZED_ARRAY) => specialized_array_element_type(ctx, object),
-        Some(layout::widetag::SIMPLE_VECTOR) => Ok(ArrayElementType::T),
-        Some(layout::widetag::STRING) => Ok(ArrayElementType::Character),
-        _ => Err(ObjectError::TypeError),
+        )?)
+    } else if tag == layout::widetag::SPECIALIZED_ARRAY {
+        specialized_array_element_type(ctx, object)
+    } else if tag == layout::widetag::SIMPLE_VECTOR {
+        Ok(ArrayElementType::T)
+    } else if tag == layout::widetag::STRING {
+        Ok(ArrayElementType::Character)
+    } else {
+        Err(ObjectError::TypeError)
     }
 }
 
@@ -151,13 +149,14 @@ pub fn array_element_type(
 /// Returns [`ObjectError`] for a non-array or malformed layout.
 pub fn array_displacement(ctx: &ThreadContext, object: Word) -> Result<(Word, usize), ObjectError> {
     if widetag(ctx, object) != Some(layout::widetag::NON_SIMPLE_ARRAY) {
-        return match widetag(ctx, object) {
-            Some(
-                layout::widetag::SIMPLE_VECTOR
-                | layout::widetag::SPECIALIZED_ARRAY
-                | layout::widetag::STRING,
-            ) => Ok((Word::NIL, 0)),
-            _ => Err(ObjectError::TypeError),
+        let tag = widetag(ctx, object);
+        return if tag == Some(layout::widetag::SIMPLE_VECTOR)
+            || tag == Some(layout::widetag::SPECIALIZED_ARRAY)
+            || tag == Some(layout::widetag::STRING)
+        {
+            Ok((Word::NIL, 0))
+        } else {
+            Err(ObjectError::TypeError)
         };
     }
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
@@ -267,16 +266,18 @@ pub fn array_row_major_ref(
     object: Word,
     index: usize,
 ) -> Result<Word, ObjectError> {
-    match widetag(ctx, object) {
-        Some(layout::widetag::SIMPLE_VECTOR) => return simple_vector_ref(ctx, object, index),
-        Some(layout::widetag::SPECIALIZED_ARRAY) => {
-            return specialized_array_ref(ctx, object, index);
-        }
-        Some(layout::widetag::STRING) => {
-            return string_ref(ctx, object, index).map(|value| Word::character(u32::from(value)));
-        }
-        Some(layout::widetag::NON_SIMPLE_ARRAY) => {}
-        _ => return Err(ObjectError::TypeError),
+    let tag = widetag(ctx, object);
+    if tag == Some(layout::widetag::SIMPLE_VECTOR) {
+        return simple_vector_ref(ctx, object, index);
+    }
+    if tag == Some(layout::widetag::SPECIALIZED_ARRAY) {
+        return specialized_array_ref(ctx, object, index);
+    }
+    if tag == Some(layout::widetag::STRING) {
+        return string_ref(ctx, object, index).map(|value| Word::character(u32::from(value)));
+    }
+    if tag != Some(layout::widetag::NON_SIMPLE_ARRAY) {
+        return Err(ObjectError::TypeError);
     }
     let dimensions = array_dimensions(ctx, object)?;
     let total = dimensions
@@ -305,17 +306,21 @@ pub fn array_row_major_ref(
         )
         .map_err(|_| ObjectError::Layout)?;
         let target = offset.checked_add(index).ok_or(ObjectError::Layout)?;
-        return match widetag(ctx, displaced) {
-            Some(layout::widetag::SIMPLE_VECTOR) => simple_vector_ref(ctx, displaced, target),
-            Some(layout::widetag::SPECIALIZED_ARRAY) => {
-                specialized_array_ref(ctx, displaced, target)
-            }
-            Some(layout::widetag::STRING) => {
-                string_ref(ctx, displaced, target).map(|value| Word::character(u32::from(value)))
-            }
-            Some(layout::widetag::NON_SIMPLE_ARRAY) => array_row_major_ref(ctx, displaced, target),
-            _ => Err(ObjectError::TypeError),
-        };
+        let tag = widetag(ctx, displaced);
+        if tag == Some(layout::widetag::SIMPLE_VECTOR) {
+            return simple_vector_ref(ctx, displaced, target);
+        }
+        if tag == Some(layout::widetag::SPECIALIZED_ARRAY) {
+            return specialized_array_ref(ctx, displaced, target);
+        }
+        if tag == Some(layout::widetag::STRING) {
+            return string_ref(ctx, displaced, target)
+                .map(|value| Word::character(u32::from(value)));
+        }
+        if tag == Some(layout::widetag::NON_SIMPLE_ARRAY) {
+            return array_row_major_ref(ctx, displaced, target);
+        }
+        return Err(ObjectError::TypeError);
     }
     let slot = metadata_offset(dimensions.len(), 5) + index;
     read(ctx, object, slot, layout::widetag::NON_SIMPLE_ARRAY)
@@ -332,22 +337,22 @@ pub fn array_row_major_set(
     index: usize,
     value: Word,
 ) -> Result<(), ObjectError> {
-    match widetag(ctx, object) {
-        Some(layout::widetag::SIMPLE_VECTOR) => {
-            return simple_vector_set(ctx, object, index, value);
-        }
-        Some(layout::widetag::SPECIALIZED_ARRAY) => {
-            return specialized_array_set(ctx, object, index, value);
-        }
-        Some(layout::widetag::STRING) => {
-            let character = value
-                .as_character()
-                .and_then(char::from_u32)
-                .ok_or(ObjectError::TypeError)?;
-            return string_set(ctx, object, index, character);
-        }
-        Some(layout::widetag::NON_SIMPLE_ARRAY) => {}
-        _ => return Err(ObjectError::TypeError),
+    let tag = widetag(ctx, object);
+    if tag == Some(layout::widetag::SIMPLE_VECTOR) {
+        return simple_vector_set(ctx, object, index, value);
+    }
+    if tag == Some(layout::widetag::SPECIALIZED_ARRAY) {
+        return specialized_array_set(ctx, object, index, value);
+    }
+    if tag == Some(layout::widetag::STRING) {
+        let character = value
+            .as_character()
+            .and_then(char::from_u32)
+            .ok_or(ObjectError::TypeError)?;
+        return string_set(ctx, object, index, character);
+    }
+    if tag != Some(layout::widetag::NON_SIMPLE_ARRAY) {
+        return Err(ObjectError::TypeError);
     }
     let dimensions = array_dimensions(ctx, object)?;
     let total = dimensions
@@ -377,18 +382,17 @@ pub fn array_row_major_set(
         )
         .map_err(|_| ObjectError::Layout)?;
         let target = offset.checked_add(index).ok_or(ObjectError::Layout)?;
-        return match widetag(ctx, displaced) {
-            Some(layout::widetag::SIMPLE_VECTOR) => {
-                simple_vector_set(ctx, displaced, target, value)
-            }
-            Some(layout::widetag::SPECIALIZED_ARRAY) => {
-                specialized_array_set(ctx, displaced, target, value)
-            }
-            Some(layout::widetag::NON_SIMPLE_ARRAY) => {
-                array_row_major_set(ctx, displaced, target, value)
-            }
-            _ => Err(ObjectError::TypeError),
-        };
+        let tag = widetag(ctx, displaced);
+        if tag == Some(layout::widetag::SIMPLE_VECTOR) {
+            return simple_vector_set(ctx, displaced, target, value);
+        }
+        if tag == Some(layout::widetag::SPECIALIZED_ARRAY) {
+            return specialized_array_set(ctx, displaced, target, value);
+        }
+        if tag == Some(layout::widetag::NON_SIMPLE_ARRAY) {
+            return array_row_major_set(ctx, displaced, target, value);
+        }
+        return Err(ObjectError::TypeError);
     }
     write(
         ctx,
@@ -429,13 +433,17 @@ pub fn adjust_array(
         .then(|| fill_pointer(ctx, object))
         .transpose()?;
     with_roots(ctx, &[object, initial_element], |ctx, rooted| {
+        let initial_element = **rooted.get(1).ok_or(ObjectError::Layout)?;
         let adjusted = make_array(
             ctx,
             runtime,
             dimensions,
             ArrayOptions {
-                element_type: array_element_type(ctx, *rooted[0])?,
-                initial_element: *rooted[1],
+                element_type: array_element_type(
+                    ctx,
+                    **rooted.first().ok_or(ObjectError::Layout)?,
+                )?,
+                initial_element,
                 adjustable: true,
                 fill_pointer: fill.map(|value| value.min(new_total)),
                 displaced_to: None,
@@ -444,7 +452,8 @@ pub fn adjust_array(
         )?;
         let copy_count = old_total.min(new_total);
         for index in 0..copy_count {
-            let value = array_row_major_ref(ctx, *rooted[0], index)?;
+            let value =
+                array_row_major_ref(ctx, **rooted.first().ok_or(ObjectError::Layout)?, index)?;
             array_row_major_set(ctx, adjusted, index, value)?;
         }
         Ok(adjusted)

@@ -307,6 +307,9 @@ fn bounded_count(count: u32, offset: usize) -> Result<usize, FaslError> {
 mod tests {
     use super::*;
 
+    const CODE_8: [u8; 8] = [0; 8];
+    const CODE_16: [u8; 16] = [0; 16];
+
     fn entry() -> SafepointEntry {
         SafepointEntry {
             pc_offset: 7,
@@ -324,12 +327,33 @@ mod tests {
         encode_section(groups).unwrap_or_else(|error| panic!("valid stack map rejected: {error}"))
     }
 
+    fn group(entries: Vec<SafepointEntry>) -> SafepointGroup {
+        SafepointGroup {
+            code_object_id: 0,
+            entries,
+        }
+    }
+
+    fn layout(code: &'static [u8], frame_words: u16) -> [FaslCodeLayout<'static>; 1] {
+        [FaslCodeLayout {
+            id: 0,
+            entry_offset: 0,
+            code,
+            frame_words,
+            constant_count: 0,
+        }]
+    }
+
+    fn assert_bad(bytes: &[u8], base: usize, layout: &[FaslCodeLayout<'_>], offset: usize) {
+        assert_eq!(
+            decode_section(bytes, base, layout),
+            Err(FaslError::at(FaslRejectReason::InvalidSafepointMap, offset))
+        );
+    }
+
     #[test]
     fn safepoint_header_matches_the_existing_sixteen_byte_layout() {
-        let bytes = encode_section(&[SafepointGroup {
-            code_object_id: 0,
-            entries: vec![entry()],
-        }]);
+        let bytes = encode_section(&[group(vec![entry()])]);
         assert_eq!(
             bytes,
             Ok(vec![
@@ -337,45 +361,66 @@ mod tests {
                 4, 0, 0, 3, 0,
             ])
         );
+        let eight_slots = SafepointEntry {
+            slot_words: 8,
+            word_slot_count: 1,
+            register_mask: 0,
+            slot_bitmap: vec![4],
+            register_ids: vec![],
+            ..entry()
+        };
+        let groups = [group(vec![eight_slots])];
+        let layout = layout(&CODE_8, 8);
+        assert_eq!(
+            decode_section(&must_encode(&groups), 0, &layout),
+            Ok(groups.to_vec())
+        );
     }
 
     #[test]
-    fn safepoint_rejects_unsorted_pc_and_nonzero_unused_bitmap_bits() {
-        let layout = [FaslCodeLayout {
-            id: 0,
-            entry_offset: 0,
-            code: &[0; 16],
-            frame_words: 8,
-            constant_count: 0,
-        }];
-        let mut unsorted = encode_section(&[SafepointGroup {
-            code_object_id: 0,
-            entries: vec![
-                entry(),
-                SafepointEntry {
-                    pc_offset: 8,
-                    ..entry()
-                },
-            ],
-        }])
-        .unwrap_or_default();
+    fn safepoint_decoder_rejects_bad_group_and_entry_counts() {
+        let valid = must_encode(&[group(vec![entry()])]);
+        let layout = layout(&CODE_16, 8);
+        for (range, value, offset) in [(0..4, 0_u32, 500), (4..8, 1, 504), (8..12, 2, 508)] {
+            let mut bytes = valid.clone();
+            bytes[range].copy_from_slice(&value.to_le_bytes());
+            assert_bad(&bytes, 500, &layout, offset);
+        }
+        assert_bad(&valid, 500, &[FaslCodeLayout { id: 1, ..layout[0] }], 504);
+    }
+
+    #[test]
+    fn safepoint_decoder_rejects_invalid_entry_fields_and_truncation() {
+        let valid = must_encode(&[group(vec![entry()])]);
+        let layout = layout(&CODE_16, 8);
+        for (offset, value) in [(18, 2_u16), (20, 6), (16, 7)] {
+            let mut bytes = valid.clone();
+            bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+            assert_bad(&bytes, 500, &layout, 512);
+        }
+        let mut bad_pc = valid.clone();
+        bad_pc[12..16].copy_from_slice(&16_u32.to_le_bytes());
+        assert_bad(&bad_pc, 500, &layout, 512);
+        let mut bad_bitmap = valid.clone();
+        bad_bitmap[28] = 0;
+        assert_bad(&bad_bitmap, 500, &layout, 528);
+        let mut bad_ids = valid.clone();
+        bad_ids[31..33].copy_from_slice(&2_u16.to_le_bytes());
+        assert_bad(&bad_ids, 500, &layout, 529);
+        let mut unused_bits = valid.clone();
+        unused_bits[28] |= 0b1000_0000;
+        assert_bad(&unused_bits, 500, &layout, 528);
+        let mut unsorted = must_encode(&[group(vec![
+            entry(),
+            SafepointEntry {
+                pc_offset: 8,
+                ..entry()
+            },
+        ])]);
         unsorted[33..37].copy_from_slice(&6_u32.to_le_bytes());
+        assert_bad(&unsorted, 500, &layout, 533);
         assert!(matches!(
-            decode_section(&unsorted, 0, &layout),
-            Err(FaslError {
-                reason: FaslRejectReason::InvalidSafepointMap,
-                ..
-            })
-        ));
-
-        let mut malformed = encode_section(&[SafepointGroup {
-            code_object_id: 0,
-            entries: vec![entry()],
-        }])
-        .unwrap_or_default();
-        malformed[28] |= 0b1000_0000;
-        assert!(matches!(
-            decode_section(&malformed, 0, &layout),
+            decode_section(&valid[..28], 500, &layout),
             Err(FaslError {
                 reason: FaslRejectReason::InvalidSafepointMap,
                 ..
@@ -384,69 +429,39 @@ mod tests {
     }
 
     #[test]
-    fn safepoint_rejects_register_ids_that_do_not_match_the_mask() {
+    fn safepoint_encoder_rejects_duplicates_bad_ids_and_entry_shapes() {
+        let invalid = Err(FaslError::new(FaslRejectReason::InvalidSafepointMap));
         let mut bad_ids = entry();
         bad_ids.register_ids = vec![0, 2];
+        assert_eq!(encode_section(&[group(vec![entry(), entry()])]), invalid);
         assert_eq!(
             encode_section(&[SafepointGroup {
-                code_object_id: 0,
-                entries: vec![bad_ids],
+                code_object_id: 1,
+                entries: vec![]
             }]),
-            Err(FaslError::new(FaslRejectReason::InvalidSafepointMap))
+            invalid
         );
-
-        let layout = [FaslCodeLayout {
-            id: 0,
-            entry_offset: 0,
-            code: &[0; 16],
-            frame_words: 8,
-            constant_count: 0,
-        }];
-        let mut bytes = must_encode(&[SafepointGroup {
-            code_object_id: 0,
-            entries: vec![entry()],
-        }]);
-        bytes[31..33].copy_from_slice(&2_u16.to_le_bytes());
-        assert_eq!(
-            decode_section(&bytes, 300, &layout),
-            Err(FaslError::at(FaslRejectReason::InvalidSafepointMap, 329))
-        );
-    }
-
-    #[test]
-    fn safepoint_encoder_rejects_duplicate_pcs() {
-        assert_eq!(
-            encode_section(&[SafepointGroup {
-                code_object_id: 0,
-                entries: vec![entry(), entry()],
-            }]),
-            Err(FaslError::new(FaslRejectReason::InvalidSafepointMap))
-        );
-    }
-
-    #[test]
-    fn safepoint_with_eight_slots_round_trips_zero_unused_bits() {
-        let groups = [SafepointGroup {
-            code_object_id: 0,
-            entries: vec![SafepointEntry {
-                pc_offset: 7,
-                frame_words: 8,
-                slot_words: 8,
-                word_slot_count: 1,
-                register_mask: 0,
-                map_flags: 0,
-                slot_bitmap: vec![0b0000_0100],
-                register_ids: Vec::new(),
-            }],
-        }];
-        let layout = [FaslCodeLayout {
-            id: 0,
-            entry_offset: 0,
-            code: &[0; 8],
-            frame_words: 8,
-            constant_count: 0,
-        }];
-        let bytes = must_encode(&groups);
-        assert_eq!(decode_section(&bytes, 0, &layout), Ok(groups.to_vec()));
+        assert_eq!(encode_section(&[group(vec![]), group(vec![]),]), invalid);
+        for bad in [
+            bad_ids,
+            SafepointEntry {
+                slot_words: 2,
+                ..entry()
+            },
+            SafepointEntry {
+                word_slot_count: 6,
+                ..entry()
+            },
+            SafepointEntry {
+                slot_bitmap: vec![],
+                ..entry()
+            },
+            SafepointEntry {
+                slot_bitmap: vec![0],
+                ..entry()
+            },
+        ] {
+            assert_eq!(encode_section(&[group(vec![bad])]), invalid);
+        }
     }
 }

@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::unwrap_used,
     reason = "tests assert on condition-system behavior"
 )]
@@ -63,7 +63,10 @@ fn allocate_a_cons_during_handler_invocation(
     })
 }
 
-#[allow(clippy::unnecessary_wraps, reason = "condition handler callback ABI")]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "The condition-handler callback ABI requires a Result return."
+)]
 fn assert_simple_condition_report(
     _runtime: std::ptr::NonNull<()>,
     ctx: &mut ThreadContext,
@@ -272,10 +275,6 @@ fn cerror_signals_with_a_continue_restart() {
 }
 
 #[test]
-#[allow(
-    clippy::too_many_lines,
-    reason = "covers all condition builtin variants"
-)]
 fn condition_builtins_keep_string_report_values_and_ignore_condition_arguments() {
     let (runtime, mut ctx) = setup();
     ctx.set_strict_forwarding(true);

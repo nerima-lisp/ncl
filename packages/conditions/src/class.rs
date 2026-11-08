@@ -41,7 +41,7 @@ impl ConditionClass {
 /// [`ConditionIdentifier::name`] when resolving it through [`condition_class`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-#[allow(
+#[expect(
     missing_docs,
     reason = "variants mirror the registered CL condition names"
 )]

@@ -78,7 +78,10 @@ fn is_symbol(ctx: &ThreadContext, value: Word) -> bool {
 /// adapter to do beyond passing the argument vector through unchanged. The
 /// `Result` wrapper is part of the `KeywordAdapter` function-pointer type,
 /// not a choice made here.
-#[allow(clippy::unnecessary_wraps)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "KeywordAdapter requires a Result-returning callback even when this adapter only copies arguments."
+)]
 fn identity_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
     Ok(args.as_slice().to_vec())
 }

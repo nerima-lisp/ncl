@@ -1,4 +1,7 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on coverage failures")]
+#![expect(
+    clippy::unwrap_used,
+    reason = "Tests assert on ownership coverage failures."
+)]
 
 //! Ownership coverage gate: every Phase-1 `ncl-conditions` symbol is
 //! registered.

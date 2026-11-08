@@ -4,7 +4,7 @@
 //! chain operations behind typed opaque handles. Slot constants remain
 //! crate-visible only for current lowering code.
 
-#![allow(
+#![expect(
     clippy::redundant_pub_crate,
     reason = "typed records stay private to this crate"
 )]
@@ -162,17 +162,15 @@ fn word_from_pointer(pointer: usize) -> Word {
 }
 
 #[cfg(target_pointer_width = "64")]
-#[allow(clippy::unnecessary_wraps, reason = "control pointers are optional")]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "The 64-bit conversion keeps the Option signature used by the checked 32-bit conversion."
+)]
 const fn pointer_from_word(word: Word) -> Option<usize> {
     Some(usize::from_ne_bytes(word.bits().to_ne_bytes()))
 }
 
 #[cfg(target_pointer_width = "32")]
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::unnecessary_wraps,
-    reason = "control pointers are usize-sized on supported targets"
-)]
 const fn pointer_from_word(word: Word) -> Option<usize> {
     usize::try_from(word.bits()).ok()
 }

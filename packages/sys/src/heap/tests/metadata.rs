@@ -127,6 +127,71 @@ fn retiring_intermediate_forwarder_rewires_older_forwarders() {
 }
 
 #[test]
+fn retired_forwarding_storage_is_not_a_conservative_root() {
+    let heap = Heap::new(HeapConfig {
+        dynamic_space_size: 8 * crate::heap::pages::LOGICAL_PAGE_SIZE,
+        ..HeapConfig::default()
+    });
+    let mut thread = Thread::new();
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+    let allocation = heap.alloc_cons(&mut thread, Word::NIL, Word::NIL);
+    assert!(allocation.is_ok(), "forwarding fixture allocation failed");
+    let Ok(mut root) = allocation else {
+        return;
+    };
+    let retired_address = root.address();
+    let root_token = heap.push_root(&mut root);
+
+    assert_eq!(heap.collect(true), Ok(()));
+    assert_ne!(root.address(), retired_address);
+    let retired_word = Word::pointer(retired_address, crate::LowTag::List);
+    let (retired_index, retired_page) = {
+        let state = heap.lock_state();
+        let index = state.object_index_at(retired_address);
+        assert!(index.is_some(), "forwarder missing after collection");
+        let Some(index) = index else { return };
+        let object = state.objects.get(index);
+        assert!(object.is_some(), "forwarder index is valid");
+        let Some(object) = object else { return };
+        assert!(!object.alive);
+        assert!(object.forwarded_to.is_some());
+        assert!(
+            object.words.is_empty(),
+            "forwarding storage was not retired"
+        );
+        let page = state.page_index(retired_address);
+        assert!(page.is_some(), "forwarder page exists");
+        let Some(page) = page else { return };
+        assert_eq!(Heap::find_conservative(&state, retired_word), None);
+        drop(state);
+        (index, page)
+    };
+
+    crate::publish_conservative_root(&mut thread, retired_word);
+    assert_eq!(heap.collect(false), Ok(()));
+
+    let state = heap.lock_state();
+    let retired = state.objects.get(retired_index);
+    assert!(retired.is_some(), "forwarder remains indexed");
+    let Some(retired) = retired else { return };
+    assert!(!retired.alive);
+    assert!(retired.words.is_empty());
+    assert!(
+        !state.pages[retired_page].pinned,
+        "retired forwarding storage must not pin its page"
+    );
+    assert!(
+        state
+            .objects
+            .iter()
+            .any(|object| object.alive && object.start == root.address())
+    );
+    drop(state);
+    assert!(heap.pop_root(root_token));
+    heap.unregister_thread(&thread);
+}
+
+#[test]
 fn collection_forwards_function_tagged_frame_root_and_preserves_entry() {
     let h = Heap::new(HeapConfig::default());
     let mut t = Thread::new();

@@ -129,10 +129,7 @@ pub(super) fn hash_key(
 ) -> Result<u64, ObjectError> {
     match test {
         HashTest::Eq => Ok(super::sxhash(word)),
-        HashTest::Eql => match numeric_hash(ctx, word)? {
-            Some(hash) => Ok(hash),
-            None => Ok(super::sxhash(word)),
-        },
+        HashTest::Eql => numeric_hash(ctx, word)?.map_or_else(|| Ok(super::sxhash(word)), Ok),
         HashTest::Equal => content_hash(ctx, word, false, 0),
         HashTest::Equalp => content_hash(ctx, word, true, 0),
     }
@@ -166,10 +163,7 @@ fn content_hash(
                 ^ content_hash(ctx, cons_part(ctx, word, 1)?, fold, depth + 1)?,
         );
     }
-    match numeric_hash(ctx, word)? {
-        Some(hash) => Ok(hash),
-        None => Ok(super::sxhash(word)),
-    }
+    numeric_hash(ctx, word)?.map_or_else(|| Ok(super::sxhash(word)), Ok)
 }
 
 fn cons_part(ctx: &ThreadContext, word: Word, slot: usize) -> Result<Word, ObjectError> {

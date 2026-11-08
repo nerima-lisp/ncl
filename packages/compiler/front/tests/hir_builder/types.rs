@@ -123,8 +123,10 @@ fn member_integer_and_cons_specifiers_preserve_members_and_bounds() -> TestResul
     )?;
     let actual = asserted_types(&form)?;
 
-    // CLHS 4.2.3 defines MEMBER, INTEGER bounds, and CONS compound specifiers.
+    // CLHS defines MEMBER, finite INTEGER bounds, and CONS element type operands.
     // https://www.lispworks.com/documentation/HyperSpec/Body/04_bc.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_intege.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_cons.htm
     let ClTypeKind::Member(values) = &at(&actual, 0)?.1 else {
         return Err(std::io::Error::other("MEMBER did not become a finite member type").into());
     };
@@ -178,6 +180,52 @@ fn member_integer_and_cons_specifiers_preserve_members_and_bounds() -> TestResul
     assert_eq!(upper_bounded.upper(), None);
     assert!(matches!(&at(&actual, 4)?.1, ClTypeKind::Cons { .. }));
     assert!(matches!(&at(&actual, 5)?.1, ClTypeKind::Cons { .. }));
+    Ok(())
+}
+
+#[test]
+fn finite_integer_and_cons_element_specifiers_preserve_bounds() -> TestResult<()> {
+    let (id, mut builder, _fixture) = context(57);
+    let expr = Expr::Progn(vec![
+        the(compound(
+            "INTEGER",
+            [Literal::fixnum(-2), Literal::fixnum(10)],
+        )),
+        the(compound("CONS", [symbol("INTEGER"), symbol("SYMBOL")])),
+    ]);
+    let form = build(
+        &mut builder,
+        id,
+        &expr,
+        "finite INTEGER and CONS element types",
+    )?;
+    let actual = asserted_types(&form)?;
+
+    // CLHS defines finite INTEGER bounds and the two CONS element type operands.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_intege.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/t_cons.htm
+    let ClTypeKind::NumericRange(finite) = &at(&actual, 0)?.1 else {
+        return Err(std::io::Error::other("finite INTEGER did not become a numeric range").into());
+    };
+    assert_eq!(
+        finite.lower().map(ncl_hir::cl_type::NumericBound::value),
+        Some(NumericValue::Integer(-2))
+    );
+    assert_eq!(
+        finite.upper().map(ncl_hir::cl_type::NumericBound::value),
+        Some(NumericValue::Integer(10))
+    );
+    let ClTypeKind::Cons { car, cdr } = &at(&actual, 1)?.1 else {
+        return Err(std::io::Error::other("two-operand CONS did not become a cons type").into());
+    };
+    assert_eq!(
+        form.types().get(*car).map(ncl_hir::ClType::kind),
+        Some(&ClTypeKind::Named(BuiltinType::Integer))
+    );
+    assert_eq!(
+        form.types().get(*cdr).map(ncl_hir::ClType::kind),
+        Some(&ClTypeKind::Named(BuiltinType::Symbol))
+    );
     Ok(())
 }
 

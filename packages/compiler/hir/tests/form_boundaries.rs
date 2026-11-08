@@ -475,3 +475,11 @@ fn form_finishing_rejects_missing_cfg_entries_and_terminators() -> Result<(), Bo
     ));
     Ok(())
 }
+
+#[test]
+fn form_errors_display_their_context() {
+    assert_eq!(
+        FormError::InvalidFunctionSignature.to_string(),
+        "HIR form error: InvalidFunctionSignature"
+    );
+}

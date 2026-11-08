@@ -1,5 +1,6 @@
 use ncl_ir::{
-    ArrayElementType, Constant, ConstantIndex, SpecializedArrayElementType, StructureKind, Ty,
+    ArrayElementType, Constant, ConstantIndex, Convert, SpecializedArrayElementType, StructureKind,
+    Ty,
 };
 
 use crate::ids::NodeId;
@@ -14,9 +15,9 @@ impl FunctionLowerer<'_> {
         literal: &Literal,
     ) -> Result<ncl_ir::ValueId, LowerError> {
         let constant = self.literal_value(node, literal)?;
-        let ty = literal_type(&constant);
+        let (ty, conversion) = literal_type(&constant);
         let value = self.push_constant(constant, ty)?;
-        self.coerce_to_word(value, ty)
+        self.coerce_to_word(value, conversion)
     }
 
     fn literal_value(&mut self, node: NodeId, literal: &Literal) -> Result<Constant, LowerError> {
@@ -28,10 +29,58 @@ impl FunctionLowerer<'_> {
             Literal::Character(character) => Constant::Character(*character),
             Literal::String(characters) => Constant::StringBytes(encode_utf8(characters)),
             Literal::Pathname(_) => return Self::unsupported(node, "pathname-literal"),
-            Literal::Cons(_, _) | Literal::Vector(_) => self.structure_constant(node, literal)?,
-            Literal::Array { identity, .. } | Literal::SpecializedArray { identity, .. } => {
-                Constant::Object(self.array_constant(node, literal, *identity)?)
-            }
+            Literal::Cons(car, cdr) => self.structure_constant(
+                node,
+                StructureKind::Cons,
+                vec![car.as_ref(), cdr.as_ref()],
+            )?,
+            Literal::Vector(elements) => self.structure_constant(
+                node,
+                StructureKind::SimpleVector,
+                elements.iter().collect(),
+            )?,
+            Literal::Array {
+                identity,
+                dimensions,
+                element_type,
+                elements,
+            } => Constant::Object(self.array_constant(
+                node,
+                *identity,
+                StructureKind::Array {
+                    dimensions: dimensions.clone(),
+                    element_type: ir_array_element_type(*element_type),
+                },
+                elements.iter().collect(),
+            )?),
+            Literal::SpecializedArray {
+                identity,
+                element_type: LiteralElementType::T,
+                elements,
+            } => Constant::Object(self.array_constant(
+                node,
+                *identity,
+                StructureKind::Array {
+                    dimensions: vec![elements.len()],
+                    element_type: ArrayElementType::T,
+                },
+                elements.iter().collect(),
+            )?),
+            Literal::SpecializedArray {
+                identity,
+                element_type,
+                elements,
+            } => Constant::Object(
+                self.array_constant(
+                    node,
+                    *identity,
+                    StructureKind::SpecializedArray {
+                        element_type: ir_specialized_array_element_type(*element_type)
+                            .ok_or(LowerError::InvalidSpecializedArray(node))?,
+                    },
+                    elements.iter().collect(),
+                )?,
+            ),
         })
     }
 
@@ -70,53 +119,9 @@ impl FunctionLowerer<'_> {
     fn structure_constant(
         &mut self,
         node: NodeId,
-        literal: &Literal,
+        kind: StructureKind,
+        children: Vec<&Literal>,
     ) -> Result<Constant, LowerError> {
-        let (kind, children) = match literal {
-            Literal::Cons(car, cdr) => (StructureKind::Cons, vec![car.as_ref(), cdr.as_ref()]),
-            Literal::Vector(elements) => (StructureKind::SimpleVector, elements.iter().collect()),
-            Literal::Array {
-                dimensions,
-                element_type,
-                elements,
-                ..
-            } => (
-                StructureKind::Array {
-                    dimensions: dimensions.clone(),
-                    element_type: ir_array_element_type(*element_type),
-                },
-                elements.iter().collect(),
-            ),
-            Literal::SpecializedArray {
-                element_type: LiteralElementType::T,
-                elements,
-                ..
-            } => (
-                StructureKind::Array {
-                    dimensions: vec![elements.len()],
-                    element_type: ArrayElementType::T,
-                },
-                elements.iter().collect(),
-            ),
-            Literal::SpecializedArray {
-                element_type,
-                elements,
-                ..
-            } => (
-                StructureKind::SpecializedArray {
-                    element_type: ir_specialized_array_element_type(*element_type)
-                        .ok_or(LowerError::InvalidSpecializedArray(node))?,
-                },
-                elements.iter().collect(),
-            ),
-            Literal::Nil
-            | Literal::True
-            | Literal::Symbol(_)
-            | Literal::Number(_)
-            | Literal::Character(_)
-            | Literal::String(_)
-            | Literal::Pathname(_) => return Self::unsupported(node, "quoted-structure"),
-        };
         let elements = children
             .into_iter()
             .map(|child| {
@@ -130,13 +135,14 @@ impl FunctionLowerer<'_> {
     fn array_constant(
         &mut self,
         node: NodeId,
-        literal: &Literal,
         identity: u32,
+        kind: StructureKind,
+        children: Vec<&Literal>,
     ) -> Result<ConstantIndex, LowerError> {
         if let Some(index) = self.literal_objects.get(&identity).copied() {
             return Ok(index);
         }
-        let descriptor = self.structure_constant(node, literal)?;
+        let descriptor = self.structure_constant(node, kind, children)?;
         let descriptor = self.add_constant(descriptor)?;
         let index = self.add_constant(Constant::LiteralObject {
             identity,
@@ -147,10 +153,10 @@ impl FunctionLowerer<'_> {
     }
 }
 
-const fn literal_type(constant: &Constant) -> Ty {
+const fn literal_type(constant: &Constant) -> (Ty, Option<Convert>) {
     match constant {
-        Constant::Fixnum(_) => Ty::I64,
-        Constant::SingleFloat(_) | Constant::DoubleFloat(_) => Ty::F64,
+        Constant::Fixnum(_) => (Ty::I64, Some(Convert::I64ToWord)),
+        Constant::SingleFloat(_) | Constant::DoubleFloat(_) => (Ty::F64, Some(Convert::F64ToWord)),
         Constant::Character(_)
         | Constant::Symbol { .. }
         | Constant::UninternedSymbol { .. }
@@ -164,7 +170,7 @@ const fn literal_type(constant: &Constant) -> Ty {
         | Constant::FunctionEntry(_)
         | Constant::Bignum { .. }
         | Constant::Ratio { .. }
-        | Constant::Complex { .. } => Ty::Word,
+        | Constant::Complex { .. } => (Ty::Word, None),
     }
 }
 

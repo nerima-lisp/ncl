@@ -7,10 +7,45 @@ use super::node;
 use super::node::MultipleValueOperation;
 use super::source;
 use super::{
-    CleanupId, CompilationUnitId, FactAuthorization, FactCertainty, FactDomain, FactProvenance,
-    FactRecord, Fixture, Node, NodeKind, SourceOriginId, SymbolId, TypeSpecConstId, ValueId,
-    VerifyError, conditional_cfg, form, return_cfg,
+    conditional_cfg, form, return_cfg, CleanupId, CompilationUnitId, FactAuthorization,
+    FactCertainty, FactDomain, FactProvenance, FactRecord, Fixture, Node, NodeId, NodeKind,
+    ScopeId, SourceOriginId, SymbolId, TypeSpecConstId, ValueId, VerifyError,
 };
+
+fn add_expansion_origin(
+    fixture: &mut Fixture,
+    transform_name: SymbolId,
+) -> Result<SourceOriginId, Box<dyn Error>> {
+    let mut files = source::SourceFiles::new(fixture.form.compilation_unit());
+    let file = files.add("hir-test.lisp", "x")?;
+    let span = files.span(file, 0, 1)?;
+    let transform =
+        source::SourceTransform::new(source::SourceTransformKind::MacroExpansion, transform_name);
+    Ok(fixture
+        .origins
+        .add_expansion(&files, file, span, fixture.origin, transform)?)
+}
+
+fn add_let(
+    fixture: &mut Fixture,
+    kind: node::LetKind,
+    bindings: Vec<node::LetBinding>,
+    initializer_scopes: Vec<ScopeId>,
+    binding_scopes: Vec<ScopeId>,
+    body_scope: ScopeId,
+) -> Result<NodeId, Box<dyn Error>> {
+    Ok(fixture.add_node(
+        fixture.root,
+        NodeKind::Let {
+            kind,
+            bindings,
+            initializer_scopes,
+            binding_scopes,
+            body_scope,
+            body: Vec::new(),
+        },
+    )?)
+}
 
 #[test]
 fn unreferenced_bindings_still_need_valid_symbol_ids() -> Result<(), Box<dyn Error>> {
@@ -277,5 +312,169 @@ fn source_expansion_requires_an_existing_parent() -> Result<(), Box<dyn Error>> 
         Err(source::SourceError::UnknownOrigin(_))
     ));
     assert!(origins.is_empty());
+    Ok(())
+}
+
+#[test]
+fn unwind_protect_cleanup_ids_must_be_unique() -> Result<(), Box<dyn Error>> {
+    let mut fixture = Fixture::new(22)?;
+    let function = fixture.add_lambda(fixture.root)?;
+    let cleanup = CleanupId::try_from_index(fixture.form, 0)?;
+    let first_protected = fixture.add_node(fixture.root, NodeKind::Literal(node::Literal::Nil))?;
+    let second_protected = fixture.add_node(fixture.root, NodeKind::Literal(node::Literal::Nil))?;
+    let _ = fixture.add_node(
+        fixture.root,
+        NodeKind::UnwindProtect {
+            cleanup,
+            protected: first_protected,
+            cleanup_forms: Vec::new(),
+        },
+    )?;
+    let _ = fixture.add_node(
+        fixture.root,
+        NodeKind::UnwindProtect {
+            cleanup,
+            protected: second_protected,
+            cleanup_forms: Vec::new(),
+        },
+    )?;
+    let cfg = return_cfg(fixture.form, function)?;
+    assert_eq!(
+        fixture.verify(&cfg),
+        Err(VerifyError::InvalidCleanup(cleanup))
+    );
+    Ok(())
+}
+
+#[test]
+fn expansion_origins_require_a_registered_transform_symbol() -> Result<(), Box<dyn Error>> {
+    let mut valid = Fixture::new(23)?;
+    let transform = valid.insert_symbols_through(0)?;
+    let origin = add_expansion_origin(&mut valid, transform)?;
+    let _ = valid.nodes.allocate(Node {
+        scope: valid.root,
+        origin,
+        kind: NodeKind::Literal(node::Literal::Nil),
+    })?;
+    let function = valid.add_lambda(valid.root)?;
+    let cfg = return_cfg(valid.form, function)?;
+    assert_eq!(valid.verify(&cfg), Ok(()));
+
+    let mut invalid = Fixture::new(24)?;
+    let transform = SymbolId::try_from_index(invalid.form.compilation_unit(), 1)?;
+    let origin = add_expansion_origin(&mut invalid, transform)?;
+    let _ = invalid.nodes.allocate(Node {
+        scope: invalid.root,
+        origin,
+        kind: NodeKind::Literal(node::Literal::Nil),
+    })?;
+    let function = invalid.add_lambda(invalid.root)?;
+    let cfg = return_cfg(invalid.form, function)?;
+    assert_eq!(
+        invalid.verify(&cfg),
+        Err(VerifyError::InvalidSymbol(transform))
+    );
+    Ok(())
+}
+
+#[test]
+fn sequential_let_initializers_match_the_previous_binding_scope() -> Result<(), Box<dyn Error>> {
+    let mut valid = Fixture::new(25)?;
+    let first_symbol = valid.insert_symbols_through(1)?;
+    let second_symbol = SymbolId::try_from_index(valid.form.compilation_unit(), 0)?;
+    let first_scope = valid.bindings.push_scope(valid.root)?;
+    let second_scope = valid.bindings.push_scope(first_scope)?;
+    let first_binding = valid.bindings.bind_variable(first_scope, first_symbol)?;
+    let second_binding = valid.bindings.bind_variable(second_scope, second_symbol)?;
+    let first_initializer = valid.add_node(valid.root, NodeKind::Literal(node::Literal::Nil))?;
+    let second_initializer = valid.add_node(first_scope, NodeKind::Literal(node::Literal::Nil))?;
+    let root = valid.root;
+    let _ = add_let(
+        &mut valid,
+        node::LetKind::Sequential,
+        vec![
+            node::LetBinding {
+                binding: first_binding,
+                initializer: Some(first_initializer),
+            },
+            node::LetBinding {
+                binding: second_binding,
+                initializer: Some(second_initializer),
+            },
+        ],
+        vec![root, first_scope],
+        vec![first_scope, second_scope],
+        second_scope,
+    )?;
+    let function = valid.add_lambda(valid.root)?;
+    let cfg = return_cfg(valid.form, function)?;
+    assert_eq!(valid.verify(&cfg), Ok(()));
+
+    let mut invalid = Fixture::new(26)?;
+    let first_symbol = invalid.insert_symbols_through(1)?;
+    let second_symbol = SymbolId::try_from_index(invalid.form.compilation_unit(), 0)?;
+    let first_scope = invalid.bindings.push_scope(invalid.root)?;
+    let second_scope = invalid.bindings.push_scope(first_scope)?;
+    let first_binding = invalid.bindings.bind_variable(first_scope, first_symbol)?;
+    let second_binding = invalid
+        .bindings
+        .bind_variable(second_scope, second_symbol)?;
+    let first_initializer =
+        invalid.add_node(invalid.root, NodeKind::Literal(node::Literal::Nil))?;
+    let second_initializer =
+        invalid.add_node(invalid.root, NodeKind::Literal(node::Literal::Nil))?;
+    let root = invalid.root;
+    let let_node = add_let(
+        &mut invalid,
+        node::LetKind::Sequential,
+        vec![
+            node::LetBinding {
+                binding: first_binding,
+                initializer: Some(first_initializer),
+            },
+            node::LetBinding {
+                binding: second_binding,
+                initializer: Some(second_initializer),
+            },
+        ],
+        vec![root, first_scope],
+        vec![first_scope, second_scope],
+        second_scope,
+    )?;
+    let function = invalid.add_lambda(invalid.root)?;
+    let cfg = return_cfg(invalid.form, function)?;
+    assert_eq!(
+        invalid.verify(&cfg),
+        Err(VerifyError::InvalidBindingScopes(let_node))
+    );
+    Ok(())
+}
+
+#[test]
+fn check_type_diagnostic_origin_must_match_the_node_origin() -> Result<(), Box<dyn Error>> {
+    let mut fixture = Fixture::new(29)?;
+    let transform = fixture.insert_symbols_through(0)?;
+    let diagnostic_origin = add_expansion_origin(&mut fixture, transform)?;
+    let value = ValueId::try_from_index(fixture.form, 0)?;
+    let producer = fixture.add_node(fixture.root, NodeKind::Literal(node::Literal::Nil))?;
+    let expected = TypeSpecConstId::try_from_index(fixture.form, 0)?;
+    let _ = fixture.values.insert(value);
+    let _ = fixture.value_producers.insert(value, producer);
+    let _ = fixture.constants.insert(expected);
+    let check = fixture.add_node(
+        fixture.root,
+        NodeKind::CheckType {
+            value,
+            accepted_type: fixture.types.any(),
+            expected_type: expected,
+            source_origin: diagnostic_origin,
+        },
+    )?;
+    let function = fixture.add_lambda(fixture.root)?;
+    let cfg = conditional_cfg(fixture.form, function, check, false, &[producer], &[])?;
+    assert_eq!(
+        fixture.verify(&cfg),
+        Err(VerifyError::CheckTypeOriginMismatch(check))
+    );
     Ok(())
 }

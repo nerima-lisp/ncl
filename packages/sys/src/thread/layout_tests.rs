@@ -7,6 +7,14 @@ fn layout_matches_c_struct_offsets() {
     assert_eq!(layout.tlab_bump, std::mem::offset_of!(Thread, tlab_bump));
     assert_eq!(layout.tlab_limit, std::mem::offset_of!(Thread, tlab_limit));
     assert_eq!(
+        layout.cons_tlab_bump,
+        std::mem::offset_of!(Thread, cons_tlab_bump)
+    );
+    assert_eq!(
+        layout.cons_tlab_limit,
+        std::mem::offset_of!(Thread, cons_tlab_limit)
+    );
+    assert_eq!(
         layout.safepoint_request,
         std::mem::offset_of!(Thread, safepoint_request)
     );
@@ -37,6 +45,14 @@ fn machine_visible_fields_are_aligned_single_words() {
     let fields = [
         (layout.tlab_bump, std::mem::size_of_val(&thread.tlab_bump)),
         (layout.tlab_limit, std::mem::size_of_val(&thread.tlab_limit)),
+        (
+            layout.cons_tlab_bump,
+            std::mem::size_of_val(&thread.cons_tlab_bump),
+        ),
+        (
+            layout.cons_tlab_limit,
+            std::mem::size_of_val(&thread.cons_tlab_limit),
+        ),
         (
             layout.safepoint_request,
             std::mem::size_of_val(&thread.safepoint_request),

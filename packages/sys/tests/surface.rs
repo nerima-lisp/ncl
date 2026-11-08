@@ -217,10 +217,10 @@ fn thread_state_transitions_and_root_stack_have_contracts() {
 fn heap_wrappers_cover_registration_allocation_and_access() {
     assert_eq!(Heap::validate_address_space(), Ok(()));
     let heap = Heap::new(HeapConfig {
-        dynamic_space_size: 16384,
+        dynamic_space_size: 96 * 1024,
         bytes_considered_between_gcs: 128,
     });
-    assert_eq!(heap.dynamic_space_size(), 16384);
+    assert_eq!(heap.dynamic_space_size(), 96 * 1024);
     assert_eq!(heap.bytes_considered_between_gcs(), 128);
     assert_eq!(heap_epoch(&Thread::new()), 0);
     let mut unregistered = Thread::new();

@@ -676,6 +676,9 @@ fn package_nickname_intern_and_import_update_metadata() {
         .nicknames(&ctx)
         .unwrap_or_else(|error| panic!("nicknames: {error:?}"));
     assert_eq!(ncl_object::car(&ctx, nicknames), Ok(nickname));
+    assert_eq!(package.remove_nickname(&mut ctx, nickname), Ok(true));
+    assert_eq!(package.remove_nickname(&mut ctx, nickname), Ok(false));
+    assert_eq!(package.nicknames(&ctx), Ok(Word::NIL));
 
     let name = string(&mut ctx, &runtime, "IMPORTED");
     let uninterned = ncl_object::make_symbol(&mut ctx, &runtime, name)

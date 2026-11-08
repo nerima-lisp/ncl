@@ -374,7 +374,7 @@ fn remaining_object_kinds_round_trip() {
         ncl_object::closure_ref(&ctx, function, 2),
         Ok(double.into())
     );
-    let stream = ncl_object::make_stream(
+    let stream = ncl_streams::make_stream(
         &mut ctx,
         &runtime,
         Word::fixnum(1),
@@ -383,8 +383,8 @@ fn remaining_object_kinds_round_trip() {
         Word::fixnum(9),
         Word::NIL,
     )
-    .unwrap_or_else(|_| ncl_object::Stream::from_word(Word::NIL));
-    assert_eq!(ncl_object::stream_state(&ctx, stream), Ok(Word::fixnum(9)));
+    .unwrap_or_else(|_| ncl_streams::Stream::from_word(Word::NIL));
+    assert_eq!(ncl_streams::stream_state(&ctx, stream), Ok(Word::fixnum(9)));
     let ratio = ncl_object::make_ratio(&mut ctx, &runtime, bignum.into(), double.into())
         .unwrap_or_else(|_| ncl_object::Ratio::from_word(Word::NIL));
     let complex = ncl_object::make_complex(&mut ctx, &runtime, ratio.into(), bignum.into())
@@ -495,7 +495,7 @@ fn remaining_object_kinds_round_trip() {
         Ok(roots[8])
     );
     assert_eq!(
-        ncl_object::stream_state(&ctx, ncl_object::Stream::from_word(roots[6])),
+        ncl_streams::stream_state(&ctx, ncl_streams::Stream::from_word(roots[6])),
         Ok(Word::fixnum(9))
     );
     for token in tokens.into_iter().rev() {

@@ -10,6 +10,7 @@ ncl-object = { path = "../../object" }
 ncl-types = { path = "../../types" }
 ncl-conditions = { path = "../../conditions" }
 ncl-sys = { path = "../../sys" }
+ncl-streams = { path = "../../streams" }
 
 [lints]
 workspace = true

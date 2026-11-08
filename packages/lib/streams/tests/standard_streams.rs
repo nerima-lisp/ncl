@@ -7,8 +7,9 @@
 
 use ncl_object::{
     FunctionObject, ObjectRef, Package, Runtime, ThreadContext, Word, classify_object,
-    stream_direction, symbol_is_special, symbol_value,
+    symbol_is_special, symbol_value,
 };
+use ncl_streams::{Stream, stream_direction};
 
 const STANDARD_STREAMS: [(&str, bool); 7] = [
     ("*STANDARD-OUTPUT*", false),
@@ -51,7 +52,7 @@ fn standard_stream_variables_are_typed_special_streams() {
             classify_object(&ctx, stream),
             ObjectRef::Stream(_)
         ));
-        let direction = stream_direction(&ctx, ncl_object::Stream::from_word(stream)).unwrap();
+        let direction = stream_direction(&ctx, Stream::from_word(stream)).unwrap();
         let direction_name = match name {
             "*TERMINAL-IO*" | "*QUERY-IO*" | "*DEBUG-IO*" => "IO",
             _ if input => "INPUT",

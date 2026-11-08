@@ -12,6 +12,9 @@ pub mod file;
 pub mod registration;
 pub(crate) mod standard;
 
+/// Typed handle to a stream model object.
+pub use ncl_streams::Stream;
+
 const POSITION: usize = 1;
 const DATA: usize = 2;
 const STRING_INPUT: i64 = -1;

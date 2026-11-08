@@ -1,7 +1,8 @@
 use ncl_object::{
-    Package, Runtime, Stream, ThreadContext, Word, make_simple_vector, make_stream,
-    set_symbol_special, set_symbol_value, symbol_value, with_root,
+    Package, Runtime, ThreadContext, Word, make_simple_vector, set_symbol_special,
+    set_symbol_value, symbol_value, with_root,
 };
+use ncl_streams::{Stream, make_stream};
 
 use super::character::StreamKind;
 

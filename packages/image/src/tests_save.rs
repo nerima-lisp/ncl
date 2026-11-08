@@ -10,9 +10,10 @@ use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ArrayElementType, ArrayOptions, BuiltinImplementation, Package, Runtime, ThreadContext, Word,
     car, cdr, make_array, make_bignum_from_limbs, make_complex, make_cons, make_double, make_ratio,
-    make_simple_vector, make_specialized_array, make_stream, make_string, simple_vector_ref,
+    make_simple_vector, make_specialized_array, make_string, simple_vector_ref,
 };
 use ncl_readtables::make_readtable;
+use ncl_streams::make_stream;
 
 use crate::image_builtin_support::{BUILTIN, BUILTIN_ID, BUILTIN_NAME, image_builtin};
 

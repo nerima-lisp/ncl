@@ -3,10 +3,10 @@ use crate::character::{
 };
 use crate::{CLOSED, DATA, POSITION};
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, Stream, ThreadContext, Word,
-    classify_object, simple_vector_ref, simple_vector_set, stream_element_type,
-    stream_external_format, stream_state,
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    classify_object, simple_vector_ref, simple_vector_set,
 };
+use ncl_streams::{Stream, stream_element_type, stream_external_format, stream_state};
 
 mod adapters;
 mod core;

@@ -5,7 +5,8 @@ use super::{
     simple_vector_set, state_kind, stream_from_args, stream_or_default, string_length,
     string_output_at_line_start, string_ref, with_root, write_to_stream,
 };
-use ncl_object::{stream_state, symbol_package, with_roots};
+use ncl_object::{symbol_package, with_roots};
+use ncl_streams::stream_state;
 
 fn keyword_name(ctx: &ThreadContext, runtime: &Runtime, word: Word) -> Result<String, ObjectError> {
     let ObjectRef::Symbol(symbol) = classify_object(ctx, word) else {

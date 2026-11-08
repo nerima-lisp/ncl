@@ -37,7 +37,6 @@ mod runtime;
 mod runtime_sb_symbols;
 pub mod scope;
 mod specialized_array;
-mod stream;
 mod structure;
 mod structure_registry;
 mod symbol_extensions;
@@ -100,11 +99,6 @@ pub use scope::{Handle, HandleVec, Local, Scope};
 pub use specialized_array::{
     make_specialized_array, specialized_array_element_type, specialized_array_ref,
     specialized_array_set,
-};
-pub use stream::stream_slot;
-pub use stream::{
-    Stream, make_stream, stream_direction, stream_element_type, stream_external_format,
-    stream_implementation, stream_state,
 };
 pub use structure::{
     StructureLayout, make_structure, structure_layout, structure_ref, structure_set,

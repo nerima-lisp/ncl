@@ -1,8 +1,32 @@
-use crate::object_access::{get, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, stream_offset, widetag, with_roots};
-use ncl_sys::Word;
+use ncl_object::{
+    ObjectError, Runtime, ThreadContext, Word, allocate, get, put, stream_offset, widetag,
+    with_roots,
+};
 
-crate::word_newtype!(Stream);
+/// A typed handle to a Lisp stream object.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Stream(Word);
+
+impl Stream {
+    /// Construct a stream handle from its tagged word.
+    #[must_use]
+    pub const fn from_word(value: Word) -> Self {
+        Self(value)
+    }
+
+    /// Return the tagged word represented by this handle.
+    #[must_use]
+    pub const fn as_word(self) -> Word {
+        self.0
+    }
+}
+
+impl From<Stream> for Word {
+    fn from(value: Stream) -> Self {
+        value.0
+    }
+}
 
 /// Allocate a stream descriptor.
 ///

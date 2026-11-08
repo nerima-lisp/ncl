@@ -6,8 +6,9 @@
 
 use ncl_object::{
     FunctionObject, Runtime, ThreadContext, Word, pop_root, push_root, simple_vector_ref,
-    stream_state, string_length, string_ref,
+    string_length, string_ref,
 };
+use ncl_streams::{Stream, stream_state};
 
 fn setup(gc_stress: bool) -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
@@ -223,7 +224,7 @@ fn output_stream_survives_gc_stress_and_strict_forwarding() {
         &[line, stream],
     );
     assert_eq!(string(&ctx, written_line.unwrap()), "x");
-    let state = stream_state(&ctx, ncl_object::Stream::from_word(stream)).unwrap();
+    let state = stream_state(&ctx, Stream::from_word(stream)).unwrap();
     assert_eq!(simple_vector_ref(&ctx, state, 1), Ok(Word::fixnum(5)));
     assert!(pop_root(&mut ctx, stream_root));
     assert!(pop_root(&mut ctx, write_line_root));

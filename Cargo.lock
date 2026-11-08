@@ -129,6 +129,7 @@ dependencies = [
  "ncl-objfile",
  "ncl-ownership",
  "ncl-readtables",
+ "ncl-streams",
  "ncl-sys",
 ]
 
@@ -217,6 +218,7 @@ version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
+ "ncl-streams",
  "ncl-sys",
  "ncl-types",
 ]
@@ -236,6 +238,7 @@ version = "0.1.1"
 dependencies = [
  "ncl-ownership",
  "ncl-readtables",
+ "ncl-streams",
  "ncl-sys",
 ]
 
@@ -361,6 +364,13 @@ dependencies = [
  "ncl-threads",
  "ncl-types",
  "ncl-uiop",
+]
+
+[[package]]
+name = "ncl-streams"
+version = "0.1.1"
+dependencies = [
+ "ncl-object",
 ]
 
 [[package]]

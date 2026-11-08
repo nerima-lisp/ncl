@@ -5,13 +5,13 @@ pub mod domain;
 pub mod initialization;
 pub mod mop;
 
+use ncl_lib_streams::Stream;
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinFunctionCaller, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, Fixnum, FunctionObject, Instance, LambdaList, Local,
-    MultipleValues, ObjectError, ObjectRef, ObjectType, Package, Runtime, Scope, Stream,
-    ThreadContext, Word, car, cdr, classify_object, instance_class,
-    make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_ref,
-    slot_set, symbol_function,
+    MultipleValues, ObjectError, ObjectRef, ObjectType, Package, Runtime, Scope, ThreadContext,
+    Word, car, cdr, classify_object, instance_class, make_instance as allocate_instance,
+    simple_vector_length, simple_vector_ref, slot_ref, slot_set, symbol_function,
 };
 
 const COMMON_LISP: &str = "COMMON-LISP";

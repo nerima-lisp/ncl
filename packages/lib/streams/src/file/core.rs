@@ -1,8 +1,9 @@
 use super::StreamKind;
 use ncl_object::{
-    BuiltinArgs, ObjectError, Runtime, ThreadContext, Word, make_simple_vector, make_stream,
-    string_length, string_ref, symbol_name, with_roots,
+    BuiltinArgs, ObjectError, Runtime, ThreadContext, Word, make_simple_vector, string_length,
+    string_ref, symbol_name, with_roots,
 };
+use ncl_streams::make_stream;
 
 pub fn text(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
     (0..string_length(ctx, value)?)

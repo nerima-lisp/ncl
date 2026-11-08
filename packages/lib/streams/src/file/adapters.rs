@@ -6,7 +6,8 @@ use super::{
     state_kind, stream_element_type, stream_external_format, stream_from_args, stream_state,
     symbol_text, text,
 };
-use ncl_object::{make_simple_vector, make_stream, simple_vector_length, stream_direction};
+use ncl_object::{make_simple_vector, simple_vector_length};
+use ncl_streams::{make_stream, stream_direction};
 use std::fs;
 use std::io::{IsTerminal, Read};
 
@@ -369,7 +370,7 @@ pub fn interactive_stream_p_adapter(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let implementation = ncl_object::stream_implementation(ctx, stream_from_args(args, 0)?)?;
+    let implementation = ncl_streams::stream_implementation(ctx, stream_from_args(args, 0)?)?;
     Ok(if implementation == Word::TRUE {
         Word::TRUE
     } else {

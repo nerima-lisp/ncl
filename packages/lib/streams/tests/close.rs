@@ -1,9 +1,10 @@
 //! Tests for stream closure and the resulting stream state.
 
 use ncl_object::{
-    FunctionObject, Package, Runtime, ThreadContext, Word, make_simple_vector, make_stream,
-    make_string, pop_root, push_root, simple_vector_ref, stream_state,
+    FunctionObject, Package, Runtime, ThreadContext, Word, make_simple_vector, make_string,
+    pop_root, push_root, simple_vector_ref,
 };
+use ncl_streams::{Stream, make_stream, stream_state};
 
 fn builtin(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> FunctionObject {
     let word = runtime
@@ -48,7 +49,7 @@ fn close_marks_stream_closed_under_gc_stress_and_strict_forwarding() {
         runtime.call_builtin(&mut ctx, close, &[stream]),
         Ok(Word::TRUE)
     );
-    let closed_state = stream_state(&ctx, ncl_object::Stream::from_word(stream))
+    let closed_state = stream_state(&ctx, Stream::from_word(stream))
         .unwrap_or_else(|error| panic!("closed state: {error:?}"));
     assert_eq!(
         simple_vector_ref(&ctx, closed_state, 0),

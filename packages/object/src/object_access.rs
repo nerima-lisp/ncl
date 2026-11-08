@@ -27,6 +27,10 @@ macro_rules! word_newtype {
     };
 }
 
+/// Write a value to an object's payload slot.
+///
+/// # Errors
+/// Returns [`ObjectError::Storage`] if the thread cannot write the object slot.
 pub fn put(
     ctx: &mut ThreadContext,
     object: Word,
@@ -36,6 +40,11 @@ pub fn put(
     ctx.write_object_slot(object, slot, value)
 }
 
+/// Read a value from an object's payload slot after checking its widetag.
+///
+/// # Errors
+/// Returns [`ObjectError::TypeError`] if the object's widetag differs from `tag`.
+/// Returns [`ObjectError::Storage`] if the thread cannot read the object slot.
 pub fn get(ctx: &ThreadContext, object: Word, tag: u8, slot: usize) -> Result<Word, ObjectError> {
     if ncl_sys::object_widetag(&ctx.thread, object) != Some(tag) {
         return Err(ObjectError::TypeError);

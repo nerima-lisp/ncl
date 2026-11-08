@@ -219,7 +219,10 @@ impl CodePtr {
 
     #[cfg(target_arch = "x86_64")]
     const fn synchronize_cache(&mut self) -> Result<(), CodeError> {
-        self.validate_cache_synchronization()?;
+        match self.validate_cache_synchronization() {
+            Ok(()) => {}
+            Err(error) => return Err(error),
+        }
         self.cache_synchronized = true;
         Ok(())
     }

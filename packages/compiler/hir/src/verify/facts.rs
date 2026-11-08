@@ -329,7 +329,6 @@ impl VerificationConfig {
 }
 
 use crate::cl_type::SubtypeRelation;
-use crate::policy::OptimizationPolicy;
 
 impl Verifier<'_> {
     pub(super) fn verify_facts(&self) -> Result<(), VerifyError> {

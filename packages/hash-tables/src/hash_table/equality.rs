@@ -253,7 +253,9 @@ mod tests {
             .unwrap_or_else(|error| panic!("register: {error:?}"));
         let left_string = make_string(&mut context, &runtime, &['a', 'b']).unwrap_or(Word::NIL);
         let right_string = make_string(&mut context, &runtime, &['A', 'B']).unwrap_or(Word::NIL);
+        let short_string = make_string(&mut context, &runtime, &['a']).unwrap_or(Word::NIL);
         assert!(!equal(&context, HashTest::Equal, left_string, right_string, 0).unwrap());
+        assert!(!equal(&context, HashTest::Equal, left_string, short_string, 0).unwrap());
         assert!(equal(&context, HashTest::Equalp, left_string, right_string, 0).unwrap());
         assert!(!equal(&context, HashTest::Equalp, left_string, Word::NIL, 0).unwrap());
         assert_eq!(
@@ -301,6 +303,12 @@ mod tests {
         assert_eq!(
             hash_key(&context, HashTest::Equalp, left_cons),
             hash_key(&context, HashTest::Equalp, right_cons)
+        );
+        assert_eq!(super::cons_part(&context, left_cons, 0), Ok(left_string));
+        assert_eq!(super::cons_part(&context, left_cons, 1), Ok(ratio));
+        assert_eq!(
+            super::cons_part(&context, left_cons, 2),
+            Err(ncl_object::ObjectError::TypeError)
         );
         assert_eq!(
             hash_key(&context, HashTest::Eq, Word::fixnum(4)),

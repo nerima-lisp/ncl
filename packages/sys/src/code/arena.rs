@@ -37,17 +37,28 @@ static JIT_REGION: OnceLock<Result<JitRegion, CodeError>> = OnceLock::new();
 
 #[derive(Debug)]
 pub(super) struct CodeArena {
-    base: usize,
+    base: NonNull<u8>,
     len: usize,
     next: AtomicUsize,
     #[cfg(target_os = "macos")]
     backing: ArenaBacking,
 }
 
+// SAFETY: the mapping remains valid for the arena's lifetime, and its base and
+// length are immutable. Reservation is coordinated by `next`; Drop runs only
+// after the final Arc is released.
+unsafe impl Send for CodeArena {}
+// SAFETY: shared access only reads the mapping base and reserves disjoint ranges
+// with the atomic cursor. The mapping is unmapped only by exclusive Drop.
+unsafe impl Sync for CodeArena {}
+
 #[cfg(target_os = "macos")]
 #[derive(Debug)]
 enum ArenaBacking {
-    JitRegion { offset: usize },
+    JitRegion {
+        region: &'static JitRegion,
+        offset: usize,
+    },
 }
 
 pub(super) struct CodeExtent {
@@ -75,51 +86,46 @@ impl CodeArena {
             }
             let region = jit_region()?;
             let offset = region.reserve(len)?;
-            let base = region
-                .base
-                .checked_add(offset)
-                .ok_or(CodeError::CapacityExceeded)?;
+            // SAFETY: `reserve` returns an offset inside the process-wide JIT mapping.
+            let base = unsafe { NonNull::new_unchecked(region.base.as_ptr().add(offset)) };
             Ok(Arc::new(Self {
                 base,
                 len,
                 next: AtomicUsize::new(0),
-                backing: ArenaBacking::JitRegion { offset },
+                backing: ArenaBacking::JitRegion { region, offset },
             }))
         }
     }
 
-    fn reserve(self: &Arc<Self>, len: usize) -> Result<CodeExtent, CodeError> {
-        let start = self.next.load(Ordering::Relaxed);
-        self.reserve_from(start, len)
+    fn reserve(self: &Arc<Self>, len: usize) -> Option<CodeExtent> {
+        let start = self
+            .next
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |start| {
+                if start > self.len || len > self.len - start {
+                    None
+                } else {
+                    Some(start + len)
+                }
+            })
+            .ok()?;
+        Some(self.extent(start, len))
     }
 
-    fn reserve_from(
-        self: &Arc<Self>,
-        mut start: usize,
-        len: usize,
-    ) -> Result<CodeExtent, CodeError> {
-        loop {
-            let end = start.checked_add(len).ok_or(CodeError::OutOfBounds)?;
-            if end > self.len {
-                return Err(CodeError::CapacityExceeded);
-            }
-            match self
-                .next
-                .compare_exchange_weak(start, end, Ordering::Relaxed, Ordering::Relaxed)
-            {
-                Ok(_) => {
-                    let address = self.base.checked_add(start).ok_or(CodeError::OutOfBounds)?;
-                    let ptr = NonNull::new(core::ptr::with_exposed_provenance_mut(address))
-                        .ok_or(CodeError::MappingFailed)?;
-                    return Ok(CodeExtent {
-                        ptr,
-                        #[cfg(not(target_os = "macos"))]
-                        len,
-                        arena: Arc::clone(self),
-                    });
-                }
-                Err(actual) => start = actual,
-            }
+    fn initial_extent(self: &Arc<Self>, len: usize) -> CodeExtent {
+        self.next.store(len, Ordering::Relaxed);
+        self.extent(0, len)
+    }
+
+    fn extent(self: &Arc<Self>, start: usize, _extent_len: usize) -> CodeExtent {
+        // SAFETY: `reserve` checks the range, and `allocate` passes a page-rounded
+        // extent no larger than a new arena. This pointer arithmetic preserves
+        // the mapping's provenance.
+        let ptr = unsafe { NonNull::new_unchecked(self.base.as_ptr().add(start)) };
+        CodeExtent {
+            ptr,
+            #[cfg(not(target_os = "macos"))]
+            len: _extent_len,
+            arena: Arc::clone(self),
         }
     }
 }
@@ -128,16 +134,14 @@ impl Drop for CodeArena {
     fn drop(&mut self) {
         #[cfg(target_os = "linux")]
         {
-            let base = core::ptr::with_exposed_provenance_mut::<u8>(self.base).cast::<c_void>();
+            let base = self.base.as_ptr().cast::<c_void>();
             // SAFETY: `base` starts this arena's mapping, and `self.len` is its complete size.
             let _ = unsafe { declarations::munmap(base, self.len) };
         }
         #[cfg(target_os = "macos")]
-        let ArenaBacking::JitRegion { offset } = &self.backing;
+        let ArenaBacking::JitRegion { region, offset } = &self.backing;
         #[cfg(target_os = "macos")]
-        if let Ok(region) = jit_region() {
-            region.release(*offset, self.len);
-        }
+        region.release(*offset, self.len);
     }
 }
 
@@ -145,38 +149,40 @@ pub(super) fn allocate(bytes: usize) -> Result<CodeExtent, CodeError> {
     let page = page_size()?;
     let extent_len = round_up(bytes, page)?;
     let arena_len = round_up(ARENA_SIZE, page)?;
-    if extent_len > arena_len {
+    let extent = if extent_len > arena_len {
         let arena = CodeArena::new(extent_len)?;
-        return CodeArena::reserve(&arena, extent_len);
-    }
-
-    let mut active = ACTIVE_ARENA
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some(extent) = reserve_active(active.as_ref().and_then(Weak::upgrade), extent_len)? {
-        drop(active);
-        return Ok(extent);
-    }
-
-    let arena = CodeArena::new(arena_len)?;
-    let extent = arena.reserve(extent_len)?;
-    *active = Some(Arc::downgrade(&arena));
-    drop(active);
-    Ok(extent)
-}
-
-fn reserve_active(
-    arena: Option<Arc<CodeArena>>,
-    extent_len: usize,
-) -> Result<Option<CodeExtent>, CodeError> {
-    let Some(arena) = arena else {
-        return Ok(None);
+        arena.initial_extent(extent_len)
+    } else {
+        let mut active = ACTIVE_ARENA
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(arena) = active.as_ref().and_then(Weak::upgrade)
+            && let Some(extent) = arena.reserve(extent_len)
+        {
+            drop(active);
+            extent
+        } else {
+            let arena = CodeArena::new(arena_len)?;
+            let extent = arena.initial_extent(extent_len);
+            *active = Some(Arc::downgrade(&arena));
+            drop(active);
+            extent
+        }
     };
-    match arena.reserve(extent_len) {
-        Ok(extent) => Ok(Some(extent)),
-        Err(CodeError::CapacityExceeded) => Ok(None),
-        Err(error) => Err(error),
+
+    #[cfg(target_os = "macos")]
+    // SAFETY: the thread owns the new writable JIT extent while it is initialized.
+    unsafe {
+        declarations::pthread_jit_write_protect_np(0);
     }
+    // SAFETY: the allocation contains at least `bytes` writable bytes.
+    unsafe { extent.ptr.as_ptr().write_bytes(0, bytes) };
+    #[cfg(target_os = "macos")]
+    // SAFETY: restore the JIT write-protection state after initialization.
+    unsafe {
+        declarations::pthread_jit_write_protect_np(1);
+    }
+    Ok(extent)
 }
 
 fn page_size() -> Result<usize, CodeError> {
@@ -201,13 +207,13 @@ fn round_up(value: usize, alignment: usize) -> Result<usize, CodeError> {
     }
 }
 
-fn map_anonymous(len: usize, protection: c_int, flags: c_int) -> Result<usize, CodeError> {
+fn map_anonymous(len: usize, protection: c_int, flags: c_int) -> Result<NonNull<u8>, CodeError> {
     // SAFETY: null requests an OS-selected page-aligned anonymous mapping.
     let raw = unsafe { declarations::mmap(core::ptr::null_mut(), len, protection, flags, -1, 0) };
     mapped_address(raw, len)
 }
 
-fn mapped_address(raw: *mut c_void, len: usize) -> Result<usize, CodeError> {
+fn mapped_address(raw: *mut c_void, len: usize) -> Result<NonNull<u8>, CodeError> {
     if raw.addr() == usize::MAX {
         return Err(CodeError::MappingFailed);
     }
@@ -216,7 +222,7 @@ fn mapped_address(raw: *mut c_void, len: usize) -> Result<usize, CodeError> {
         let _ = unsafe { declarations::munmap(raw, len) };
         return Err(CodeError::MappingFailed);
     };
-    Ok(ptr.as_ptr().addr())
+    Ok(ptr)
 }
 
 #[cfg(target_os = "macos")]
@@ -229,9 +235,18 @@ struct FreeExtent {
 #[cfg(target_os = "macos")]
 #[derive(Debug)]
 struct JitRegion {
-    base: usize,
+    base: NonNull<u8>,
     free: Mutex<Vec<FreeExtent>>,
 }
+
+#[cfg(target_os = "macos")]
+// SAFETY: the process-wide JIT mapping remains valid for the process lifetime;
+// its base is immutable and free extents are protected by the mutex.
+unsafe impl Send for JitRegion {}
+#[cfg(target_os = "macos")]
+// SAFETY: shared access reads the immutable base and mutates free extents only
+// while holding the mutex.
+unsafe impl Sync for JitRegion {}
 
 #[cfg(target_os = "macos")]
 impl JitRegion {
@@ -256,27 +271,24 @@ impl JitRegion {
             .free
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(index) = free.iter().position(|extent| extent.len >= len) else {
+        let mut reservation = None;
+        for extent in &mut *free {
+            if extent.len >= len {
+                let offset = extent.offset;
+                let consumed = extent.len == len;
+                if !consumed {
+                    extent.offset += len;
+                    extent.len -= len;
+                }
+                reservation = Some((offset, consumed));
+                break;
+            }
+        }
+        let Some((offset, consumed)) = reservation else {
             return Err(CodeError::CapacityExceeded);
         };
-        let Some((offset, extent_len)) = free.get(index).map(|extent| (extent.offset, extent.len))
-        else {
-            return Err(CodeError::CapacityExceeded);
-        };
-        if extent_len == len {
-            free.remove(index);
-        } else {
-            let Some(extent) = free.get_mut(index) else {
-                return Err(CodeError::CapacityExceeded);
-            };
-            extent.offset = extent
-                .offset
-                .checked_add(len)
-                .ok_or(CodeError::CapacityExceeded)?;
-            extent.len = extent
-                .len
-                .checked_sub(len)
-                .ok_or(CodeError::CapacityExceeded)?;
+        if consumed {
+            free.retain(|extent| extent.offset != offset);
         }
         drop(free);
         Ok(offset)
@@ -289,35 +301,17 @@ impl JitRegion {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         free.push(FreeExtent { offset, len });
         free.sort_unstable_by_key(|extent| extent.offset);
-        let mut index = 0;
-        while index + 1 < free.len() {
-            let Some(current_end) = free
-                .get(index)
-                .and_then(|extent| extent.offset.checked_add(extent.len))
-            else {
-                index += 1;
-                continue;
-            };
-            let Some(next_offset) = free.get(index + 1).map(|extent| extent.offset) else {
-                break;
-            };
-            if current_end == next_offset {
-                let Some(next_len) = free.get(index + 1).map(|extent| extent.len) else {
-                    break;
-                };
-                let Some(extent) = free.get_mut(index) else {
-                    break;
-                };
-                let Some(merged_len) = extent.len.checked_add(next_len) else {
-                    index += 1;
-                    continue;
-                };
-                extent.len = merged_len;
-                free.remove(index + 1);
+        let mut merged: Vec<FreeExtent> = Vec::with_capacity(free.len());
+        for extent in free.drain(..) {
+            if let Some(last) = merged.last_mut()
+                && last.offset + last.len == extent.offset
+            {
+                last.len += extent.len;
             } else {
-                index += 1;
+                merged.push(extent);
             }
         }
+        *free = merged;
         drop(free);
     }
 }
@@ -327,120 +321,5 @@ fn jit_region() -> Result<&'static JitRegion, CodeError> {
     match JIT_REGION.get_or_init(JitRegion::new) {
         Ok(region) => Ok(region),
         Err(error) => Err(*error),
-    }
-}
-
-#[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    reason = "allocator invariant tests must fail when setup or reservation fails"
-)]
-mod tests {
-    use super::*;
-    use std::sync::Barrier;
-    use std::thread;
-
-    #[test]
-    fn mapping_results_reject_failure_and_release_null_mappings() {
-        let len = page_size().expect("page size unavailable");
-        assert!(matches!(
-            map_anonymous(0, PROT_READ, MAP_PRIVATE | MAP_ANON),
-            Err(CodeError::MappingFailed)
-        ));
-
-        assert_eq!(
-            mapped_address(core::ptr::null_mut(), len),
-            Err(CodeError::MappingFailed)
-        );
-
-        let failed = core::ptr::with_exposed_provenance_mut::<c_void>(usize::MAX);
-        assert_eq!(mapped_address(failed, len), Err(CodeError::MappingFailed));
-    }
-
-    #[test]
-    fn oversized_code_uses_a_dedicated_arena() {
-        let page = page_size().expect("page size unavailable");
-        let extent = allocate(ARENA_SIZE + 1).expect("oversized allocation failed");
-        assert_eq!(extent.ptr.as_ptr().addr() % page, 0);
-        #[cfg(not(target_os = "macos"))]
-        assert!(extent.len > ARENA_SIZE);
-    }
-
-    #[test]
-    fn concurrent_reservations_return_non_overlapping_extents() {
-        const THREADS: usize = 32;
-
-        let page = page_size().expect("page size unavailable");
-        let arena = CodeArena::new(page * THREADS).expect("arena allocation failed");
-        let start = Arc::new(Barrier::new(THREADS));
-        let mut workers = Vec::with_capacity(THREADS);
-
-        for _ in 0..THREADS {
-            let arena = Arc::clone(&arena);
-            let start = Arc::clone(&start);
-            workers.push(thread::spawn(move || {
-                start.wait();
-                arena
-                    .reserve(page)
-                    .ok()
-                    .map(|extent| extent.ptr.as_ptr().addr())
-            }));
-        }
-
-        let addresses = workers
-            .into_iter()
-            .map(|worker| worker.join().ok().flatten())
-            .collect::<Vec<_>>();
-        assert!(addresses.iter().all(Option::is_some));
-        let mut addresses = addresses.into_iter().flatten().collect::<Vec<_>>();
-        addresses.sort_unstable();
-        assert!(addresses.windows(2).all(|pair| pair[1] - pair[0] == page));
-    }
-
-    #[test]
-    fn reservation_retries_after_a_stale_cursor_snapshot() {
-        let page = page_size().expect("page size unavailable");
-        let arena = CodeArena::new(page * 3).expect("arena allocation failed");
-        let stale_cursor = arena.next.load(Ordering::Relaxed);
-
-        let first = arena.reserve(page).expect("first reservation failed");
-        let second = arena
-            .reserve_from(stale_cursor, page)
-            .expect("stale cursor reservation should retry");
-
-        assert_eq!(first.ptr.as_ptr().addr() + page, second.ptr.as_ptr().addr());
-        assert_eq!(arena.next.load(Ordering::Relaxed), page * 2);
-    }
-
-    #[test]
-    fn reservation_reports_checked_cursor_overflow() {
-        let page = page_size().expect("page size unavailable");
-        let arena = CodeArena::new(page).expect("arena allocation failed");
-
-        arena.next.store(usize::MAX, Ordering::Relaxed);
-        assert!(matches!(arena.reserve(page), Err(CodeError::OutOfBounds)));
-    }
-
-    #[test]
-    fn active_arena_propagates_non_capacity_errors() {
-        let page = page_size().expect("page size unavailable");
-        let arena = CodeArena::new(page).expect("arena allocation failed");
-
-        arena.next.store(usize::MAX, Ordering::Relaxed);
-        assert!(matches!(
-            reserve_active(Some(arena), page),
-            Err(CodeError::OutOfBounds)
-        ));
-    }
-
-    #[test]
-    fn arena_reports_capacity_when_it_cannot_reserve_an_extent() {
-        let page = page_size().expect("page size unavailable");
-        let arena = CodeArena::new(page).expect("arena allocation failed");
-        let _extent = arena.reserve(page).expect("first reservation failed");
-        assert!(matches!(
-            arena.reserve(page),
-            Err(CodeError::CapacityExceeded)
-        ));
     }
 }

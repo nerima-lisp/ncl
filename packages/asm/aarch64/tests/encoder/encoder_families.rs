@@ -80,6 +80,7 @@ fn instruction_families_encode() {
             shift: 1,
         },
         Inst::Ldr { rt: r0, mem },
+        Inst::Ldar { rt: r0, rn: r1 },
         Inst::Str { rt: r0, mem },
         Inst::LdrW { rt: r0, mem },
         Inst::StrW { rt: r0, mem },

@@ -124,15 +124,29 @@ pub(crate) fn lower_closure_call(
         return lower_named_global_call(assembler, closure, symbol, args, allocation, abi);
     }
     lower_call(assembler, closure, args, allocation)?;
+    load_function_entry_acquire(assembler)
+}
+
+fn load_function_entry_acquire(assembler: &mut Assembler) -> Result<(), CodegenError> {
+    let entry_offset = ncl_object::function_offset::ENTRY
+        .checked_add(1)
+        .and_then(|slot| slot.checked_mul(8))
+        .and_then(|offset| u16::try_from(offset).ok())
+        .ok_or(CodegenError::FrameOverflow)?;
     emit(
         assembler,
-        Inst::Ldr {
+        Inst::AddImm {
+            rd: RegOrSp::Reg(Reg(17)),
+            rn: RegOrSp::Reg(Reg(17)),
+            imm: entry_offset,
+            shift: false,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Ldar {
             rt: Reg(17),
-            mem: MemOperand::Unscaled {
-                base: RegOrSp::Reg(Reg(17)),
-                offset: i16::try_from((ncl_object::function_offset::ENTRY + 1) * 8)
-                    .map_err(|_| CodegenError::FrameOverflow)?,
-            },
+            rn: Reg(17),
         },
     )?;
     primitives::decode_function_entry(assembler, Reg(17))
@@ -181,18 +195,7 @@ fn lower_named_global_call(
         .bind(normal)
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
     lower_call(assembler, closure, args, allocation)?;
-    emit(
-        assembler,
-        Inst::Ldr {
-            rt: Reg(17),
-            mem: MemOperand::Unscaled {
-                base: RegOrSp::Reg(Reg(17)),
-                offset: i16::try_from((ncl_object::function_offset::ENTRY + 1) * 8)
-                    .map_err(|_| CodegenError::FrameOverflow)?,
-            },
-        },
-    )?;
-    primitives::decode_function_entry(assembler, Reg(17))?;
+    load_function_entry_acquire(assembler)?;
     assembler
         .bind(call)
         .map_err(|error| CodegenError::Encode(error.to_string()))

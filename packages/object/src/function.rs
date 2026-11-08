@@ -31,11 +31,11 @@ pub fn make_simple_fun(
                     widetag::SIMPLE_FUN,
                     function_offset::SIMPLE_FUN_WORDS,
                 )?;
-                put(ctx, object, function_offset::ENTRY, fix(entry)?)?;
                 put(ctx, object, function_offset::NAME, *name)?;
                 put(ctx, object, function_offset::LAMBDA_LIST, *lambda_list)?;
                 put(ctx, object, function_offset::CODE, *code)?;
                 put(ctx, object, function_offset::BUILTIN_INDEX, Word::NIL)?;
+                set_function_entry(ctx, Function::from_word(object), entry)?;
                 Ok(Function::from_word(object))
             })
         })
@@ -69,7 +69,6 @@ pub fn make_closure(
                         function_offset::CAPTURES + values.len(),
                     )?;
                     for (slot, value) in [
-                        (function_offset::ENTRY, fix(entry)?),
                         (function_offset::NAME, *name),
                         (function_offset::LAMBDA_LIST, *lambda_list),
                         (function_offset::CODE, *code),
@@ -79,6 +78,7 @@ pub fn make_closure(
                     for (index, value) in values.iter().copied().enumerate() {
                         put(ctx, object, function_offset::CAPTURES + index, *value)?;
                     }
+                    set_function_entry(ctx, Function::from_word(object), entry)?;
                     Ok(Function::from_word(object))
                 })
             })
@@ -108,12 +108,44 @@ pub fn make_value_cell(
 /// # Errors
 /// Returns an error when the object or entry is invalid.
 pub fn function_entry(ctx: &ThreadContext, object: Function) -> Result<usize, ObjectError> {
+    if !matches!(
+        ncl_sys::object_widetag(&ctx.thread, object.into()),
+        Some(widetag::SIMPLE_FUN | widetag::CLOSURE)
+    ) {
+        return Err(ObjectError::TypeError);
+    }
     usize::try_from(
-        get_function(ctx, object.into(), function_offset::ENTRY)?
-            .as_fixnum()
-            .ok_or(ObjectError::Layout)?,
+        ncl_sys::load_object_word_acquire(
+            &ctx.thread,
+            object.into(),
+            ncl_sys::AtomicObjectWordCell::FunctionEntry,
+        )
+        .ok_or(ObjectError::Layout)?
+        .as_fixnum()
+        .ok_or(ObjectError::Layout)?,
     )
     .map_err(|_| ObjectError::Layout)
+}
+
+/// Release-publish a function object's native entry cell.
+///
+/// # Errors
+/// Returns `Layout` when the address cannot be encoded or the function object is invalid.
+pub fn set_function_entry(
+    ctx: &ThreadContext,
+    object: Function,
+    entry: usize,
+) -> Result<(), ObjectError> {
+    if ncl_sys::store_object_word_release(
+        &ctx.thread,
+        object.into(),
+        ncl_sys::AtomicObjectWordCell::FunctionEntry,
+        fix(entry)?,
+    ) {
+        Ok(())
+    } else {
+        Err(ObjectError::Layout)
+    }
 }
 /// Read a function name.
 ///

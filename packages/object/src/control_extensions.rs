@@ -1,4 +1,4 @@
-use crate::{ObjectError, ThreadContext};
+use crate::{ObjectError, ThreadContext, symbol_offset, widetag};
 use ncl_sys::{StorageCondition, Word};
 
 impl ThreadContext {
@@ -12,7 +12,19 @@ impl ThreadContext {
         slot: usize,
         value: Word,
     ) -> Result<(), ObjectError> {
-        if ncl_sys::write_object_word(&mut self.thread, object, slot, value) {
+        let symbol_function = slot == symbol_offset::FUNCTION
+            && ncl_sys::object_widetag(&self.thread, object) == Some(widetag::SYMBOL);
+        let written = if symbol_function {
+            ncl_sys::store_object_word_release(
+                &self.thread,
+                object,
+                ncl_sys::AtomicObjectWordCell::SymbolFunction,
+                value,
+            )
+        } else {
+            ncl_sys::write_object_word(&mut self.thread, object, slot, value)
+        };
+        if written {
             ncl_sys::write_barrier(core::ptr::NonNull::from(self.thread.as_mut()), object, slot);
             Ok(())
         } else {

@@ -152,6 +152,7 @@ pub fn lower_op(
                 }
                 _ => 0,
             };
+            // TSO gives this ordinary load Acquire semantics for `symbol_offset::FUNCTION`.
             emit(
                 assembler,
                 Inst::MovRM(FUNCTION_OBJECT, Mem::base(FUNCTION_OBJECT, offset)),

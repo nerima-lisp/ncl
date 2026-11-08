@@ -23,8 +23,9 @@ mod native_word_tests;
 
 pub use code::{
     CodeError, CodeObjectMetadata, CodePtr, CodeRegistry, FrameHeader, Safepoint, SafepointMap,
-    SourceLocation, alloc_code, free_code, publish_code, scan_frame, scan_frame_chain,
-    scan_frame_chain_with_registry, scan_frame_with_registers, walk_frame_headers, write_code,
+    SafepointMapError, SourceLocation, activate_code, activate_code_registry, alloc_code,
+    free_code, publish_code, scan_frame, scan_frame_chain, scan_frame_chain_with_registry,
+    scan_frame_with_registers, seal_code, synchronize_code, walk_frame_headers, write_code,
 };
 pub use codegen::{set_tlab, tlab_bump};
 pub use function_address::{FunctionAddressError, function_address};
@@ -40,9 +41,9 @@ pub use native_error::{NativeError, NativeOperation, OverflowSemantics};
 pub use native_words::{CALL_ARGUMENTS_LIMIT, NativeWordCopyError, copy_native_words};
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{
-    ControlFrameKind, MULTIPLE_VALUE_AREA_WORDS, NativeState, RootToken, RuntimeErrorPayloadKind,
-    RuntimeErrorPayloadSlot, RuntimeErrorSource, SafepointState, Thread, ThreadAccess,
-    ThreadLayout, thread_layout,
+    AtomicObjectWordCell, ControlFrameKind, MULTIPLE_VALUE_AREA_WORDS, NativeState, RootToken,
+    RuntimeErrorPayloadKind, RuntimeErrorPayloadSlot, RuntimeErrorSource, SafepointState, Thread,
+    ThreadAccess, ThreadLayout, load_object_word_acquire, store_object_word_release, thread_layout,
 };
 
 impl Thread {
@@ -286,7 +287,7 @@ pub fn register_thread_with_thread(
         .register_thread(thread)
 }
 
-/// Register published code metadata through a registered thread.
+/// Prepare code metadata for a registered thread's PC lookup registry.
 ///
 /// # Errors
 ///
@@ -300,6 +301,11 @@ pub fn register_code(
         .heap()
         .ok_or(CodeError::NotRegistered)?
         .register_code(code, metadata)
+}
+
+/// Remove prepared or active code metadata through a registered thread.
+pub fn unregister_code(thread: &Thread, code: &CodePtr) -> Option<CodeObjectMetadata> {
+    thread.heap()?.unregister_code(code)
 }
 
 /// Configure strict stale-word checking for a registered thread's heap.

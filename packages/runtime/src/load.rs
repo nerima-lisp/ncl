@@ -227,6 +227,9 @@ fn load_with_runtime(
             signal_load_error(ctx, object, &message)
         }
         Err(FileLoadError::Runtime(
+            error @ (RuntimeError::Code(_) | RuntimeError::SafepointMap(_)),
+        )) => signal_load_error(ctx, object, &error.to_string()),
+        Err(FileLoadError::Runtime(
             error @ (RuntimeError::Object(_)
             | RuntimeError::Front(ncl_compiler_front::FrontError::Object(_))
             | RuntimeError::UndefinedFunction { .. }

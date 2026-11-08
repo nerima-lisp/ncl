@@ -374,6 +374,7 @@ pub fn encode(i: &Inst, _at: usize) -> Result<u32, EncodeError> {
             shift: n,
         } => ext3(0xCB00_0000, *rd, *rn, *rm, *e, *n),
         Inst::Ldr { rt, mem: m } => mem(*m, 8, true, false, *rt),
+        Inst::Ldar { rt, rn } => Ok(0xC8DF_FC00 | r(*rn) << 5 | r(*rt)),
         Inst::Str { rt, mem: m } => mem(*m, 8, false, false, *rt),
         Inst::LdrW { rt, mem: m } => mem(*m, 4, true, false, *rt),
         Inst::Ldrsw { rt, mem: m } => mem(*m, 4, true, true, *rt),

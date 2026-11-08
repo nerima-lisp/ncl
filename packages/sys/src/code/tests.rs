@@ -34,8 +34,9 @@ fn code_allocation_boundaries_and_metadata_accessors() {
                 debug_table: Vec::new(),
             }
         ),
-        Err(CodeError::NotPublished)
+        Ok(())
     );
+    assert!(registry.find(code.address()).is_none());
     assert_eq!(code.len(), 1);
     assert!(!code.is_empty());
     assert_eq!(code.as_slice(), &[0]);
@@ -47,6 +48,8 @@ fn code_allocation_boundaries_and_metadata_accessors() {
     assert_eq!(code.as_slice(), &[7]);
     assert_eq!(code.entry(), 0);
     assert!(publish_code(&mut code).is_ok());
+    assert_eq!(activate_code_registry(&code), Ok(()));
+    assert!(registry.find(code.address()).is_some());
     assert_eq!(publish_code(&mut code), Err(CodeError::AlreadyPublished));
     free_code(code);
 }
@@ -91,6 +94,10 @@ fn registry_register_find_unregister() {
     };
     let mut registry = CodeRegistry::default();
     assert!(registry.register(&code, metadata).is_ok());
+    assert_eq!(
+        registry.find(code.address() + 3).map(|(_, offset)| offset),
+        Some(3)
+    );
     let Some((found, offset)) = registry.find(code.address() + 3) else {
         return;
     };
@@ -99,6 +106,71 @@ fn registry_register_find_unregister() {
     assert!(registry.find(code.address() + code.len()).is_none());
     assert!(registry.unregister(&code).is_some());
     assert!(registry.find(code.address()).is_none());
+}
+
+#[test]
+fn prepared_registry_metadata_stays_hidden_and_is_removed_on_failure() {
+    let Ok(mut code) = alloc_code(8) else { return };
+    let mut registry = CodeRegistry::default();
+    let metadata = CodeObjectMetadata {
+        entry_offset: 0,
+        size: code.len(),
+        frame_words: 0,
+        function_name: "prepared".to_string(),
+        source_locations: Vec::new(),
+        constant_slots: Vec::new(),
+        safepoint_map: SafepointMap::default(),
+        debug_table: Vec::new(),
+    };
+    assert_eq!(registry.register(&code, metadata), Ok(()));
+    assert!(registry.find(code.address()).is_none());
+    assert_eq!(activate_code_registry(&code), Err(CodeError::NotPublished));
+    assert_eq!(activate_code(&mut code), Err(CodeError::NotSealed));
+    assert!(registry.find(code.address()).is_none());
+    assert!(registry.unregister(&code).is_some());
+    assert!(registry.find(code.address()).is_none());
+}
+
+#[test]
+fn registry_activation_waits_for_sealing_and_cache_synchronization() {
+    let Ok(mut code) = alloc_code(8) else { return };
+    let mut registry = CodeRegistry::default();
+    assert_eq!(
+        registry.register(
+            &code,
+            CodeObjectMetadata {
+                entry_offset: 0,
+                size: code.len(),
+                frame_words: 0,
+                function_name: "activation".to_string(),
+                source_locations: Vec::new(),
+                constant_slots: Vec::new(),
+                safepoint_map: SafepointMap::default(),
+                debug_table: Vec::new(),
+            }
+        ),
+        Ok(())
+    );
+    assert_eq!(activate_code_registry(&code), Err(CodeError::NotPublished));
+    assert_eq!(activate_code(&mut code), Err(CodeError::NotSealed));
+    assert_eq!(seal_code(&mut code), Ok(()));
+    assert_eq!(
+        activate_code(&mut code),
+        Err(CodeError::CacheNotSynchronized)
+    );
+    assert!(registry.find(code.address()).is_none());
+    assert_eq!(synchronize_code(&mut code), Ok(()));
+    assert_eq!(activate_code(&mut code), Ok(()));
+    assert!(registry.find(code.address()).is_none());
+    assert_eq!(activate_code_registry(&code), Ok(()));
+    assert_eq!(
+        registry.find(code.address()).map(|(_, offset)| offset),
+        Some(0)
+    );
+    assert_eq!(
+        activate_code_registry(&code),
+        Err(CodeError::AlreadyActivated)
+    );
 }
 
 #[test]
@@ -142,7 +214,7 @@ fn safepoint_decode_rejects_register_ids_outside_register_mask() {
     bytes.extend_from_slice(&3u16.to_le_bytes());
     assert_eq!(
         SafepointMap::decode(&bytes, 1),
-        Err("register ids do not match register mask")
+        Err(SafepointMapError::RegisterMaskMismatch)
     );
 }
 
@@ -150,19 +222,22 @@ fn safepoint_decode_rejects_register_ids_outside_register_mask() {
 fn map_decode_rejects_truncated_and_invalid_contracts() {
     assert_eq!(
         SafepointMap::decode(&[], 1),
-        Err("truncated safepoint header")
+        Err(SafepointMapError::TruncatedHeader)
     );
 
     let mut bytes = vec![0; 16];
     bytes[6..8].copy_from_slice(&2_u16.to_le_bytes());
-    assert_eq!(SafepointMap::decode(&bytes, 1), Err("invalid slot counts"));
+    assert_eq!(
+        SafepointMap::decode(&bytes, 1),
+        Err(SafepointMapError::InvalidSlotCounts)
+    );
 
     let mut bytes = vec![0; 16];
     bytes[6..8].copy_from_slice(&3_u16.to_le_bytes());
     bytes[8..10].copy_from_slice(&3_u16.to_le_bytes());
     assert_eq!(
         SafepointMap::decode(&bytes, 1),
-        Err("truncated slot bitmap")
+        Err(SafepointMapError::TruncatedSlotBitmap)
     );
 
     let mut bytes = vec![0; 16];
@@ -171,7 +246,7 @@ fn map_decode_rejects_truncated_and_invalid_contracts() {
     bytes.push(0);
     assert_eq!(
         SafepointMap::decode(&bytes, 1),
-        Err("invalid header bitmap")
+        Err(SafepointMapError::InvalidHeaderBitmap)
     );
 
     let mut bytes = vec![0; 16];
@@ -181,7 +256,7 @@ fn map_decode_rejects_truncated_and_invalid_contracts() {
     bytes.push(0b0000_0100);
     assert_eq!(
         SafepointMap::decode(&bytes, 1),
-        Err("truncated register ids")
+        Err(SafepointMapError::TruncatedRegisterIds)
     );
 }
 

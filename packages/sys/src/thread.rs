@@ -8,7 +8,9 @@ mod layout;
 mod native;
 mod root_token;
 mod stack;
-pub use access::ThreadAccess;
+pub use access::{
+    AtomicObjectWordCell, ThreadAccess, load_object_word_acquire, store_object_word_release,
+};
 pub use control::{
     ControlFrameKind, RuntimeErrorPayloadKind, RuntimeErrorPayloadSlot, RuntimeErrorSource,
 };

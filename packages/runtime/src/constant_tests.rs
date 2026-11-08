@@ -1,5 +1,5 @@
 use super::Runtime;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ncl_ir::{
     ArrayElementType as IrArrayElementType, Constant, ConstantIndex, Function, FunctionId,
@@ -16,7 +16,12 @@ fn constant_object_aliases_survive_gc_stress_and_strict_forwarding() -> Result<(
     runtime.context.set_strict_forwarding(true);
     let function = constant_alias_function();
     let table = runtime
-        .make_constants(&function, &mut HashMap::new(), &mut HashMap::new())
+        .make_constants(
+            &function,
+            &BTreeMap::new(),
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+        )
         .map_err(|error| format!("constants: {error:?}"))?;
 
     assert_constant_object_aliases(&runtime, table)?;
@@ -261,6 +266,7 @@ fn general_array_constants_preserve_shape_type_contents_and_cross_table_identity
     let first_table = runtime
         .make_constants(
             &function(0, "first-array-literal"),
+            &BTreeMap::new(),
             &mut HashMap::new(),
             &mut literal_objects,
         )
@@ -273,6 +279,7 @@ fn general_array_constants_preserve_shape_type_contents_and_cross_table_identity
     let second_table = runtime
         .make_constants(
             &function(1, "second-array-literal"),
+            &BTreeMap::new(),
             &mut HashMap::new(),
             &mut literal_objects,
         )
@@ -336,7 +343,12 @@ fn general_array_heap_elements_survive_gc_stress_and_strict_forwarding() -> Resu
         debug: Vec::new(),
     };
     let table = runtime
-        .make_constants(&function, &mut HashMap::new(), &mut HashMap::new())
+        .make_constants(
+            &function,
+            &BTreeMap::new(),
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+        )
         .map_err(|error| format!("constants: {error:?}"))?;
     let table_root = HeapRootedWord::new(&runtime.context, table)
         .map_err(|error| format!("root table: {error:?}"))?;
@@ -406,7 +418,12 @@ fn malformed_array_constants_return_errors() -> Result<(), String> {
             handler_regions: Vec::new(),
             debug: Vec::new(),
         };
-        let result = runtime.make_constants(&function, &mut HashMap::new(), &mut HashMap::new());
+        let result = runtime.make_constants(
+            &function,
+            &BTreeMap::new(),
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+        );
         // check-added-lines: allow(panic) test-only assertions
         assert!(
             result.is_err(),

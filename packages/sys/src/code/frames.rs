@@ -1,5 +1,93 @@
 use super::registry::CodeRegistry;
 use crate::Word;
+use std::fmt;
+
+/// Invalid input detected while decoding a stack-map table.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SafepointMapError {
+    /// The table ended before a complete fixed-size header.
+    TruncatedHeader,
+    /// A PC offset could not be decoded.
+    InvalidPc,
+    /// A frame size could not be decoded.
+    InvalidFrame,
+    /// A slot count could not be decoded.
+    InvalidSlots,
+    /// A live Word slot count could not be decoded.
+    InvalidWordSlots,
+    /// A register mask could not be decoded.
+    InvalidRegisterMask,
+    /// Map flags could not be decoded.
+    InvalidFlags,
+    /// Slot counts violate the frame-map contract.
+    InvalidSlotCounts,
+    /// The table ended before the full slot bitmap.
+    TruncatedSlotBitmap,
+    /// Header bitmap bits violate the fixed frame-header contract.
+    InvalidHeaderBitmap,
+    /// The table ended before all register ids.
+    TruncatedRegisterIds,
+    /// A register id is outside the supported register range.
+    InvalidRegisterId,
+    /// Register ids do not exactly match the register mask.
+    RegisterMaskMismatch,
+}
+
+impl fmt::Display for SafepointMapError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{self:?}")
+    }
+}
+
+impl std::error::Error for SafepointMapError {}
+
+fn read_array_prefix<const N: usize>(
+    bytes: &[u8],
+    error: SafepointMapError,
+) -> Result<[u8; N], SafepointMapError> {
+    bytes.get(..N).ok_or(error)?.try_into().map_err(|_| error)
+}
+
+fn decode_register_ids(
+    bytes: &[u8],
+    at: &mut usize,
+    mask: u16,
+) -> Result<Vec<u16>, SafepointMapError> {
+    let register_count =
+        usize::try_from(mask.count_ones()).map_err(|_| SafepointMapError::InvalidRegisterMask)?;
+    if bytes.len().saturating_sub(*at) < register_count * 2 {
+        return Err(SafepointMapError::TruncatedRegisterIds);
+    }
+    let mut ids = Vec::with_capacity(register_count);
+    for _ in 0..register_count {
+        let end = (*at)
+            .checked_add(2)
+            .ok_or(SafepointMapError::TruncatedRegisterIds)?;
+        let pair = bytes
+            .get(*at..end)
+            .ok_or(SafepointMapError::TruncatedRegisterIds)?;
+        ids.push(u16::from_le_bytes(read_array_prefix(
+            pair,
+            SafepointMapError::InvalidRegisterId,
+        )?));
+        *at = end;
+    }
+    let mut decoded_mask = 0_u16;
+    for &register_id in &ids {
+        if u32::from(register_id) >= u16::BITS {
+            return Err(SafepointMapError::InvalidRegisterId);
+        }
+        let bit = 1_u16 << register_id;
+        if decoded_mask & bit != 0 || mask & bit == 0 {
+            return Err(SafepointMapError::RegisterMaskMismatch);
+        }
+        decoded_mask |= bit;
+    }
+    if decoded_mask != mask {
+        return Err(SafepointMapError::RegisterMaskMismatch);
+    }
+    Ok(ids)
+}
 
 /// One decoded safepoint entry.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -66,83 +154,65 @@ impl SafepointMap {
     /// # Errors
     ///
     /// Returns an error when a header, bitmap, register list, or slot contract is invalid.
-    pub fn decode(bytes: &[u8], count: usize) -> Result<Self, &'static str> {
+    pub fn decode(bytes: &[u8], count: usize) -> Result<Self, SafepointMapError> {
         let mut at = 0;
         let mut entries = Vec::with_capacity(count);
         for _ in 0..count {
             if bytes.len().saturating_sub(at) < 16 {
-                return Err("truncated safepoint header");
+                return Err(SafepointMapError::TruncatedHeader);
             }
-            let pc = u32::from_le_bytes(bytes[at..at + 4].try_into().map_err(|_| "invalid pc")?);
-            let frame = u16::from_le_bytes(
-                bytes[at + 4..at + 6]
-                    .try_into()
-                    .map_err(|_| "invalid frame")?,
-            );
-            let slots = u16::from_le_bytes(
-                bytes[at + 6..at + 8]
-                    .try_into()
-                    .map_err(|_| "invalid slots")?,
-            );
-            let words = u16::from_le_bytes(
-                bytes[at + 8..at + 10]
-                    .try_into()
-                    .map_err(|_| "invalid word slots")?,
-            );
-            let mask = u16::from_le_bytes(
-                bytes[at + 10..at + 12]
-                    .try_into()
-                    .map_err(|_| "invalid register mask")?,
-            );
-            let flags = u32::from_le_bytes(
-                bytes[at + 12..at + 16]
-                    .try_into()
-                    .map_err(|_| "invalid flags")?,
-            );
+            let header_end = at
+                .checked_add(16)
+                .ok_or(SafepointMapError::TruncatedHeader)?;
+            let header = bytes
+                .get(at..header_end)
+                .ok_or(SafepointMapError::TruncatedHeader)?;
+            let pc = u32::from_le_bytes(read_array_prefix(header, SafepointMapError::InvalidPc)?);
+            let frame = u16::from_le_bytes(read_array_prefix(
+                header.get(4..).ok_or(SafepointMapError::InvalidFrame)?,
+                SafepointMapError::InvalidFrame,
+            )?);
+            let slots = u16::from_le_bytes(read_array_prefix(
+                header.get(6..).ok_or(SafepointMapError::InvalidSlots)?,
+                SafepointMapError::InvalidSlots,
+            )?);
+            let words = u16::from_le_bytes(read_array_prefix(
+                header.get(8..).ok_or(SafepointMapError::InvalidWordSlots)?,
+                SafepointMapError::InvalidWordSlots,
+            )?);
+            let mask = u16::from_le_bytes(read_array_prefix(
+                header
+                    .get(10..)
+                    .ok_or(SafepointMapError::InvalidRegisterMask)?,
+                SafepointMapError::InvalidRegisterMask,
+            )?);
+            let flags = u32::from_le_bytes(read_array_prefix(
+                header.get(12..).ok_or(SafepointMapError::InvalidFlags)?,
+                SafepointMapError::InvalidFlags,
+            )?);
             if words > slots || slots < 3 {
-                return Err("invalid slot counts");
+                return Err(SafepointMapError::InvalidSlotCounts);
             }
             let bitmap_len = usize::from(slots).div_ceil(8);
-            at += 16;
+            at = header_end;
             if bytes.len().saturating_sub(at) < bitmap_len {
-                return Err("truncated slot bitmap");
+                return Err(SafepointMapError::TruncatedSlotBitmap);
             }
-            let bitmap = bytes[at..at + bitmap_len].to_vec();
-            at += bitmap_len;
+            let bitmap_end = at
+                .checked_add(bitmap_len)
+                .ok_or(SafepointMapError::TruncatedSlotBitmap)?;
+            let bitmap = bytes
+                .get(at..bitmap_end)
+                .ok_or(SafepointMapError::TruncatedSlotBitmap)?
+                .to_vec();
+            at = bitmap_end;
             if bitmap
                 .first()
                 .is_none_or(|bits| bits & 0b0100 == 0 || bits & 0b1011 != 0)
             {
-                return Err("invalid header bitmap");
+                return Err(SafepointMapError::InvalidHeaderBitmap);
             }
-            let register_count =
-                usize::try_from(mask.count_ones()).map_err(|_| "invalid register mask")?;
-            if bytes.len().saturating_sub(at) < register_count * 2 {
-                return Err("truncated register ids");
-            }
-            let mut ids = Vec::with_capacity(register_count);
-            for _ in 0..register_count {
-                ids.push(u16::from_le_bytes(
-                    bytes[at..at + 2]
-                        .try_into()
-                        .map_err(|_| "invalid register id")?,
-                ));
-                at += 2;
-            }
-            let mut decoded_mask = 0_u16;
-            for &register_id in &ids {
-                if u32::from(register_id) >= u16::BITS {
-                    return Err("invalid register id");
-                }
-                let bit = 1_u16 << register_id;
-                if decoded_mask & bit != 0 || mask & bit == 0 {
-                    return Err("register ids do not match register mask");
-                }
-                decoded_mask |= bit;
-            }
-            if decoded_mask != mask {
-                return Err("register ids do not match register mask");
-            }
+            let ids = decode_register_ids(bytes, &mut at, mask)?;
             entries.push(Safepoint {
                 pc_offset: pc,
                 frame_words: frame,

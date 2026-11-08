@@ -117,13 +117,17 @@ fn registered_builtin_has_a_function_object_and_rust_call_boundary() {
         runtime.function(&mut ctx, "NCL-TEST", "ADD"),
         Some(function.as_word())
     );
+    let function_object = function;
     assert_eq!(
-        ncl_object::function_entry(&ctx, ncl_object::Function::from_word(function.as_word())),
-        Ok(entry)
+        ncl_object::FunctionObject::try_from(function_object.as_word()),
+        Ok(function_object)
     );
     assert_eq!(
-        ncl_object::FunctionObject::try_from(function.as_word()),
-        Ok(function)
+        ncl_object::function_entry(
+            &ctx,
+            ncl_object::Function::from_word(function_object.as_word())
+        ),
+        Ok(entry)
     );
     assert_eq!(
         ncl_object::FunctionObject::try_from(Word::NIL),

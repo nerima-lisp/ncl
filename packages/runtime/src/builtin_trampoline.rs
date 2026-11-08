@@ -36,7 +36,9 @@ use ncl_object::{
     BuiltinIdentifier, BuiltinName, BuiltinPackage, CellError, FunctionObject, LispError, Package,
     Runtime as ObjectRuntime, ThreadContext, Word, symbol_function,
 };
-use ncl_sys::{CodePtr, Thread, alloc_code, publish_code, write_code};
+use ncl_sys::{
+    CodePtr, Thread, activate_code, alloc_code, seal_code, synchronize_code, write_code,
+};
 use std::ptr::NonNull;
 
 use crate::RuntimeError;
@@ -446,17 +448,17 @@ pub fn install(
     };
     let bytes = build(builtin_address)?;
     let undefined_bytes = build(undefined_address)?;
-    let mut code =
-        alloc_code(bytes.len()).map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
-    write_code(&mut code, 0, &bytes).map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
-    publish_code(&mut code).map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
+    let mut code = alloc_code(bytes.len())?;
+    write_code(&mut code, 0, &bytes)?;
+    let mut undefined_code = alloc_code(undefined_bytes.len())?;
+    write_code(&mut undefined_code, 0, &undefined_bytes)?;
+    seal_code(&mut code)?;
+    seal_code(&mut undefined_code)?;
+    synchronize_code(&mut code)?;
+    synchronize_code(&mut undefined_code)?;
+    activate_code(&mut code)?;
+    activate_code(&mut undefined_code)?;
     object.install_generic_builtin_entry(ctx, code.address())?;
-    let mut undefined_code = alloc_code(undefined_bytes.len())
-        .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
-    write_code(&mut undefined_code, 0, &undefined_bytes)
-        .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
-    publish_code(&mut undefined_code)
-        .map_err(|error| RuntimeError::Native(format!("{error:?}")))?;
     Ok((code, undefined_code))
 }
 

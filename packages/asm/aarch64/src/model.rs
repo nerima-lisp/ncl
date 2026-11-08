@@ -231,6 +231,8 @@ pub enum Inst {
     },
     /// Load/store 64-bit.
     Ldr { rt: Reg, mem: MemOperand },
+    /// Load-acquire 64-bit.
+    Ldar { rt: Reg, rn: Reg },
     /// Store 64-bit.
     Str { rt: Reg, mem: MemOperand },
     /// Load/store 32-bit.

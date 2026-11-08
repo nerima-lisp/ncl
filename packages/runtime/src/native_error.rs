@@ -101,7 +101,9 @@ pub fn runtime_error_to_object_error(
         | RuntimeError::Read(_)
         | RuntimeError::Front(_)
         | RuntimeError::Lower(_)
-        | RuntimeError::Native(_) => ObjectError::Layout,
+        | RuntimeError::Native(_)
+        | RuntimeError::Code(_)
+        | RuntimeError::SafepointMap(_) => ObjectError::Layout,
     }
 }
 
@@ -253,11 +255,12 @@ mod tests {
             Some(message)
         );
         ctx.set_pending_condition(condition);
+        let mut pending_undefined_function_condition = None;
         let runtime_error = pending_object_error(
             ctx,
             object,
             ObjectError::TypeError,
-            &mut runtime.pending_undefined_function_condition,
+            &mut pending_undefined_function_condition,
         )
         .unwrap_or_else(|error| panic!("mapped runtime error failed: {error}"));
         let RuntimeError::PendingCondition {
@@ -285,11 +288,12 @@ mod tests {
         )?;
         runtime.context.set_pending_condition(condition);
 
+        let mut pending_undefined_function_condition = None;
         let error = pending_object_error(
             &mut runtime.context,
             &runtime.object,
             ObjectError::Layout,
-            &mut runtime.pending_undefined_function_condition,
+            &mut pending_undefined_function_condition,
         )?;
 
         assert!(matches!(error, RuntimeError::Object(ObjectError::Layout)));
@@ -307,11 +311,12 @@ mod tests {
         )?;
         runtime.context.set_pending_condition(condition);
 
+        let mut pending_undefined_function_condition = None;
         let error = pending_object_error(
             &mut runtime.context,
             &runtime.object,
             ObjectError::TypeError,
-            &mut runtime.pending_undefined_function_condition,
+            &mut pending_undefined_function_condition,
         )?;
 
         assert!(matches!(

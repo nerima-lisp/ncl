@@ -65,6 +65,7 @@ dependencies = [
 name = "ncl-compiler-front"
 version = "0.1.1"
 dependencies = [
+ "ncl-arrays",
  "ncl-clos",
  "ncl-conditions",
  "ncl-ir",
@@ -130,12 +131,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "ncl-image"
+name = "ncl-hash-tables"
 version = "0.1.1"
 dependencies = [
  "ncl-object",
+]
+
+[[package]]
+name = "ncl-image"
+version = "0.1.1"
+dependencies = [
+ "ncl-arrays",
+ "ncl-hash-tables",
+ "ncl-object",
  "ncl-objfile",
  "ncl-ownership",
+ "ncl-packages",
  "ncl-readtables",
  "ncl-streams",
  "ncl-sys",
@@ -168,11 +179,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "ncl-lib-hash-arrays"
+name = "ncl-lib-hash-tables"
 version = "0.1.1"
 dependencies = [
  "ncl-clos",
  "ncl-conditions",
+ "ncl-hash-tables",
  "ncl-object",
  "ncl-types",
 ]
@@ -205,6 +217,7 @@ version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
+ "ncl-packages",
  "ncl-types",
 ]
 
@@ -214,6 +227,7 @@ version = "0.1.1"
 dependencies = [
  "ncl-clos",
  "ncl-conditions",
+ "ncl-hash-tables",
  "ncl-lib-strings",
  "ncl-object",
  "ncl-sys",
@@ -224,7 +238,9 @@ dependencies = [
 name = "ncl-lib-sequences"
 version = "0.1.1"
 dependencies = [
+ "ncl-arrays",
  "ncl-conditions",
+ "ncl-hash-tables",
  "ncl-lib-numbers",
  "ncl-object",
  "ncl-types",
@@ -289,9 +305,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ncl-packages"
+version = "0.1.1"
+dependencies = [
+ "ncl-object",
+]
+
+[[package]]
 name = "ncl-printer"
 version = "0.1.1"
 dependencies = [
+ "ncl-arrays",
  "ncl-conditions",
  "ncl-lib-streams",
  "ncl-object",
@@ -316,6 +340,7 @@ dependencies = [
  "ncl-lib-pathnames",
  "ncl-object",
  "ncl-ownership",
+ "ncl-packages",
  "ncl-readtables",
 ]
 
@@ -330,6 +355,7 @@ dependencies = [
 name = "ncl-runtime"
 version = "0.1.1"
 dependencies = [
+ "ncl-arrays",
  "ncl-asm-aarch64",
  "ncl-asm-x86-64",
  "ncl-codegen",
@@ -366,7 +392,7 @@ dependencies = [
  "ncl-image",
  "ncl-lib-arrays",
  "ncl-lib-format",
- "ncl-lib-hash-arrays",
+ "ncl-lib-hash-tables",
  "ncl-lib-macros",
  "ncl-lib-numbers",
  "ncl-lib-packages",

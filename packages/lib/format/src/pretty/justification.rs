@@ -8,6 +8,9 @@ use crate::{FormatError, FormatErrorKind};
 
 use super::layout::parameter_usize;
 
+// CLHS 22.3.6.2 uses 72 when the destination line width is unknown.
+const UNKNOWN_LINE_WIDTH: usize = 72;
+
 #[derive(Clone, Copy)]
 struct JustificationParameters {
     special_prefix: bool,
@@ -117,7 +120,7 @@ fn render_justified(
     } = parameters;
     let first = usize::from(special_prefix);
     let mut prefix = String::new();
-    let mut line_width = output.margin;
+    let mut line_width = UNKNOWN_LINE_WIDTH;
     let mut spare = 0;
     let mut prefix_escaped = false;
     if special_prefix {
@@ -137,7 +140,7 @@ fn render_justified(
             let (minimum_spare, requested_width) =
                 separator_parameters(state, separator, directive)?;
             spare = minimum_spare;
-            line_width = requested_width.unwrap_or(output.margin);
+            line_width = requested_width.unwrap_or(UNKNOWN_LINE_WIDTH);
         }
     }
     let mut pieces = Vec::new();
@@ -160,7 +163,6 @@ fn render_justified(
             .and_then(|width| width.checked_add(display_width(&field)))
             .is_none_or(|width| width > line_width)
     {
-        output.write_char('\n')?;
         output.write_str(&prefix)?;
     }
     output.write_str(&field)

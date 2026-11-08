@@ -9,20 +9,8 @@
     clippy::panic,
     clippy::as_conversions
 )]
-#![expect(
-    unused_crate_dependencies,
-    reason = "This target includes source modules by path to test private invariants"
-)]
-
-#[path = "../src/arena.rs"]
-/// The arena implementation under test.
-pub mod arena;
-#[path = "../src/ids.rs"]
-/// The typed identities used by the arena tests.
-pub mod ids;
-
-use arena::Arena;
-use ids::{CompilationUnitId, FormId, IdError, NodeId, SymbolId};
+use ncl_hir::arena::Arena;
+use ncl_hir::ids::{CompilationUnitId, FormId, IdError, NodeId, SymbolId};
 
 #[test]
 fn local_ids_reject_other_forms_and_out_of_bounds_positions() {

@@ -7,6 +7,8 @@ license.workspace = true
 
 [dependencies]
 ncl-object = { path = "../../object" }
+ncl-arrays = { path = "../../arrays" }
+ncl-hash-tables = { path = "../../hash-tables" }
 ncl-lib-numbers = { path = "../numbers" }
 ncl-types = { path = "../../types" }
 ncl-conditions = { path = "../../conditions" }

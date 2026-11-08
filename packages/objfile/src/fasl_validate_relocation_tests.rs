@@ -99,6 +99,12 @@ fn relocation_validation_rejects_sites_and_overlaps() {
         validate_relocations(Architecture::X86_64, &overlap, &source, &[], None),
         FaslRejectReason::InvalidRelocation,
     );
+
+    let too_many = vec![abs64; MAX_RECORDS + 1];
+    assert_reason(
+        validate_relocations(Architecture::X86_64, &too_many, &source, &[], None),
+        FaslRejectReason::ResourceLimitExceeded,
+    );
 }
 
 #[test]
@@ -193,6 +199,25 @@ fn relocation_targets_validate_code_native_and_constant_references() {
         );
     }
 
+    let nonzero_entry = [FaslCodeLayout {
+        entry_offset: 1,
+        ..source[0]
+    }];
+    let overflowing_target = FaslRelocation {
+        addend: i64::MAX,
+        ..relocation(Kind::PcRel32, Target::CodeObject, 0, 0)
+    };
+    assert_reason(
+        validate_relocations(
+            Architecture::X86_64,
+            &[overflowing_target],
+            &nonzero_entry,
+            &[],
+            None,
+        ),
+        FaslRejectReason::InvalidRelocation,
+    );
+
     let native = [native_symbol(SymbolBindingKind::NativeFunction)];
     assert_eq!(
         validate_relocations(
@@ -260,6 +285,55 @@ fn relocation_targets_validate_code_native_and_constant_references() {
         ),
         Ok(())
     );
+}
+
+#[test]
+fn paired_aarch64_relocations_require_matching_zero_immediates() {
+    let source = [layout()];
+    let adrp = FaslRelocation {
+        pair_id: 7,
+        ..relocation(Kind::Adrp21, Target::CodeObject, 0, 0)
+    };
+    let add = FaslRelocation {
+        pair_id: 7,
+        ..relocation(Kind::Add12, Target::CodeObject, 0, 4)
+    };
+    let pair = [adrp, add];
+    assert_eq!(
+        validate_relocations(Architecture::Aarch64, &pair, &source, &[], None),
+        Ok(())
+    );
+
+    let wrong_shape = [
+        adrp,
+        FaslRelocation {
+            kind: Kind::Adrp21,
+            ..add
+        },
+    ];
+    assert_reason(
+        validate_relocations(Architecture::Aarch64, &wrong_shape, &source, &[], None),
+        FaslRejectReason::InvalidRelocation,
+    );
+
+    for (offset, immediate) in [(0_usize, 1_u32 << 29), (4, 1_u32 << 10)] {
+        let mut code = CODE;
+        code[offset..offset + 4].copy_from_slice(&immediate.to_le_bytes());
+        let code_with_immediate = [FaslCodeLayout {
+            code: &code,
+            ..source[0]
+        }];
+        assert_reason(
+            validate_relocations(
+                Architecture::Aarch64,
+                &pair,
+                &code_with_immediate,
+                &[],
+                None,
+            ),
+            FaslRejectReason::InvalidRelocation,
+        );
+    }
 }
 
 #[test]

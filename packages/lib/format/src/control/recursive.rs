@@ -1,6 +1,6 @@
 use ncl_object::{
     BuiltinFunctionCaller, FunctionArguments, FunctionCaller, FunctionDesignator, FunctionObject,
-    MultipleValues, ObjectError, ObjectRef, Word, classify_object, with_rooted_slice,
+    MultipleValues, ObjectError, ObjectRef, Word, classify_object, with_root, with_rooted_slice,
 };
 
 use crate::executor::{ExecutionState, Flow, FormatError, FormatErrorKind, execute_control};
@@ -110,35 +110,31 @@ fn call_formatter(
     control_word: Word,
     arguments: &[Word],
 ) -> Result<String, FormatError> {
-    let mut rooted_values = Vec::with_capacity(arguments.len() + 2);
-    rooted_values.push(control_word);
-    rooted_values.extend_from_slice(arguments);
-    rooted_values.push(Word::NIL);
-    with_rooted_slice(ctx, &rooted_values, |ctx, rooted| {
-        let stream = call_stream_builtin(ctx, runtime, "MAKE-STRING-OUTPUT-STREAM", &[])?;
-        let Some((stream_slot, control_arguments)) = rooted.split_last_mut() else {
-            return Err(ObjectError::Layout);
-        };
-        *stream_slot = stream;
-        let control_word = control_arguments
-            .first()
-            .copied()
-            .ok_or(ObjectError::Layout)?;
-        let designator = FunctionDesignator::try_from_word(ctx, control_word)?;
-        let mut call_arguments = Vec::with_capacity(control_arguments.len());
-        call_arguments.push(*stream_slot);
-        call_arguments.extend_from_slice(control_arguments.get(1..).ok_or(ObjectError::Layout)?);
-        let mut caller = BuiltinFunctionCaller;
-        let mut values = MultipleValues::new();
-        caller.call_function(
-            ctx,
-            runtime,
-            designator,
-            FunctionArguments::new(&call_arguments),
-            &mut values,
-        )?;
-        let text = call_stream_builtin(ctx, runtime, "GET-OUTPUT-STREAM-STRING", &[*stream_slot])?;
-        string_value(ctx, text)
+    let mut control_word = control_word;
+    with_root(ctx, &mut control_word, |ctx, control| {
+        with_rooted_slice(ctx, arguments, |ctx, rooted_arguments| {
+            let mut stream = call_stream_builtin(ctx, runtime, "MAKE-STRING-OUTPUT-STREAM", &[])?;
+            with_root(ctx, &mut stream, |ctx, stream| {
+                let mut call_arguments = Vec::with_capacity(rooted_arguments.len() + 1);
+                call_arguments.push(*stream);
+                call_arguments.extend_from_slice(rooted_arguments);
+                with_rooted_slice(ctx, &call_arguments, |ctx, rooted_call_arguments| {
+                    let designator = FunctionDesignator::try_from_word(ctx, *control)?;
+                    let mut caller = BuiltinFunctionCaller;
+                    let mut values = MultipleValues::new();
+                    caller.call_function(
+                        ctx,
+                        runtime,
+                        designator,
+                        FunctionArguments::new(rooted_call_arguments),
+                        &mut values,
+                    )
+                })?;
+                let text =
+                    call_stream_builtin(ctx, runtime, "GET-OUTPUT-STREAM-STRING", &[*stream])?;
+                string_value(ctx, text)
+            })
+        })
     })
     .map_err(|error| object_error(directive, error))
 }

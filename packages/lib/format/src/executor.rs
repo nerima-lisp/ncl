@@ -1,11 +1,11 @@
-//! Shared execution state and top-level directive dispatch.
+//! Shared execution state and control traversal.
 
 use ncl_object::{
     ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, classify_object,
 };
 use ncl_printer::{CharSink, PrintError, PrintOptions, StringSink, write};
 
-use crate::model::{ControlPart, Directive, DirectiveKind, FormatControl, Parameter};
+use crate::model::{ControlPart, Directive, FormatControl, Parameter};
 use crate::parser::ParseErrorKind;
 
 /// A FORMAT failure retains its location and typed cause.
@@ -286,7 +286,7 @@ pub fn execute_control(
         match part {
             ControlPart::Literal(text) => output.write_str(text)?,
             ControlPart::Directive(directive) => {
-                let flow = execute_directive(state, directive, output)
+                let flow = crate::dispatch::execute_directive(state, directive, output)
                     .map_err(|error| locate_output_error(error, directive))?;
                 if flow != Flow::Continue {
                     return Ok(flow);
@@ -302,55 +302,6 @@ fn locate_output_error(error: FormatError, directive: &Directive) -> FormatError
         FormatError::at(directive, error.kind)
     } else {
         error
-    }
-}
-
-fn execute_directive(
-    state: &mut ExecutionState<'_>,
-    directive: &Directive,
-    output: &mut FormatOutput<'_>,
-) -> Result<Flow, FormatError> {
-    match directive.kind {
-        DirectiveKind::A
-        | DirectiveKind::S
-        | DirectiveKind::W
-        | DirectiveKind::C
-        | DirectiveKind::Plural
-        | DirectiveKind::Percent
-        | DirectiveKind::Ampersand
-        | DirectiveKind::Bar
-        | DirectiveKind::Tilde
-        | DirectiveKind::Newline => {
-            crate::text::execute(directive, state, output)?;
-            Ok(Flow::Continue)
-        }
-        DirectiveKind::D
-        | DirectiveKind::B
-        | DirectiveKind::O
-        | DirectiveKind::X
-        | DirectiveKind::R
-        | DirectiveKind::F
-        | DirectiveKind::E
-        | DirectiveKind::G
-        | DirectiveKind::Dollar => {
-            crate::numeric::execute(directive, state, output)?;
-            Ok(Flow::Continue)
-        }
-        DirectiveKind::Star
-        | DirectiveKind::Conditional
-        | DirectiveKind::Iteration
-        | DirectiveKind::Recursive
-        | DirectiveKind::CaseConversion
-        | DirectiveKind::UpArrow => crate::control::execute(directive, state, output),
-        DirectiveKind::Underscore
-        | DirectiveKind::LogicalBlock
-        | DirectiveKind::Indent
-        | DirectiveKind::Slash
-        | DirectiveKind::Tab
-        | DirectiveKind::Justification => {
-            crate::pretty::execute(directive, state, output)?;
-            Ok(Flow::Continue)
-        }
     }
 }
 

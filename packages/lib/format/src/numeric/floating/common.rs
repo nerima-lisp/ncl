@@ -189,7 +189,7 @@ pub(super) fn fixed_core(
     };
     let mut fraction = fraction.to_owned();
     if trim {
-        while fraction.len() > 1 && fraction.ends_with('0') {
+        while fraction.ends_with('0') {
             fraction.pop();
         }
         if fraction.is_empty() {
@@ -328,6 +328,19 @@ pub(super) fn shortest_fraction_digits(value: f64) -> usize {
     mantissa
         .split_once('.')
         .map_or(0, |(_, fraction)| fraction.len())
+}
+
+pub(super) fn default_fixed_precision(value: f64, width: usize, force_sign: bool) -> usize {
+    let integer_width = value.abs().trunc().to_string().len().max(1);
+    let reserved = integer_width
+        .saturating_add(sign(value, force_sign).len())
+        .saturating_add(1);
+    let precision = width.saturating_sub(reserved);
+    if precision == 0 && value.abs() < 1.0 && width > sign(value, force_sign).len() + 1 {
+        1
+    } else {
+        precision
+    }
 }
 
 pub(super) fn default_exponential_precision(value: f64, scale: i64) -> usize {

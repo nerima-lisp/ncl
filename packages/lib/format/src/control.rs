@@ -6,8 +6,9 @@ use ncl_object::{
 };
 use ncl_printer::PrintError;
 
+use crate::dispatch::ControlDirective;
 use crate::executor::{ExecutionState, Flow, FormatError, FormatErrorKind, FormatOutput};
-use crate::model::{Directive, DirectiveKind, Parameter};
+use crate::model::{Directive, Parameter};
 
 mod arguments;
 mod case;
@@ -109,41 +110,17 @@ pub fn with_rooted_words<T>(
 }
 
 pub fn execute(
+    kind: ControlDirective,
     directive: &Directive,
     state: &mut State<'_>,
     output: &mut Output<'_>,
 ) -> FlowResult {
-    match directive.kind {
-        DirectiveKind::Star => arguments::execute_star(directive, state),
-        DirectiveKind::Conditional => selection::execute(directive, state, output),
-        DirectiveKind::Iteration => iteration::execute(directive, state, output),
-        DirectiveKind::Recursive => recursive::execute(directive, state, output),
-        DirectiveKind::CaseConversion => case::execute(directive, state, output),
-        DirectiveKind::UpArrow => arguments::execute_up_arrow(directive, state),
-        DirectiveKind::A
-        | DirectiveKind::S
-        | DirectiveKind::W
-        | DirectiveKind::C
-        | DirectiveKind::R
-        | DirectiveKind::D
-        | DirectiveKind::B
-        | DirectiveKind::O
-        | DirectiveKind::X
-        | DirectiveKind::F
-        | DirectiveKind::E
-        | DirectiveKind::G
-        | DirectiveKind::Dollar
-        | DirectiveKind::Percent
-        | DirectiveKind::Ampersand
-        | DirectiveKind::Bar
-        | DirectiveKind::Tilde
-        | DirectiveKind::Newline
-        | DirectiveKind::Underscore
-        | DirectiveKind::LogicalBlock
-        | DirectiveKind::Indent
-        | DirectiveKind::Slash
-        | DirectiveKind::Tab
-        | DirectiveKind::Justification
-        | DirectiveKind::Plural => Err(invalid_use(directive)),
+    match kind {
+        ControlDirective::Star => arguments::execute_star(directive, state),
+        ControlDirective::Conditional => selection::execute(directive, state, output),
+        ControlDirective::Iteration => iteration::execute(directive, state, output),
+        ControlDirective::Recursive => recursive::execute(directive, state, output),
+        ControlDirective::CaseConversion => case::execute(directive, state, output),
+        ControlDirective::UpArrow => arguments::execute_up_arrow(directive, state),
     }
 }

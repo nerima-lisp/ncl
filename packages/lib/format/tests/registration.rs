@@ -51,6 +51,30 @@ fn format_is_callable_and_executes_value_and_line_directives() {
     assert_eq!(read_string(&ctx, result), "x/\"y\"/12\n");
 }
 
+#[test] // CLHS 22.3.7.6
+fn format_preserves_undefined_function_from_recursive_function_control() {
+    let (runtime, mut ctx, format) = setup();
+    let control = string(&runtime, &mut ctx, "~?");
+    let control = HeapRootedWord::new(&ctx, control).expect("root control");
+    let common_lisp = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .expect("COMMON-LISP package");
+    let (missing_formatter, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "MISSING-FORMATTER")
+        .expect("formatter symbol");
+    let missing_formatter =
+        HeapRootedWord::new(&ctx, missing_formatter).expect("root formatter symbol");
+
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            format,
+            &[Word::NIL, control.get(), missing_formatter.get(), Word::NIL],
+        ),
+        Err(ObjectError::UndefinedFunction)
+    );
+}
+
 #[test] // CLHS 22.3
 fn format_accepts_symbol_and_character_controls() {
     let (runtime, mut ctx, function) = setup();

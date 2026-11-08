@@ -1,50 +1,25 @@
 use super::common::{
     character_parameter, check_precision, decimal_order, default_exponential_precision,
-    exponential_core, fallback, field, fixed_core, free_float, integer_parameter, invalid,
-    number_value, optional_character, repeated, scaled, shortest_fraction_digits, sign, signed,
-    signed_parameter, significant_digits,
+    default_fixed_precision, exponential_core, fallback, field, fixed_core, free_float,
+    integer_parameter, invalid, number_value, optional_character, repeated, scaled,
+    shortest_fraction_digits, sign, signed, signed_parameter, significant_digits,
 };
+use crate::dispatch::FloatingDirective;
 use crate::executor::{ExecutionState, FormatError, FormatErrorKind, FormatOutput};
-use crate::model::{Directive, DirectiveKind, Parameter};
+use crate::model::{Directive, Parameter};
 
 pub(super) fn execute(
+    kind: FloatingDirective,
     directive: &Directive,
     state: &mut ExecutionState<'_>,
     output: &mut FormatOutput<'_>,
     parameters: &[Parameter],
 ) -> Result<(), FormatError> {
-    match directive.kind {
-        DirectiveKind::F => fixed(directive, state, output, parameters),
-        DirectiveKind::E => exponential(directive, state, output, parameters),
-        DirectiveKind::G => general(directive, state, output, parameters),
-        DirectiveKind::Dollar => monetary(directive, state, output, parameters),
-        DirectiveKind::A
-        | DirectiveKind::S
-        | DirectiveKind::W
-        | DirectiveKind::C
-        | DirectiveKind::R
-        | DirectiveKind::D
-        | DirectiveKind::B
-        | DirectiveKind::O
-        | DirectiveKind::X
-        | DirectiveKind::Percent
-        | DirectiveKind::Ampersand
-        | DirectiveKind::Bar
-        | DirectiveKind::Tilde
-        | DirectiveKind::Newline
-        | DirectiveKind::Underscore
-        | DirectiveKind::LogicalBlock
-        | DirectiveKind::Indent
-        | DirectiveKind::Slash
-        | DirectiveKind::Tab
-        | DirectiveKind::Justification
-        | DirectiveKind::Star
-        | DirectiveKind::Conditional
-        | DirectiveKind::Iteration
-        | DirectiveKind::Recursive
-        | DirectiveKind::CaseConversion
-        | DirectiveKind::Plural
-        | DirectiveKind::UpArrow => Err(invalid(directive)),
+    match kind {
+        FloatingDirective::Fixed => fixed(directive, state, output, parameters),
+        FloatingDirective::Exponential => exponential(directive, state, output, parameters),
+        FloatingDirective::General => general(directive, state, output, parameters),
+        FloatingDirective::Monetary => monetary(directive, state, output, parameters),
     }
 }
 
@@ -70,11 +45,30 @@ fn fixed(
     let text = if width.is_none() && precision.is_none() && scale == 0 {
         free_float(state, directive, word, value)?
     } else {
-        let (digits, trim) = precision.map_or_else(
-            || (shortest_fraction_digits(value), true),
-            |digits| (digits, false),
-        );
-        fixed_core(value, digits, None, trim, directive)?
+        let (digits, trim) = match precision {
+            Some(digits) => (digits, false),
+            None => (
+                width.map_or_else(
+                    || shortest_fraction_digits(value),
+                    |width| default_fixed_precision(value, width, directive.at_sign),
+                ),
+                true,
+            ),
+        };
+        let mut text = fixed_core(value, digits, None, trim, directive)?;
+        if let Some(width) = width {
+            let sign_width = sign(value, directive.at_sign).len();
+            if value.abs() < 1.0 && width == sign_width + 2 {
+                if let Some(fraction) = text.strip_prefix("0.") {
+                    text = format!(".{fraction}");
+                }
+            }
+            let rendered_width = sign_width.saturating_add(text.chars().count());
+            if text.ends_with(".0") && rendered_width > width && rendered_width - 1 <= width {
+                text.pop();
+            }
+        }
+        text
     };
     output.write_str(&field(
         signed(&text, value, directive.at_sign),

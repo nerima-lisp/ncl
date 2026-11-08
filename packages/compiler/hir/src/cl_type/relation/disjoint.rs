@@ -85,6 +85,6 @@ pub(super) fn disjoint_relation(
         | (ClTypeKind::NumericRange(range), ClTypeKind::Member(values)) => {
             member_disjoint_from_range(values, *range)
         }
-        _ => SubtypeRelation::Unknown,
+        _ => SubtypeRelation::Unknown, // check-added-lines: allow(wildcard) unhandled type pairs remain unknown
     }
 }

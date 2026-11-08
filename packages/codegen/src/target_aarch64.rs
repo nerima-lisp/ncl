@@ -47,10 +47,7 @@ pub fn compile_function_aarch64_preserving_multiple_values(
     compile_function_aarch64_with_multiple_values(function, abi, true)
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "The lowering routine emits one IR operation's ordered instruction sequence, keeping its register and stack effects reviewable together."
-)]
+#[expect(clippy::too_many_lines, reason = "operation effects stay grouped")]
 fn compile_function_aarch64_with_multiple_values(
     function: &Function,
     abi: &dyn RuntimeAbi,

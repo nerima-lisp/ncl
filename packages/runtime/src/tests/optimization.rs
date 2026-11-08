@@ -55,6 +55,30 @@ fn optimization_off_preserves_unused_move_removed_by_default_pipeline() {
 }
 
 #[test]
+fn pass_diagnostics_without_allocation_tracking_preserve_optimized_ir() {
+    let mut module = verified_module_with_unused_move();
+    let options = RuntimeOptions::new(OptimizationMode::Default, true)
+        .with_pass_allocation_diagnostics(false);
+
+    assert!(options.opt_diagnostics);
+    assert!(!options.pass_allocation_diagnostics);
+
+    let result = verify_and_optimize(&mut module, options);
+
+    assert!(
+        result.is_ok(),
+        "optimization with diagnostics failed: {result:?}"
+    );
+    assert!(module.functions[0].blocks[0].ops.is_empty());
+    assert_eq!(
+        module.functions[0].blocks[0].terminator,
+        Terminator::Return {
+            values: vec![ValueId(0)]
+        }
+    );
+}
+
+#[test]
 fn invalid_ir_is_rejected_before_optimization_without_mutating_module() {
     let mut module = verified_module_with_unused_move();
     module.functions[0].blocks[0].terminator = Terminator::Return {

@@ -97,16 +97,13 @@ mod tests {
     }
 
     #[test]
-    fn ncl_gc_allocation_snapshots_are_callable_from_lisp() {
-        let mut runtime = crate::Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}"));
-        let gc_count = runtime
-            .eval("(NCL-GC:GC-COUNT)")
-            .unwrap_or_else(|error| panic!("GC-COUNT: {error}"));
+    fn ncl_gc_allocation_snapshots_are_callable_from_lisp() -> Result<(), RuntimeError> {
+        let mut runtime = crate::Runtime::new()?;
+        let gc_count = runtime.eval("(NCL-GC:GC-COUNT)")?;
         assert!(gc_count.as_fixnum().is_some_and(|value| value >= 0));
-        let bytes = runtime
-            .eval("(NCL-GC:BYTES-CONSED-SINCE-GC)")
-            .unwrap_or_else(|error| panic!("BYTES-CONSED-SINCE-GC: {error}"));
+        let bytes = runtime.eval("(NCL-GC:BYTES-CONSED-SINCE-GC)")?;
         assert!(bytes.as_fixnum().is_some_and(|value| value >= 0));
+        Ok(())
     }
 }
 

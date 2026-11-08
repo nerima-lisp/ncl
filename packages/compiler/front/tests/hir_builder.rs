@@ -5,10 +5,13 @@ mod forms;
 
 mod hir_builder {
     mod basic;
+    mod closures;
     mod common;
     mod control;
     mod declarations;
     mod functions;
     mod identities;
+    mod literals;
+    mod types;
     mod unsupported;
 }

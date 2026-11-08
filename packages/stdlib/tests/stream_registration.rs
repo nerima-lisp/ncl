@@ -1,10 +1,5 @@
 //! Package-operation failures reached through standard stream registration.
 
-#![expect(
-    clippy::unwrap_used,
-    reason = "the fixtures unwrap setup and registration errors to fail immediately"
-)]
-
 use ncl_object::{FunctionObject, ObjectError, Runtime, ThreadContext, Word, with_rooted_slice};
 
 #[derive(Clone, Copy)]

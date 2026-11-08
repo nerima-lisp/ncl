@@ -1,8 +1,9 @@
 //! Array behavior and GC cases moved from kernel integration tests.
 
 use ncl_arrays::{
-    ArrayElementType, ArrayOptions, array_dimensions, array_row_major_ref, array_row_major_set,
-    make_array, specialized_array_element_type,
+    ArrayElementType, ArrayOptions, adjustable_array_p, array_dimensions, array_has_fill_pointer_p,
+    array_row_major_ref, array_row_major_set, fill_pointer, make_array, set_fill_pointer,
+    specialized_array_element_type, vector_pop, vector_push, vector_push_extend,
 };
 use ncl_object::Word;
 use ncl_object::{
@@ -454,6 +455,92 @@ fn non_simple_arrays_store_dimensions_and_row_major_values() {
         array_row_major_set(&mut ctx, string, 0, Word::fixnum(1)),
         Err(ObjectError::TypeError)
     );
+
+    let double: Word = ncl_object::make_double(&mut ctx, &runtime, 1.5)
+        .unwrap_or_else(|error| panic!("double: {error:?}"))
+        .into();
+    for (element_type, element) in [
+        (ArrayElementType::Bit, Word::fixnum(1)),
+        (ArrayElementType::Character, Word::character(u32::from('a'))),
+        (ArrayElementType::BaseChar, Word::character(u32::from('B'))),
+        (ArrayElementType::Fixnum, Word::fixnum(-4)),
+        (ArrayElementType::DoubleFloat, double),
+    ] {
+        let typed = make_array(
+            &mut ctx,
+            &runtime,
+            &[1],
+            ArrayOptions {
+                element_type,
+                initial_element: element,
+                adjustable: false,
+                fill_pointer: None,
+                displaced_to: None,
+                displaced_index_offset: 0,
+            },
+        )
+        .unwrap_or_else(|error| panic!("{element_type:?} array: {error:?}"));
+        assert_eq!(
+            ncl_arrays::array_element_type(&ctx, typed),
+            Ok(element_type)
+        );
+        assert_eq!(
+            ncl_arrays::array_displacement(&ctx, typed),
+            Ok((Word::NIL, 0))
+        );
+        assert_eq!(array_row_major_ref(&ctx, typed, 0), Ok(element));
+    }
+
+    let mut vector = make_array(
+        &mut ctx,
+        &runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: true,
+            fill_pointer: Some(0),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )
+    .unwrap_or_else(|error| panic!("fill-pointer vector: {error:?}"));
+    assert_eq!(adjustable_array_p(&ctx, vector), Ok(true));
+    assert_eq!(array_has_fill_pointer_p(&ctx, vector), Ok(true));
+    assert_eq!(fill_pointer(&ctx, vector), Ok(0));
+    assert_eq!(vector_push(&mut ctx, vector, Word::fixnum(10)), Ok(Some(0)));
+    assert_eq!(vector_push(&mut ctx, vector, Word::fixnum(11)), Ok(Some(1)));
+    assert_eq!(vector_push(&mut ctx, vector, Word::fixnum(12)), Ok(None));
+    assert_eq!(
+        vector_push_extend(&mut ctx, &runtime, vector, Word::fixnum(12), 0),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        vector_push_extend(&mut ctx, &runtime, vector, Word::fixnum(12), 1),
+        Ok((2, vector))
+    );
+    assert_eq!(array_dimensions(&ctx, vector), Ok(vec![3]));
+    assert_eq!(
+        vector_push_extend(&mut ctx, &runtime, vector, Word::fixnum(13), 1),
+        Ok((3, vector))
+    );
+    let (index, grown) = vector_push_extend(&mut ctx, &runtime, vector, Word::fixnum(14), 1)
+        .unwrap_or_else(|error| panic!("extend vector: {error:?}"));
+    assert_eq!(index, 4);
+    vector = grown;
+    assert_eq!(array_dimensions(&ctx, vector), Ok(vec![5]));
+    assert_eq!(array_row_major_ref(&ctx, vector, 4), Ok(Word::fixnum(14)));
+    assert_eq!(vector_pop(&mut ctx, vector), Ok(Word::fixnum(14)));
+    assert_eq!(fill_pointer(&ctx, vector), Ok(4));
+    assert_eq!(
+        set_fill_pointer(&mut ctx, vector, usize::MAX),
+        Err(ObjectError::TypeError)
+    );
+    assert!(set_fill_pointer(&mut ctx, vector, 0).is_ok());
+    assert_eq!(vector_pop(&mut ctx, vector), Err(ObjectError::TypeError));
+    assert_eq!(fill_pointer(&ctx, array), Err(ObjectError::TypeError));
+    assert_eq!(adjustable_array_p(&ctx, array), Ok(true));
+    assert_eq!(array_has_fill_pointer_p(&ctx, array), Ok(false));
 }
 
 #[test]

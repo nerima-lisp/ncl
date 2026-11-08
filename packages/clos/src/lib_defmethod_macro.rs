@@ -400,7 +400,11 @@ fn rewrite_method_form<'ctx>(
     if !scope.get(form).as_word().is_cons() {
         return Ok(form);
     }
-    let fields = macro_list_to_handles(scope, form)?;
+    let fields = match macro_list_to_handles(scope, form) {
+        Ok(fields) => fields,
+        Err(ObjectError::TypeError) => return Ok(form),
+        Err(error) => return Err(error),
+    };
     let operator = *fields.as_slice().first().ok_or(ObjectError::TypeError)?;
     let operator_word = scope.get(operator).as_word();
     if operator_word == scope.get(rewrite.quote_name).as_word()

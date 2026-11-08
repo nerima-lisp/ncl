@@ -81,6 +81,9 @@ impl Heap {
     pub(super) fn find_conservative(state: &State, value: Word) -> Option<usize> {
         let index = Self::find_raw(state, value)?;
         let object = state.objects.get(index)?;
+        if !object.alive || object.words.is_empty() {
+            return None;
+        }
         let kind_matches = if value.is_list() {
             object.kind == PageKind::Cons
         } else if value.lowtag() == Word::pointer(0, crate::LowTag::OtherPointer).lowtag() {

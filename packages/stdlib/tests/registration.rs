@@ -5,7 +5,7 @@
     reason = "the fixtures unwrap setup and registration errors to fail immediately"
 )]
 
-use ncl_object::{Runtime, ThreadContext};
+use ncl_object::{FunctionObject, Runtime, ThreadContext, Word};
 
 #[test]
 fn register_all_registers_clos() {
@@ -65,4 +65,14 @@ fn register_all_registers_callable_printer_and_format_builtins() {
             .and_then(|word| ncl_object::FunctionObject::try_from(word).ok());
         assert!(function.is_some(), "{name} must be callable");
     }
+
+    let car = FunctionObject::try_from(runtime.function(&mut ctx, "COMMON-LISP", "CAR").unwrap())
+        .unwrap();
+    let cons = FunctionObject::try_from(runtime.function(&mut ctx, "COMMON-LISP", "CONS").unwrap())
+        .unwrap();
+    let first = Word::fixnum(17);
+    let pair = runtime
+        .call_builtin(&mut ctx, cons, &[first, Word::fixnum(23)])
+        .unwrap();
+    assert_eq!(runtime.call_builtin(&mut ctx, car, &[pair]).unwrap(), first);
 }

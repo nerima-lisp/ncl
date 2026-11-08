@@ -47,6 +47,22 @@ impl NumericValue {
         }
     }
 
+    fn cmp(self, other: Self) -> Ordering {
+        match (self, other) {
+            (Self::Integer(left), Self::Integer(right)) => left.cmp(&right),
+            (Self::SingleFloat(left), Self::SingleFloat(right)) => {
+                f32::from_bits(left).total_cmp(&f32::from_bits(right))
+            }
+            (Self::DoubleFloat(left), Self::DoubleFloat(right)) => {
+                f64::from_bits(left).total_cmp(&f64::from_bits(right))
+            }
+            (Self::Integer(_), Self::SingleFloat(_) | Self::DoubleFloat(_))
+            | (Self::SingleFloat(_), Self::DoubleFloat(_)) => Ordering::Less,
+            (Self::SingleFloat(_), Self::Integer(_))
+            | (Self::DoubleFloat(_), Self::Integer(_) | Self::SingleFloat(_)) => Ordering::Greater,
+        }
+    }
+
     fn partial_cmp(self, other: Self) -> Option<Ordering> {
         match (self, other) {
             (Self::Integer(left), Self::Integer(right)) => Some(left.cmp(&right)),
@@ -56,7 +72,9 @@ impl NumericValue {
             (Self::DoubleFloat(left), Self::DoubleFloat(right)) => {
                 f64::from_bits(left).partial_cmp(&f64::from_bits(right))
             }
-            _ => None, // check-added-lines: allow(wildcard) mixed numeric domains are incomparable
+            (Self::Integer(_), Self::SingleFloat(_) | Self::DoubleFloat(_))
+            | (Self::SingleFloat(_), Self::Integer(_) | Self::DoubleFloat(_))
+            | (Self::DoubleFloat(_), Self::Integer(_) | Self::SingleFloat(_)) => None,
         }
     }
 }
@@ -150,15 +168,14 @@ impl NumericRange {
             }
         }
         if let (Some(lower), Some(upper)) = (lower, upper) {
-            match lower.value.partial_cmp(upper.value) {
-                Some(Ordering::Greater) => return Err(NumericRangeError::EmptyInterval),
-                Some(Ordering::Equal) => {
+            match lower.value.cmp(upper.value) {
+                Ordering::Greater => return Err(NumericRangeError::EmptyInterval),
+                Ordering::Equal => {
                     if !(lower.inclusive && upper.inclusive) {
                         return Err(NumericRangeError::EmptyInterval);
                     }
                 }
-                Some(Ordering::Less) => {}
-                _ => {}
+                Ordering::Less => {}
             }
         }
         if domain == NumericDomain::Integer && integer_interval_is_empty(lower, upper) {
@@ -292,24 +309,20 @@ impl NumericRange {
         }
     }
 
-    pub(super) fn covers_domain(self) -> bool {
-        match self.domain {
-            NumericDomain::Integer => self.lower.is_none() && self.upper.is_none(),
-            NumericDomain::SingleFloat => {
-                single_float_range_bounds(self.lower, self.upper)
-                    == (
-                        single_float_order_key(f32::NEG_INFINITY.to_bits()),
-                        single_float_order_key(f32::INFINITY.to_bits()),
-                    )
-            }
-            NumericDomain::DoubleFloat => {
-                double_float_range_bounds(self.lower, self.upper)
-                    == (
-                        double_float_order_key(f64::NEG_INFINITY.to_bits()),
-                        double_float_order_key(f64::INFINITY.to_bits()),
-                    )
-            }
-        }
+    pub(super) fn covers_single_float_domain(self) -> bool {
+        single_float_range_bounds(self.lower, self.upper)
+            == (
+                single_float_order_key(f32::NEG_INFINITY.to_bits()),
+                single_float_order_key(f32::INFINITY.to_bits()),
+            )
+    }
+
+    pub(super) fn covers_double_float_domain(self) -> bool {
+        double_float_range_bounds(self.lower, self.upper)
+            == (
+                double_float_order_key(f64::NEG_INFINITY.to_bits()),
+                double_float_order_key(f64::INFINITY.to_bits()),
+            )
     }
 }
 

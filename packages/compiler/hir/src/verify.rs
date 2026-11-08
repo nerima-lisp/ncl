@@ -99,8 +99,6 @@ pub enum VerifyError {
     InvalidBinding(BindingId),
     /// A scope does not resolve or is not a valid descendant.
     InvalidScope(ScopeId),
-    /// A scope parent is not earlier than its child.
-    InvalidScopeTree(ScopeId),
     /// A basic block does not resolve.
     InvalidBlock(BlockId),
     /// A source origin does not resolve.

@@ -39,8 +39,6 @@ fn member_value_subtype(
         return SubtypeRelation::Unknown;
     };
     match supertype.kind() {
-        ClTypeKind::Any => SubtypeRelation::Yes,
-        ClTypeKind::Empty => SubtypeRelation::No,
         ClTypeKind::Named(name) => member_value_to_named(value, *name),
         ClTypeKind::NumericRange(range) => match value {
             MemberValue::Integer(value) => contains_value(*range, NumericValue::Integer(value)),
@@ -75,6 +73,8 @@ fn member_value_subtype(
         | ClTypeKind::Function(_)
         | ClTypeKind::MultipleValues(_)
         | ClTypeKind::Class(_)
+        | ClTypeKind::Any
+        | ClTypeKind::Empty
         | ClTypeKind::Opaque { .. } => {
             if matches!(value, MemberValue::OpaqueObject { .. }) {
                 SubtypeRelation::Unknown

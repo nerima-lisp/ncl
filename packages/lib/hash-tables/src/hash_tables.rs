@@ -1,4 +1,4 @@
-use ncl_hash_tables::{HashTable, HashTest, Weakness};
+use ncl_hash_tables::{HashTable, HashTest, Weakness, sxhash};
 use ncl_object::package::{nil, truth};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
@@ -341,7 +341,7 @@ fn sxhash_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let hash = ncl_object::hash_table::sxhash(args.required(0)?);
+    let hash = sxhash(args.required(0)?);
     let mask = u64::try_from(i64::MAX).map_err(|_| ObjectError::Layout)?;
     Ok(Word::fixnum((hash & mask).cast_signed()))
 }

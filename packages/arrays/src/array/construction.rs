@@ -35,10 +35,7 @@ fn validated_total(
             return Err(ObjectError::TypeError);
         }
     }
-    if options.displaced_to.is_some()
-        && total
-            .checked_add(options.displaced_index_offset)
-            .is_none()
+    if options.displaced_to.is_some() && total.checked_add(options.displaced_index_offset).is_none()
     {
         return Err(ObjectError::Layout);
     }

@@ -2,9 +2,10 @@
 
 use std::collections::HashMap;
 
+use ncl_arrays::{ArrayOptions, array_row_major_set, make_array};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, FunctionObject, Runtime, ThreadContext, Word,
-    array_row_major_set, make_array, make_simple_vector, make_specialized_array, make_string,
+    ArrayElementType, FunctionObject, Runtime, ThreadContext, Word, make_simple_vector,
+    make_specialized_array, make_string,
 };
 
 fn setup() -> (Runtime, ThreadContext, HashMap<String, FunctionObject>) {

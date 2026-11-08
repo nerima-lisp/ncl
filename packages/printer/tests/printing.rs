@@ -7,10 +7,11 @@
 //! lands when L2 does.
 
 use ncl_object::{
-    ArrayElementType, ArrayOptions, Package, Runtime, ThreadContext, Word, make_array,
+    ArrayElementType, Package, Runtime, ThreadContext, Word,
     make_bignum_from_i128, make_complex, make_cons, make_double, make_ratio, make_simple_vector,
     make_specialized_array, make_string, make_symbol, rplacd, set_symbol_special, set_symbol_value,
 };
+use ncl_arrays::{ArrayOptions, make_array};
 use ncl_printer::{PrintCase, PrintError, PrintOptions, StringSink, write};
 
 fn print(

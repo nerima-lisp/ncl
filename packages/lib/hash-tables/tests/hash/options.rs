@@ -14,6 +14,17 @@ fn keyword(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> Result<Wor
         .0)
 }
 
+fn assert_invalid_make_hash_table_option(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+) {
+    assert_eq!(
+        call(runtime, ctx, "MAKE-HASH-TABLE", args),
+        Err(ObjectError::TypeError)
+    );
+}
+
 #[test]
 fn make_hash_table_accepts_size_and_rehash_options() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
@@ -152,95 +163,20 @@ fn make_hash_table_rejects_invalid_size_and_rehash_options() -> Result<(), Objec
     let unknown_test = keyword(&runtime, &mut ctx, "NOT-A-HASH-TEST")?;
     let unknown_weakness = keyword(&runtime, &mut ctx, "NOT-A-WEAKNESS")?;
 
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-HASH-TABLE",
-            &[size_key, Word::fixnum(0)],
-        ),
-        Err(ObjectError::TypeError)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-HASH-TABLE",
-            &[rehash_size_key, Word::fixnum(0)],
-        ),
-        Err(ObjectError::TypeError)
-    );
+    assert_invalid_make_hash_table_option(&runtime, &mut ctx, &[size_key, Word::fixnum(0)]);
+    assert_invalid_make_hash_table_option(&runtime, &mut ctx, &[rehash_size_key, Word::fixnum(0)]);
     let one = make_double(&mut ctx, &runtime, 1.0)?.as_word();
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-HASH-TABLE",
-            &[rehash_size_key, one],
-        ),
-        Err(ObjectError::TypeError)
-    );
+    assert_invalid_make_hash_table_option(&runtime, &mut ctx, &[rehash_size_key, one]);
     let zero = make_double(&mut ctx, &runtime, 0.0)?.as_word();
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-HASH-TABLE",
-            &[threshold_key, zero],
-        ),
-        Err(ObjectError::TypeError)
-    );
+    assert_invalid_make_hash_table_option(&runtime, &mut ctx, &[threshold_key, zero]);
     let above_one = make_double(&mut ctx, &runtime, 1.1)?.as_word();
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-HASH-TABLE",
-            &[threshold_key, above_one],
-        ),
-        Err(ObjectError::TypeError)
-    );
+    assert_invalid_make_hash_table_option(&runtime, &mut ctx, &[threshold_key, above_one]);
     let zero_bignum = make_bignum_from_i128(&mut ctx, &runtime, 0)?;
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-HASH-TABLE",
-            &[size_key, zero_bignum.into()],
-        ),
-        Err(ObjectError::TypeError)
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "MAKE-HASH-TABLE", &[size_key]),
-        Err(ObjectError::TypeError)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-HASH-TABLE",
-            &[unknown_key, Word::NIL],
-        ),
-        Err(ObjectError::TypeError)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-HASH-TABLE",
-            &[test_key, unknown_test],
-        ),
-        Err(ObjectError::TypeError)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "MAKE-HASH-TABLE",
-            &[weakness_key, unknown_weakness],
-        ),
-        Err(ObjectError::TypeError)
-    );
+    assert_invalid_make_hash_table_option(&runtime, &mut ctx, &[size_key, zero_bignum.into()]);
+    assert_invalid_make_hash_table_option(&runtime, &mut ctx, &[size_key]);
+    assert_invalid_make_hash_table_option(&runtime, &mut ctx, &[unknown_key, Word::NIL]);
+    assert_invalid_make_hash_table_option(&runtime, &mut ctx, &[test_key, unknown_test]);
+    assert_invalid_make_hash_table_option(&runtime, &mut ctx, &[weakness_key, unknown_weakness]);
     Ok(())
 }
 

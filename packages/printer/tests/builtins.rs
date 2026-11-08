@@ -215,7 +215,7 @@ fn printer_registration_propagates_heap_capacity_failure() {
     const OBJECT_HEADER_WORDS: usize = 1;
     const COPY_NAME_WORDS: usize = "COPY-PPRINT-DISPATCH".len() + 1 + OBJECT_HEADER_WORDS;
     const EMPTY_STRING_WORDS: usize = 1 + OBJECT_HEADER_WORDS;
-    const RESERVED_WORDS: usize = COPY_NAME_WORDS * 2 + EMPTY_STRING_WORDS;
+    const RESERVED_WORDS: usize = COPY_NAME_WORDS;
     const RELEASED_EMPTY_ROOTS: usize = RESERVED_WORDS / EMPTY_STRING_WORDS;
     const EMPTY_RESERVE_ROOTS: usize = RELEASED_EMPTY_ROOTS + 1;
 
@@ -289,9 +289,7 @@ fn printer_registration_propagates_heap_capacity_failure() {
         *probe_root = lambda_list_probe;
         ctx.collect(true)?;
 
-        // The rooted two-word probe leaves 44 words free. The two 22-word name
-        // strings consume that reserve, so the next two-word empty lambda-list
-        // allocation returns CapacityExceeded inside runtime.register_builtin.
+        // The probe leaves 20 words, below one 22-word registration name string.
         let registration_error = ncl_printer::register(ctx, &runtime).unwrap_err();
         assert_capacity_exceeded(registration_error, "printer registration");
 

@@ -1,5 +1,8 @@
-#![allow(missing_docs)]
-#![allow(clippy::unwrap_used, reason = "tests assert on builtin behavior")]
+#![expect(
+    clippy::unwrap_used,
+    reason = "tests assert string-stream contents, bounds, and rooted state"
+)]
+//! Tests for string input and output streams.
 
 use ncl_object::{
     FunctionObject, Runtime, ThreadContext, Word, pop_root, push_root, simple_vector_ref,

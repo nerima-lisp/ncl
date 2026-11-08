@@ -112,7 +112,10 @@ pub const REGISTERED_BUILTINS: &[&str] = &[
 /// # Errors
 ///
 /// Returns an error when a builtin cannot be registered.
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the function installs the complete file-stream and common stream builtin table"
+)]
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
@@ -244,7 +247,10 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     Ok(())
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the function declares the complete character and stream-specific builtin table"
+)]
 fn register_character_builtins(
     runtime: &Runtime,
     ctx: &mut ThreadContext,

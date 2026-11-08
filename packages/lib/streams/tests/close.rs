@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Tests for stream closure and the resulting stream state.
 
 use ncl_object::{
     FunctionObject, Package, Runtime, ThreadContext, Word, make_simple_vector, make_stream,

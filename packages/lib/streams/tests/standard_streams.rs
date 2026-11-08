@@ -1,5 +1,9 @@
-#![allow(missing_docs)]
-#![allow(clippy::unwrap_used, reason = "tests assert on builtin behavior")]
+//! Verifies standard-stream bindings and their directions.
+
+#![expect(
+    clippy::unwrap_used,
+    reason = "tests assert standard-stream bindings and their input or output direction"
+)]
 
 use ncl_object::{
     FunctionObject, ObjectRef, Package, Runtime, ThreadContext, Word, classify_object,

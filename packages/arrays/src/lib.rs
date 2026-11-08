@@ -2,7 +2,8 @@
 
 use ncl_object::{
     ObjectError, ObjectRef, Runtime, ThreadContext, Word, allocate, classify_object, layout,
-    simple_vector_ref, simple_vector_set, string_ref, string_set, with_roots,
+    simple_vector_ref, simple_vector_set, specialized_array_ref, specialized_array_set, string_ref,
+    string_set, with_roots,
 };
 /// Options for constructing a non-simple array.
 #[derive(Clone, Copy, Debug)]
@@ -26,9 +27,6 @@ pub(crate) use ncl_object::validate_array_element as validate_element;
 #[path = "array/construction.rs"]
 mod construction;
 pub use construction::make_array;
-
-mod specialized_array;
-pub use specialized_array::{specialized_array_ref, specialized_array_set};
 
 #[path = "array/vector_ops.rs"]
 mod vector_ops;

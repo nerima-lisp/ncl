@@ -6,7 +6,8 @@
 
 use ncl_lib_format::register;
 use ncl_object::{
-    FunctionObject, Runtime, ThreadContext, Word, make_cons, make_string, make_symbol, string_ref,
+    FunctionObject, HeapRootedWord, ObjectError, Package, Runtime, ThreadContext, Word, make_cons,
+    make_string, make_symbol, set_symbol_value, string_ref, symbol_value,
 };
 
 fn string(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> Word {
@@ -20,18 +21,22 @@ fn read_string(ctx: &ThreadContext, value: Word) -> String {
         .collect()
 }
 
-#[test]
-fn format_is_callable_and_executes_value_and_line_directives() {
+fn setup() -> (Runtime, ThreadContext, FunctionObject) {
     let runtime = Runtime::new().expect("runtime");
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).expect("context");
     ncl_lib_streams::register(&runtime).expect("streams");
     register(&runtime).expect("format");
-
     let function = runtime
         .function(&mut ctx, "COMMON-LISP", "FORMAT")
         .expect("FORMAT");
     let function = FunctionObject::try_from(function).expect("function");
+    (runtime, ctx, function)
+}
+
+#[test] // CLHS 22.3, 22.3.4.1/.2, 22.3.1.2/.3
+fn format_is_callable_and_executes_value_and_line_directives() {
+    let (runtime, mut ctx, function) = setup();
     let control = string(&runtime, &mut ctx, "~A/~S/~D~%~&");
     let first = string(&runtime, &mut ctx, "x");
     let second = string(&runtime, &mut ctx, "y");
@@ -46,18 +51,9 @@ fn format_is_callable_and_executes_value_and_line_directives() {
     assert_eq!(read_string(&ctx, result), "x/\"y\"/12\n");
 }
 
-#[test]
+#[test] // CLHS 22.3
 fn format_accepts_symbol_and_character_controls() {
-    let runtime = Runtime::new().expect("runtime");
-    let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).expect("context");
-    ncl_lib_streams::register(&runtime).expect("streams");
-    register(&runtime).expect("format");
-
-    let function = runtime
-        .function(&mut ctx, "COMMON-LISP", "FORMAT")
-        .expect("FORMAT");
-    let function = FunctionObject::try_from(function).expect("function");
+    let (runtime, mut ctx, function) = setup();
     let symbol_name = string(&runtime, &mut ctx, "~A");
     let symbol = make_symbol(&mut ctx, &runtime, symbol_name).expect("symbol");
     let argument = string(&runtime, &mut ctx, "value");
@@ -77,18 +73,9 @@ fn format_accepts_symbol_and_character_controls() {
     assert_eq!(read_string(&ctx, character_result), "x");
 }
 
-#[test]
+#[test] // CLHS 22.3.7.4/.5
 fn format_runs_nested_iteration_over_a_list() {
-    let runtime = Runtime::new().expect("runtime");
-    let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).expect("context");
-    ncl_lib_streams::register(&runtime).expect("streams");
-    register(&runtime).expect("format");
-
-    let function = runtime
-        .function(&mut ctx, "COMMON-LISP", "FORMAT")
-        .expect("FORMAT");
-    let function = FunctionObject::try_from(function).expect("function");
+    let (runtime, mut ctx, function) = setup();
     let control = string(&runtime, &mut ctx, "~{~A~}");
     let list = Word::NIL;
     let rooted_list = ncl_object::HeapRootedWord::new(&ctx, list).expect("root list");
@@ -102,4 +89,218 @@ fn format_runs_nested_iteration_over_a_list() {
         .call_builtin(&mut ctx, function, &[Word::NIL, control, rooted_list.get()])
         .expect("format iteration");
     assert_eq!(read_string(&ctx, result), "123");
+}
+
+#[test] // CLHS 22.3.7.4/.5
+fn format_maps_improper_iteration_arguments_to_type_error() {
+    let (runtime, mut ctx, function) = setup();
+    let control = string(&runtime, &mut ctx, "~{~A~}");
+    let control = HeapRootedWord::new(&ctx, control).expect("root control");
+    let dotted = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::fixnum(2))
+        .expect("dotted iteration arguments");
+    let dotted = HeapRootedWord::new(&ctx, dotted).expect("root dotted arguments");
+
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            function,
+            &[Word::NIL, control.get(), dotted.get()]
+        ),
+        Err(ObjectError::TypeError)
+    );
+}
+
+#[test] // CLHS 22.3
+fn format_writes_to_a_stream_and_the_bound_standard_output() {
+    let (runtime, mut ctx, format) = setup();
+    let make_output = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-STRING-OUTPUT-STREAM")
+            .expect("make output stream"),
+    )
+    .expect("make output function");
+    let get_output = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "GET-OUTPUT-STREAM-STRING")
+            .expect("get output string"),
+    )
+    .expect("get output function");
+    let stream = runtime
+        .call_builtin(&mut ctx, make_output, &[])
+        .expect("output stream");
+    let stream = HeapRootedWord::new(&ctx, stream).expect("root output stream");
+    let control = string(&runtime, &mut ctx, "~A");
+    let control = HeapRootedWord::new(&ctx, control).expect("root control");
+    let value = string(&runtime, &mut ctx, "stream output");
+    let value = HeapRootedWord::new(&ctx, value).expect("root value");
+
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            format,
+            &[stream.get(), control.get(), value.get()]
+        ),
+        Ok(Word::NIL)
+    );
+    let output = runtime
+        .call_builtin(&mut ctx, get_output, &[stream.get()])
+        .expect("stream contents");
+    assert_eq!(read_string(&ctx, output), "stream output");
+
+    let package = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .expect("COMMON-LISP package");
+    let (output_symbol, _) = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "*STANDARD-OUTPUT*")
+        .expect("standard output symbol");
+    let previous = symbol_value(&ctx, output_symbol).expect("previous standard output");
+    let previous = HeapRootedWord::new(&ctx, previous).expect("root previous output");
+    set_symbol_value(&mut ctx, output_symbol, stream.get()).expect("bind output stream");
+
+    let control = string(&runtime, &mut ctx, "~A");
+    let control = HeapRootedWord::new(&ctx, control).expect("root control");
+    let value = string(&runtime, &mut ctx, "standard output");
+    let value = HeapRootedWord::new(&ctx, value).expect("root value");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::TRUE, control.get(), value.get()]),
+        Ok(Word::NIL)
+    );
+    let output = runtime
+        .call_builtin(&mut ctx, get_output, &[stream.get()])
+        .expect("standard output contents");
+    assert_eq!(read_string(&ctx, output), "standard output");
+    set_symbol_value(&mut ctx, output_symbol, previous.get()).expect("restore standard output");
+}
+
+#[test] // CLHS 22.3
+fn format_maps_invalid_controls_arguments_destinations_and_stream_writes() {
+    let (runtime, mut ctx, format) = setup();
+    let valid_control = string(&runtime, &mut ctx, "~A");
+    let valid_control = HeapRootedWord::new(&ctx, valid_control).expect("root valid control");
+    let non_string = Word::fixnum(1);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[non_string, valid_control.get()]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, non_string]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::fixnum(1), valid_control.get()]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, Word::character(0x11_0000)]),
+        Err(ObjectError::TypeError)
+    );
+
+    let malformed = string(&runtime, &mut ctx, "~z");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, malformed]),
+        Err(ObjectError::TypeError)
+    );
+    let missing_argument = string(&runtime, &mut ctx, "~A");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, missing_argument]),
+        Err(ObjectError::TypeError)
+    );
+    let wrong_type = string(&runtime, &mut ctx, "~C");
+    let wrong_type = HeapRootedWord::new(&ctx, wrong_type).expect("root control");
+    let text = string(&runtime, &mut ctx, "not a character");
+    let text = HeapRootedWord::new(&ctx, text).expect("root text");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, wrong_type.get(), text.get()]),
+        Err(ObjectError::TypeError)
+    );
+
+    let make_input = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-STRING-INPUT-STREAM")
+            .expect("make input stream"),
+    )
+    .expect("make input function");
+    let input_text = string(&runtime, &mut ctx, "input only");
+    let input_text = HeapRootedWord::new(&ctx, input_text).expect("root input text");
+    let input = runtime
+        .call_builtin(&mut ctx, make_input, &[input_text.get()])
+        .expect("input stream");
+    let input = HeapRootedWord::new(&ctx, input).expect("root input stream");
+    let control = string(&runtime, &mut ctx, "text");
+    let control = HeapRootedWord::new(&ctx, control).expect("root argument");
+    let output = string(&runtime, &mut ctx, "~A");
+    let output = HeapRootedWord::new(&ctx, output).expect("root control");
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            format,
+            &[input.get(), output.get(), control.get()]
+        ),
+        Err(ObjectError::TypeError)
+    );
+
+    let package = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .expect("COMMON-LISP package");
+    let (output_symbol, _) = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "*STANDARD-OUTPUT*")
+        .expect("standard output symbol");
+    let previous = symbol_value(&ctx, output_symbol).expect("previous standard output");
+    let previous = HeapRootedWord::new(&ctx, previous).expect("root previous output");
+    set_symbol_value(&mut ctx, output_symbol, Word::fixnum(1)).expect("set invalid output");
+    let output_control = string(&runtime, &mut ctx, "~A");
+    let output_control = HeapRootedWord::new(&ctx, output_control).expect("root output control");
+    let value = string(&runtime, &mut ctx, "output");
+    let value = HeapRootedWord::new(&ctx, value).expect("root output value");
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            format,
+            &[Word::TRUE, output_control.get(), value.get()]
+        ),
+        Err(ObjectError::TypeError)
+    );
+    set_symbol_value(&mut ctx, output_symbol, previous.get()).expect("restore standard output");
+}
+
+#[test] // CLHS 22.3
+fn format_propagates_errors_while_formatting_to_a_stream() {
+    let (runtime, mut ctx, format) = setup();
+    let make_output = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-STRING-OUTPUT-STREAM")
+            .expect("make output stream"),
+    )
+    .expect("make output function");
+    let close = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "CLOSE")
+            .expect("close stream"),
+    )
+    .expect("close function");
+    let stream = runtime
+        .call_builtin(&mut ctx, make_output, &[])
+        .expect("output stream");
+    let stream = HeapRootedWord::new(&ctx, stream).expect("root output stream");
+    let control = string(&runtime, &mut ctx, "~A");
+    let control = HeapRootedWord::new(&ctx, control).expect("root control");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[stream.get(), control.get()]),
+        Err(ObjectError::TypeError)
+    );
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[stream.get()]),
+        Ok(Word::TRUE)
+    );
+    let value = string(&runtime, &mut ctx, "closed");
+    let value = HeapRootedWord::new(&ctx, value).expect("root value");
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            format,
+            &[stream.get(), control.get(), value.get()]
+        ),
+        Err(ObjectError::TypeError)
+    );
 }

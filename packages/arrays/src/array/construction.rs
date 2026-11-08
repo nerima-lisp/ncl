@@ -171,5 +171,87 @@ mod tests {
             },
         );
         assert_eq!(result, Err(ObjectError::Layout));
+
+        let base_options = ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        };
+        for (dimensions, fill_pointer) in [(&[1][..], 2), (&[1, 1][..], 0)] {
+            assert_eq!(
+                make_array(
+                    &mut ctx,
+                    &runtime,
+                    dimensions,
+                    ArrayOptions {
+                        fill_pointer: Some(fill_pointer),
+                        ..base_options
+                    },
+                ),
+                Err(ObjectError::TypeError)
+            );
+        }
+        let target = ncl_object::make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(0)])
+            .unwrap_or_else(|error| panic!("target: {error:?}"));
+        assert_eq!(
+            make_array(
+                &mut ctx,
+                &runtime,
+                &[1],
+                ArrayOptions {
+                    element_type: ArrayElementType::Bit,
+                    initial_element: Word::fixnum(0),
+                    displaced_to: Some(target),
+                    ..base_options
+                },
+            ),
+            Err(ObjectError::TypeError)
+        );
+        assert_eq!(
+            make_array(
+                &mut ctx,
+                &runtime,
+                &[1],
+                ArrayOptions {
+                    displaced_to: Some(Word::TRUE),
+                    displaced_index_offset: usize::MAX,
+                    ..base_options
+                },
+            ),
+            Err(ObjectError::Layout)
+        );
+        assert_eq!(
+            make_array(&mut ctx, &runtime, &[usize::MAX], base_options),
+            Err(ObjectError::Layout)
+        );
+        assert!(matches!(
+            make_array(&mut ctx, &runtime, &[1 << 20], base_options),
+            Err(ObjectError::Storage(_))
+        ));
+        if let Some(large_dimension) = usize::try_from(i64::MAX)
+            .ok()
+            .and_then(|value| value.checked_add(1))
+        {
+            assert_eq!(
+                make_array(&mut ctx, &runtime, &[0, large_dimension], base_options,),
+                Err(ObjectError::Layout)
+            );
+            assert_eq!(
+                make_array(
+                    &mut ctx,
+                    &runtime,
+                    &[0, 0],
+                    ArrayOptions {
+                        displaced_to: Some(Word::TRUE),
+                        displaced_index_offset: large_dimension,
+                        ..base_options
+                    },
+                ),
+                Err(ObjectError::Layout)
+            );
+        }
     }
 }

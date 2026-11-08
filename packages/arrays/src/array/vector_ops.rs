@@ -152,6 +152,41 @@ mod tests {
         let stored = crate::array_row_major_ref(&ctx, adjusted, 1)
             .unwrap_or_else(|error| panic!("read: {error:?}"));
         assert_eq!(ncl_object::string_ref(&ctx, stored, 0), Ok('v'));
+
+        let next_value = ncl_object::make_string(&mut ctx, &runtime, &['w'])
+            .unwrap_or_else(|error| panic!("next value: {error:?}"));
+        let (next_index, grown) = vector_push_extend(&mut ctx, &runtime, vector, next_value, 1)
+            .unwrap_or_else(|error| panic!("grow: {error:?}"));
+        assert_eq!(next_index, 2);
+        vector = grown;
+        assert_eq!(crate::array_dimensions(&ctx, vector), Ok(vec![3]));
+        let stored = crate::array_row_major_ref(&ctx, vector, 2)
+            .unwrap_or_else(|error| panic!("read grown value: {error:?}"));
+        assert_eq!(ncl_object::string_ref(&ctx, stored, 0), Ok('w'));
+
+        let spare = make_array(
+            &mut ctx,
+            &runtime,
+            &[2],
+            ArrayOptions {
+                element_type: ArrayElementType::T,
+                initial_element: Word::NIL,
+                adjustable: true,
+                fill_pointer: Some(0),
+                displaced_to: None,
+                displaced_index_offset: 0,
+            },
+        )
+        .unwrap_or_else(|error| panic!("spare vector: {error:?}"));
+        let (spare_index, unchanged) =
+            vector_push_extend(&mut ctx, &runtime, spare, Word::fixnum(12), 1)
+                .unwrap_or_else(|error| panic!("push with spare capacity: {error:?}"));
+        assert_eq!(spare_index, 0);
+        assert_eq!(unchanged, spare);
+        assert_eq!(
+            crate::array_row_major_ref(&ctx, unchanged, 0),
+            Ok(Word::fixnum(12))
+        );
         assert!(ncl_object::pop_root(&mut ctx, token));
     }
 }

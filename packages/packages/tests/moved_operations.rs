@@ -106,12 +106,12 @@ fn assert_symbol_visibility(
         .unwrap_or_else(|error| panic!("intern: {error:?}"));
     assert_eq!(status, FindStatus::Internal);
     assert_eq!(
-        producer.find_symbol(context, &runtime, name),
+        producer.find_symbol(context, runtime, name),
         Ok(Some((symbol, FindStatus::Internal)))
     );
     assert!(producer.export(context, runtime, name).unwrap_or(false));
     assert_eq!(
-        producer.find_symbol(context, &runtime, name),
+        producer.find_symbol(context, runtime, name),
         Ok(Some((symbol, FindStatus::External)))
     );
     assert!(producer.export(context, runtime, name).unwrap_or(false));
@@ -142,7 +142,7 @@ fn assert_symbol_visibility(
             .unwrap_or(false)
     );
     assert_eq!(
-        consumer.find_symbol(context, &runtime, inherited_name),
+        consumer.find_symbol(context, runtime, inherited_name),
         Ok(Some((inherited, FindStatus::Inherited)))
     );
     assert!(
@@ -151,7 +151,7 @@ fn assert_symbol_visibility(
             .is_ok()
     );
     assert_eq!(
-        consumer.find_symbol(context, &runtime, inherited_name),
+        consumer.find_symbol(context, runtime, inherited_name),
         Ok(Some((inherited, FindStatus::Internal)))
     );
     assert!(

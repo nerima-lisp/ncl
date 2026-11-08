@@ -15,7 +15,7 @@ mod options;
 pub use list::read_list;
 pub use options::{current_read_suppression, is_read_suppressed};
 
-pub(super) type ReaderLabels = HashMap<i64, HeapRootedWord>;
+pub type ReaderLabels = HashMap<i64, HeapRootedWord>;
 
 /// The float format used when a token has no explicit float marker.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

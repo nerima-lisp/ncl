@@ -1,5 +1,6 @@
 //! Lower verified HIR to the current machine-independent IR.
 
+mod availability;
 mod checks;
 mod control;
 mod exits;
@@ -11,7 +12,7 @@ mod local_functions;
 mod multiple_values;
 mod ops;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -21,7 +22,7 @@ use ncl_ir::{
 };
 
 use crate::form::HirForm;
-use crate::ids::{NodeId, TypeSpecConstId};
+use crate::ids::{BlockId, NodeId, TypeSpecConstId};
 use crate::symbols::SymbolTable;
 use crate::verify::VerifyError;
 
@@ -44,8 +45,12 @@ pub enum LowerError {
     EmptyForm,
     /// A referenced HIR node is absent from the form arena.
     InvalidNode(NodeId),
+    /// A semantic node depends on itself while being lowered.
+    CyclicNode(NodeId),
     /// A type assertion references a missing type-specifier constant.
     InvalidTypeSpecConstant(TypeSpecConstId),
+    /// A specialized array carries an element type stored only by general arrays.
+    InvalidSpecializedArray(NodeId),
     /// A lexical value is used outside a lowered binding.
     MissingLexicalValue(crate::ids::BindingId),
     /// A local function is used outside its lowered definition group.
@@ -57,10 +62,23 @@ pub enum LowerError {
         /// The HIR value identity with no known producer.
         value: crate::ids::ValueId,
     },
+    /// A cached node value is used outside a CFG block dominated by its definition.
+    NodeValueNotAvailableInBlock {
+        /// The reused node.
+        node: NodeId,
+        /// The block requesting the cached value, if in CFG lowering.
+        use_block: Option<BlockId>,
+        /// The block that first lowered the node, if any.
+        definition_block: Option<BlockId>,
+    },
+    /// A TAGBODY has no matching verified control-flow graph.
+    MissingTagbodyFlow(NodeId),
+    /// A TAGBODY CFG uses an invalid value-return terminator.
+    InvalidTagbodyReturn(NodeId),
     /// A referenced symbol has no spelling in the symbol table.
     InvalidSymbol(crate::ids::SymbolId),
     /// The requested node has no faithful representation in the current IR.
-    Unsupported {
+    Unrepresentable {
         /// The HIR node that cannot be represented.
         node: NodeId,
         /// The unsupported semantic operation.
@@ -150,6 +168,11 @@ pub(super) struct FunctionLowerer<'a> {
     pub(super) active_handlers: Vec<HandlerRegionId>,
     pub(super) next_handler_id: u32,
     pub(super) values: HashMap<NodeId, ValueId>,
+    pub(super) hir_block: Option<BlockId>,
+    pub(super) node_blocks: HashMap<NodeId, BlockId>,
+    pub(super) dominance_contexts: Vec<DominanceContext>,
+    pub(super) external_values_available: bool,
+    pub(super) lowering_nodes: HashSet<NodeId>,
     pub(super) lexical_values: HashMap<crate::ids::BindingId, ValueId>,
     pub(super) lexical_cells: std::collections::HashSet<crate::ids::BindingId>,
     pub(super) local_functions: HashMap<crate::ids::BindingId, ValueId>,
@@ -166,6 +189,12 @@ pub(super) struct FunctionLowerer<'a> {
 pub(super) struct BlockTarget {
     pub(super) block: ncl_ir::BlockId,
     pub(super) active_depth: usize,
+}
+
+pub(super) struct DominanceContext {
+    pub(super) entry: BlockId,
+    pub(super) parent_block: Option<BlockId>,
+    pub(super) dominators: HashMap<BlockId, HashSet<BlockId>>,
 }
 
 impl<'a> FunctionLowerer<'a> {
@@ -194,6 +223,11 @@ impl<'a> FunctionLowerer<'a> {
             active_handlers: Vec::new(),
             next_handler_id: 0,
             values: HashMap::new(),
+            hir_block: None,
+            node_blocks: HashMap::new(),
+            dominance_contexts: Vec::new(),
+            external_values_available: false,
+            lowering_nodes: HashSet::new(),
             lexical_values: HashMap::new(),
             lexical_cells: std::collections::HashSet::new(),
             local_functions: HashMap::new(),

@@ -6,19 +6,29 @@ use crate::ids::{BindingId, NodeId};
 
 use super::{FunctionLowerer, LowerError};
 
+pub(super) fn required_signature(parameters: &[BindingId]) -> LambdaSignature {
+    LambdaSignature {
+        required: parameters.to_vec(),
+        optional: Vec::new(),
+        rest: None,
+        keys: Vec::new(),
+        allow_other_keys: false,
+        aux: Vec::new(),
+    }
+}
+
 impl FunctionLowerer<'_> {
     pub(super) fn lambda_value(
         &mut self,
         node: NodeId,
+        parameters: &[BindingId],
         body_scope: ScopeId,
         body: &[NodeId],
     ) -> Result<ValueId, LowerError> {
-        let signature = self.form.lambda_signature_for_lambda(node).cloned().ok_or(
-            LowerError::Unsupported {
-                node,
-                operation: "lambda-without-signature-metadata",
-            },
-        )?;
+        let signature = self
+            .form
+            .lambda_signature_for_lambda(node)
+            .map_or_else(|| required_signature(parameters), Clone::clone);
         let captures = capture_bindings(self.form, body_scope)?;
         let id = self.pool.allocate()?;
         let params = lambda_params(&signature)?;

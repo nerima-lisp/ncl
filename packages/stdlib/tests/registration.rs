@@ -1,7 +1,8 @@
-#![allow(
-    missing_docs,
+//! Tests registration of standard-library crates and builtins.
+
+#![expect(
     clippy::unwrap_used,
-    reason = "tests assert on registration failures"
+    reason = "the fixtures unwrap setup and registration errors to fail immediately"
 )]
 
 use ncl_object::{Runtime, ThreadContext};

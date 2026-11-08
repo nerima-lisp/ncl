@@ -340,7 +340,8 @@ fn setf_pairs(
         if parallel {
             let mut evaluation_bindings = Vec::<HeapRootedWord>::new();
             let mut stores = Vec::new();
-            for [place_word, value] in pairs {
+            for pair in pairs {
+                let [place_word, value] = pair;
                 let expansion = place(ctx, runtime, registry, place_word.get())?;
                 let expansion = RootedExpansion::new(ctx, expansion)?;
                 for (variable, value_form) in expansion
@@ -383,7 +384,8 @@ fn setf_pairs(
             }
         } else {
             let mut forms = Vec::<HeapRootedWord>::new();
-            for [place_word, value] in pairs {
+            for pair in pairs {
+                let [place_word, value] = pair;
                 let expansion = place(ctx, runtime, registry, place_word.get())?;
                 let expansion = RootedExpansion::new(ctx, expansion)?;
                 let value = place_value(ctx, runtime, place_word.get(), value.get())?;

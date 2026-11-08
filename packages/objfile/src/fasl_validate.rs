@@ -123,17 +123,11 @@ fn validate_record_counts(
         let count = debug_counts
             .get_mut(index)
             .ok_or_else(|| FaslError::new(FaslRejectReason::InvalidReference))?;
-        *count = count
-            .checked_add(1)
-            .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
+        *count += 1;
     }
     for (index, object) in code.iter().enumerate() {
-        let Some(constant_group) = constants.get(index) else {
-            return Err(FaslError::new(FaslRejectReason::InvalidCodeObject));
-        };
-        let Some(stack_group) = stack_maps.get(index) else {
-            return Err(FaslError::new(FaslRejectReason::InvalidCodeObject));
-        };
+        let constant_group = &constants[index];
+        let stack_group = &stack_maps[index];
         if usize::try_from(object.id).ok() != Some(index)
             || constant_group.code_object_id != object.id
             || u32::try_from(constant_group.constants.len()).ok() != Some(object.constant_count)
@@ -157,9 +151,7 @@ fn validate_stack_maps(
         return Err(FaslError::new(FaslRejectReason::InvalidSafepointMap));
     }
     for (index, group) in groups.iter().enumerate() {
-        let Some(layout) = layouts.get(index) else {
-            return Err(FaslError::new(FaslRejectReason::InvalidSafepointMap));
-        };
+        let layout = &layouts[index];
         if usize::try_from(group.code_object_id).ok() != Some(index)
             || group.code_object_id != layout.id
         {
@@ -379,14 +371,9 @@ fn validate_relocation_pairs(
     ordered_pairs.sort_unstable_by_key(|(pair_id, index)| (*pair_id, *index));
     let mut start = 0;
     while start < ordered_pairs.len() {
-        let pair = ordered_pairs
-            .get(start)
-            .copied()
-            .ok_or_else(|| FaslError::new(FaslRejectReason::InvalidRelocation))?;
+        let pair = ordered_pairs[start];
         let pair_id = pair.0;
-        let suffix = ordered_pairs
-            .get(start..)
-            .ok_or_else(|| pair_error(section_offset, pair.1))?;
+        let suffix = &ordered_pairs[start..];
         let end = suffix
             .iter()
             .position(|(candidate, _)| *candidate != pair_id)
@@ -395,19 +382,9 @@ fn validate_relocation_pairs(
             return Err(pair_error(section_offset, pair.1));
         }
         let first_index = pair.1;
-        let second_position = start
-            .checked_add(1)
-            .ok_or_else(|| pair_error(section_offset, first_index))?;
-        let second_index = ordered_pairs
-            .get(second_position)
-            .map(|(_, index)| *index)
-            .ok_or_else(|| pair_error(section_offset, first_index))?;
-        let Some(first) = relocations.get(first_index) else {
-            return Err(pair_error(section_offset, first_index));
-        };
-        let Some(second) = relocations.get(second_index) else {
-            return Err(pair_error(section_offset, second_index));
-        };
+        let second_index = ordered_pairs[start + 1].1;
+        let first = &relocations[first_index];
+        let second = &relocations[second_index];
         if first.kind != FaslRelocationKind::Adrp21
             || second.kind != FaslRelocationKind::Add12
             || first.code_object_id != second.code_object_id
@@ -493,3 +470,7 @@ mod private_tests;
 #[cfg(test)]
 #[path = "fasl_validate_relocation_tests.rs"]
 mod relocation_tests;
+
+#[cfg(test)]
+#[path = "fasl_validate_guard_tests.rs"]
+mod guard_tests;

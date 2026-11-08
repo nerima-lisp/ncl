@@ -174,3 +174,115 @@ fn positive_safety_type_assertion_emits_checked_mir() -> TestResult<()> {
     }));
     Ok(())
 }
+
+#[test]
+fn local_declarations_preserve_binding_policy_and_unknown_arguments() -> TestResult<()> {
+    // CLHS 3.8 defines these declaration specifiers and permits implementations to
+    // ignore declaration names they do not recognize.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/03_h.htm
+    let (id, mut builder, mut fixture) = context(45);
+    let special_name = fixture.user("*DYNAMIC*");
+    let special_head = fixture.cl("SPECIAL");
+    let special = fixture.list(&[special_head, special_name]);
+
+    let function_type = fixture.cl("FUNCTION");
+    let fixnum = fixture.cl("FIXNUM");
+    let parameter_types = fixture.list(&[fixnum]);
+    let function_specifier = fixture.list(&[function_type, parameter_types, fixnum]);
+    let ftype_head = fixture.cl("FTYPE");
+    let helper = fixture.user("HELPER");
+    let ftype = fixture.list(&[ftype_head, function_specifier, helper]);
+
+    let inline_head = fixture.cl("INLINE");
+    let inline = fixture.list(&[inline_head, helper]);
+    let notinline_head = fixture.cl("NOTINLINE");
+    let slower = fixture.user("SLOWER");
+    let notinline = fixture.list(&[notinline_head, slower]);
+    let dynamic_extent_head = fixture.cl("DYNAMIC-EXTENT");
+    let scratch = fixture.user("SCRATCH");
+    let dynamic_extent = fixture.list(&[dynamic_extent_head, scratch]);
+    let ignore_head = fixture.cl("IGNORE");
+    let ignored = fixture.user("IGNORED");
+    let ignore = fixture.list(&[ignore_head, ignored]);
+    let ignorable_head = fixture.cl("IGNORABLE");
+    let maybe_unused = fixture.user("MAYBE-UNUSED");
+    let ignorable = fixture.list(&[ignorable_head, maybe_unused]);
+
+    let speed = fixture.cl("SPEED");
+    let space_name = fixture.cl("SPACE");
+    let space_value = ncl_object::Word::fixnum(2);
+    let space = fixture.list(&[space_name, space_value]);
+    let debug_name = fixture.cl("DEBUG");
+    let debug_value = ncl_object::Word::fixnum(1);
+    let debug = fixture.list(&[debug_name, debug_value]);
+    let compilation_speed_name = fixture.cl("COMPILATION-SPEED");
+    let compilation_speed_value = ncl_object::Word::fixnum(3);
+    let compilation_speed = fixture.list(&[compilation_speed_name, compilation_speed_value]);
+    let optimize_head = fixture.cl("OPTIMIZE");
+    let optimize = fixture.list(&[optimize_head, speed, space, debug, compilation_speed]);
+
+    let extension_name = fixture.intern("USER", "VENDOR-NOTE");
+    let extension_value = ncl_object::Word::fixnum(42);
+    let extension_tag = fixture.user(":TAG");
+    let unknown = fixture.list(&[extension_name, extension_value, extension_tag]);
+
+    let declaration = fixture.form(
+        "DECLARE",
+        &[
+            special,
+            ftype,
+            inline,
+            notinline,
+            dynamic_extent,
+            ignore,
+            ignorable,
+            optimize,
+            unknown,
+        ],
+    );
+    let body = ncl_object::Word::fixnum(7);
+    let input = fixture.form("LOCALLY", &[declaration, body]);
+    let source = "(locally (declare (special *dynamic*) (ftype (function (fixnum) fixnum) helper) (inline helper) (notinline slower) (dynamic-extent scratch) (ignore ignored) (ignorable maybe-unused) (optimize speed (space 2) (debug 1) (compilation-speed 3)) (vendor-note 42 :tag)) 7)";
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
+
+    let metadata = form
+        .scope_metadata()
+        .values()
+        .find(|metadata| metadata.declarations.len() == 9)
+        .ok_or_else(|| std::io::Error::other("all declaration forms should be retained"))?;
+    assert!(metadata.declarations.iter().any(|declaration| {
+        matches!(declaration, HirDeclaration::Special { names } if names.len() == 1)
+    }));
+    assert!(metadata.declarations.iter().any(|declaration| {
+        matches!(declaration, HirDeclaration::Ftype { type_id, source_specifier, .. }
+            if form.types().get(*type_id).is_some() && form.type_spec_constant(*source_specifier).is_some())
+    }));
+    assert!(metadata.declarations.iter().any(|declaration| {
+        matches!(declaration, HirDeclaration::Inline { names } if names.len() == 1)
+    }));
+    assert!(metadata.declarations.iter().any(|declaration| {
+        matches!(declaration, HirDeclaration::Notinline { names } if names.len() == 1)
+    }));
+    assert!(metadata.declarations.iter().any(|declaration| {
+        matches!(declaration, HirDeclaration::DynamicExtent { names } if names.len() == 1)
+    }));
+    assert!(metadata.declarations.iter().any(|declaration| {
+        matches!(declaration, HirDeclaration::Ignore { names } if names.len() == 1)
+    }));
+    assert!(metadata.declarations.iter().any(|declaration| {
+        matches!(declaration, HirDeclaration::Ignorable { names } if names.len() == 1)
+    }));
+    assert!(metadata.declarations.iter().any(|declaration| {
+        matches!(declaration, HirDeclaration::Optimize { settings }
+            if settings.iter().any(|setting| setting.quality == HirQuality::CompilationSpeed && setting.value == 3))
+    }));
+    assert!(metadata.declarations.iter().any(|declaration| {
+        matches!(declaration, HirDeclaration::Unknown { arguments, .. }
+            if arguments.len() == 2 && matches!(arguments[0], ncl_hir::Literal::Number(ncl_hir::NumberLiteral::Fixnum(42))))
+    }));
+    assert_eq!(metadata.policy.speed().value(), 3);
+    assert_eq!(metadata.policy.space().value(), 2);
+    assert_eq!(metadata.policy.debug().value(), 1);
+    let _ = lower_both_and_verify(&builder, &form, &expr)?;
+    Ok(())
+}

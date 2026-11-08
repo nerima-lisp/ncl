@@ -2,7 +2,6 @@
 
 #![deny(
     unreachable_pub,
-    unused_crate_dependencies,
     dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
@@ -10,8 +9,13 @@
     clippy::panic,
     clippy::as_conversions
 )]
+#![expect(
+    unused_crate_dependencies,
+    reason = "This target includes source modules by path to test private invariants"
+)]
 
 #[path = "../src/arena.rs"]
+/// The typed arena used by verifier fixtures.
 pub mod arena;
 #[path = "../src/binding.rs"]
 pub mod binding;
@@ -40,12 +44,9 @@ use ids::{
     CleanupId, CompilationUnitId, FormId, IdError, NodeId, SourceOriginId, SymbolId,
     TypeSpecConstId, ValueId,
 };
-use node::{
-    CallTarget, LocalFunctionDefinition, MultipleValueOperation, Node, NodeArena, NodeKind,
-    VariableTarget,
-};
+use node::{CallTarget, LocalFunctionDefinition, Node, NodeArena, NodeKind, VariableTarget};
 use policy::OptimizationPolicy;
-use source::{SourceError, SourceFiles, SourceOrigins, SourceTransform, SourceTransformKind};
+use source::{SourceFiles, SourceOrigins};
 use verify::{
     FactAuthorization, FactCertainty, FactDomain, FactEpochs, FactProvenance, FactRecord,
     FactStore, PassInvalidations, VerificationBuild, VerificationConfig, VerifyError, VerifyInput,
@@ -105,6 +106,15 @@ impl Fixture {
             origin: self.origin,
             kind,
         })
+    }
+
+    fn insert_symbols_through(&mut self, index: usize) -> Result<SymbolId, IdError> {
+        let compilation_unit = self.form.compilation_unit();
+        for position in 0..=index {
+            let symbol = SymbolId::try_from_index(compilation_unit, position)?;
+            let _ = self.symbols.insert(symbol);
+        }
+        SymbolId::try_from_index(compilation_unit, index)
     }
 
     fn add_lambda(&mut self, body_scope: ScopeId) -> Result<NodeId, IdError> {
@@ -206,8 +216,7 @@ fn lexical_variable_must_resolve_to_the_exact_visible_binding() -> Result<(), Bo
 #[test]
 fn flet_definition_cannot_reference_its_local_function_binding() -> Result<(), Box<dyn Error>> {
     let mut fixture = Fixture::new(2)?;
-    let symbol = SymbolId::try_from_index(fixture.form.compilation_unit(), 1)?;
-    let _ = fixture.symbols.insert(symbol);
+    let symbol = fixture.insert_symbols_through(1)?;
     let group =
         fixture
             .bindings
@@ -252,8 +261,7 @@ fn flet_definition_cannot_reference_its_local_function_binding() -> Result<(), B
 #[test]
 fn labels_definition_can_reference_its_local_function_binding() -> Result<(), Box<dyn Error>> {
     let mut fixture = Fixture::new(3)?;
-    let symbol = SymbolId::try_from_index(fixture.form.compilation_unit(), 2)?;
-    let _ = fixture.symbols.insert(symbol);
+    let symbol = fixture.insert_symbols_through(2)?;
     let group = fixture.bindings.bind_local_functions(
         fixture.root,
         LocalFunctionKind::Labels,

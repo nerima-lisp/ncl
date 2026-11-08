@@ -83,7 +83,7 @@ The allowed dependency column lists normal direct dependencies. A crate may add 
 | ncl-sys | operating-system ABI, memory, threads, platform calls, and signal-recovery trampoline | none |
 | ncl-object | Word, layout and tags, classification, heap API, roots, ThreadContext, Runtime registries | ncl-sys |
 | ncl-arrays | CLHS array and vector model, rank, element type, displacement, adjustment, storage | ncl-object |
-| ncl-hash-tables | CLHS hash-table model, test function, weakness, rehashing and lookup | ncl-object, ncl-arrays |
+| ncl-hash-tables | CLHS hash-table model, test function, weakness, rehashing and lookup | ncl-object |
 | ncl-packages | CLHS package model, symbol membership, export, import, shadowing and use-list | ncl-object, ncl-hash-tables |
 | ncl-streams | CLHS stream state, element type, direction, file and character stream model | ncl-object, ncl-sys |
 | ncl-structures | CLHS structure layout, construction, slot access and mutation | ncl-object |
@@ -128,8 +128,6 @@ The allowed dependency column lists normal direct dependencies. A crate may add 
 | ncl-debug | debugger and SLIME/SLY integration | ncl-object, ncl-sys, ncl-conditions, ncl-codegen, ncl-lib-streams, ncl-introspection; recreate for L4-5 |
 | ncl-profiler | runtime profiling | ncl-object, ncl-sys, ncl-threads, ncl-conditions; recreate for L4-6 |
 | ncl-coverage | coverage collection and reporting | ncl-object, ncl-compiler-front; recreate for L4-6 |
-
-Hash-table storage uses simple vectors, so `ncl-hash-tables` depends on the lower-level `ncl-arrays` model.
 
 The HIR compilation-unit index maps each function to its definition location and belongs in `ncl-hir`, where `ncl-opt` can read it. `ncl-runtime` already depends on `ncl-opt`; placing the index in runtime would require `ncl-opt -> ncl-runtime` and create a cycle with the existing `ncl-runtime -> ncl-opt` edge. The HIR type-lattice relationship with `ncl-types` is unresolved here: `docs/src/design/hir.md` decides whether to integrate them and where the boundary lies. Until then, neither `ncl-hir -> ncl-types` nor `ncl-types -> ncl-hir` is allowed.
 

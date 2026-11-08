@@ -46,7 +46,6 @@ ncl-ffi	ncl-conditions	normal
 ncl-ffi	ncl-object	normal	
 ncl-ffi	ncl-ownership	normal	
 ncl-ffi	ncl-sys	normal	
-ncl-hash-tables	ncl-arrays	normal	
 ncl-hash-tables	ncl-object	normal	
 ncl-hir	ncl-ir	normal	
 ncl-image	ncl-arrays	normal	

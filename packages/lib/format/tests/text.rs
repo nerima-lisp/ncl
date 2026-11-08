@@ -42,7 +42,7 @@ fn set_print_special(ctx: &mut ThreadContext, runtime: &Runtime, name: &str, val
     set_symbol_value(ctx, symbol, value).expect("set print special");
 }
 
-#[test]
+#[test] // CLHS 22.3.4.1/.2
 fn aesthetic_and_standard_directives_apply_field_padding() {
     let (runtime, mut ctx) = context();
     let value = string(&runtime, &mut ctx, "x");
@@ -53,7 +53,7 @@ fn aesthetic_and_standard_directives_apply_field_padding() {
     assert_eq!(run("~5,2,1,'-A", &[value], &mut ctx, &runtime), "x----");
 }
 
-#[test]
+#[test] // CLHS 22.3.1.1
 fn character_directive_emits_literal_and_named_characters() {
     let (runtime, mut ctx) = context();
     let input = [
@@ -67,7 +67,30 @@ fn character_directive_emits_literal_and_named_characters() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.1.1
+fn named_characters_format_control_and_unlisted_codepoints() {
+    let (runtime, mut ctx) = context();
+    for (character, expected) in [
+        ('\0', "Null"),
+        ('\u{0008}', "Backspace"),
+        ('\t', "Tab"),
+        ('\n', "Newline"),
+        ('\u{000c}', "Page"),
+        ('\r', "Return"),
+        (' ', "Space"),
+        ('\u{007f}', "Rubout"),
+        ('x', "x"),
+    ] {
+        let argument = Word::character(u32::from(character));
+        assert_eq!(
+            run("~:C", &[argument], &mut ctx, &runtime),
+            expected,
+            "{character:?}"
+        );
+    }
+}
+
+#[test] // CLHS 22.3.8.3
 fn plural_directives_consume_or_back_up_the_correct_argument() {
     let (runtime, mut ctx) = context();
     assert_eq!(
@@ -95,7 +118,7 @@ fn plural_directives_consume_or_back_up_the_correct_argument() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.1.2/.3, 22.3.9.3
 fn line_controls_and_ignored_newline_follow_modifiers() {
     let (runtime, mut ctx) = context();
     assert_eq!(run("a~2%~&b~~", &[], &mut ctx, &runtime), "a\n\nb~");
@@ -103,7 +126,7 @@ fn line_controls_and_ignored_newline_follow_modifiers() {
     assert_eq!(run("a~@\n  b", &[], &mut ctx, &runtime), "a\nb");
 }
 
-#[test]
+#[test] // CLHS 22.3.1.1
 fn wrong_character_arguments_keep_the_directive_location() {
     let (runtime, mut ctx) = context();
     let value = string(&runtime, &mut ctx, "not a character");
@@ -116,7 +139,30 @@ fn wrong_character_arguments_keep_the_directive_location() {
     assert_eq!(error.kind, FormatErrorKind::WrongArgumentType);
 }
 
-#[test]
+#[test] // CLHS 22.3.1.1
+fn character_directive_rejects_parameters_and_non_scalar_values() {
+    let (runtime, mut ctx) = context();
+    for (control, argument, expected) in [
+        (
+            "~1C",
+            Word::character(u32::from('x')),
+            FormatErrorKind::InvalidParameter,
+        ),
+        (
+            "~C",
+            Word::character(0xd800),
+            FormatErrorKind::WrongArgumentType,
+        ),
+    ] {
+        let parsed = parse(control).expect("control");
+        let mut sink = StringSink::new();
+        let error = execute(&parsed, &[argument], &mut ctx, &runtime, &mut sink)
+            .expect_err("invalid character directive input");
+        assert_eq!(error.kind, expected, "{control}");
+    }
+}
+
+#[test] // CLHS 22.3.4.3
 fn write_directive_uses_ambient_printer_specials() {
     let (runtime, mut ctx) = context();
     let value = string(&runtime, &mut ctx, "x");
@@ -129,7 +175,7 @@ fn write_directive_uses_ambient_printer_specials() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.4.3
 fn colon_write_directive_enables_pretty_printing() {
     let (runtime, mut ctx) = context();
     set_print_special(&mut ctx, &runtime, "*PRINT-PRETTY*", Word::NIL);
@@ -145,7 +191,7 @@ fn colon_write_directive_enables_pretty_printing() {
     );
 }
 
-#[test]
+#[test] // CLHS 22.3.4.3
 fn at_sign_write_directive_clears_level_and_length_limits() {
     let (runtime, mut ctx) = context();
     set_print_special(&mut ctx, &runtime, "*PRINT-LEVEL*", Word::fixnum(1));
@@ -161,4 +207,77 @@ fn at_sign_write_directive_clears_level_and_length_limits() {
         run("~W|~@W", &[outer, outer], &mut ctx, &runtime),
         "(# ...)|((1F 20) 21 22)"
     );
+}
+
+#[test] // CLHS 22.3.4.1
+fn aesthetic_directive_uses_colon_nil_and_field_padding_rules() {
+    let (runtime, mut ctx) = context();
+    let value = string(&runtime, &mut ctx, "x");
+    assert_eq!(run("~:A", &[Word::NIL], &mut ctx, &runtime), "()");
+    assert_eq!(run("~5,2,1,'-A", &[value], &mut ctx, &runtime), "x----");
+    assert_eq!(run("~5,2,1,'-@A", &[value], &mut ctx, &runtime), "----x");
+    assert_eq!(run("~2,3,5,'-A", &[value], &mut ctx, &runtime), "x-------");
+}
+
+#[test] // CLHS 22.3.4.1/.3
+fn aesthetic_and_write_directives_reject_invalid_parameters() {
+    let (runtime, mut ctx) = context();
+    let value = string(&runtime, &mut ctx, "x");
+    for (control, arguments) in [
+        ("~-1A", vec![value]),
+        ("~0,0A", vec![value]),
+        ("~1,1,-1A", vec![value]),
+        ("~1,1,0,3A", vec![value]),
+        ("~1W", vec![value]),
+    ] {
+        let parsed = parse(control).expect("control");
+        let mut sink = StringSink::new();
+        let error = execute(&parsed, &arguments, &mut ctx, &runtime, &mut sink)
+            .expect_err("invalid field or printer parameter");
+        assert_eq!(error.kind, FormatErrorKind::InvalidParameter, "{control}");
+    }
+}
+
+#[test] // CLHS 22.3.8.3, 22.3.1.2
+fn plural_and_line_directives_report_invalid_state_and_parameter_values() {
+    let (runtime, mut ctx) = context();
+    for (control, arguments, expected) in [
+        ("~:P", vec![], FormatErrorKind::MissingArgument),
+        (
+            "~1P",
+            vec![Word::fixnum(2)],
+            FormatErrorKind::InvalidParameter,
+        ),
+        ("~-1%", vec![], FormatErrorKind::InvalidParameter),
+        ("~'x%", vec![], FormatErrorKind::InvalidParameter),
+        (
+            "~v%",
+            vec![string(&runtime, &mut ctx, "not a count")],
+            FormatErrorKind::WrongArgumentType,
+        ),
+    ] {
+        let parsed = parse(control).expect("control");
+        let mut sink = StringSink::new();
+        let error = execute(&parsed, &arguments, &mut ctx, &runtime, &mut sink)
+            .expect_err("invalid plural or line directive input");
+        assert_eq!(error.kind, expected, "{control}");
+    }
+}
+
+#[test] // CLHS 22.3.1.1/.4/.5
+fn form_feed_repeated_tildes_and_unknown_named_characters_are_emitted() {
+    let (runtime, mut ctx) = context();
+    let character = Word::character(u32::from('x'));
+    assert_eq!(
+        run(
+            "~2|~3~|~:C|~@C",
+            &[character, character],
+            &mut ctx,
+            &runtime
+        ),
+        "\u{c}\u{c}~~~|x|#\\x"
+    );
+    assert_eq!(run("~0%~0|~0~x", &[], &mut ctx, &runtime), "x");
+    assert_eq!(run("a~3&b", &[], &mut ctx, &runtime), "a\n\n\nb");
+    assert_eq!(run("a~0&b", &[], &mut ctx, &runtime), "ab");
 }

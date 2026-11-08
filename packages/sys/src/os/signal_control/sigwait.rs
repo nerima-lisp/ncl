@@ -1,7 +1,7 @@
 use core::ffi::c_int;
 use std::io;
 
-pub(crate) fn wait_signal_set<T>(
+pub(super) fn wait_signal_set<T>(
     set: &T,
     mut wait: impl FnMut(&T, &mut c_int) -> c_int,
 ) -> io::Result<c_int> {

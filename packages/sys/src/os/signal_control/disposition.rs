@@ -1,7 +1,7 @@
 use core::ffi::c_int;
 use std::io;
 
-pub(crate) fn create_signal_set<T>(
+pub(super) fn create_signal_set<T>(
     signals: &[c_int],
     create: impl FnOnce() -> T,
     mut empty: impl FnMut(&mut T) -> c_int,
@@ -20,7 +20,7 @@ pub(crate) fn create_signal_set<T>(
     Ok(set)
 }
 
-pub(crate) fn install_signal_disposition<T>(
+pub(super) fn install_signal_disposition<T>(
     action: &mut T,
     empty_mask: impl FnOnce(&mut T) -> c_int,
     install: impl FnOnce(&T) -> c_int,
@@ -35,7 +35,7 @@ pub(crate) fn install_signal_disposition<T>(
     Ok(())
 }
 
-pub(crate) fn block_control_signal_mask(result: c_int) -> io::Result<()> {
+pub(super) fn block_control_signal_mask(result: c_int) -> io::Result<()> {
     if result != 0 {
         return Err(io::Error::from_raw_os_error(result));
     }

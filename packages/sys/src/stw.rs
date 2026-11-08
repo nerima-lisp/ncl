@@ -1,3 +1,4 @@
+use crate::heap::{PageError, PageRange};
 use crate::{Heap, NativeState, SafepointState, Thread};
 use std::collections::HashSet;
 
@@ -98,12 +99,38 @@ impl Heap {
         self.stop_world_ready.notify_all();
     }
 
-    pub(crate) fn collect_with_thread(&self, thread: &mut Thread, full: bool) {
-        let _gate = self.acquire_slow_path_gate(thread);
-        self.collect_with_gate(thread, full);
+    pub(crate) fn collect_with_thread(
+        &self,
+        thread: &mut Thread,
+        full: bool,
+    ) -> Result<(), PageError> {
+        self.collect_with_thread_and_decommit(thread, full, PageRange::decommit_group)
     }
 
-    pub(crate) fn collect_with_gate(&self, thread: &mut Thread, full: bool) {
+    pub(crate) fn collect_with_thread_and_decommit(
+        &self,
+        thread: &mut Thread,
+        full: bool,
+        decommit_group: impl FnMut(&mut PageRange, usize) -> Result<(), PageError>,
+    ) -> Result<(), PageError> {
+        let _gate = self.acquire_slow_path_gate(thread);
+        self.collect_with_gate_and_decommit(thread, full, decommit_group)
+    }
+
+    pub(crate) fn collect_with_gate(
+        &self,
+        thread: &mut Thread,
+        full: bool,
+    ) -> Result<(), PageError> {
+        self.collect_with_gate_and_decommit(thread, full, PageRange::decommit_group)
+    }
+
+    fn collect_with_gate_and_decommit(
+        &self,
+        thread: &mut Thread,
+        full: bool,
+        decommit_group: impl FnMut(&mut PageRange, usize) -> Result<(), PageError>,
+    ) -> Result<(), PageError> {
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         if !thread.has_native_frame_snapshot() {
             // Precise frame roots are scanned separately; a conservative scan would pin those slots.
@@ -124,7 +151,7 @@ impl Heap {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             thread.state = SafepointState::Collecting;
         }
-        self.collect(full);
+        let collection_result = self.collect_with_decommit(full, decommit_group);
         self.reset_allocation_debt();
         self.end_collection();
         let _stop_world = self
@@ -138,6 +165,7 @@ impl Heap {
         } else {
             SafepointState::PollRequested
         };
+        collection_result
     }
 }
 
@@ -228,7 +256,7 @@ mod tests {
             assert_eq!(collector_heap.register_thread(&mut collector), Ok(()));
             collector.enter_native();
             assert!(collector_ready_sender.send(()).is_ok());
-            collector_heap.collect_with_thread(&mut collector, true);
+            let _ = collector_heap.collect_with_thread(&mut collector, true);
             assert!(collection_done_sender.send(()).is_ok());
             collector_heap.unregister_thread(&collector);
         });

@@ -35,7 +35,7 @@ pub use code::{
     free_code, publish_code, scan_frame, scan_frame_chain, scan_frame_chain_with_registry,
     scan_frame_with_registers, seal_code, synchronize_code, walk_frame_headers, write_code,
 };
-pub use codegen::{set_tlab, tlab_bump};
+pub use codegen::{set_cons_tlab, set_tlab, tlab_bump};
 pub use function_address::{FunctionAddressError, function_address};
 pub use heap::{
     Finalizer, Heap, HeapConfig, HeapRootError, LayoutError, PageKind, ReferenceLayout,

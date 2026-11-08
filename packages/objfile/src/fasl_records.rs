@@ -42,7 +42,8 @@ impl<'a> SectionReader<'a> {
         minimum_record_size: usize,
     ) -> Result<usize, FaslError> {
         let offset = self.absolute_position();
-        let count = self.u32()? as usize;
+        let count = usize::try_from(self.u32()?)
+            .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, offset))?;
         if count > maximum {
             return Err(FaslError::at(
                 FaslRejectReason::ResourceLimitExceeded,

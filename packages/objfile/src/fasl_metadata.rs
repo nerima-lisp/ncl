@@ -83,16 +83,11 @@ pub fn decode(bytes: &[u8], file_offset: usize) -> Result<FaslMetadata, FaslErro
     let source_sha256 = cursor.array::<32>()?;
     let policy_count = cursor.count(4)?;
     let mut policies = Vec::with_capacity(policy_count);
-    let policy_bytes_offset = cursor.position;
-    let policy_bytes_length = policy_count * 4;
-    let policy_bytes =
-        &cursor.bytes[policy_bytes_offset..policy_bytes_offset + policy_bytes_length];
-    cursor.position += policy_bytes_length;
-    for (index, record) in policy_bytes.chunks_exact(4).enumerate() {
-        let offset = policy_bytes_offset + index * 4;
-        let id = u16::from_le_bytes([record[0], record[1]]);
-        let value = record[2];
-        if record[3] != 0 {
+    for _ in 0..policy_count {
+        let offset = cursor.position;
+        let id = cursor.u16()?;
+        let value = cursor.u8()?;
+        if cursor.u8()? != 0 {
             return Err(cursor.error_at(FaslRejectReason::MalformedMetadata, offset + 3));
         }
         policies.push(PolicyRecord { id, value });
@@ -241,7 +236,12 @@ fn validate_string(value: &str, offset: usize) -> Result<(), FaslError> {
     Ok(())
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "strings are validated before encoding"
+)]
 fn append_string(bytes: &mut Vec<u8>, value: &str) {
+    // check-added-lines: allow(as-cast) the string length is bounded by MAX_STRING_BYTES.
     let length = value.len() as u32;
     bytes.extend_from_slice(&length.to_le_bytes());
     bytes.extend_from_slice(value.as_bytes());
@@ -260,7 +260,7 @@ fn encoded_size(metadata: &FaslMetadata) -> Result<usize, FaslError> {
     Ok(size)
 }
 
-fn bounded_size_add(current: usize, added: usize) -> Result<usize, FaslError> {
+const fn bounded_size_add(current: usize, added: usize) -> Result<usize, FaslError> {
     if current > MAX_METADATA_BYTES || added > MAX_METADATA_BYTES - current {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
@@ -271,7 +271,12 @@ const fn metadata_size_exceeds_limit(size: usize) -> bool {
     size > MAX_METADATA_BYTES
 }
 
-fn count_u32(count: usize) -> u32 {
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "record counts are validated before encoding"
+)]
+const fn count_u32(count: usize) -> u32 {
+    // check-added-lines: allow(as-cast) MAX_RECORDS is below u32::MAX.
     count as u32
 }
 struct Cursor<'a> {
@@ -318,13 +323,23 @@ impl<'a> Cursor<'a> {
         Ok(value)
     }
 
+    fn u8(&mut self) -> Result<u8, FaslError> {
+        let [value] = self.array::<1>()?;
+        Ok(value)
+    }
+
+    fn u16(&mut self) -> Result<u16, FaslError> {
+        Ok(u16::from_le_bytes(self.array::<2>()?))
+    }
+
     fn u32(&mut self) -> Result<u32, FaslError> {
         Ok(u32::from_le_bytes(self.array::<4>()?))
     }
 
     fn count(&mut self, minimum_record_size: usize) -> Result<usize, FaslError> {
         let field_offset = self.position;
-        let count = self.u32()? as usize;
+        let count = usize::try_from(self.u32()?)
+            .map_err(|_| self.error_at(FaslRejectReason::ResourceLimitExceeded, field_offset))?;
         if count > MAX_RECORDS {
             return Err(self.error_at(FaslRejectReason::ResourceLimitExceeded, field_offset));
         }
@@ -337,7 +352,8 @@ impl<'a> Cursor<'a> {
 
     fn string(&mut self) -> Result<String, FaslError> {
         let length_offset = self.position;
-        let length = self.u32()? as usize;
+        let length = usize::try_from(self.u32()?)
+            .map_err(|_| self.error_at(FaslRejectReason::ResourceLimitExceeded, length_offset))?;
         if length > MAX_STRING_BYTES {
             return Err(self.error_at(FaslRejectReason::ResourceLimitExceeded, length_offset));
         }

@@ -25,6 +25,10 @@ pub struct FaslCodeObject<'a> {
 }
 
 /// Encodes code objects in dense ID order.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "record and section limits are checked before values are written as u32"
+)]
 pub fn encode(objects: &[FaslCodeObject<'_>]) -> Result<Vec<u8>, FaslError> {
     if objects.len() > MAX_RECORDS {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
@@ -38,13 +42,16 @@ pub fn encode(objects: &[FaslCodeObject<'_>]) -> Result<Vec<u8>, FaslError> {
         section_size = padded_end;
     }
 
+    // check-added-lines: allow(as-cast) the record count is bounded by MAX_RECORDS.
     let count = objects.len() as u32;
     let mut writer = SectionWriter::new();
     writer.put_u32(count);
     for object in objects {
         writer.put_u32(object.id);
         writer.put_u32(object.entry_offset);
-        writer.put_u32(object.code.len() as u32);
+        // check-added-lines: allow(as-cast) check_section_size caps code bytes below u32::MAX.
+        let code_length = object.code.len() as u32;
+        writer.put_u32(code_length);
         writer.put_u16(object.frame_words);
         writer.put_u16(0);
         writer.put_u32(object.constant_count);
@@ -61,7 +68,8 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslCodeObject<'_>
     check_section_size(bytes.len(), Some(base_offset))?;
     let mut reader = SectionReader::new(bytes, base_offset, FaslRejectReason::InvalidCodeObject);
     let count_offset = reader.absolute_position();
-    let count = reader.u32()? as usize;
+    let count = usize::try_from(reader.u32()?)
+        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, count_offset))?;
     if count > MAX_RECORDS {
         return Err(FaslError::at(
             FaslRejectReason::ResourceLimitExceeded,
@@ -79,7 +87,7 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslCodeObject<'_>
     for expected_id in 0..count {
         let record_offset = reader.absolute_position();
         let id = reader.u32()?;
-        if id as usize != expected_id {
+        if usize::try_from(id).ok() != Some(expected_id) {
             return Err(FaslError::at(
                 FaslRejectReason::InvalidCodeObject,
                 record_offset,
@@ -87,7 +95,9 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslCodeObject<'_>
         }
         let entry_offset = reader.u32()?;
         let code_length_offset = reader.absolute_position();
-        let code_length = reader.u32()? as usize;
+        let code_length = usize::try_from(reader.u32()?).map_err(|_| {
+            FaslError::at(FaslRejectReason::ResourceLimitExceeded, code_length_offset)
+        })?;
         if code_length == 0 {
             return Err(FaslError::at(
                 FaslRejectReason::InvalidCodeObject,
@@ -106,7 +116,10 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslCodeObject<'_>
         let stack_map_count = reader.u32()?;
         let debug_record_count = reader.u32()?;
         let code = reader.take(code_length)?;
-        if entry_offset as usize >= code.len() {
+        if usize::try_from(entry_offset)
+            .ok()
+            .is_none_or(|entry| entry >= code.len())
+        {
             return Err(FaslError::at(
                 FaslRejectReason::InvalidCodeObject,
                 record_offset.saturating_add(4),
@@ -128,9 +141,11 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslCodeObject<'_>
 }
 
 fn validate_object(object: &FaslCodeObject<'_>, expected_id: usize) -> Result<(), FaslError> {
-    if object.id as usize != expected_id
+    if usize::try_from(object.id).ok() != Some(expected_id)
         || object.code.is_empty()
-        || object.entry_offset as usize >= object.code.len()
+        || usize::try_from(object.entry_offset)
+            .ok()
+            .is_none_or(|entry| entry >= object.code.len())
     {
         return Err(FaslError::new(FaslRejectReason::InvalidCodeObject));
     }
@@ -148,5 +163,5 @@ fn check_section_size(size: usize, offset: Option<usize>) -> Result<(), FaslErro
 }
 
 #[cfg(test)]
-#[path = "fasl_code_tests.rs"]
+#[path = "tests/fasl_code.rs"]
 mod tests;

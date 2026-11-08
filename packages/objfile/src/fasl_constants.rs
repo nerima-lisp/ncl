@@ -89,12 +89,16 @@ pub struct FaslConstantGroup {
     pub constants: Vec<FaslConstant>,
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "record, payload, and section limits are checked before u32 encoding"
+)]
 pub fn encode(groups: &[FaslConstantGroup]) -> Result<Vec<u8>, FaslError> {
     check_record_count(groups.len())?;
     let mut total_constants = 0_usize;
     let mut section_size = 4_usize;
     for (index, group) in groups.iter().enumerate() {
-        if group.code_object_id as usize != index {
+        if usize::try_from(group.code_object_id).ok() != Some(index) {
             return Err(FaslError::new(FaslRejectReason::InvalidCodeObject));
         }
         check_record_count(group.constants.len())?;
@@ -105,20 +109,28 @@ pub fn encode(groups: &[FaslConstantGroup]) -> Result<Vec<u8>, FaslError> {
         section_size = checked_section_growth(section_size, 8)?;
         for constant in &group.constants {
             validate_constant(constant)?;
-            let (_, payload_length) = tag_and_payload_length(constant)?;
-            let record_length = (payload_length as usize + 11) & !3;
+            let (_, payload_length) = tag_and_payload_length(constant);
+            let record_length = usize::try_from(payload_length)
+                .ok()
+                .and_then(|length| length.checked_add(11))
+                .map(|length| length & !3)
+                .ok_or_else(|| FaslError::new(FaslRejectReason::ResourceLimitExceeded))?;
             section_size = checked_section_growth(section_size, record_length)?;
         }
     }
 
+    // check-added-lines: allow(as-cast) group count is bounded by MAX_RECORDS.
     let group_count = groups.len() as u32;
     let mut output = SectionWriter::new();
     output.put_u32(group_count);
     for group in groups {
         output.put_u32(group.code_object_id);
-        output.put_u32(group.constants.len() as u32);
+        output.put_u32(
+            // check-added-lines: allow(as-cast) constant count is bounded by MAX_RECORDS.
+            group.constants.len() as u32,
+        );
         for constant in &group.constants {
-            encode_constant(constant, &mut output)?;
+            encode_constant(constant, &mut output);
             output.zero_padding(4);
         }
     }
@@ -139,7 +151,7 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslConstantGroup>
     for expected_id in 0..group_count {
         let group_offset = reader.absolute_position();
         let code_object_id = reader.u32()?;
-        if code_object_id as usize != expected_id {
+        if usize::try_from(code_object_id).ok() != Some(expected_id) {
             return Err(FaslError::at(
                 FaslRejectReason::InvalidCodeObject,
                 group_offset,
@@ -169,7 +181,7 @@ pub fn decode(bytes: &[u8], base_offset: usize) -> Result<Vec<FaslConstantGroup>
     Ok(groups)
 }
 
-fn checked_section_growth(current: usize, added: usize) -> Result<usize, FaslError> {
+const fn checked_section_growth(current: usize, added: usize) -> Result<usize, FaslError> {
     if current > MAX_SECTION_BYTES || added > MAX_SECTION_BYTES - current {
         return Err(FaslError::new(FaslRejectReason::ResourceLimitExceeded));
     }
@@ -228,8 +240,12 @@ fn validate_constant(constant: &FaslConstant) -> Result<(), FaslError> {
     }
 }
 
-fn encode_constant(constant: &FaslConstant, output: &mut SectionWriter) -> Result<(), FaslError> {
-    let (tag, payload_length) = tag_and_payload_length(constant)?;
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "vector and bignum record counts are bounded before their u32 fields are written"
+)]
+fn encode_constant(constant: &FaslConstant, output: &mut SectionWriter) {
+    let (tag, payload_length) = tag_and_payload_length(constant);
     output.put_u16(tag);
     output.put_u16(0);
     output.put_u32(payload_length);
@@ -246,7 +262,10 @@ fn encode_constant(constant: &FaslConstant, output: &mut SectionWriter) -> Resul
             output.put_u32(*cdr);
         }
         FaslConstant::SimpleVector(indices) => {
-            output.put_u32(indices.len() as u32);
+            output.put_u32(
+                // check-added-lines: allow(as-cast) vector count is bounded by MAX_RECORDS.
+                indices.len() as u32,
+            );
             for index in indices {
                 output.put_u32(*index);
             }
@@ -254,7 +273,10 @@ fn encode_constant(constant: &FaslConstant, output: &mut SectionWriter) -> Resul
         FaslConstant::Bignum { negative, limbs } => {
             output.put_u8(u8::from(*negative));
             output.put_bytes(&[0; 3]);
-            output.put_u32(limbs.len() as u32);
+            output.put_u32(
+                // check-added-lines: allow(as-cast) limb count is bounded by MAX_RECORDS.
+                limbs.len() as u32,
+            );
             for limb in limbs {
                 output.put_u32(*limb);
             }
@@ -271,10 +293,13 @@ fn encode_constant(constant: &FaslConstant, output: &mut SectionWriter) -> Resul
             output.put_u32(*imaginary);
         }
     }
-    Ok(())
 }
 
-fn tag_and_payload_length(constant: &FaslConstant) -> Result<(u16, u32), FaslError> {
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "validated payloads are bounded by the FASL section size limit"
+)]
+const fn tag_and_payload_length(constant: &FaslConstant) -> (u16, u32) {
     let (tag, length) = match constant {
         FaslConstant::Nil => (0, 0),
         FaslConstant::Truth => (1, 0),
@@ -290,8 +315,9 @@ fn tag_and_payload_length(constant: &FaslConstant) -> Result<(u16, u32), FaslErr
         FaslConstant::Ratio { .. } => (11, 8),
         FaslConstant::Complex { .. } => (12, 8),
     };
+    // check-added-lines: allow(as-cast) validated payload sizes are below MAX_RECORDS * 4 + 8.
     let length = length as u32;
-    Ok((tag, length))
+    (tag, length)
 }
 
 fn decode_constant(reader: &mut SectionReader<'_>) -> Result<FaslConstant, FaslError> {
@@ -305,7 +331,8 @@ fn decode_constant(reader: &mut SectionReader<'_>) -> Result<FaslConstant, FaslE
         ));
     }
     let length_offset = reader.absolute_position();
-    let payload_length = reader.u32()? as usize;
+    let payload_length = usize::try_from(reader.u32()?)
+        .map_err(|_| FaslError::at(FaslRejectReason::ResourceLimitExceeded, length_offset))?;
     let payload_offset = reader.absolute_position();
     let payload = reader.take(payload_length)?;
     decode_constant_payload(&ConstantPayload {

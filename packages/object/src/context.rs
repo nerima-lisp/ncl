@@ -3,7 +3,8 @@
 mod evaluator_access;
 use evaluator_access::EvaluatorAccessSlot;
 
-use crate::{LispError, ObjectError, Runtime};
+use crate::object_access::{get, put};
+use crate::{LispError, ObjectError, Runtime, make_cons, widetag};
 use core::cell::Cell;
 use ncl_sys::{
     Heap, RootToken, RuntimeErrorPayloadKind, RuntimeErrorPayloadSlot, RuntimeErrorSource,
@@ -203,7 +204,48 @@ impl ThreadContext {
         let common_lisp_user = runtime
             .find_package(self, "COMMON-LISP-USER")
             .ok_or(ObjectError::Layout)?;
-        crate::Package::from_word(common_lisp_user).use_package(self, runtime, common_lisp)?;
+        let mut used = get(
+            self,
+            common_lisp_user,
+            widetag::PACKAGE,
+            crate::package::USE_LIST,
+        )?;
+        let mut found = false;
+        while used != Word::NIL {
+            if ncl_sys::read_cons_word(&self.thread, used, 0) == Some(common_lisp) {
+                found = true;
+                break;
+            }
+            used = ncl_sys::read_cons_word(&self.thread, used, 1).ok_or(ObjectError::Layout)?;
+        }
+        if !found {
+            let used = make_cons(
+                self,
+                runtime,
+                common_lisp,
+                get(self, common_lisp_user, widetag::PACKAGE, crate::package::USE_LIST)?,
+            )?;
+            put(self, common_lisp_user, crate::package::USE_LIST, used)?;
+        }
+        let mut used_by = get(self, common_lisp, widetag::PACKAGE, crate::package::USED_BY)?;
+        let mut found = false;
+        while used_by != Word::NIL {
+            if ncl_sys::read_cons_word(&self.thread, used_by, 0) == Some(common_lisp_user) {
+                found = true;
+                break;
+            }
+            used_by = ncl_sys::read_cons_word(&self.thread, used_by, 1)
+                .ok_or(ObjectError::Layout)?;
+        }
+        if !found {
+            let used_by = make_cons(
+                self,
+                runtime,
+                common_lisp_user,
+                get(self, common_lisp, widetag::PACKAGE, crate::package::USED_BY)?,
+            )?;
+            put(self, common_lisp, crate::package::USED_BY, used_by)?;
+        }
         Ok(())
     }
     /// Bind a special variable, preserving stack order.

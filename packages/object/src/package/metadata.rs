@@ -7,7 +7,7 @@ use crate::{
 use ncl_sys::Word;
 
 impl Package {
-    pub(crate) fn ensure_unlocked(self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+    pub fn ensure_unlocked(self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
         if self.is_locked(ctx)? {
             ctx.set_pending_lisp_error(LispError::PackageError(PackageError::Locked));
             return Err(ObjectError::TypeError);

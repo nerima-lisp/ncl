@@ -6,6 +6,7 @@ use ncl_object::{
     BuiltinArgs, HeapRootedWord, MultipleValues, ObjectError, ObjectRef, Package, Parameter,
     ParameterType, Runtime, ThreadContext, Word, classify_object,
 };
+use ncl_packages::{PackageListOperations, RuntimePackageOperations};
 
 pub(super) const MAKE_PACKAGE_OPTIONS: Parameter = Parameter {
     name: ncl_object::BuiltinName::new("OPTIONS"),

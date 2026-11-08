@@ -173,6 +173,8 @@ fn method_body_rewriting_preserves_quoted_forms_and_local_functions() -> Result<
     let local_helper = scope.intern(&runtime, "NCL", "LOCAL-HELPER")?;
     let next_methods = scope.intern(&runtime, "NCL", "NEXT-METHODS")?;
     let current_arguments = scope.intern(&runtime, "NCL", "CURRENT-ARGUMENTS")?;
+    let next_methods_word = scope.get(next_methods).as_word();
+    let current_arguments_word = scope.get(current_arguments).as_word();
     let call_next_word = scope.get(call_next).as_word();
     let next_method_p_word = scope.get(next_method_p).as_word();
     let quote_word = scope.get(quote).as_word();
@@ -233,38 +235,60 @@ fn method_body_rewriting_preserves_quoted_forms_and_local_functions() -> Result<
         current_arguments,
     )?;
     let rewritten_word = scope.get(rewritten).as_word();
-    let forms = list_words(&mut scope, rewritten_word)?;
+    assert_rewritten_method_body(
+        &mut scope,
+        rewritten_word,
+        next_methods_word,
+        current_arguments_word,
+        value_word,
+        quoted_form_word,
+        lambda_form_word,
+        defun_form_word,
+    )
+}
+
+fn assert_rewritten_method_body(
+    scope: &mut Scope<'_>,
+    rewritten: Word,
+    next_methods: Word,
+    current_arguments: Word,
+    value: Word,
+    quoted_form: Word,
+    lambda_form: Word,
+    defun_form: Word,
+) -> Result<(), ObjectError> {
+    let forms = list_words(scope, rewritten)?;
     assert_eq!(symbol_name_string(scope.context(), forms[0])?, "PROGN");
 
-    let no_argument_call = list_words(&mut scope, forms[1])?;
+    let no_argument_call = list_words(scope, forms[1])?;
     assert_eq!(
         symbol_name_string(scope.context(), no_argument_call[0])?,
         "%CLOS-CALL-NEXT-METHOD"
     );
-    assert_eq!(no_argument_call[1], scope.get(next_methods).as_word());
-    assert_eq!(no_argument_call[2], scope.get(current_arguments).as_word());
+    assert_eq!(no_argument_call[1], next_methods);
+    assert_eq!(no_argument_call[2], current_arguments);
 
-    let explicit_argument_call = list_words(&mut scope, forms[2])?;
+    let explicit_argument_call = list_words(scope, forms[2])?;
     assert_eq!(
         symbol_name_string(scope.context(), explicit_argument_call[0])?,
         "%CLOS-CALL-NEXT-METHOD"
     );
-    let supplied_arguments = list_words(&mut scope, explicit_argument_call[2])?;
+    let supplied_arguments = list_words(scope, explicit_argument_call[2])?;
     assert_eq!(
         symbol_name_string(scope.context(), supplied_arguments[0])?,
         "LIST"
     );
-    assert_eq!(supplied_arguments[1], scope.get(value).as_word());
+    assert_eq!(supplied_arguments[1], value);
 
-    let next_method_p_call = list_words(&mut scope, forms[3])?;
+    let next_method_p_call = list_words(scope, forms[3])?;
     assert_eq!(
         symbol_name_string(scope.context(), next_method_p_call[0])?,
         "%CLOS-NEXT-METHOD-P"
     );
-    assert_eq!(next_method_p_call[1], scope.get(next_methods).as_word());
-    assert_eq!(forms[4], scope.get(quoted_form).as_word());
-    assert_eq!(forms[5], scope.get(lambda_form).as_word());
-    assert_eq!(forms[6], scope.get(defun_form).as_word());
+    assert_eq!(next_method_p_call[1], next_methods);
+    assert_eq!(forms[4], quoted_form);
+    assert_eq!(forms[5], lambda_form);
+    assert_eq!(forms[6], defun_form);
     assert_eq!(forms[7], Word::fixnum(19));
     Ok(())
 }
@@ -323,7 +347,7 @@ fn long_form_method_combination_expansion_stores_definition_and_builder() -> Res
     let group_spec = make_list(&mut scope, &runtime, &[group_word, group_pattern_word])?;
     let group_spec_word = scope.get(group_spec).as_word();
     let group_specs = make_list(&mut scope, &runtime, &[group_spec_word])?;
-    let group_specs_word = scope.get(group_specs).as_word();
+    let group_definitions_word = scope.get(group_specs).as_word();
     let form = make_list(
         &mut scope,
         &runtime,
@@ -331,7 +355,7 @@ fn long_form_method_combination_expansion_stores_definition_and_builder() -> Res
             define_word,
             name_word,
             Word::NIL,
-            group_specs_word,
+            group_definitions_word,
             Word::fixnum(23),
         ],
     )?;

@@ -267,8 +267,8 @@ mod included_tests {
         let mut clauses = scope.root_many(&[]);
         let fast_qualifier = scope.intern(runtime, "KEYWORD", "FAST")?;
         for (group_index, group) in groups.iter().copied().enumerate() {
-            let group_word = scope.get(group).as_word();
-            let methods = scope.list_to_handle_vec(Local::from_word(group_word))?;
+            let method_group_word = scope.get(group).as_word();
+            let methods = scope.list_to_handle_vec(Local::from_word(method_group_word))?;
             for method in methods.iter().copied() {
                 let method_word = scope.get(method).as_word();
                 let method_args = scope.root_many(&[Local::from_word(method_word)]);

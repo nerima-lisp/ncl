@@ -20,6 +20,15 @@ pub(super) fn named_call_block(
     name: &str,
     named_symbol: bool,
 ) -> Option<ncl_ir::BlockId> {
+    named_call_position(function, package, name, named_symbol).map(|(block, _)| block)
+}
+
+pub(super) fn named_call_position(
+    function: &ncl_ir::Function,
+    package: &str,
+    name: &str,
+    named_symbol: bool,
+) -> Option<(ncl_ir::BlockId, usize)> {
     let symbol_value = function
         .blocks
         .iter()
@@ -58,7 +67,7 @@ pub(super) fn named_call_block(
         block
             .ops
             .iter()
-            .any(|op| {
+            .position(|op| {
                 let OpKind::CallClosure {
                     closure,
                     named_symbol: call_symbol,
@@ -74,13 +83,14 @@ pub(super) fn named_call_block(
                 };
                 *closure == function_value && symbol_matches
             })
-            .then_some(block.id)
+            .map(|operation| (block.id, operation))
     })
 }
 
 pub(super) fn handler_normal_result(
     function: &ncl_ir::Function,
     region: &ncl_ir::HandlerRegion,
+    expected: &Constant,
 ) -> bool {
     function.blocks.iter().any(|block| {
         let leaves_region = block
@@ -94,6 +104,10 @@ pub(super) fn handler_normal_result(
             return false;
         };
         args.len() == 1
+            && args
+                .first()
+                .and_then(|value| super::common::constant_for_value(function, *value))
+                == Some(expected)
             && function
                 .blocks
                 .iter()

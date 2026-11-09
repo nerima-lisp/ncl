@@ -163,6 +163,7 @@ impl<'a> ThreadAccess<'a> {
     }
 
     /// Remove code metadata after abandoning an unpublished compilation.
+    #[must_use]
     pub fn unregister_code(&self, code: &CodePtr) -> Option<CodeObjectMetadata> {
         crate::unregister_code(self.thread, code)
     }

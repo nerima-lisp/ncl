@@ -37,6 +37,62 @@ fn register_all_registers_hash_arrays() {
             .function(&mut ctx, "COMMON-LISP", "MAKE-HASH-TABLE")
             .is_some()
     );
+
+    let array_runtime = Runtime::new().unwrap();
+    let mut array_ctx = ThreadContext::new();
+    array_ctx.register(&array_runtime).unwrap();
+    array_runtime
+        .register_layout(
+            ncl_object::widetag::SPECIALIZED_ARRAY,
+            ncl_object::ReferenceLayout {
+                reference_words: Vec::new(),
+                boxed_from: None,
+            },
+        )
+        .unwrap();
+    assert!(matches!(
+        ncl_stdlib::register_all(&mut array_ctx, &array_runtime),
+        Err(ncl_object::ObjectError::Layout)
+    ));
+    assert!(
+        array_runtime
+            .register_layout(
+                ncl_object::widetag::HASH_TABLE,
+                ncl_object::ReferenceLayout {
+                    reference_words: Vec::new(),
+                    boxed_from: None,
+                },
+            )
+            .is_ok()
+    );
+
+    let hash_runtime = Runtime::new().unwrap();
+    let mut hash_ctx = ThreadContext::new();
+    hash_ctx.register(&hash_runtime).unwrap();
+    hash_runtime
+        .register_layout(
+            ncl_object::widetag::HASH_TABLE,
+            ncl_object::ReferenceLayout {
+                reference_words: Vec::new(),
+                boxed_from: None,
+            },
+        )
+        .unwrap();
+    assert!(matches!(
+        ncl_stdlib::register_all(&mut hash_ctx, &hash_runtime),
+        Err(ncl_object::ObjectError::Layout)
+    ));
+    assert!(
+        hash_runtime
+            .register_layout(
+                ncl_object::widetag::SPECIALIZED_ARRAY,
+                ncl_object::ReferenceLayout {
+                    reference_words: Vec::new(),
+                    boxed_from: None,
+                },
+            )
+            .is_err()
+    );
 }
 
 #[test]

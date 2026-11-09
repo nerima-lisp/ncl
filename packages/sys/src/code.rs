@@ -1,3 +1,4 @@
+#[cfg(target_os = "macos")]
 use crate::os::declarations;
 use core::ptr::NonNull;
 use std::sync::Arc;

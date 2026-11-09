@@ -170,6 +170,16 @@ fn assert_fill_pointer_vector_builtins(
         call(runtime, ctx, "VECTOR-POP", &[vector]),
         Err(ObjectError::TypeError)
     );
+    // CLHS VECTOR-PUSH-EXTEND requires a positive extension.
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "VECTOR-PUSH-EXTEND",
+            &[Word::fixnum(20), vector, Word::fixnum(-1)],
+        ),
+        Err(ObjectError::TypeError)
+    );
     Ok(())
 }
 
@@ -478,6 +488,36 @@ fn assert_bit_destination_and_shape_errors(
         call(runtime, ctx, "BIT-AND", &[source, wrong_element_type]),
         Err(ObjectError::TypeError)
     );
+    let wrong_destination_shape = make_specialized_array(
+        ctx,
+        runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(0), Word::fixnum(0)],
+    )?;
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "BIT-XOR",
+            &[source, source, wrong_destination_shape],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    let wrong_destination_type = make_specialized_array(
+        ctx,
+        runtime,
+        ArrayElementType::Fixnum,
+        &[Word::fixnum(0), Word::fixnum(0), Word::fixnum(0)],
+    )?;
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "BIT-AND",
+            &[source, source, wrong_destination_type],
+        ),
+        Err(ObjectError::TypeError)
+    );
     Ok(())
 }
 
@@ -511,6 +551,10 @@ fn assert_specialized_bit_vector_access(
     assert_eq!(
         call(runtime, ctx, "BIT", &[bits, Word::fixnum(1)])?,
         Word::fixnum(1)
+    );
+    assert_eq!(
+        call(runtime, ctx, "SIMPLE-BIT-VECTOR-P", &[bits])?,
+        Word::TRUE
     );
     assert_eq!(
         call(runtime, ctx, "BIT", &[bits, Word::fixnum(2)]),
@@ -550,6 +594,10 @@ fn assert_general_bit_vector_access(
         Word::TRUE
     );
     assert_eq!(
+        call(runtime, ctx, "BIT", &[general_bits, Word::fixnum(1)])?,
+        Word::fixnum(0)
+    );
+    assert_eq!(
         call(
             runtime,
             ctx,
@@ -557,6 +605,16 @@ fn assert_general_bit_vector_access(
             &[general_bits, Word::fixnum(1), Word::fixnum(1)],
         )?,
         Word::fixnum(1)
+    );
+    assert_eq!(array_row_major_ref(ctx, general_bits, 1)?, Word::fixnum(1));
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "SBIT",
+            &[general_bits, Word::fixnum(1), Word::fixnum(2)],
+        ),
+        Err(ObjectError::TypeError)
     );
     assert_eq!(array_row_major_ref(ctx, general_bits, 1)?, Word::fixnum(1));
 
@@ -583,6 +641,75 @@ fn assert_general_bit_vector_access(
     );
     assert_eq!(
         call(runtime, ctx, "SBIT", &[adjustable_bits, Word::fixnum(0)],),
+        Err(ObjectError::TypeError)
+    );
+
+    // CLHS SIMPLE-BIT-VECTOR excludes bit vectors with fill pointers or displacement.
+    let fill_pointer_bits = make_array(
+        ctx,
+        runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::Bit,
+            initial_element: Word::fixnum(0),
+            adjustable: false,
+            fill_pointer: Some(0),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    assert_eq!(
+        call(runtime, ctx, "SIMPLE-BIT-VECTOR-P", &[fill_pointer_bits])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(runtime, ctx, "BIT-VECTOR-P", &[fill_pointer_bits])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "SBIT",
+            &[fill_pointer_bits, Word::fixnum(0)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+
+    let bit_target = make_specialized_array(
+        ctx,
+        runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(0), Word::fixnum(1)],
+    )?;
+    let displaced_bits = make_array(
+        ctx,
+        runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::Bit,
+            initial_element: Word::fixnum(0),
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: Some(bit_target),
+            displaced_index_offset: 0,
+        },
+    )?;
+    assert_eq!(
+        call(runtime, ctx, "SIMPLE-BIT-VECTOR-P", &[displaced_bits])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(runtime, ctx, "BIT-VECTOR-P", &[displaced_bits])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "SBIT",
+            &[displaced_bits, Word::fixnum(0)],
+        ),
         Err(ObjectError::TypeError)
     );
     Ok(())
@@ -728,6 +855,77 @@ fn array_limits_are_bound_and_adjust_array_accepts_displacement_options() -> Res
         target
     );
     assert_eq!(array_row_major_ref(&ctx, adjusted, 0)?, Word::fixnum(9));
+
+    let keyword_package = runtime
+        .find_package(&ctx, "KEYWORD")
+        .ok_or(ObjectError::PackageConflict)?;
+    let keyword = |ctx: &mut ThreadContext, name: &str| {
+        ncl_object::Package::from_word(keyword_package)
+            .intern(ctx, &runtime, name)
+            .map(|(symbol, _)| symbol)
+    };
+    let adjustable_key = keyword(&mut ctx, "ADJUSTABLE")?;
+    let fill_pointer_key = keyword(&mut ctx, "FILL-POINTER")?;
+    let initial_element_key = keyword(&mut ctx, "INITIAL-ELEMENT")?;
+    let resizable = call(
+        &runtime,
+        &mut ctx,
+        "MAKE-ARRAY",
+        &[
+            Word::fixnum(2),
+            adjustable_key,
+            Word::TRUE,
+            fill_pointer_key,
+            Word::fixnum(1),
+            initial_element_key,
+            Word::fixnum(4),
+        ],
+    )?;
+    let resized = call(
+        &runtime,
+        &mut ctx,
+        "ADJUST-ARRAY",
+        &[
+            resizable,
+            Word::fixnum(3),
+            fill_pointer_key,
+            Word::fixnum(2),
+            initial_element_key,
+            Word::fixnum(9),
+        ],
+    )?;
+    // CLHS ADJUST-ARRAY preserves in-bounds values and uses :initial-element for new elements.
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-DIMENSION", &[resized, Word::fixnum(0)])?,
+        Word::fixnum(3)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "FILL-POINTER", &[resized])?,
+        Word::fixnum(2)
+    );
+    assert_eq!(array_row_major_ref(&ctx, resized, 0)?, Word::fixnum(4));
+    assert_eq!(array_row_major_ref(&ctx, resized, 1)?, Word::fixnum(4));
+    assert_eq!(array_row_major_ref(&ctx, resized, 2)?, Word::fixnum(9));
+
+    let unknown_option = keyword(&mut ctx, "NOT-AN-ADJUST-ARRAY-OPTION")?;
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ADJUST-ARRAY",
+            &[resizable, Word::fixnum(3), unknown_option, Word::TRUE],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "ADJUST-ARRAY",
+            &[resizable, Word::fixnum(3), fill_pointer_key],
+        ),
+        Err(ObjectError::TypeError)
+    );
     Ok(())
 }
 

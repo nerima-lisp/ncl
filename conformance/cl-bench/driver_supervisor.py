@@ -595,6 +595,53 @@ def _worker_exception_row(
     }
 
 
+def _valid_passed_row(row: dict[str, Any]) -> bool:
+    times = row.get("times")
+    if (
+        row.get("status") != "passed"
+        or row.get("stage") != "finish"
+        or row.get("condition") is not None
+        or not isinstance(times, list)
+        or not times
+    ):
+        return False
+    for sample in times:
+        if isinstance(sample, bool) or not isinstance(sample, (int, float)):
+            return False
+        try:
+            if not math.isfinite(float(sample)) or sample <= 0:
+                return False
+        except (OverflowError, ValueError):
+            return False
+    return True
+
+
+def _valid_partial_result(
+    result: dict[str, Any] | None,
+    name: str,
+    row: dict[str, Any],
+) -> bool:
+    if result is None or result.get("status") != "failed":
+        return False
+    benchmarks = result.get("benchmarks")
+    times = result.get("times")
+    if not isinstance(benchmarks, dict) or len(benchmarks) != 1:
+        return False
+    child_name, child_row = next(iter(benchmarks.items()))
+    if child_name.casefold() != name.casefold() or child_row is not row:
+        return False
+    row_times = row.get("times")
+    return (
+        isinstance(times, list)
+        and isinstance(row_times, list)
+        and len(times) == len(row_times)
+        and all(
+            type(actual) is type(expected) and actual == expected
+            for actual, expected in zip(times, row_times)
+        )
+    )
+
+
 def _run_benchmark_workers(
     *,
     engine: str,
@@ -680,7 +727,19 @@ def _run_benchmark_workers(
                     row["stage"] = "register"
                     row["condition"] = "benchmark was not registered"
             elif process.returncode != 0 and row.get("status") in ("passed", "disabled"):
-                row = _worker_failure_row(name, process, wall_time_seconds)
+                if (
+                    row.get("status") == "passed"
+                    and _valid_passed_row(row)
+                    and _valid_partial_result(child_result, name, row)
+                ):
+                    print(
+                        f"cl-bench warning: {name} emitted a valid passing row "
+                        f"but its driver exited {process.returncode}: "
+                        f"{_failure_detail(process)}",
+                        file=sys.stderr,
+                    )
+                else:
+                    row = _worker_failure_row(name, process, wall_time_seconds)
             benchmark = {
                 "status": row.get("status", "failed"),
                 "stage": row.get("stage", "register"),
@@ -781,7 +840,7 @@ def _registered_functions(cwd: Path) -> dict[str, tuple[str, ...]]:
 
 def _comparison_benchmarks() -> tuple[str, ...]:
     root = Path(__file__).resolve().parents[2]
-    source = root / "scripts" / "optimization_baseline.py"
+    source = root / "scripts" / "optimization_baseline_constants.py"
     module = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
     for node in module.body:
         if isinstance(node, ast.Assign) and any(

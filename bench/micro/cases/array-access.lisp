@@ -1,0 +1,5 @@
+(defun micro-case (iterations)
+  (let ((array (make-array 16 :initial-element 1))
+        (sum 0))
+    (dotimes (index iterations sum)
+      (incf sum (aref array (mod index 16))))))

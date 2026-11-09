@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "ansi-test": {
+      "version": "ca06bd919661af162c67407c9d994e881870bdb3",
+      "url": "https://gitlab.common-lisp.net/ansi-test/ansi-test/-/archive/ca06bd919661af162c67407c9d994e881870bdb3/ansi-test-ca06bd919661af162c67407c9d994e881870bdb3.tar.gz",
+      "sha256": "e445359ea3879797dac9f3d7c057564c4bba11917f6b9bd377be57b32ba15151",
+      "member_list_sha256": "a103764020a9acbb3c6f60ad197769892b371d208738198d49c561e9618f7235",
+      "kind": "tar.gz",
+      "archive_name": "ansi-test-ca06bd919661af162c67407c9d994e881870bdb3.tar.gz",
+      "top_level": "ansi-test-ca06bd919661af162c67407c9d994e881870bdb3",
+      "extensions": [".lisp", ".lsp"],
+      "max_unpacked_bytes": 16777216
+    },
+    "alexandria": {
+      "version": "20241012-git",
+      "url": "https://beta.quicklisp.org/archive/alexandria/2024-10-12/alexandria-20241012-git.tgz",
+      "sha256": "dcdfc5bac229a952358dfe661f0860e8a02480e406d0d95dee4300cdc3d45b31",
+      "member_list_sha256": "2348f3a5d8bc87be3c9aa7063a56cf8ec64d25799c5cc74446f5d8121d0d231f",
+      "kind": "tar.gz",
+      "archive_name": "alexandria-20241012-git.tgz",
+      "top_level": "alexandria-20241012-git",
+      "extensions": [".lisp", ".asd"],
+      "max_unpacked_bytes": 8388608
+    },
+    "cl-ppcre": {
+      "version": "20250622-git",
+      "url": "https://beta.quicklisp.org/archive/cl-ppcre/2025-06-22/cl-ppcre-20250622-git.tgz",
+      "sha256": "a9d6a9ca9eb862283f6079856629c8b19254f108fcde065d61f280e7c2c6ec39",
+      "member_list_sha256": "34d908aac2d3ec114be01695be273c9854bfd38934869df685a2440c7c4be7b6",
+      "kind": "tar.gz",
+      "archive_name": "cl-ppcre-20250622-git.tgz",
+      "top_level": "cl-ppcre-20250622-git",
+      "extensions": [".lisp", ".asd"],
+      "max_unpacked_bytes": 8388608
+    },
+    "asdf": {
+      "version": "3.3.7",
+      "url": "https://asdf.common-lisp.dev/archives/asdf-3.3.7.lisp",
+      "sha256": "874e8f235ea633a090c7ab2665b1f624d1910eb7f6fc10349a596085c1cbb189",
+      "kind": "file",
+      "archive_name": "asdf-3.3.7.lisp",
+      "extensions": [".lisp"],
+      "max_unpacked_bytes": 10485760
+    }
+  }
+}

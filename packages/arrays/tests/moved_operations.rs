@@ -482,6 +482,10 @@ fn assert_fill_pointer_operations(runtime: &Runtime, context: &mut ThreadContext
         Err(ObjectError::TypeError)
     );
 
+    assert_vector_push_extend_error_paths(runtime, context);
+}
+
+fn assert_vector_push_extend_error_paths(runtime: &Runtime, context: &mut ThreadContext) {
     let mut overflow_vector = make_array(
         context,
         runtime,
@@ -501,7 +505,13 @@ fn assert_fill_pointer_operations(runtime: &Runtime, context: &mut ThreadContext
     overflow_vector = grown;
     // Growth beyond the representable dimensions must report a layout error.
     assert_eq!(
-        vector_push_extend(context, runtime, overflow_vector, Word::fixnum(3), usize::MAX),
+        vector_push_extend(
+            context,
+            runtime,
+            overflow_vector,
+            Word::fixnum(3),
+            usize::MAX
+        ),
         Err(ObjectError::Layout)
     );
 

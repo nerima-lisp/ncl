@@ -644,6 +644,14 @@ fn assert_general_bit_vector_access(
         Err(ObjectError::TypeError)
     );
 
+    assert_fill_pointer_and_displaced_bit_vector_builtins(runtime, ctx)?;
+    Ok(())
+}
+
+fn assert_fill_pointer_and_displaced_bit_vector_builtins(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
     // CLHS SIMPLE-BIT-VECTOR excludes bit vectors with fill pointers or displacement.
     let fill_pointer_bits = make_array(
         ctx,
@@ -667,12 +675,7 @@ fn assert_general_bit_vector_access(
         Word::TRUE
     );
     assert_eq!(
-        call(
-            runtime,
-            ctx,
-            "SBIT",
-            &[fill_pointer_bits, Word::fixnum(0)],
-        ),
+        call(runtime, ctx, "SBIT", &[fill_pointer_bits, Word::fixnum(0)],),
         Err(ObjectError::TypeError)
     );
 
@@ -704,12 +707,7 @@ fn assert_general_bit_vector_access(
         Word::TRUE
     );
     assert_eq!(
-        call(
-            runtime,
-            ctx,
-            "SBIT",
-            &[displaced_bits, Word::fixnum(0)],
-        ),
+        call(runtime, ctx, "SBIT", &[displaced_bits, Word::fixnum(0)],),
         Err(ObjectError::TypeError)
     );
     Ok(())
@@ -856,20 +854,28 @@ fn array_limits_are_bound_and_adjust_array_accepts_displacement_options() -> Res
     );
     assert_eq!(array_row_major_ref(&ctx, adjusted, 0)?, Word::fixnum(9));
 
+    assert_adjust_array_keyword_options(&runtime, &mut ctx)?;
+    Ok(())
+}
+
+fn assert_adjust_array_keyword_options(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
     let keyword_package = runtime
         .find_package(&ctx, "KEYWORD")
         .ok_or(ObjectError::PackageConflict)?;
     let keyword = |ctx: &mut ThreadContext, name: &str| {
         ncl_object::Package::from_word(keyword_package)
-            .intern(ctx, &runtime, name)
+            .intern(ctx, runtime, name)
             .map(|(symbol, _)| symbol)
     };
-    let adjustable_key = keyword(&mut ctx, "ADJUSTABLE")?;
-    let fill_pointer_key = keyword(&mut ctx, "FILL-POINTER")?;
-    let initial_element_key = keyword(&mut ctx, "INITIAL-ELEMENT")?;
+    let adjustable_key = keyword(ctx, "ADJUSTABLE")?;
+    let fill_pointer_key = keyword(ctx, "FILL-POINTER")?;
+    let initial_element_key = keyword(ctx, "INITIAL-ELEMENT")?;
     let resizable = call(
-        &runtime,
-        &mut ctx,
+        runtime,
+        ctx,
         "MAKE-ARRAY",
         &[
             Word::fixnum(2),
@@ -882,8 +888,8 @@ fn array_limits_are_bound_and_adjust_array_accepts_displacement_options() -> Res
         ],
     )?;
     let resized = call(
-        &runtime,
-        &mut ctx,
+        runtime,
+        ctx,
         "ADJUST-ARRAY",
         &[
             resizable,
@@ -896,22 +902,22 @@ fn array_limits_are_bound_and_adjust_array_accepts_displacement_options() -> Res
     )?;
     // CLHS ADJUST-ARRAY preserves in-bounds values and uses :initial-element for new elements.
     assert_eq!(
-        call(&runtime, &mut ctx, "ARRAY-DIMENSION", &[resized, Word::fixnum(0)])?,
+        call(runtime, ctx, "ARRAY-DIMENSION", &[resized, Word::fixnum(0)])?,
         Word::fixnum(3)
     );
     assert_eq!(
-        call(&runtime, &mut ctx, "FILL-POINTER", &[resized])?,
+        call(runtime, ctx, "FILL-POINTER", &[resized])?,
         Word::fixnum(2)
     );
-    assert_eq!(array_row_major_ref(&ctx, resized, 0)?, Word::fixnum(4));
-    assert_eq!(array_row_major_ref(&ctx, resized, 1)?, Word::fixnum(4));
-    assert_eq!(array_row_major_ref(&ctx, resized, 2)?, Word::fixnum(9));
+    assert_eq!(array_row_major_ref(ctx, resized, 0)?, Word::fixnum(4));
+    assert_eq!(array_row_major_ref(ctx, resized, 1)?, Word::fixnum(4));
+    assert_eq!(array_row_major_ref(ctx, resized, 2)?, Word::fixnum(9));
 
-    let unknown_option = keyword(&mut ctx, "NOT-AN-ADJUST-ARRAY-OPTION")?;
+    let unknown_option = keyword(ctx, "NOT-AN-ADJUST-ARRAY-OPTION")?;
     assert_eq!(
         call(
-            &runtime,
-            &mut ctx,
+            runtime,
+            ctx,
             "ADJUST-ARRAY",
             &[resizable, Word::fixnum(3), unknown_option, Word::TRUE],
         ),
@@ -919,8 +925,8 @@ fn array_limits_are_bound_and_adjust_array_accepts_displacement_options() -> Res
     );
     assert_eq!(
         call(
-            &runtime,
-            &mut ctx,
+            runtime,
+            ctx,
             "ADJUST-ARRAY",
             &[resizable, Word::fixnum(3), fill_pointer_key],
         ),

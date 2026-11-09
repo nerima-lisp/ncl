@@ -177,11 +177,16 @@ impl Heap {
         drop(stop_world);
         Ok(())
     }
-    /// Register published code metadata for precise native frame scanning.
+    /// Register code metadata for precise native frame scanning.
+    ///
+    /// Metadata for unpublished code remains prepared and hidden from PC lookup
+    /// until the registry is activated after code publication. Metadata for
+    /// already-published code becomes active during this call.
     ///
     /// # Errors
     ///
-    /// Returns `CodeError::NotPublished` when the code is not executable yet.
+    /// Returns `CodeError::OutOfBounds` when metadata does not fit the allocation,
+    /// or `CodeError::AlreadyRegistered` when metadata is already registered.
     pub fn register_code(
         &self,
         code: &CodePtr,

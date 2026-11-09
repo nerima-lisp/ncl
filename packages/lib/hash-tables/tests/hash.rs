@@ -129,6 +129,12 @@ fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError
     assert_eq!(ctx.values(), &[Word::NIL, Word::NIL]);
     assert_insert_remove_clear(&runtime, &mut ctx, table, key, value)?;
 
+    // CLHS 18.2 GETHASH uses present-p to distinguish a stored NIL from absence.
+    HashTable::from_word(table).insert(&mut ctx, &runtime, key, Word::NIL)?;
+    assert_eq!(call(&runtime, &mut ctx, "GETHASH", &[key, table])?, Word::NIL);
+    assert_eq!(ctx.values(), &[Word::NIL, Word::TRUE]);
+    assert_eq!(call(&runtime, &mut ctx, "REMHASH", &[key, table])?, Word::TRUE);
+
     let sxhash = call(&runtime, &mut ctx, "SXHASH", &[key])?;
     let mask = u64::try_from(i64::MAX).map_err(|_| ObjectError::Layout)?;
     assert_eq!(
@@ -223,6 +229,24 @@ fn hash_table_test_reports_equalp_and_weakness_semantics() -> Result<(), ObjectE
         .intern(&mut ctx, &runtime, "EQUALP")?
         .0;
     assert_eq!(test, equalp_symbol);
+
+    // CLHS 18.2 HASH-TABLE-TEST reports the equivalence function selected at construction.
+    for (mode, name) in [
+        (HashTest::Eq, "EQ"),
+        (HashTest::Eql, "EQL"),
+        (HashTest::Equal, "EQUAL"),
+        (HashTest::Equalp, "EQUALP"),
+    ] {
+        let mut mode_table = HashTable::new(&mut ctx, &runtime, mode, Weakness::None)?.as_word();
+        let mode_table_token = push_root(&mut ctx, &mut mode_table);
+        let actual = call(&runtime, &mut ctx, "HASH-TABLE-TEST", &[mode_table])?;
+        let expected = Package::from_word(common_lisp)
+            .intern(&mut ctx, &runtime, name)?
+            .0;
+        assert_eq!(actual, expected);
+        assert!(pop_root(&mut ctx, mode_table_token));
+    }
+
     assert_eq!(HashTable::from_word(table).weakness(&ctx)?, Weakness::Key);
     let mut gethash_function = runtime
         .function(&mut ctx, "COMMON-LISP", "GETHASH")

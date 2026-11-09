@@ -174,6 +174,98 @@ fn nested_lambda_captures_only_used_variables_and_a_local_function() -> TestResu
 }
 
 #[test]
+fn sibling_lambdas_share_a_mutated_outer_binding_cell() -> TestResult<()> {
+    let (id, mut builder, mut fixture) = context(133);
+    let value = fixture.user("VALUE");
+    let value_binding = fixture.list(&[value, Word::fixnum(0)]);
+    let value_bindings = fixture.list(&[value_binding]);
+
+    let writer = fixture.user("WRITER");
+    let reader = fixture.user("READER");
+    let lambda_list = fixture.list(&[]);
+    let assignment = fixture.form("SETQ", &[value, Word::fixnum(1)]);
+    let writer_lambda = fixture.form("LAMBDA", &[lambda_list, assignment]);
+    let reader_lambda = fixture.form("LAMBDA", &[lambda_list, value]);
+    let writer_binding = fixture.list(&[writer, writer_lambda]);
+    let reader_binding = fixture.list(&[reader, reader_lambda]);
+    let closures = fixture.list(&[writer_binding, reader_binding]);
+    let call_writer = fixture.form("FUNCALL", &[writer]);
+    let call_reader = fixture.form("FUNCALL", &[reader]);
+    let body = fixture.form("PROGN", &[call_writer, call_reader]);
+    let inner_let = fixture.form("LET", &[closures, body]);
+    let input = fixture.form("LET", &[value_bindings, inner_let]);
+    let source = "(let ((value 0))\n  (let ((writer (lambda () (setq value 1)))\n        (reader (lambda () value)))\n    (funcall writer)\n    (funcall reader)))";
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
+
+    let (lowered, _) = lower_both_and_verify(&builder, &form, &expr)?;
+    let captures = lowered
+        .entry
+        .blocks
+        .iter()
+        .flat_map(|block| &block.ops)
+        .filter_map(|operation| match &operation.kind {
+            OpKind::MakeClosure { captures, .. } => Some(captures),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(captures.len(), 2);
+    assert!(captures.iter().all(|capture| capture.len() == 1));
+    assert_eq!(captures[0][0], captures[1][0]);
+
+    let cell = lowered
+        .entry
+        .blocks
+        .iter()
+        .flat_map(|block| &block.ops)
+        .find_map(|operation| match &operation.kind {
+            OpKind::MakeValueCell { .. } => operation.results.first().map(|(value, _)| *value),
+            _ => None,
+        })
+        .ok_or_else(|| std::io::Error::other("outer lexical cell is missing"))?;
+    assert_eq!(captures[0][0], cell);
+    let mut writes_capture = false;
+    let mut reads_capture = false;
+    for function in &lowered.nested {
+        let captured_cell = function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.ops)
+            .find_map(|operation| match &operation.kind {
+                OpKind::LoadCapture { index: 0 } => {
+                    operation.results.first().map(|(value, _)| *value)
+                }
+                _ => None,
+            });
+        let Some(captured_cell) = captured_cell else {
+            continue;
+        };
+        let mut operations = function.blocks.iter().flat_map(|block| &block.ops);
+        writes_capture |= operations.clone().any(|operation| {
+            matches!(
+                &operation.kind,
+                OpKind::StoreField { object, field: 0, value }
+                    if *object == captured_cell
+                        && super::common::constant_for_value(function, *value)
+                            == Some(&Constant::Fixnum(1))
+            )
+        });
+        reads_capture |= operations.any(|operation| {
+            matches!(
+                &operation.kind,
+                OpKind::LoadField { object, field: 0 } if *object == captured_cell
+            )
+        });
+    }
+    assert!(writes_capture);
+    assert!(reads_capture);
+
+    // CLHS lexical closures share the captured binding, so mutation is visible to sibling closures.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/03_ad.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_setq.htm
+    Ok(())
+}
+
+#[test]
 fn absent_optional_keyword_and_aux_defaults_lower_to_nil_paths() -> TestResult<()> {
     let (id, mut builder, mut fixture) = context(126);
     let optional_marker = fixture.cl("&OPTIONAL");

@@ -2,8 +2,8 @@ use ncl_hir::NodeKind;
 use ncl_ir::{Constant, HandlerKind, OpKind, Terminator as MirTerminator};
 use ncl_object::Word;
 
-use super::common::{TestResult, context, expand_build, lower_both_and_verify};
-use super::control::named_call_position;
+use super::common::{TestResult, constant_for_value, context, expand_build, lower_both_and_verify};
+use super::control::{handler_region, named_call_position};
 
 #[test]
 fn empty_tagbody_returns_nil_and_block_returns_its_body_value() -> TestResult<()> {
@@ -241,6 +241,169 @@ fn cleanup_throw_replaces_return_from() -> TestResult<()> {
     // https://www.lispworks.com/documentation/HyperSpec/Body/s_unwind.htm
     // https://www.lispworks.com/documentation/HyperSpec/Body/s_throw.htm
     // https://www.lispworks.com/documentation/HyperSpec/Body/s_block.htm
+    Ok(())
+}
+
+#[test]
+fn cleanup_return_from_supersedes_protected_value() -> TestResult<()> {
+    let (id, mut builder, mut fixture) = context(138);
+    let done = fixture.user("DONE");
+    let return_from = fixture.form("RETURN-FROM", &[done, Word::fixnum(2)]);
+    let protected = fixture.form("UNWIND-PROTECT", &[Word::fixnum(1), return_from]);
+    let input = fixture.form("BLOCK", &[done, protected]);
+    let source = "(block done (unwind-protect 1 (return-from done 2)))";
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
+
+    assert!(form.nodes().iter().any(|(_, node)| matches!(
+        &node.kind,
+        NodeKind::UnwindProtect { cleanup_forms, .. } if cleanup_forms.iter().any(|id| matches!(
+            form.nodes().get(*id).map(|node| &node.kind),
+            Some(NodeKind::ReturnFrom { .. })
+        ))
+    )));
+
+    let (lowered, _) = lower_both_and_verify(&builder, &form, &expr)?;
+    let region = handler_region(&lowered.entry, HandlerKind::UnwindProtect)?;
+    let block_exit = named_call_position(&lowered.entry, "COMMON-LISP", "VALUES-LIST", true)
+        .map(|(block, _)| block)
+        .ok_or_else(|| std::io::Error::other("block result is missing"))?;
+    assert!(lowered.entry.blocks.iter().any(|exit| {
+        region.protected.contains(&exit.id)
+            && exit.ops.iter().any(|op| {
+                matches!(&op.kind, OpKind::LeaveHandler { region: id } if *id == region.id)
+            })
+            && matches!(&exit.terminator, MirTerminator::Jump { target, args } if {
+                let carries_cleanup_value = args.first().is_some_and(|transfer_value| {
+                    exit.ops.iter().any(|op| {
+                        let OpKind::CallClosure { args, .. } = &op.kind else { return false; };
+                        args.get(1).and_then(|value| constant_for_value(&lowered.entry, *value))
+                            == Some(&Constant::Fixnum(2))
+                            && op.results.first().is_some_and(|(result, _)| result == transfer_value)
+                    })
+                });
+                carries_cleanup_value && *target == block_exit
+            })
+    }));
+
+    // CLHS says UNWIND-PROTECT cleanup runs before RETURN-FROM, whose transfer then takes effect.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_unwind.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_block.htm
+    Ok(())
+}
+
+#[test]
+fn cleanup_throw_supersedes_pending_throw() -> TestResult<()> {
+    let (id, mut builder, mut fixture) = context(139);
+    let tag = fixture.keyword("TAG");
+    let pending = fixture.form("THROW", &[tag, Word::fixnum(1)]);
+    let cleanup_throw = fixture.form("THROW", &[tag, Word::fixnum(2)]);
+    let unwind = fixture.form("UNWIND-PROTECT", &[pending, cleanup_throw]);
+    let input = fixture.form("CATCH", &[tag, unwind]);
+    let source = "(catch :tag (unwind-protect (throw :tag 1) (throw :tag 2)))";
+    let (expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
+
+    assert!(form.nodes().iter().any(|(_, node)| matches!(
+        &node.kind,
+        NodeKind::UnwindProtect { protected, cleanup_forms, .. }
+            if matches!(form.nodes().get(*protected).map(|node| &node.kind),
+                Some(NodeKind::NonLocalExit { target: ncl_hir::ExitTarget::Dynamic(_), values, cleanups })
+                    if values.len() == 1 && cleanups.len() == 1)
+                && cleanup_forms.iter().any(|id| matches!(form.nodes().get(*id).map(|node| &node.kind),
+                    Some(NodeKind::Throw { .. })))
+    )));
+
+    let (lowered, _) = lower_both_and_verify(&builder, &form, &expr)?;
+    let throws = lowered
+        .entry
+        .blocks
+        .iter()
+        .filter_map(|block| {
+            let value = block.ops.iter().find_map(|op| match &op.kind {
+                OpKind::Builtin { name, args, .. } if name == "throw" => args
+                    .get(1)
+                    .and_then(|value| constant_for_value(&lowered.entry, *value))
+                    .and_then(|value| match value {
+                        Constant::Fixnum(value) => Some(*value),
+                        _ => None,
+                    }),
+                _ => None,
+            })?;
+            matches!(&block.terminator, MirTerminator::Throw { .. }).then_some((block, value))
+        })
+        .collect::<Vec<_>>();
+    let pending = throws
+        .iter()
+        .find(|(_, value)| *value == 1)
+        .map(|(block, _)| *block)
+        .ok_or_else(|| std::io::Error::other("protected THROW is missing"))?;
+    let cleanup = throws
+        .iter()
+        .find(|(_, value)| *value == 2)
+        .map(|(block, _)| *block)
+        .ok_or_else(|| std::io::Error::other("cleanup THROW is missing"))?;
+    let unwind = handler_region(&lowered.entry, HandlerKind::UnwindProtect)?;
+    let catch = handler_region(&lowered.entry, HandlerKind::Catch)?;
+    assert!(unwind.protected.contains(&pending.id));
+    assert_eq!(unwind.cleanup, Some(cleanup.id));
+    assert!(catch.protected.contains(&cleanup.id));
+
+    // CLHS cleanup forms run during UNWIND-PROTECT exit; THROW from cleanup takes effect.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_unwind.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_throw.htm
+    Ok(())
+}
+
+#[test]
+fn backward_go_through_unwind_protect_runs_cleanup_before_looping() -> TestResult<()> {
+    let (id, mut builder, mut fixture) = context(140);
+    let start = fixture.user("START");
+    let before_name = fixture.user("BEFORE");
+    let before = fixture.list(&[before_name]);
+    let go = fixture.form("GO", &[start]);
+    let cleanup_name = fixture.user("CLEANUP");
+    let cleanup = fixture.list(&[cleanup_name]);
+    let unwind = fixture.form("UNWIND-PROTECT", &[go, cleanup]);
+    let input = fixture.form("TAGBODY", &[start, before, unwind]);
+    let source = "(tagbody start (before) (unwind-protect (go start) (cleanup)))";
+    let (_expr, form) = expand_build(&mut builder, &mut fixture, id, input, source)?;
+
+    assert!(form.nodes().iter().any(|(_, node)| matches!(
+        &node.kind,
+        NodeKind::NonLocalExit { target: ncl_hir::ExitTarget::Tag(_), values, cleanups }
+            if values.is_empty() && cleanups.len() == 1
+    )));
+    // The legacy frontend lowerer emits invalid MIR for this backedge; inspect the HIR path directly.
+    let lowered = ncl_hir::lower::lower(&form, builder.symbols())?;
+    let (start_block, _) = named_call_position(&lowered.entry, "COMMON-LISP-USER", "BEFORE", true)
+        .ok_or_else(|| std::io::Error::other("backward GO target form is missing"))?;
+    let (cleanup_block, cleanup_index) =
+        named_call_position(&lowered.entry, "COMMON-LISP-USER", "CLEANUP", true)
+            .ok_or_else(|| std::io::Error::other("cleanup call is missing"))?;
+    let region = handler_region(&lowered.entry, HandlerKind::UnwindProtect)?;
+    let transfer = lowered
+        .entry
+        .blocks
+        .iter()
+        .find(|block| block.id == cleanup_block)
+        .ok_or_else(|| std::io::Error::other("cleanup transfer block is missing"))?;
+    let leave_index = transfer
+        .ops
+        .iter()
+        .position(|op| matches!(&op.kind, OpKind::LeaveHandler { region: id } if *id == region.id))
+        .ok_or_else(|| std::io::Error::other("cleanup transfer does not leave its handler"))?;
+    assert!(cleanup_index < leave_index);
+    assert_eq!(transfer.ops.len(), leave_index + 2);
+    assert!(matches!(
+        transfer.ops.last().map(|op| &op.kind),
+        Some(OpKind::Safepoint)
+    ));
+    assert!(
+        matches!(&transfer.terminator, MirTerminator::Jump { target, .. } if *target == start_block)
+    );
+
+    // CLHS GO transfers to an earlier tag after active UNWIND-PROTECT cleanup completes.
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_go.htm
+    // https://www.lispworks.com/documentation/HyperSpec/Body/s_unwind.htm
     Ok(())
 }
 

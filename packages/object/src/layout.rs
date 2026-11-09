@@ -132,3 +132,29 @@ pub mod code_offset {
     pub const STACK_MAP: usize = 3;
     pub const DEBUG: usize = 4;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ncl_sys::{AtomicObjectWordCell, LowTag};
+
+    #[test]
+    fn atomic_object_word_cells_match_object_layout() {
+        let function_entry = AtomicObjectWordCell::FunctionEntry;
+        assert_eq!(
+            function_entry.layout(),
+            (LowTag::OtherPointer as u8, function_offset::ENTRY)
+        );
+        assert!(function_entry.accepts_widetag(widetag::SIMPLE_FUN));
+        assert!(function_entry.accepts_widetag(widetag::CLOSURE));
+        assert!(!function_entry.accepts_widetag(widetag::SYMBOL));
+
+        let symbol_function = AtomicObjectWordCell::SymbolFunction;
+        assert_eq!(
+            symbol_function.layout(),
+            (LowTag::OtherPointer as u8, symbol_offset::FUNCTION)
+        );
+        assert!(symbol_function.accepts_widetag(widetag::SYMBOL));
+        assert!(!symbol_function.accepts_widetag(widetag::SIMPLE_FUN));
+    }
+}

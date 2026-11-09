@@ -13,7 +13,9 @@ pub enum AtomicObjectWordCell {
 }
 
 impl AtomicObjectWordCell {
-    const fn layout(self) -> (u8, usize) {
+    /// Return the pointer lowtag and payload slot for this object cell.
+    #[must_use]
+    pub const fn layout(self) -> (u8, usize) {
         // These lowtags match the `repr(u8)` discriminants in `LowTag`.
         match self {
             Self::FunctionEntry => (7, 0),
@@ -21,7 +23,9 @@ impl AtomicObjectWordCell {
         }
     }
 
-    const fn accepts_widetag(self, widetag: u8) -> bool {
+    /// Whether `widetag` identifies an object type that contains this cell.
+    #[must_use]
+    pub const fn accepts_widetag(self, widetag: u8) -> bool {
         match self {
             Self::FunctionEntry => matches!(widetag, 8 | 9),
             Self::SymbolFunction => widetag == 1,

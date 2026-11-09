@@ -262,11 +262,14 @@ fn standard_io_reserve_heap_cells(
     ctx.collect(true)
 }
 
-fn standard_io_expansion_with_released_cells(
-    released_cells: usize,
+fn standard_io_expansion(
+    released_cells: Option<usize>,
     preinterned_symbols: usize,
 ) -> Result<(), ObjectError> {
-    let runtime = Runtime::new()?;
+    let runtime = Runtime::with_config(ncl_sys::HeapConfig {
+        dynamic_space_size: 64 * 1024 * 1024,
+        ..ncl_sys::HeapConfig::default()
+    })?;
     register(&runtime)?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
@@ -314,24 +317,34 @@ fn standard_io_expansion_with_released_cells(
         .take(preinterned_symbols)
         .map(|name| symbol(&mut ctx, &runtime, name))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut roots = vec![Word::NIL; 8_192];
-    roots[0] = input;
-    roots[1..=preinterned.len()].copy_from_slice(&preinterned);
+    let mut roots = vec![Word::NIL; 16_384];
+    roots[0] = body;
+    roots[1] = input;
+    roots[2..2 + preinterned.len()].copy_from_slice(&preinterned);
 
     ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
-        standard_io_reserve_heap_cells(
-            ctx,
-            &runtime,
-            roots,
-            1 + preinterned.len(),
-            released_cells,
-        )?;
+        if let Some(released_cells) = released_cells {
+            standard_io_reserve_heap_cells(
+                ctx,
+                &runtime,
+                roots,
+                2 + preinterned.len(),
+                released_cells,
+            )?;
+        }
 
-        let input_args = [roots[0]];
+        let input_args = [roots[1]];
         let args = ncl_object::BuiltinArgs::new(&input_args);
         let expand =
             callback_for("WITH-STANDARD-IO-SYNTAX").ok_or(ObjectError::UndefinedFunction)?;
-        expand(ctx, &runtime, &args, &mut ncl_object::MultipleValues::new()).map(|_| ())
+        let expansion = expand(ctx, &runtime, &args, &mut ncl_object::MultipleValues::new())?;
+        let form = elements(ctx, expansion)?;
+        if form.len() != 3 || standard_io_symbol_text(ctx, form[0])? != "LET" {
+            return Err(ObjectError::TypeError);
+        }
+        // check-added-lines: allow(panic) test-only assertion
+        assert_eq!(form[2], roots[0], "the macro body remains inside the LET");
+        Ok(())
     })
 }
 
@@ -358,7 +371,7 @@ fn standard_io_syntax_propagates_heap_capacity_boundaries() {
     ];
 
     for (case, released_cells, preinterned_symbols) in cases {
-        let error = standard_io_expansion_with_released_cells(released_cells, preinterned_symbols)
+        let error = standard_io_expansion(Some(released_cells), preinterned_symbols)
             .expect_err("the selected allocation must report heap exhaustion");
         assert!(
             matches!(error, ObjectError::Storage(_)),
@@ -371,6 +384,6 @@ fn standard_io_syntax_propagates_heap_capacity_boundaries() {
         );
     }
 
-    standard_io_expansion_with_released_cells(512, 31)
-        .expect("512 one-word cells must complete the fully pre-interned expansion");
+    standard_io_expansion(None, 31)
+        .expect("the fully pre-interned expansion must succeed on a fresh heap");
 }

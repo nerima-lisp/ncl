@@ -113,6 +113,7 @@ license.workspace = true
 
 [dependencies]
 ncl-runtime = { path = "packages/runtime" }
+ncl-sys = { path = "packages/sys" }
 
 [dev-dependencies]
 ncl-lib-streams = { path = "packages/lib/streams" }

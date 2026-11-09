@@ -183,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn regular_ncl_diagnostics_do_not_enable_allocator_tracking() {
+    fn regular_ncl_diagnostics_set_the_runtime_pass_option() {
         let (options, arguments) = parse_runtime_options(
             ["--opt-diagnostics", "--script", "driver.lisp"]
                 .into_iter()
@@ -191,7 +191,6 @@ mod tests {
         )
         .unwrap_or_else(|error| panic!("options: {error}"));
         assert!(options.opt_diagnostics);
-        assert!(!options.pass_allocation_diagnostics);
         assert_eq!(arguments, ["--script", "driver.lisp"]);
     }
 }

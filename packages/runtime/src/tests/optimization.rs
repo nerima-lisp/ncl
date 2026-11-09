@@ -1,6 +1,8 @@
 use super::{OptimizationMode, RuntimeOptions, verify_and_optimize};
-use crate::RuntimeError;
+use crate::{Runtime, RuntimeError};
 use ncl_ir::{FunctionBuilder, FunctionId, OpKind, Param, Terminator, Ty, ValueId};
+use std::cell::Cell;
+use std::rc::Rc;
 
 fn verified_module_with_unused_move() -> ncl_opt::Module {
     let mut builder = FunctionBuilder::new(
@@ -29,11 +31,10 @@ fn verified_module_with_unused_move() -> ncl_opt::Module {
 fn optimization_off_preserves_unused_move_removed_by_default_pipeline() {
     let mut unoptimized = verified_module_with_unused_move();
     let original = unoptimized.clone();
+    let options = RuntimeOptions::new(OptimizationMode::Off, true);
+    let mut pass_runner = crate::optimization::default_pass_runner(options);
 
-    let result = verify_and_optimize(
-        &mut unoptimized,
-        RuntimeOptions::new(OptimizationMode::Off, true),
-    );
+    let result = verify_and_optimize(&mut unoptimized, options, &mut pass_runner);
 
     assert!(
         result.is_ok(),
@@ -42,7 +43,9 @@ fn optimization_off_preserves_unused_move_removed_by_default_pipeline() {
     assert_eq!(unoptimized, original);
 
     let mut optimized = original;
-    let result = verify_and_optimize(&mut optimized, RuntimeOptions::default());
+    let options = RuntimeOptions::default();
+    let mut pass_runner = crate::optimization::default_pass_runner(options);
+    let result = verify_and_optimize(&mut optimized, options, &mut pass_runner);
 
     assert!(result.is_ok(), "default optimization failed: {result:?}");
     assert!(optimized.functions[0].blocks[0].ops.is_empty());
@@ -55,15 +58,14 @@ fn optimization_off_preserves_unused_move_removed_by_default_pipeline() {
 }
 
 #[test]
-fn pass_diagnostics_without_allocation_tracking_preserve_optimized_ir() {
+fn pass_diagnostics_preserve_optimized_ir() {
     let mut module = verified_module_with_unused_move();
-    let options = RuntimeOptions::new(OptimizationMode::Default, true)
-        .with_pass_allocation_diagnostics(false);
+    let options = RuntimeOptions::new(OptimizationMode::Default, true);
 
     assert!(options.opt_diagnostics);
-    assert!(!options.pass_allocation_diagnostics);
 
-    let result = verify_and_optimize(&mut module, options);
+    let mut pass_runner = crate::optimization::default_pass_runner(options);
+    let result = verify_and_optimize(&mut module, options, &mut pass_runner);
 
     assert!(
         result.is_ok(),
@@ -79,6 +81,30 @@ fn pass_diagnostics_without_allocation_tracking_preserve_optimized_ir() {
 }
 
 #[test]
+#[expect(
+    clippy::expect_used,
+    reason = "the test needs a runtime to observe the caller-provided pass runner"
+)]
+fn caller_pass_runner_preserves_eval_results_and_observes_pass_events() {
+    let pass_events = Rc::new(Cell::new(0));
+    let observed_events = Rc::clone(&pass_events);
+    let mut runtime =
+        Runtime::with_options_and_pass_runner(RuntimeOptions::default(), move |passes, module| {
+            passes.run_with_observer(module, |_| {
+                observed_events.set(observed_events.get() + 1);
+            })
+        })
+        .expect("runtime initializes with the caller-provided pass runner");
+    let value = runtime
+        .eval("(+ 20 22)")
+        .expect("the pass runner compiles and evaluates the source");
+
+    assert_eq!(runtime.format_result(value), "42");
+    assert!(pass_events.get() > 0);
+    assert!(format!("{runtime:?}").contains("StoredPassRunner"));
+}
+
+#[test]
 fn invalid_ir_is_rejected_before_optimization_without_mutating_module() {
     let mut module = verified_module_with_unused_move();
     module.functions[0].blocks[0].terminator = Terminator::Return {
@@ -86,10 +112,9 @@ fn invalid_ir_is_rejected_before_optimization_without_mutating_module() {
     };
     let original = module.clone();
 
-    let result = verify_and_optimize(
-        &mut module,
-        RuntimeOptions::new(OptimizationMode::Off, false),
-    );
+    let options = RuntimeOptions::new(OptimizationMode::Off, false);
+    let mut pass_runner = crate::optimization::default_pass_runner(options);
+    let result = verify_and_optimize(&mut module, options, &mut pass_runner);
 
     assert_eq!(module, original);
     assert!(matches!(

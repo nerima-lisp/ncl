@@ -1,5 +1,6 @@
 //! Instrumented NCL runner for pass-level allocation diagnostics.
 
+use ncl_sys::AllocationTrackingScope;
 use std::io::{BufRead, Write};
 
 #[derive(Debug, Eq, PartialEq)]
@@ -20,18 +21,18 @@ impl std::fmt::Display for ProfilerOptionError {
 impl std::error::Error for ProfilerOptionError {}
 
 #[global_allocator]
-static ALLOCATOR: ncl_runtime::AllocationTrackingAllocator =
-    ncl_runtime::AllocationTrackingAllocator;
+static ALLOCATOR: ncl_sys::AllocationTrackingAllocator = ncl_sys::AllocationTrackingAllocator;
 
 fn main() -> std::process::ExitCode {
     ALLOCATOR.activate();
-    let (runtime_options, arguments) = match parse_runtime_options(std::env::args().skip(1)) {
-        Ok(parsed) => parsed,
-        Err(error) => {
-            eprintln!("ncl-profiler: {error}");
-            return std::process::ExitCode::from(2);
-        }
-    };
+    let (runtime_options, allocation_diagnostics, arguments) =
+        match parse_runtime_options(std::env::args().skip(1)) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                eprintln!("ncl-profiler: {error}");
+                return std::process::ExitCode::from(2);
+            }
+        };
     let mut arguments = arguments.into_iter();
     match arguments.next().as_deref() {
         Some("--help" | "-h") => {
@@ -51,7 +52,7 @@ fn main() -> std::process::ExitCode {
                 eprintln!("--eval accepts exactly one source string");
                 return std::process::ExitCode::from(2);
             }
-            let mut runtime = match ncl_runtime::Runtime::with_options(runtime_options) {
+            let mut runtime = match runtime_with_options(runtime_options, allocation_diagnostics) {
                 Ok(runtime) => runtime,
                 Err(error) => {
                     eprintln!("ncl-profiler: {error}");
@@ -81,7 +82,7 @@ fn main() -> std::process::ExitCode {
                 eprintln!("{mode} accepts exactly one file path");
                 return std::process::ExitCode::from(2);
             }
-            let mut runtime = match ncl_runtime::Runtime::with_options(runtime_options) {
+            let mut runtime = match runtime_with_options(runtime_options, allocation_diagnostics) {
                 Ok(runtime) => runtime,
                 Err(error) => {
                     eprintln!("ncl-profiler: {error}");
@@ -109,21 +110,22 @@ fn main() -> std::process::ExitCode {
             eprintln!("unsupported option: {argument}");
             std::process::ExitCode::from(2)
         }
-        None => repl(runtime_options),
+        None => repl(runtime_options, allocation_diagnostics),
     }
 }
 
 fn parse_runtime_options(
     arguments: impl Iterator<Item = String>,
-) -> Result<(ncl_runtime::RuntimeOptions, Vec<String>), ProfilerOptionError> {
+) -> Result<(ncl_runtime::RuntimeOptions, bool, Vec<String>), ProfilerOptionError> {
     let mut options = ncl_runtime::RuntimeOptions::default();
+    let mut allocation_diagnostics = false;
     let mut remaining = Vec::new();
     let mut parsing_options = true;
     for argument in arguments {
         if parsing_options {
             if argument == "--opt-diagnostics" {
                 options.opt_diagnostics = true;
-                options.pass_allocation_diagnostics = true;
+                allocation_diagnostics = true;
                 continue;
             }
             if let Some(mode) = argument.strip_prefix("--optimization=") {
@@ -142,11 +144,33 @@ fn parse_runtime_options(
         }
         remaining.push(argument);
     }
-    Ok((options, remaining))
+    Ok((options, allocation_diagnostics, remaining))
 }
 
-fn repl(options: ncl_runtime::RuntimeOptions) -> std::process::ExitCode {
-    let mut runtime = match ncl_runtime::Runtime::with_options(options) {
+fn runtime_with_options(
+    options: ncl_runtime::RuntimeOptions,
+    allocation_diagnostics: bool,
+) -> Result<ncl_runtime::Runtime, ncl_runtime::RuntimeError> {
+    if allocation_diagnostics && options.optimization == ncl_runtime::OptimizationMode::Default {
+        let scope = AllocationTrackingScope::start()
+            .map_err(|error| ncl_runtime::RuntimeError::Native(error.to_string()))?;
+        ncl_runtime::Runtime::with_options_and_pass_runner(options, move |passes, module| {
+            passes.run_with_observer_and_allocation_snapshot(
+                module,
+                |event| eprintln!("{event}"),
+                || scope.allocated_bytes(),
+            )
+        })
+    } else {
+        ncl_runtime::Runtime::with_options(options)
+    }
+}
+
+fn repl(
+    options: ncl_runtime::RuntimeOptions,
+    allocation_diagnostics: bool,
+) -> std::process::ExitCode {
+    let mut runtime = match runtime_with_options(options, allocation_diagnostics) {
         Ok(runtime) => runtime,
         Err(error) => {
             eprintln!("ncl-profiler: {error}");
@@ -199,24 +223,25 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::parse_runtime_options;
-    use ncl_runtime::AllocationTrackingScope;
+    use ncl_sys::AllocationTrackingScope;
 
     #[test]
     fn allocation_diagnostics_are_only_enabled_by_the_profiler_option() {
-        let (options, arguments) = parse_runtime_options(std::iter::empty())
-            .unwrap_or_else(|error| panic!("options: {error}"));
+        let (options, allocation_diagnostics, arguments) =
+            parse_runtime_options(std::iter::empty())
+                .unwrap_or_else(|error| panic!("options: {error}"));
         assert!(arguments.is_empty());
         assert!(!options.opt_diagnostics);
-        assert!(!options.pass_allocation_diagnostics);
+        assert!(!allocation_diagnostics);
 
-        let (options, arguments) = parse_runtime_options(
+        let (options, allocation_diagnostics, arguments) = parse_runtime_options(
             ["--opt-diagnostics", "--script", "driver.lisp"]
                 .into_iter()
                 .map(str::to_owned),
         )
         .unwrap_or_else(|error| panic!("options: {error}"));
         assert!(options.opt_diagnostics);
-        assert!(options.pass_allocation_diagnostics);
+        assert!(allocation_diagnostics);
         assert_eq!(arguments, ["--script", "driver.lisp"]);
     }
 

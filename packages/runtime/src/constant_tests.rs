@@ -451,7 +451,10 @@ fn typed_runtime_errors_keep_their_display_and_incomplete_read_contract() {
     ));
 
     let map_error = RuntimeError::from(SafepointMapError::TruncatedHeader);
-    assert_eq!(map_error.to_string(), "safepoint map error: TruncatedHeader");
+    assert_eq!(
+        map_error.to_string(),
+        "safepoint map error: TruncatedHeader"
+    );
     assert!(matches!(
         map_error,
         RuntimeError::SafepointMap(SafepointMapError::TruncatedHeader)

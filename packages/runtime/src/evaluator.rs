@@ -250,20 +250,10 @@ impl crate::Runtime {
         })
     }
 
-    pub(crate) fn publish_native(
+    pub(crate) fn publish_native_with_entry<'a>(
         &mut self,
-        compiled: &mut [(&ncl_ir::Function, (CodePtr, CodeObjectMetadata))],
-    ) -> Result<(), RuntimeError> {
-        let Some((entry, rest)) = compiled.split_first_mut() else {
-            return Ok(());
-        };
-        self.publish_native_with_entry(entry, rest)
-    }
-
-    pub(crate) fn publish_native_with_entry(
-        &mut self,
-        entry: &mut (&ncl_ir::Function, (CodePtr, CodeObjectMetadata)),
-        rest: &mut [(&ncl_ir::Function, (CodePtr, CodeObjectMetadata))],
+        entry: &mut (&'a ncl_ir::Function, (CodePtr, CodeObjectMetadata)),
+        rest: &mut [(&'a ncl_ir::Function, (CodePtr, CodeObjectMetadata))],
     ) -> Result<(), RuntimeError> {
         let mut registered = 0;
         let publication = (|| -> Result<(), RuntimeError> {
@@ -289,11 +279,8 @@ impl crate::Runtime {
         })();
 
         if let Err(error) = publication {
-            for (_, (code, _)) in std::iter::once(&*entry)
-                .chain(rest.iter())
-                .take(registered)
-            {
-                self.context.thread_access().unregister_code(code);
+            for (_, (code, _)) in std::iter::once(&*entry).chain(rest.iter()).take(registered) {
+                let _ = self.context.thread_access().unregister_code(code);
             }
             return Err(error);
         }

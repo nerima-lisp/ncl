@@ -15,7 +15,10 @@ fn successful_multi_code_publication_publishes_code_and_activates_registry()
         (&second_function, (second, metadata("second-published", 8))),
     ];
 
-    runtime.publish_native(&mut batch)?;
+    let (entry, rest) = batch
+        .split_first_mut()
+        .ok_or_else(|| crate::RuntimeError::Native("publication test batch is empty".to_owned()))?;
+    runtime.publish_native_with_entry(entry, rest)?;
 
     for (_, (code, _)) in &batch {
         // check-added-lines: allow(panic) test-only assertions
@@ -103,8 +106,11 @@ fn sealing_failure_cleanup_preserves_symbol_function() -> Result<(), crate::Runt
             },
         ),
     )];
+    let (entry, rest) = published
+        .split_first_mut()
+        .ok_or_else(|| crate::RuntimeError::Native("publication test batch is empty".to_owned()))?;
     assert!(matches!(
-        runtime.publish_native(&mut published),
+        runtime.publish_native_with_entry(entry, rest),
         Err(crate::RuntimeError::Code(CodeError::AlreadySealed))
     ));
     assert!(
@@ -135,8 +141,11 @@ fn partial_registration_failure_removes_only_the_new_batch_entry() -> Result<(),
         (&function, (existing, metadata("duplicate", 8))),
     ];
 
+    let (entry, rest) = batch
+        .split_first_mut()
+        .ok_or_else(|| crate::RuntimeError::Native("publication test batch is empty".to_owned()))?;
     assert!(matches!(
-        runtime.publish_native(&mut batch),
+        runtime.publish_native_with_entry(entry, rest),
         Err(crate::RuntimeError::Code(CodeError::AlreadyRegistered))
     ));
     assert!(
@@ -170,8 +179,11 @@ fn multi_code_sealing_failure_removes_every_prepared_entry() -> Result<(), crate
         (&function, (already_sealed, metadata("already-sealed", 8))),
     ];
 
+    let (entry, rest) = batch
+        .split_first_mut()
+        .ok_or_else(|| crate::RuntimeError::Native("publication test batch is empty".to_owned()))?;
     assert!(matches!(
-        runtime.publish_native(&mut batch),
+        runtime.publish_native_with_entry(entry, rest),
         Err(crate::RuntimeError::Code(CodeError::AlreadySealed))
     ));
     for (_, (code, _)) in &batch {

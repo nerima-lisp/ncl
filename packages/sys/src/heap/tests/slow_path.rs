@@ -68,6 +68,31 @@ fn slow_path_budget_collects_minor_once_and_resets_other_mutator_debt() {
 }
 
 #[test]
+fn allocation_log_rollovers_do_not_collect_below_debt_threshold() {
+    let heap = Heap::new(HeapConfig {
+        bytes_considered_between_gcs: 1024 * 1024,
+        ..HeapConfig::default()
+    });
+    let mut thread = Thread::new();
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+    let mut root = Word::NIL;
+    let root_token = thread.push_root(&mut root);
+    let epoch = heap.gc_epoch();
+
+    for _ in 0..=(4096 * 3) {
+        let Ok(value) = heap.alloc_cons(&mut thread, Word::fixnum(73), Word::NIL) else {
+            panic!("cons allocation should succeed");
+        };
+        root = value;
+    }
+
+    assert_eq!(heap.gc_epoch(), epoch);
+    assert_eq!(heap.read_word(root, 0), Some(Word::fixnum(73)));
+    assert!(thread.pop_root(root_token));
+    heap.unregister_thread(&thread);
+}
+
+#[test]
 fn slow_path_cons_resolves_rooted_inputs_before_writing_the_new_cell() {
     let heap = Arc::new(Heap::new(HeapConfig {
         dynamic_space_size: 256,

@@ -71,6 +71,39 @@ fn make_typed_array(
     )
 }
 
+fn assert_large_mod_bounds(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+    let common_lisp = runtime
+        .find_package(ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let mut mod_name = ncl_object::Package::from_word(common_lisp)
+        .intern(ctx, runtime, "MOD")?
+        .0;
+    ncl_object::with_root(ctx, &mut mod_name, |ctx, mod_name| {
+        let mut modulus: Word = make_bignum_from_i128(ctx, runtime, 1_i128 << 70)?.into();
+        ncl_object::with_root(ctx, &mut modulus, |ctx, modulus| {
+            let mut below: Word = make_bignum_from_i128(ctx, runtime, 1_i128 << 69)?.into();
+            ncl_object::with_root(ctx, &mut below, |ctx, below| {
+                let mod_tail = make_cons(ctx, runtime, *modulus, Word::NIL)?;
+                let mod_type = make_cons(ctx, runtime, *mod_name, mod_tail)?;
+                ncl_object::with_roots(ctx, &[mod_type, *modulus, *below], |ctx, rooted| {
+                    // CLHS MOD types include non-negative integers strictly below the modulus.
+                    let array = make_typed_array(runtime, ctx, *rooted[0], *rooted[2])?;
+                    assert_eq!(
+                        ncl_arrays::array_element_type(ctx, array),
+                        Ok(ArrayElementType::Unsigned)
+                    );
+                    assert_eq!(array_row_major_ref(ctx, array, 0)?, *rooted[2]);
+                    assert_eq!(
+                        make_typed_array(runtime, ctx, *rooted[0], *rooted[1]),
+                        Err(ObjectError::TypeError)
+                    );
+                    Ok(())
+                })
+            })
+        })
+    })
+}
+
 fn assert_upgraded_element_type(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -119,6 +152,10 @@ fn assert_fill_pointer_vector_builtins(
     )?;
     assert_eq!(
         call(runtime, ctx, "ARRAY-HAS-FILL-POINTER-P", &[vector])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(runtime, ctx, "ADJUSTABLE-ARRAY-P", &[vector])?,
         Word::TRUE
     );
     assert_eq!(
@@ -323,6 +360,14 @@ fn assert_array_shape_queries(
     assert_eq!(call(runtime, ctx, "ARRAYP", &[array])?, Word::TRUE);
     assert_eq!(call(runtime, ctx, "ARRAYP", &[Word::fixnum(0)])?, Word::NIL);
     assert_eq!(call(runtime, ctx, "VECTORP", &[array])?, Word::NIL);
+    assert_eq!(
+        call(runtime, ctx, "ADJUSTABLE-ARRAY-P", &[array])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(runtime, ctx, "ARRAY-HAS-FILL-POINTER-P", &[array])?,
+        Word::NIL
+    );
     assert_eq!(call(runtime, ctx, "ARRAY-RANK", &[array])?, Word::fixnum(2));
     assert_eq!(
         call(runtime, ctx, "ARRAY-TOTAL-SIZE", &[array])?,
@@ -416,6 +461,10 @@ fn assert_array_accesses(
         Err(ObjectError::TypeError)
     );
     assert_eq!(
+        call(runtime, ctx, "ROW-MAJOR-AREF", &[array, Word::fixnum(-1)],),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
         call(runtime, ctx, "AREF", &[array, Word::fixnum(0)]),
         Err(ObjectError::TypeError)
     );
@@ -444,6 +493,19 @@ fn assert_array_accesses(
             "ARRAY-ROW-MAJOR-INDEX",
             &[array, Word::fixnum(2), Word::fixnum(0)],
         ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "ARRAY-ROW-MAJOR-INDEX",
+            &[array, Word::fixnum(-1), Word::fixnum(0)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call_ncl_ext(runtime, ctx, "AREF-SET", &[array]),
         Err(ObjectError::TypeError)
     );
     Ok(())
@@ -729,6 +791,14 @@ fn vector_builtins_cover_simple_and_bit_vectors() -> Result<(), ObjectError> {
         Word::TRUE
     );
     assert_eq!(
+        call(&runtime, &mut ctx, "ADJUSTABLE-ARRAY-P", &[vector])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-HAS-FILL-POINTER-P", &[vector])?,
+        Word::NIL
+    );
+    assert_eq!(
         call(&runtime, &mut ctx, "SIMPLE-BIT-VECTOR-P", &[vector])?,
         Word::NIL
     );
@@ -748,6 +818,10 @@ fn vector_builtins_cover_simple_and_bit_vectors() -> Result<(), ObjectError> {
     assert_eq!(
         call(&runtime, &mut ctx, "SVREF", &[vector, Word::fixnum(1)])?,
         Word::fixnum(6)
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "SVREF", &[vector, Word::fixnum(-1)]),
+        Err(ObjectError::TypeError)
     );
 
     let string = make_string(&mut ctx, &runtime, &['a', 'b'])?;
@@ -855,6 +929,7 @@ fn array_limits_are_bound_and_adjust_array_accepts_displacement_options() -> Res
     assert_eq!(array_row_major_ref(&ctx, adjusted, 0)?, Word::fixnum(9));
 
     assert_adjust_array_keyword_options(&runtime, &mut ctx)?;
+    assert_adjust_array_displacement_offset(&runtime, &mut ctx)?;
     Ok(())
 }
 
@@ -933,6 +1008,65 @@ fn assert_adjust_array_keyword_options(
         Err(ObjectError::TypeError)
     );
     Ok(())
+}
+
+fn assert_adjust_array_displacement_offset(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
+    let mut target = make_simple_vector(
+        ctx,
+        runtime,
+        &[Word::fixnum(3), Word::fixnum(5), Word::fixnum(7)],
+    )?;
+    ncl_object::with_root(ctx, &mut target, |ctx, target| {
+        let mut base = make_array(
+            ctx,
+            runtime,
+            &[1],
+            ArrayOptions {
+                element_type: ArrayElementType::T,
+                initial_element: Word::NIL,
+                adjustable: true,
+                fill_pointer: None,
+                displaced_to: None,
+                displaced_index_offset: 0,
+            },
+        )?;
+        ncl_object::with_root(ctx, &mut base, |ctx, base| {
+            let keyword_package = runtime
+                .find_package(ctx, "KEYWORD")
+                .ok_or(ObjectError::PackageConflict)?;
+            let displaced_to_key = ncl_object::Package::from_word(keyword_package)
+                .intern(ctx, runtime, "DISPLACED-TO")?
+                .0;
+            let offset_key = ncl_object::Package::from_word(keyword_package)
+                .intern(ctx, runtime, "DISPLACED-INDEX-OFFSET")?
+                .0;
+            let adjusted = call(
+                runtime,
+                ctx,
+                "ADJUST-ARRAY",
+                &[
+                    *base,
+                    Word::fixnum(2),
+                    displaced_to_key,
+                    *target,
+                    offset_key,
+                    Word::fixnum(1),
+                ],
+            )?;
+            // CLHS ARRAY-DISPLACEMENT returns the target and the displacement offset.
+            assert_eq!(
+                call(runtime, ctx, "ARRAY-DISPLACEMENT", &[adjusted])?,
+                *target
+            );
+            assert_eq!(ctx.values(), &[*target, Word::fixnum(1)]);
+            assert_eq!(array_row_major_ref(ctx, adjusted, 0)?, Word::fixnum(5));
+            assert_eq!(array_row_major_ref(ctx, adjusted, 1)?, Word::fixnum(7));
+            Ok(())
+        })
+    })
 }
 
 #[test]
@@ -1113,6 +1247,22 @@ fn make_array_specialized_types_without_initial_element_are_constructible()
         Err(ObjectError::TypeError)
     );
 
+    assert_large_mod_bounds(&runtime, &mut ctx)?;
+    Ok(())
+}
+
+fn assert_rank_zero_array_builtins(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    array: Word,
+) -> Result<(), ObjectError> {
+    assert_eq!(call(runtime, ctx, "ARRAY-DIMENSIONS", &[array])?, Word::NIL);
+    // CLHS AREF on a rank-zero array has no subscripts and addresses its sole element.
+    assert_eq!(
+        call(runtime, ctx, "ARRAY-ROW-MAJOR-INDEX", &[array])?,
+        Word::fixnum(0)
+    );
+    assert_eq!(call(runtime, ctx, "AREF", &[array])?, Word::fixnum(14));
     Ok(())
 }
 
@@ -1212,11 +1362,7 @@ fn make_array_accepts_ansi_element_type_designators_and_rank_zero() -> Result<()
     );
 
     let rank_zero = make_typed_array(&mut ctx, Word::NIL, unsigned_integer_type, Word::fixnum(14))?;
-    assert_eq!(
-        call(&runtime, &mut ctx, "ARRAY-DIMENSIONS", &[rank_zero])?,
-        Word::NIL
-    );
-    assert_eq!(array_row_major_ref(&ctx, rank_zero, 0)?, Word::fixnum(14));
+    assert_rank_zero_array_builtins(&runtime, &mut ctx, rank_zero)?;
     Ok(())
 }
 

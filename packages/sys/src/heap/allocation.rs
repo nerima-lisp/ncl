@@ -222,6 +222,23 @@ impl Heap {
             match self.allocate_fast(thread, kind, tag, words, true) {
                 Ok(TlabAttempt::Allocated(value)) => return Ok(value),
                 Ok(TlabAttempt::LogFull) => {
+                    let log_recycled = {
+                        let _state = self.lock_state();
+                        if self.pending_page_error.load(Ordering::Acquire)
+                            || thread.reconciled_allocation_count()
+                                != thread.pending_allocation_count()
+                        {
+                            false
+                        } else {
+                            // Keep the state lock until reset so another flush cannot mark the
+                            // old published count reconciled after this log wraps to zero.
+                            thread.reset_allocation_log();
+                            true
+                        }
+                    };
+                    if log_recycled {
+                        continue;
+                    }
                     if !minor_collected {
                         self.collect_for_allocation(thread, false)?;
                         minor_collected = true;

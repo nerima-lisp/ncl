@@ -93,6 +93,13 @@ fn register_all_registers_hash_arrays() {
             )
             .is_err()
     );
+
+    let context_runtime = Runtime::new().unwrap();
+    let mut unregistered_ctx = ThreadContext::new();
+    assert!(matches!(
+        ncl_stdlib::register_all(&mut unregistered_ctx, &context_runtime),
+        Err(ncl_object::ObjectError::TypeError)
+    ));
 }
 
 #[test]

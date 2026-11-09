@@ -1,115 +1,6 @@
 use super::*;
 use crate::Word;
 
-fn assert_invalid_sb_symbol_registrations(runtime: &Runtime, ctx: &mut ThreadContext) {
-    assert_eq!(
-        runtime.register_sb_symbol(
-            ctx,
-            BuiltinPackage::CommonLisp,
-            BuiltinPackage::SbDebug,
-            BuiltinName::new("CAR"),
-            false,
-        ),
-        Err(ObjectError::Unsupported)
-    );
-    assert_eq!(
-        runtime.register_sb_symbol(
-            ctx,
-            BuiltinPackage::NclTest,
-            BuiltinPackage::NclTest,
-            BuiltinName::new("R6-INVALID-TARGET"),
-            false,
-        ),
-        Err(ObjectError::Unsupported)
-    );
-    assert_eq!(
-        runtime.register_sb_symbol(
-            ctx,
-            BuiltinPackage::NclTest,
-            BuiltinPackage::SbDebug,
-            BuiltinName::new("R6-MISSING-SOURCE"),
-            false,
-        ),
-        Err(ObjectError::Unsupported)
-    );
-}
-
-fn assert_registered_sb_symbol_is_idempotent(
-    runtime: &Runtime,
-    ctx: &mut ThreadContext,
-    source: Word,
-) {
-    let _ = Package::from_word(source)
-        .intern(ctx, runtime, "R6-REGISTERED")
-        .unwrap_or_else(|error| panic!("intern registered source symbol: {error:?}"));
-    for external in [false, false, true, true] {
-        assert_eq!(
-            runtime.register_sb_symbol(
-                ctx,
-                BuiltinPackage::NclTest,
-                BuiltinPackage::SbDebug,
-                BuiltinName::new("R6-REGISTERED"),
-                external,
-            ),
-            Ok(())
-        );
-    }
-}
-
-fn assert_conflicting_sb_symbols_are_rejected(
-    runtime: &Runtime,
-    ctx: &mut ThreadContext,
-    source: Word,
-) {
-    let (conflict_source, _) = Package::from_word(source)
-        .intern(ctx, runtime, "R6-CONFLICT")
-        .unwrap_or_else(|error| panic!("intern conflict source symbol: {error:?}"));
-    let target = runtime
-        .ensure_package(ctx, BuiltinPackage::SbDebug.as_str())
-        .unwrap_or_else(|error| panic!("SB-DEBUG package: {error:?}"));
-    let (conflict_target, _) = Package::from_word(target)
-        .intern(ctx, runtime, "R6-CONFLICT")
-        .unwrap_or_else(|error| panic!("intern conflict target symbol: {error:?}"));
-    assert_ne!(conflict_source, conflict_target);
-    assert_eq!(
-        runtime.register_sb_symbol(
-            ctx,
-            BuiltinPackage::NclTest,
-            BuiltinPackage::SbDebug,
-            BuiltinName::new("R6-CONFLICT"),
-            false,
-        ),
-        Err(ObjectError::PackageConflict)
-    );
-}
-
-fn assert_homeless_sb_symbol_can_be_registered(
-    runtime: &Runtime,
-    ctx: &mut ThreadContext,
-    source: Word,
-) {
-    let (homeless, _) = Package::from_word(source)
-        .intern(ctx, runtime, "R6-HOMELESS")
-        .unwrap_or_else(|error| panic!("intern homeless symbol: {error:?}"));
-    crate::object_access::put(
-        ctx,
-        homeless,
-        crate::layout::symbol_offset::PACKAGE,
-        crate::Word::NIL,
-    )
-    .unwrap_or_else(|error| panic!("clear symbol home package: {error:?}"));
-    assert_eq!(
-        runtime.register_sb_symbol(
-            ctx,
-            BuiltinPackage::NclTest,
-            BuiltinPackage::SbDebug,
-            BuiltinName::new("R6-HOMELESS"),
-            true,
-        ),
-        Ok(())
-    );
-}
-
 fn assert_malformed_source_package_is_rejected(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -147,9 +38,5 @@ fn register_sb_symbol_propagates_malformed_source_package_error() {
         .ensure_package(&mut ctx, BuiltinPackage::NclTest.as_str())
         .unwrap_or_else(|error| panic!("NCL-TEST package: {error:?}"));
 
-    assert_invalid_sb_symbol_registrations(&runtime, &mut ctx);
-    assert_registered_sb_symbol_is_idempotent(&runtime, &mut ctx, source);
-    assert_conflicting_sb_symbols_are_rejected(&runtime, &mut ctx, source);
-    assert_homeless_sb_symbol_can_be_registered(&runtime, &mut ctx, source);
     assert_malformed_source_package_is_rejected(&runtime, &mut ctx, source);
 }

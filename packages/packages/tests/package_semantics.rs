@@ -22,6 +22,35 @@ fn string_text(ctx: &ThreadContext, value: Word) -> String {
         .collect()
 }
 
+fn assert_homeless_sb_symbol_can_be_registered(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    source: Word,
+) {
+    let (mut homeless, _) = Package::from_word(source)
+        .intern(ctx, runtime, "R6-HOMELESS")
+        .unwrap_or_else(|error| panic!("intern homeless symbol: {error:?}"));
+    let homeless_token = push_root(ctx, &mut homeless);
+    ncl_object::put(
+        ctx,
+        homeless,
+        ncl_object::layout::symbol_offset::PACKAGE,
+        Word::NIL,
+    )
+    .unwrap_or_else(|error| panic!("clear symbol home package: {error:?}"));
+    assert_eq!(
+        runtime.register_sb_symbol(
+            ctx,
+            BuiltinPackage::NclTest,
+            BuiltinPackage::SbDebug,
+            BuiltinName::new("R6-HOMELESS"),
+            true,
+        ),
+        Ok(())
+    );
+    assert!(pop_root(ctx, homeless_token));
+}
+
 #[test]
 fn package_documentation_round_trips() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -282,7 +311,25 @@ fn register_sb_symbol_honors_external_flag_and_rejects_invalid_inputs() {
         Package::from_word(target).find_symbol(&mut ctx, &runtime, name),
         Ok(Some((source_symbol, FindStatus::Internal)))
     );
+    for external in [false, false, true, true] {
+        assert_eq!(
+            runtime.register_sb_symbol(
+                &mut ctx,
+                BuiltinPackage::NclTest,
+                BuiltinPackage::SbDebug,
+                BuiltinName::new("R6-PRIVATE-SYMBOL"),
+                external,
+            ),
+            Ok(())
+        );
+    }
+    assert_eq!(
+        Package::from_word(target).find_symbol(&mut ctx, &runtime, name),
+        Ok(Some((source_symbol, FindStatus::External)))
+    );
     assert_eq!(symbol_package(&ctx, source_symbol), Ok(source));
+
+    assert_homeless_sb_symbol_can_be_registered(&runtime, &mut ctx, source);
 
     for (source_package, target_package, symbol_name) in [
         (
@@ -299,6 +346,17 @@ fn register_sb_symbol_honors_external_flag_and_rejects_invalid_inputs() {
             BuiltinPackage::NclTest,
             BuiltinPackage::SbDebug,
             "R6-ABSENT-SYMBOL",
+        ),
+        (BuiltinPackage::CommonLisp, BuiltinPackage::SbDebug, "CAR"),
+        (
+            BuiltinPackage::NclTest,
+            BuiltinPackage::NclTest,
+            "R6-INVALID-TARGET",
+        ),
+        (
+            BuiltinPackage::NclTest,
+            BuiltinPackage::SbDebug,
+            "R6-MISSING-SOURCE",
         ),
     ] {
         assert_eq!(
@@ -331,12 +389,13 @@ fn register_sb_symbol_rejects_distinct_target_symbol() {
     let target = runtime
         .ensure_package(&mut ctx, BuiltinPackage::SbDebug.as_str())
         .unwrap_or_else(|error| panic!("SB-DEBUG package: {error:?}"));
-    Package::from_word(source)
+    let (source_symbol, _) = Package::from_word(source)
         .intern(&mut ctx, &runtime, "R6-CONFLICTING-SYMBOL")
         .unwrap_or_else(|error| panic!("NCL-TEST intern: {error:?}"));
-    Package::from_word(target)
+    let (target_symbol, _) = Package::from_word(target)
         .intern(&mut ctx, &runtime, "R6-CONFLICTING-SYMBOL")
         .unwrap_or_else(|error| panic!("SB-DEBUG intern: {error:?}"));
+    assert_ne!(source_symbol, target_symbol);
 
     assert_eq!(
         runtime.register_sb_symbol(

@@ -319,6 +319,10 @@ fn maphash_accepts_function_designators_and_rejects_other_values() -> Result<(),
         .function(&mut ctx, "COMMON-LISP", "GETHASH")
         .ok_or(ObjectError::UndefinedFunction)?;
     assert_eq!(
+        call(&runtime, &mut ctx, "MAPHASH", &[gethash, Word::fixnum(0)]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
         call(&runtime, &mut ctx, "MAPHASH", &[gethash, table])?,
         Word::NIL
     );

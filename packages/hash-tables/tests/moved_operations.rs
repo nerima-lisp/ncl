@@ -19,6 +19,45 @@ fn setup() -> (Runtime, ThreadContext) {
     (runtime, context)
 }
 
+fn assert_hash_test_mode(
+    runtime: &Runtime,
+    context: &mut ThreadContext,
+    test: HashTest,
+    key: Word,
+    equal_key: Word,
+) {
+    let table = HashTable::new(context, runtime, test, Weakness::None)
+        .unwrap_or_else(|error| panic!("table: {error:?}"));
+    let view = WordView::from(classify_object(context, table.as_word()));
+    assert_eq!(HashTable::try_from_word_view(view), Ok(table));
+    let wrong_view = WordView::from(classify_object(context, Word::fixnum(17)));
+    assert!(matches!(
+        HashTable::try_from_word_view(wrong_view),
+        Err(error)
+            if error.datum == Word::fixnum(17)
+                && error.expected == ncl_object::ObjectType::HashTable
+    ));
+    assert_eq!(table.test(context), Ok(test));
+    assert_eq!(table.weakness(context), Ok(Weakness::None));
+    assert_eq!(table.count(context), Ok(0));
+    assert!(table.capacity(context).unwrap_or(0) >= 8);
+    assert!(table.insert(context, runtime, key, Word::fixnum(9)).is_ok());
+    assert_eq!(table.get(context, equal_key), Ok(Some(Word::fixnum(9))));
+    let mut entries = Vec::new();
+    assert!(
+        table
+            .for_each_entry(context, |stored_key, value| entries
+                .push((stored_key, value)))
+            .is_ok()
+    );
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        table.remove(context, runtime, equal_key),
+        Ok(Some(Word::fixnum(9)))
+    );
+    assert_eq!(table.remove(context, runtime, equal_key), Ok(None));
+}
+
 #[test]
 fn hash_modes_cover_numeric_string_cons_and_iteration_contracts() {
     let (runtime, mut context) = setup();
@@ -59,43 +98,7 @@ fn hash_modes_cover_numeric_string_cons_and_iteration_contracts() {
         (HashTest::Equal, ratio.into(), same_ratio.into()),
         (HashTest::Equalp, left, right),
     ] {
-        let table = HashTable::new(&mut context, &runtime, test, Weakness::None)
-            .unwrap_or_else(|error| panic!("table: {error:?}"));
-        let view = WordView::from(classify_object(&context, table.as_word()));
-        assert_eq!(HashTable::try_from_word_view(view), Ok(table));
-        let wrong_view = WordView::from(classify_object(&context, Word::fixnum(17)));
-        assert!(matches!(
-            HashTable::try_from_word_view(wrong_view),
-            Err(error)
-                if error.datum == Word::fixnum(17)
-                    && error.expected == ncl_object::ObjectType::HashTable
-        ));
-        assert_eq!(table.test(&context), Ok(test));
-        assert_eq!(table.weakness(&context), Ok(Weakness::None));
-        assert_eq!(table.count(&context), Ok(0));
-        assert!(table.capacity(&context).unwrap_or(0) >= 8);
-        assert!(
-            table
-                .insert(&mut context, &runtime, key, Word::fixnum(9))
-                .is_ok()
-        );
-        assert_eq!(
-            table.get(&mut context, equal_key),
-            Ok(Some(Word::fixnum(9)))
-        );
-        let mut entries = Vec::new();
-        assert!(
-            table
-                .for_each_entry(&context, |stored_key, value| entries
-                    .push((stored_key, value)))
-                .is_ok()
-        );
-        assert_eq!(entries.len(), 1);
-        assert_eq!(
-            table.remove(&mut context, &runtime, equal_key),
-            Ok(Some(Word::fixnum(9)))
-        );
-        assert_eq!(table.remove(&mut context, &runtime, equal_key), Ok(None));
+        assert_hash_test_mode(&runtime, &mut context, test, key, equal_key);
     }
     assert_eq!(bignum_sign(&context, negative), Ok(true));
     assert_eq!(bignum_limbs(&context, negative), Ok(vec![1, 1]));

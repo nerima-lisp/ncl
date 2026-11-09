@@ -48,6 +48,14 @@ fn assert_homeless_sb_symbol_can_be_registered(
         ),
         Ok(())
     );
+    let target = runtime
+        .find_package(ctx, BuiltinPackage::SbDebug.as_str())
+        .unwrap_or_else(|| panic!("SB-DEBUG package missing"));
+    assert_eq!(
+        symbol_package(ctx, homeless)
+            .unwrap_or_else(|error| panic!("homeless symbol home: {error:?}")),
+        target
+    );
     assert!(pop_root(ctx, homeless_token));
 }
 

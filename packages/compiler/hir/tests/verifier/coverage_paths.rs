@@ -8,8 +8,8 @@ use ncl_hir::cl_type::{
 };
 use ncl_hir::node::{LetBinding, LetKind, LocalFunctionDefinition, NodeKind};
 use ncl_hir::{
-    CompilationUnitId, FormId, HirDeclaration, HirQuality, Literal, OptimizationPolicy,
-    OptimizationSetting, ScopeMetadata, SymbolId, VerifyError,
+    CompilationUnitId, FormId, HirDeclaration, HirQuality, LambdaAux, LambdaSignature, Literal,
+    OptimizationPolicy, OptimizationSetting, ScopeMetadata, SymbolId, VerifyError,
 };
 
 #[test]
@@ -282,5 +282,96 @@ fn sequential_let_body_scope_must_include_its_bindings() -> Result<(), Box<dyn E
         hir.verify(&symbol_table(form, &["VARIABLE"])?),
         Err(VerifyError::InvalidBindingScopes(let_node))
     );
+    Ok(())
+}
+
+#[test]
+fn lambda_aux_without_an_initializer_verifies_as_a_nil_default() -> Result<(), Box<dyn Error>> {
+    let form = FormId::new(CompilationUnitId::new(51), 0);
+    let symbol = SymbolId::try_from_index(form.compilation_unit(), 0)?;
+    let mut builder = form_builder(form)?;
+    builder.register_symbol(symbol)?;
+    let root = builder.root_scope();
+    let body_scope = builder.bindings_mut().push_scope(root)?;
+    let binding = builder.bindings_mut().bind_variable(body_scope, symbol)?;
+    let lambda = builder.alloc_node(
+        root,
+        NodeKind::Lambda {
+            parameters: vec![binding],
+            body_scope,
+            body: Vec::new(),
+        },
+    )?;
+    builder.set_lambda_signature_for_lambda(
+        lambda,
+        LambdaSignature {
+            required: Vec::new(),
+            optional: Vec::new(),
+            rest: None,
+            keys: Vec::new(),
+            allow_other_keys: false,
+            aux: vec![LambdaAux {
+                binding,
+                default: None,
+                initializer_scope: root,
+            }],
+        },
+    )?;
+    builder.add_root(lambda)?;
+
+    let hir = builder.finish()?;
+    assert_eq!(hir.verify(&symbol_table(form, &["AUX"])?), Ok(()));
+    Ok(())
+}
+
+#[test]
+fn local_function_signature_search_skips_unrelated_nodes() -> Result<(), Box<dyn Error>> {
+    let form = FormId::new(CompilationUnitId::new(52), 0);
+    let function_name = SymbolId::try_from_index(form.compilation_unit(), 0)?;
+    let mut builder = form_builder(form)?;
+    builder.register_symbol(function_name)?;
+    let root = builder.root_scope();
+    let unrelated = builder.alloc_node(root, NodeKind::Literal(Literal::Nil))?;
+    let group = builder.bindings_mut().bind_local_functions(
+        root,
+        LocalFunctionKind::Flet,
+        &[function_name],
+    )?;
+    let definition = group
+        .definitions
+        .first()
+        .copied()
+        .ok_or("FLET definition is missing")?;
+    let local_functions = builder.alloc_node(
+        root,
+        NodeKind::LocalFunctions {
+            kind: LocalFunctionKind::Flet,
+            body_scope: group.body_scope,
+            definitions: vec![LocalFunctionDefinition {
+                binding: definition.binding,
+                definition_scope: definition.definition_scope,
+                parameters: Vec::new(),
+                body_scope: root,
+                body: Vec::new(),
+            }],
+            body: Vec::new(),
+        },
+    )?;
+    builder.set_lambda_signature_for_local_function(
+        definition.binding,
+        LambdaSignature {
+            required: Vec::new(),
+            optional: Vec::new(),
+            rest: None,
+            keys: Vec::new(),
+            allow_other_keys: false,
+            aux: Vec::new(),
+        },
+    )?;
+    builder.add_root(unrelated)?;
+    builder.add_root(local_functions)?;
+
+    let hir = builder.finish()?;
+    assert_eq!(hir.verify(&symbol_table(form, &["F"])?), Ok(()));
     Ok(())
 }

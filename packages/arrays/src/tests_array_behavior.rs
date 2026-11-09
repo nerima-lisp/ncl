@@ -85,6 +85,33 @@ fn multidimensional_displaced_and_adjusted_arrays_preserve_values() -> Result<()
     Ok(())
 }
 
+fn assert_adjust_array_preserves_fill_pointer(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
+    // CLHS ADJUST-ARRAY with a nil fill-pointer argument leaves the old pointer unchanged.
+    let vector = make_array(
+        ctx,
+        runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::fixnum(5),
+            adjustable: true,
+            fill_pointer: Some(1),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    let adjusted = adjust_array(ctx, runtime, vector, &[3], Word::fixnum(9))?;
+    assert_eq!(array_dimensions(ctx, adjusted)?, vec![3]);
+    assert_eq!(fill_pointer(ctx, adjusted), Ok(1));
+    assert_eq!(array_row_major_ref(ctx, adjusted, 0)?, Word::fixnum(5));
+    assert_eq!(array_row_major_ref(ctx, adjusted, 1)?, Word::fixnum(5));
+    assert_eq!(array_row_major_ref(ctx, adjusted, 2)?, Word::fixnum(9));
+    Ok(())
+}
+
 #[test]
 fn vector_push_pop_and_invalid_array_operations_return_values() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
@@ -184,5 +211,6 @@ fn vector_push_pop_and_invalid_array_operations_return_values() -> Result<(), Ob
         vector_push_extend(&mut ctx, &runtime, rank_zero, Word::fixnum(1), 1),
         Err(ObjectError::TypeError)
     );
+    assert_adjust_array_preserves_fill_pointer(&runtime, &mut ctx)?;
     Ok(())
 }

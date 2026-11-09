@@ -34,6 +34,26 @@ fn constant_object_aliases_survive_gc_stress_and_strict_forwarding() -> Result<(
     Ok(())
 }
 
+#[test]
+fn unavailable_function_entry_reports_its_function_id() -> Result<(), String> {
+    let mut runtime = Runtime::new().map_err(|error| format!("runtime: {error:?}"))?;
+    let mut function = constant_alias_function();
+    function.constants = vec![Constant::FunctionEntry(FunctionId(42))];
+
+    let result = runtime.make_constants(
+        &function,
+        &BTreeMap::new(),
+        &mut HashMap::new(),
+        &mut HashMap::new(),
+    );
+
+    assert!(matches!(
+        result,
+        Err(RuntimeError::Native(message)) if message == "function entry 42 is unavailable"
+    ));
+    Ok(())
+}
+
 fn constant_alias_function() -> Function {
     Function {
         id: FunctionId(0),

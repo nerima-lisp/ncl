@@ -10,6 +10,7 @@ use crate::{
         reference_words, simple_vector_offset, specialized_array_offset, stream_offset,
         structure_offset, symbol_offset, widetag,
     },
+    make_bignum_from_i128, make_string,
 };
 
 fn hash_table_layout() -> ncl_sys::ReferenceLayout {
@@ -52,6 +53,45 @@ fn gc_builtin(
 ) -> Result<Word, ObjectError> {
     ctx.collect(true)?;
     Ok(Word::NIL)
+}
+
+fn bytes_consed_since_gc_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    _args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let bytes = ctx.thread_access().bytes_cons_since_gc();
+    counter_word(
+        ctx,
+        runtime,
+        u128::try_from(bytes).map_err(|_| ObjectError::Layout)?,
+    )
+}
+
+fn gc_count_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    _args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let count = ctx.thread_access().heap_epoch();
+    counter_word(ctx, runtime, u128::from(count))
+}
+
+fn counter_word(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: u128,
+) -> Result<Word, ObjectError> {
+    const MAX_FIXNUM: u128 = (1_u128 << 62) - 1;
+    if value <= MAX_FIXNUM {
+        return Ok(Word::fixnum(
+            i64::try_from(value).map_err(|_| ObjectError::Layout)?,
+        ));
+    }
+    let integer = i128::try_from(value).map_err(|_| ObjectError::Layout)?;
+    Ok(make_bignum_from_i128(ctx, runtime, integer)?.into())
 }
 
 /// Register every header-object reference layout owned by ncl-object.
@@ -176,6 +216,8 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         "FINALIZE",
         "GC",
         "GENERATION-BYTES-ALLOCATED",
+        "BYTES-CONSED-SINCE-GC",
+        "GC-COUNT",
         "HASH-TABLE-WEAKNESS",
         "MAKE-WEAK-POINTER",
         "MAKE-WEAK-VECTOR",
@@ -185,6 +227,12 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
     ] {
         package.intern(ctx, runtime, name)?;
         runtime.define_function(ctx, "NCL-GC", name, Word::UNBOUND)?;
+    }
+    for name in std::iter::once("BYTES-CONSED-SINCE-GC").chain(std::iter::once("GC-COUNT")) {
+        let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+        if !package.export(ctx, runtime, name_word)? {
+            return Err(ObjectError::Layout);
+        }
     }
     let (weak_pointer, _) = package.intern(ctx, runtime, "WEAK-POINTER")?;
     runtime.define_class(ctx, "WEAK-POINTER", Word::UNBOUND)?;
@@ -197,6 +245,19 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ctx,
         BuiltinIdentifier::new(BuiltinPackage::NclGc, BuiltinName::new("GC")),
         BuiltinImplementation::direct(descriptor, gc_builtin),
+    )?;
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(
+            BuiltinPackage::NclGc,
+            BuiltinName::new("BYTES-CONSED-SINCE-GC"),
+        ),
+        BuiltinImplementation::direct(descriptor, bytes_consed_since_gc_builtin),
+    )?;
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::NclGc, BuiltinName::new("GC-COUNT")),
+        BuiltinImplementation::direct(descriptor, gc_count_builtin),
     )?;
     for name in SB_EXT_SYMBOLS {
         runtime.register_sb_symbol(
@@ -211,55 +272,5 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hash_table_and_package_layouts_use_header_inclusive_references() {
-        assert_eq!(
-            hash_table_layout().reference_words,
-            [
-                REHASH_SIZE + 1,
-                REHASH_THRESHOLD + 1,
-                MARKER + 1,
-                KV + 1,
-                INDEX + 1,
-            ]
-        );
-        assert_eq!(
-            package_layout().reference_words,
-            reference_words(&crate::package::reference_words())
-        );
-        assert!(
-            package_layout()
-                .reference_words
-                .contains(&(crate::package::DOCUMENTATION + 1))
-        );
-        assert_eq!(hash_table_layout().boxed_from, Some(MARKER + 1));
-        assert_eq!(package_layout().boxed_from, Some(crate::package::NAME + 1));
-    }
-
-    #[test]
-    fn gc_builtin_runs_a_full_collection() {
-        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        let mut ctx = crate::ThreadContext::new();
-        ctx.register(&runtime)
-            .unwrap_or_else(|error| panic!("register: {error:?}"));
-        register(&mut ctx, &runtime).unwrap_or_else(|error| panic!("NCL-GC register: {error:?}"));
-        let gc = runtime
-            .function(&mut ctx, "NCL-GC", "GC")
-            .and_then(|function| crate::FunctionObject::try_from(function).ok())
-            .unwrap_or_else(|| panic!("NCL-GC:GC builtin was not registered"));
-        let before = ncl_sys::heap_epoch(&ctx.thread);
-
-        runtime
-            .call_builtin(&mut ctx, gc, &[])
-            .unwrap_or_else(|error| panic!("NCL-GC:GC failed: {error:?}"));
-
-        let after = ncl_sys::heap_epoch(&ctx.thread);
-        assert!(
-            after > before,
-            "NCL-GC:GC did not advance the collection epoch"
-        );
-    }
-}
+#[path = "../tests/support/gc.rs"]
+mod tests;

@@ -44,6 +44,7 @@ use support::{NativeInvocation, RuntimeMacroCaller};
 #[derive(Debug)]
 pub struct Runtime {
     options: RuntimeOptions,
+    pub(crate) pass_runner: Option<optimization::StoredPassRunner>,
     context: ThreadContext,
     evaluator: EvaluatorService,
 
@@ -96,6 +97,7 @@ impl Runtime {
         let entry_codes = evaluator.clone();
         Ok(Self {
             options,
+            pass_runner: None,
             context,
             evaluator,
             #[cfg(test)]
@@ -190,7 +192,13 @@ impl Runtime {
                 .chain(lowered.nested)
                 .collect(),
         };
-        optimization::verify_and_optimize(&mut module, self.options)?;
+        let options = self.options;
+        let mut default_runner = optimization::default_pass_runner(options);
+        let pass_runner: &mut optimization::PassRunner = match self.pass_runner.as_mut() {
+            Some(runner) => runner.0.as_mut(),
+            None => &mut default_runner,
+        };
+        optimization::verify_and_optimize(&mut module, options, pass_runner)?;
         module.functions.sort_by_key(|function| function.id);
         let (entry, nested_functions) = module.functions.split_first().ok_or_else(|| {
             RuntimeError::Native("optimization removed entry function".to_owned())
@@ -377,6 +385,9 @@ impl Drop for Runtime {
         self.evaluator.clear_roots(&mut self.context);
     }
 }
+#[cfg(test)]
+#[path = "tests/condition_conversion.rs"]
+mod condition_conversion_tests;
 #[cfg(test)]
 mod tests_runtime;
 #[cfg(test)]

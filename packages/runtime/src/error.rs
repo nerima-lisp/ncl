@@ -73,6 +73,13 @@ impl std::fmt::Display for RuntimeError {
     }
 }
 impl std::error::Error for RuntimeError {}
+
+impl From<ncl_opt::PassError> for RuntimeError {
+    fn from(value: ncl_opt::PassError) -> Self {
+        Self::Native(value.to_string())
+    }
+}
+
 impl RuntimeError {
     /// Returns whether reading can continue after receiving more input.
     #[must_use]
@@ -121,5 +128,23 @@ impl From<ncl_compiler_front::FrontError> for RuntimeError {
 impl From<ncl_compiler_front::LowerError> for RuntimeError {
     fn from(value: ncl_compiler_front::LowerError) -> Self {
         Self::Lower(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RuntimeError;
+
+    #[test]
+    fn optimizer_pass_errors_keep_the_pass_name_and_detail() {
+        let error = ncl_opt::PassError {
+            pass: "SCCP".to_owned(),
+            message: "invalid input".to_owned(),
+        };
+
+        assert_eq!(
+            RuntimeError::from(error).to_string(),
+            "native error: pass SCCP failed: invalid input"
+        );
     }
 }

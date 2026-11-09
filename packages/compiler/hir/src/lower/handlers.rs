@@ -246,15 +246,19 @@ impl FunctionLowerer<'_> {
                     return Self::unsupported(node, "non-local-exit-outside-lowered-tagbody");
                 };
                 let _ = self.exit_value(values)?;
+                let value = self.word_constant(Constant::Nil)?;
                 self.run_cleanups(node, cleanups)?;
                 if !self.is_terminated() {
                     self.close_handlers_since(active_depth)?;
+                    if self.is_tagbody_backedge(block) {
+                        self.push_none(OpKind::Safepoint)?;
+                    }
                     self.terminate(IrTerminator::Jump {
                         target,
                         args: Vec::new(),
                     })?;
                 }
-                self.word_constant(Constant::Nil)
+                Ok(value)
             }
             ExitTarget::Dynamic(tag) => {
                 let tag = self.node(tag)?;

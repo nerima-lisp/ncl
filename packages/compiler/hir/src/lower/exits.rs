@@ -241,7 +241,7 @@ impl FunctionLowerer<'_> {
         Ok(value)
     }
 
-    fn is_tagbody_backedge(&self, target: BlockId) -> bool {
+    pub(super) fn is_tagbody_backedge(&self, target: BlockId) -> bool {
         self.hir_block.is_some_and(|source| {
             self.dominance_contexts
                 .last()

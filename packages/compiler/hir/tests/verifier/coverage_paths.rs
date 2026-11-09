@@ -1,13 +1,15 @@
 use std::error::Error;
 
 use super::{form_builder, symbol_table};
+use ncl_hir::binding::LocalFunctionKind;
 use ncl_hir::cl_type::{
     ArrayDimensions, ArrayType, BuiltinType, FunctionParameters, FunctionType, MemberValue,
     OpaqueOperand,
 };
+use ncl_hir::node::{LetBinding, LetKind, LocalFunctionDefinition, NodeKind};
 use ncl_hir::{
     CompilationUnitId, FormId, HirDeclaration, HirQuality, Literal, OptimizationPolicy,
-    OptimizationSetting, ScopeMetadata, SymbolId,
+    OptimizationSetting, ScopeMetadata, SymbolId, VerifyError,
 };
 
 #[test]
@@ -152,6 +154,133 @@ fn declaration_variants_preserve_symbols_types_and_opaque_operands() -> Result<(
             ],
         )?),
         Ok(())
+    );
+    Ok(())
+}
+
+#[test]
+fn sequence_body_forms_may_use_a_descendant_scope() -> Result<(), Box<dyn Error>> {
+    let form = FormId::new(CompilationUnitId::new(47), 0);
+    let mut builder = form_builder(form)?;
+    let root = builder.root_scope();
+    let body_scope = builder.bindings_mut().push_scope(root)?;
+    let value = builder.alloc_node(body_scope, NodeKind::Literal(Literal::Nil))?;
+    builder.alloc_node(
+        root,
+        NodeKind::Sequence {
+            body_scope,
+            forms: vec![value],
+        },
+    )?;
+
+    let hir = builder.finish()?;
+    assert_eq!(hir.verify(&symbol_table(form, &[])?), Ok(()));
+    Ok(())
+}
+
+#[test]
+fn local_function_parameters_require_a_distinct_body_scope() -> Result<(), Box<dyn Error>> {
+    let form = FormId::new(CompilationUnitId::new(48), 0);
+    let function_symbol = SymbolId::try_from_index(form.compilation_unit(), 0)?;
+    let parameter_symbol = SymbolId::try_from_index(form.compilation_unit(), 1)?;
+    let mut builder = form_builder(form)?;
+    builder.register_symbol(function_symbol)?;
+    builder.register_symbol(parameter_symbol)?;
+    let root = builder.root_scope();
+    let body_scope = builder.bindings_mut().push_scope(root)?;
+    let function = builder
+        .bindings_mut()
+        .bind_function(body_scope, function_symbol)?;
+    let parameter = builder
+        .bindings_mut()
+        .bind_variable(root, parameter_symbol)?;
+    let local_functions = builder.alloc_node(
+        root,
+        NodeKind::LocalFunctions {
+            kind: LocalFunctionKind::Flet,
+            body_scope,
+            definitions: vec![LocalFunctionDefinition {
+                binding: function,
+                definition_scope: root,
+                parameters: vec![parameter],
+                body_scope: root,
+                body: Vec::new(),
+            }],
+            body: Vec::new(),
+        },
+    )?;
+
+    let hir = builder.finish()?;
+    assert_eq!(
+        hir.verify(&symbol_table(form, &["FUNCTION", "PARAMETER"])?),
+        Err(VerifyError::InvalidBindingScopes(local_functions))
+    );
+    Ok(())
+}
+
+#[test]
+fn parallel_let_initializer_scope_must_match_its_parent() -> Result<(), Box<dyn Error>> {
+    let form = FormId::new(CompilationUnitId::new(49), 0);
+    let symbol = SymbolId::try_from_index(form.compilation_unit(), 0)?;
+    let mut builder = form_builder(form)?;
+    builder.register_symbol(symbol)?;
+    let root = builder.root_scope();
+    let wrong_initializer_scope = builder.bindings_mut().push_scope(root)?;
+    let body_scope = builder.bindings_mut().push_scope(root)?;
+    let variable = builder.bindings_mut().bind_variable(body_scope, symbol)?;
+    let let_node = builder.alloc_node(
+        root,
+        NodeKind::Let {
+            kind: LetKind::Parallel,
+            bindings: vec![LetBinding {
+                binding: variable,
+                initializer: None,
+            }],
+            initializer_scopes: vec![wrong_initializer_scope],
+            binding_scopes: vec![body_scope],
+            body_scope,
+            body: Vec::new(),
+        },
+    )?;
+
+    let hir = builder.finish()?;
+    assert_eq!(
+        hir.verify(&symbol_table(form, &["VARIABLE"])?),
+        Err(VerifyError::InvalidBindingScopes(let_node))
+    );
+    Ok(())
+}
+
+#[test]
+fn sequential_let_body_scope_must_include_its_bindings() -> Result<(), Box<dyn Error>> {
+    let form = FormId::new(CompilationUnitId::new(50), 0);
+    let symbol = SymbolId::try_from_index(form.compilation_unit(), 0)?;
+    let mut builder = form_builder(form)?;
+    builder.register_symbol(symbol)?;
+    let root = builder.root_scope();
+    let binding_scope = builder.bindings_mut().push_scope(root)?;
+    let variable = builder
+        .bindings_mut()
+        .bind_variable(binding_scope, symbol)?;
+    let let_node = builder.alloc_node(
+        root,
+        NodeKind::Let {
+            kind: LetKind::Sequential,
+            bindings: vec![LetBinding {
+                binding: variable,
+                initializer: None,
+            }],
+            initializer_scopes: vec![root],
+            binding_scopes: vec![binding_scope],
+            body_scope: root,
+            body: Vec::new(),
+        },
+    )?;
+
+    let hir = builder.finish()?;
+    assert_eq!(
+        hir.verify(&symbol_table(form, &["VARIABLE"])?),
+        Err(VerifyError::InvalidBindingScopes(let_node))
     );
     Ok(())
 }

@@ -606,6 +606,16 @@ fn equal_tables_match_string_contents_and_equalp_folds_case() {
             HashTable::from_word(table_word).get(&mut ctx, right),
             Ok(Some(Word::fixnum(7)))
         );
+        assert!(
+            HashTable::from_word(table_word)
+                .insert(&mut ctx, &runtime, right, Word::fixnum(8))
+                .is_ok()
+        );
+        assert_eq!(HashTable::from_word(table_word).count(&ctx), Ok(1));
+        assert_eq!(
+            HashTable::from_word(table_word).get(&mut ctx, left),
+            Ok(Some(Word::fixnum(8)))
+        );
         assert!(ncl_object::pop_root(&mut ctx, token));
     }
 }

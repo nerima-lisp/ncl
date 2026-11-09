@@ -47,11 +47,27 @@ fn assert_insert_remove_clear(
     );
     call(runtime, ctx, "GETHASH", &[key, table])?;
     assert_eq!(ctx.values(), &[value, Word::TRUE]);
+    let replacement = Word::fixnum(43);
+    assert_eq!(
+        runtime.call_builtin(
+            ctx,
+            FunctionObject::try_from(gethash_set).map_err(|_| ObjectError::TypeError)?,
+            &[key, table, replacement],
+        )?,
+        replacement
+    );
+    assert_eq!(
+        call(runtime, ctx, "HASH-TABLE-COUNT", &[table])?,
+        Word::fixnum(1)
+    );
+    call(runtime, ctx, "GETHASH", &[key, table])?;
+    assert_eq!(ctx.values(), &[replacement, Word::TRUE]);
     assert_eq!(call(runtime, ctx, "REMHASH", &[key, table])?, Word::TRUE);
     assert_eq!(
         call(runtime, ctx, "HASH-TABLE-COUNT", &[table])?,
         Word::fixnum(0)
     );
+    assert_eq!(call(runtime, ctx, "REMHASH", &[key, table])?, Word::NIL);
 
     let inserted_entries = [
         (Word::fixnum(8), Word::fixnum(80)),
@@ -220,6 +236,30 @@ fn hash_table_test_reports_equalp_and_weakness_semantics() -> Result<(), ObjectE
     assert_eq!(gethash, value);
     assert_eq!(ctx.values(), &[value, Word::TRUE]);
 
+    let mut gethash_set = runtime
+        .function(&mut ctx, "NCL-EXT", "GETHASH-SET")
+        .ok_or(ObjectError::UndefinedFunction)?;
+    let gethash_set_token = push_root(&mut ctx, &mut gethash_set);
+    let replacement = Word::fixnum(84);
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            FunctionObject::try_from(gethash_set).map_err(|_| ObjectError::TypeError)?,
+            &[lookup_key, table, replacement],
+        )?,
+        replacement
+    );
+    assert_eq!(HashTable::from_word(table).count(&ctx)?, 1);
+    assert_eq!(HashTable::from_word(table).weakness(&ctx)?, Weakness::Key);
+    let gethash = runtime.call_builtin(
+        &mut ctx,
+        FunctionObject::try_from(gethash_function).map_err(|_| ObjectError::TypeError)?,
+        &[lookup_key, table],
+    )?;
+    assert_eq!(gethash, replacement);
+    assert_eq!(ctx.values(), &[replacement, Word::TRUE]);
+
+    assert!(pop_root(&mut ctx, gethash_set_token));
     assert!(pop_root(&mut ctx, gethash_function_token));
     assert!(pop_root(&mut ctx, test_function_token));
     assert!(pop_root(&mut ctx, lookup_key_token));
@@ -251,6 +291,11 @@ fn maphash_accepts_function_designators_and_rejects_other_values() -> Result<(),
     assert_eq!(
         call(&runtime, &mut ctx, "MAPHASH", &[gethash, table])?,
         Word::NIL
+    );
+    HashTable::from_word(table).insert(&mut ctx, &runtime, Word::fixnum(2), Word::fixnum(0))?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "MAPHASH", &[gethash, table]),
+        Err(ObjectError::TypeError)
     );
     Ok(())
 }

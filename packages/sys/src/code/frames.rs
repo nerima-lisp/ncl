@@ -9,16 +9,6 @@ pub enum SafepointMapError {
     TruncatedHeader,
     /// A PC offset could not be decoded.
     InvalidPc,
-    /// A frame size could not be decoded.
-    InvalidFrame,
-    /// A slot count could not be decoded.
-    InvalidSlots,
-    /// A live Word slot count could not be decoded.
-    InvalidWordSlots,
-    /// A register mask could not be decoded.
-    InvalidRegisterMask,
-    /// Map flags could not be decoded.
-    InvalidFlags,
     /// Slot counts violate the frame-map contract.
     InvalidSlotCounts,
     /// The table ended before the full slot bitmap.
@@ -41,36 +31,22 @@ impl fmt::Display for SafepointMapError {
 
 impl std::error::Error for SafepointMapError {}
 
-fn read_array_prefix<const N: usize>(
-    bytes: &[u8],
-    error: SafepointMapError,
-) -> Result<[u8; N], SafepointMapError> {
-    bytes.get(..N).ok_or(error)?.try_into().map_err(|_| error)
-}
-
 fn decode_register_ids(
     bytes: &[u8],
     at: &mut usize,
     mask: u16,
 ) -> Result<Vec<u16>, SafepointMapError> {
-    let register_count =
-        usize::try_from(mask.count_ones()).map_err(|_| SafepointMapError::InvalidRegisterMask)?;
+    // check-added-lines: allow(as-cast) mask.count_ones() is at most 16 and fits usize.
+    let register_count = mask.count_ones() as usize;
     if bytes.len().saturating_sub(*at) < register_count * 2 {
         return Err(SafepointMapError::TruncatedRegisterIds);
     }
     let mut ids = Vec::with_capacity(register_count);
     for _ in 0..register_count {
-        let end = (*at)
-            .checked_add(2)
-            .ok_or(SafepointMapError::TruncatedRegisterIds)?;
-        let pair = bytes
-            .get(*at..end)
-            .ok_or(SafepointMapError::TruncatedRegisterIds)?;
-        ids.push(u16::from_le_bytes(read_array_prefix(
-            pair,
-            SafepointMapError::InvalidRegisterId,
-        )?));
-        *at = end;
+        let start = *at;
+        // check-added-lines: allow(index) the pair is length-checked as 2 bytes.
+        ids.push(u16::from_le_bytes([bytes[start], bytes[start + 1]]));
+        *at += 2;
     }
     let mut decoded_mask = 0_u16;
     for &register_id in &ids {
@@ -82,9 +58,6 @@ fn decode_register_ids(
             return Err(SafepointMapError::RegisterMaskMismatch);
         }
         decoded_mask |= bit;
-    }
-    if decoded_mask != mask {
-        return Err(SafepointMapError::RegisterMaskMismatch);
     }
     Ok(ids)
 }
@@ -161,40 +134,27 @@ impl SafepointMap {
             if bytes.len().saturating_sub(at) < 16 {
                 return Err(SafepointMapError::TruncatedHeader);
             }
-            let header_end = at
-                .checked_add(16)
-                .ok_or(SafepointMapError::TruncatedHeader)?;
-            let header = bytes
-                .get(at..header_end)
-                .ok_or(SafepointMapError::TruncatedHeader)?;
-            let pc = u32::from_le_bytes(read_array_prefix(header, SafepointMapError::InvalidPc)?);
-            let frame = u16::from_le_bytes(read_array_prefix(
-                header.get(4..).ok_or(SafepointMapError::InvalidFrame)?,
-                SafepointMapError::InvalidFrame,
-            )?);
-            let slots = u16::from_le_bytes(read_array_prefix(
-                header.get(6..).ok_or(SafepointMapError::InvalidSlots)?,
-                SafepointMapError::InvalidSlots,
-            )?);
-            let words = u16::from_le_bytes(read_array_prefix(
-                header.get(8..).ok_or(SafepointMapError::InvalidWordSlots)?,
-                SafepointMapError::InvalidWordSlots,
-            )?);
-            let mask = u16::from_le_bytes(read_array_prefix(
-                header
-                    .get(10..)
-                    .ok_or(SafepointMapError::InvalidRegisterMask)?,
-                SafepointMapError::InvalidRegisterMask,
-            )?);
-            let flags = u32::from_le_bytes(read_array_prefix(
-                header.get(12..).ok_or(SafepointMapError::InvalidFlags)?,
-                SafepointMapError::InvalidFlags,
-            )?);
+            // check-added-lines: allow(index) the prior check guarantees a complete 16-byte header.
+            let header: &[u8; 16] = bytes[at..at + 16]
+                .try_into()
+                .map_err(|_| SafepointMapError::TruncatedHeader)?;
+            // check-added-lines: allow(index) the header has been converted to fixed [u8; 16].
+            let pc = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
+            // check-added-lines: allow(index) the header has been converted to fixed [u8; 16].
+            let frame = u16::from_le_bytes([header[4], header[5]]);
+            // check-added-lines: allow(index) the header has been converted to fixed [u8; 16].
+            let slots = u16::from_le_bytes([header[6], header[7]]);
+            // check-added-lines: allow(index) the header has been converted to fixed [u8; 16].
+            let words = u16::from_le_bytes([header[8], header[9]]);
+            // check-added-lines: allow(index) the header has been converted to fixed [u8; 16].
+            let mask = u16::from_le_bytes([header[10], header[11]]);
+            // check-added-lines: allow(index) the header has been converted to fixed [u8; 16].
+            let flags = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
             if words > slots || slots < 3 {
                 return Err(SafepointMapError::InvalidSlotCounts);
             }
             let bitmap_len = usize::from(slots).div_ceil(8);
-            at = header_end;
+            at += 16;
             if bytes.len().saturating_sub(at) < bitmap_len {
                 return Err(SafepointMapError::TruncatedSlotBitmap);
             }

@@ -25,6 +25,69 @@ fn assert_invalid_make_hash_table_option(
     );
 }
 
+fn assert_bignum_options_forward_and_rehash(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    size_key: Word,
+    rehash_size_key: Word,
+    threshold_key: Word,
+    make_hash_table: Word,
+) -> Result<(), ObjectError> {
+    let mut size_key = size_key;
+    let size_key_token = push_root(ctx, &mut size_key);
+    let mut rehash_size_key = rehash_size_key;
+    let rehash_size_key_token = push_root(ctx, &mut rehash_size_key);
+    let mut threshold_key = threshold_key;
+    let threshold_key_token = push_root(ctx, &mut threshold_key);
+    let mut make_hash_table = make_hash_table;
+    let make_hash_table_token = push_root(ctx, &mut make_hash_table);
+
+    let mut size: Word = make_bignum_from_i128(ctx, runtime, 9)?.into();
+    let size_token = push_root(ctx, &mut size);
+    let mut rehash_size: Word = make_bignum_from_i128(ctx, runtime, 3)?.into();
+    let rehash_size_token = push_root(ctx, &mut rehash_size);
+    let mut threshold: Word = make_bignum_from_i128(ctx, runtime, 1)?.into();
+    let threshold_token = push_root(ctx, &mut threshold);
+    let mut table = runtime.call_builtin(
+        ctx,
+        FunctionObject::try_from(make_hash_table).map_err(|_| ObjectError::TypeError)?,
+        &[
+            size_key,
+            size,
+            rehash_size_key,
+            rehash_size,
+            threshold_key,
+            threshold,
+        ],
+    )?;
+    let table_token = push_root(ctx, &mut table);
+    assert_eq!(HashTable::from_word(table).capacity(ctx)?, 16);
+    assert_eq!(HashTable::from_word(table).rehash_size(ctx)?, rehash_size);
+    assert_eq!(
+        HashTable::from_word(table).rehash_threshold(ctx)?,
+        threshold
+    );
+    for index in 0..17 {
+        HashTable::from_word(table).insert(
+            ctx,
+            runtime,
+            Word::fixnum(index),
+            Word::fixnum(index + 100),
+        )?;
+    }
+    assert_eq!(HashTable::from_word(table).capacity(ctx)?, 32);
+
+    assert!(pop_root(ctx, table_token));
+    assert!(pop_root(ctx, threshold_token));
+    assert!(pop_root(ctx, rehash_size_token));
+    assert!(pop_root(ctx, size_token));
+    assert!(pop_root(ctx, make_hash_table_token));
+    assert!(pop_root(ctx, threshold_key_token));
+    assert!(pop_root(ctx, rehash_size_key_token));
+    assert!(pop_root(ctx, size_key_token));
+    Ok(())
+}
+
 #[test]
 fn make_hash_table_accepts_size_and_rehash_options() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
@@ -134,7 +197,7 @@ fn make_hash_table_accepts_function_test_designator() -> Result<(), ObjectError>
         call(&runtime, &mut ctx, "HASH-TABLE-TEST", &[table])?,
         equal_symbol
     );
-    let symbol_test_names = ["EQ", "EQL", "EQUALP"];
+    let symbol_test_names = ["EQ", "EQL", "EQUAL", "EQUALP"];
     for name in symbol_test_names {
         let symbol = Package::from_word(common_lisp)
             .intern(&mut ctx, &runtime, name)?
@@ -232,6 +295,14 @@ fn hash_table_options_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
             < f64::EPSILON
     );
 
+    assert_bignum_options_forward_and_rehash(
+        &runtime,
+        &mut ctx,
+        size_key,
+        rehash_size_key,
+        threshold_key,
+        make_hash_table,
+    )?;
     assert!(pop_root(&mut ctx, table_token));
     assert!(pop_root(&mut ctx, make_hash_table_token));
     assert!(pop_root(&mut ctx, threshold_token));

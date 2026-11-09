@@ -450,11 +450,11 @@ fn typed_runtime_errors_keep_their_display_and_incomplete_read_contract() {
         RuntimeError::Code(CodeError::OutOfBounds)
     ));
 
-    let map_error = RuntimeError::from(SafepointMapError::InvalidPc);
-    assert_eq!(map_error.to_string(), "safepoint map error: InvalidPc");
+    let map_error = RuntimeError::from(SafepointMapError::TruncatedHeader);
+    assert_eq!(map_error.to_string(), "safepoint map error: TruncatedHeader");
     assert!(matches!(
         map_error,
-        RuntimeError::SafepointMap(SafepointMapError::InvalidPc)
+        RuntimeError::SafepointMap(SafepointMapError::TruncatedHeader)
     ));
 
     assert!(RuntimeError::Read(ncl_reader::ReadError::UnexpectedEof).is_incomplete_read());

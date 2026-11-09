@@ -46,7 +46,7 @@ fn code_and_safepoint_errors_become_load_conditions() -> Result<(), String> {
             false,
             &mut values,
             Err(FileLoadError::Runtime(RuntimeError::SafepointMap(
-                SafepointMapError::InvalidPc,
+                SafepointMapError::TruncatedHeader,
             ))),
         ),
         Err(ObjectError::TypeError)

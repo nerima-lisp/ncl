@@ -192,14 +192,21 @@ impl Runtime {
         };
         optimization::verify_and_optimize(&mut module, self.options)?;
         module.functions.sort_by_key(|function| function.id);
-        let entry = module.functions.first().cloned().ok_or_else(|| {
+        let (entry, nested_functions) = module.functions.split_first().ok_or_else(|| {
             RuntimeError::Native("optimization removed entry function".to_owned())
         })?;
-        let mut compiled = Vec::with_capacity(module.functions.len());
-        for function in &module.functions {
+        let entry_native = self.compile_native(entry)?;
+        let mut compiled = Vec::with_capacity(nested_functions.len());
+        for function in nested_functions {
             compiled.push((function, self.compile_native(function)?));
         }
         let mut pending_functions = BTreeMap::new();
+        pending_functions.insert(
+            entry.id.0,
+            PublishedFunction {
+                entry: entry_native.entry_address()?,
+            },
+        );
         for (function, native) in &compiled {
             pending_functions.insert(
                 function.id.0,
@@ -210,9 +217,9 @@ impl Runtime {
         }
         let mut uninterned_symbols = HashMap::new();
         let mut literal_objects = HashMap::new();
-        let mut pending_entry_codes = Vec::with_capacity(compiled.len());
-        let mut function_roots = Vec::with_capacity(compiled.len());
-        for (function, native) in compiled.iter().skip(1) {
+        let mut pending_entry_codes = Vec::with_capacity(module.functions.len());
+        let mut function_roots = Vec::with_capacity(module.functions.len());
+        for (function, native) in &compiled {
             let entry = native.entry_address()?;
             let (function_object, entry_code) = self.make_function_object(
                 function,
@@ -224,28 +231,22 @@ impl Runtime {
             function_roots.push(function_object);
             pending_entry_codes.push((entry, entry_code));
         }
-        let (entry_function, entry_address, entry_constants) = {
-            let native = &compiled
-                .first()
-                .ok_or_else(|| RuntimeError::Native("compiled module is empty".to_owned()))?
-                .1;
-            let (entry_function, entry_constants) = self.make_function_object(
-                &entry,
-                native,
-                &pending_functions,
-                &mut uninterned_symbols,
-                &mut literal_objects,
-            )?;
-            let entry_function_word = entry_function.get();
-            function_roots.push(entry_function);
-            let entry_address = native.entry_address()?;
-            (entry_function_word, entry_address, entry_constants)
-        };
+        let (entry_function, entry_constants) = self.make_function_object(
+            entry,
+            &entry_native,
+            &pending_functions,
+            &mut uninterned_symbols,
+            &mut literal_objects,
+        )?;
+        let entry_function_word = entry_function.get();
+        function_roots.push(entry_function);
+        let entry_address = entry_native.entry_address()?;
+        let mut published_entry = (entry, entry_native.into_metadata()?);
         let mut published = compiled
             .into_iter()
             .map(|(function, native)| native.into_metadata().map(|metadata| (function, metadata)))
             .collect::<Result<Vec<_>, _>>()?;
-        self.publish_native(&mut published)?;
+        self.publish_native_with_entry(&mut published_entry, &mut published)?;
         self.evaluator
             .state
             .functions
@@ -261,11 +262,12 @@ impl Runtime {
             self.evaluator
                 .root_entry_code(&mut self.context, entry, code.get());
         }
-        let (entry_code, entry_metadata) = &published
-            .first()
-            .ok_or_else(|| RuntimeError::Native("compiled module is empty".to_owned()))?
-            .1;
-        let result = self.invoke_compiled(entry_code, entry_metadata, entry_function);
+        let result = self.invoke_compiled(
+            &published_entry.1.0,
+            &published_entry.1.1,
+            entry_function_word,
+        );
+        self.evaluator.push_code(published_entry.1.0);
         for (_, (code, _)) in published {
             self.evaluator.push_code(code);
         }

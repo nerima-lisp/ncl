@@ -7,8 +7,6 @@ use std::fmt;
 pub enum SafepointMapError {
     /// The table ended before a complete fixed-size header.
     TruncatedHeader,
-    /// A PC offset could not be decoded.
-    InvalidPc,
     /// Slot counts violate the frame-map contract.
     InvalidSlotCounts,
     /// The table ended before the full slot bitmap.

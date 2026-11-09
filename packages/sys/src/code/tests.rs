@@ -11,7 +11,6 @@ fn code_lifecycle_and_write_bounds() {
     assert_eq!(code.write_code(3, &[5, 6]), Err(CodeError::OutOfBounds));
     assert!(publish_code(&mut code).is_ok());
     assert!(code.is_published());
-    assert_eq!(code.entry(), code.address());
     assert_eq!(code.write_code(0, &[1]), Err(CodeError::AlreadyPublished));
 }
 
@@ -46,7 +45,7 @@ fn code_allocation_boundaries_and_metadata_accessors() {
     );
     assert_eq!(code.write_code(0, &[7]), Ok(()));
     assert_eq!(code.as_slice(), &[7]);
-    assert_eq!(code.entry(), 0);
+    assert!(!code.is_published());
     assert!(publish_code(&mut code).is_ok());
     assert_eq!(activate_code_registry(&code), Ok(()));
     assert!(registry.find(code.address()).is_some());

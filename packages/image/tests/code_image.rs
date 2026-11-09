@@ -31,7 +31,6 @@ fn published_code_executes_after_a_load() {
     ctx.register(&runtime).unwrap();
     let loaded = load(&bytes, &runtime, &mut ctx).unwrap();
     assert_eq!(loaded.code.len(), 1);
-    assert_eq!(loaded.code[0].entry(), loaded.code[0].address());
 
     let (value, count) = ctx
         .thread_access()

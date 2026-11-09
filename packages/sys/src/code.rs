@@ -1,7 +1,7 @@
 use crate::os::declarations;
 use core::ptr::NonNull;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 #[path = "code/arena.rs"]
 mod arena;
 use arena::{CodeArena, allocate};
@@ -72,9 +72,8 @@ pub struct CodePtr {
     #[cfg(not(target_os = "macos"))]
     mapping_len: usize,
     _arena: Arc<CodeArena>,
-    published: AtomicBool,
+    published: bool,
     registry_state: Arc<AtomicU8>,
-    entry: AtomicUsize,
     sealed: bool,
     cache_synchronized: bool,
 }
@@ -97,8 +96,9 @@ impl CodePtr {
     ///
     /// Returns an error for a published allocation or an out-of-bounds range.
     pub fn write_code(&mut self, offset: usize, bytes: &[u8]) -> Result<(), CodeError> {
-        if self.is_published() || self.sealed {
-            return Err(if self.is_published() {
+        let is_published = self.is_published();
+        if is_published || self.sealed {
+            return Err(if is_published {
                 CodeError::AlreadyPublished
             } else {
                 CodeError::AlreadySealed
@@ -144,13 +144,8 @@ impl CodePtr {
     }
     /// Whether this allocation has been published.
     #[must_use]
-    pub fn is_published(&self) -> bool {
-        self.published.load(Ordering::Acquire)
-    }
-    /// Load the published entry address with acquire ordering.
-    #[must_use]
-    pub fn entry(&self) -> usize {
-        self.entry.load(Ordering::Acquire)
+    pub const fn is_published(&self) -> bool {
+        self.published
     }
     pub(super) fn prepare_registry(&self) -> Result<Arc<AtomicU8>, CodeError> {
         self.registry_state
@@ -182,9 +177,8 @@ pub fn alloc_code(bytes: usize) -> Result<CodePtr, CodeError> {
         #[cfg(not(target_os = "macos"))]
         mapping_len: extent.len,
         _arena: extent.arena,
-        published: AtomicBool::new(false),
+        published: false,
         registry_state: Arc::new(AtomicU8::new(REGISTRY_UNREGISTERED)),
-        entry: AtomicUsize::new(0),
         sealed: false,
         cache_synchronized: false,
     })

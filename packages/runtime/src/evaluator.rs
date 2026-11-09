@@ -254,44 +254,50 @@ impl crate::Runtime {
         &mut self,
         compiled: &mut [(&ncl_ir::Function, (CodePtr, CodeObjectMetadata))],
     ) -> Result<(), RuntimeError> {
+        let Some((entry, rest)) = compiled.split_first_mut() else {
+            return Ok(());
+        };
+        self.publish_native_with_entry(entry, rest)
+    }
+
+    pub(crate) fn publish_native_with_entry(
+        &mut self,
+        entry: &mut (&ncl_ir::Function, (CodePtr, CodeObjectMetadata)),
+        rest: &mut [(&ncl_ir::Function, (CodePtr, CodeObjectMetadata))],
+    ) -> Result<(), RuntimeError> {
         let mut registered = 0;
         let publication = (|| -> Result<(), RuntimeError> {
-            for (_, (code, metadata)) in compiled.iter() {
+            for (_, (code, metadata)) in std::iter::once(&*entry).chain(rest.iter()) {
                 self.context
                     .thread_access()
                     .register_code(code, metadata.clone())?;
                 registered += 1;
             }
-            for (_, (code, _)) in compiled.iter_mut() {
+            for (_, (code, _)) in std::iter::once(&mut *entry).chain(rest.iter_mut()) {
                 seal_code(code)?;
             }
-            for (_, (code, _)) in compiled.iter_mut() {
+            for (_, (code, _)) in std::iter::once(&mut *entry).chain(rest.iter_mut()) {
                 synchronize_code(code)?;
             }
-            for (_, (code, _)) in compiled.iter_mut() {
+            for (_, (code, _)) in std::iter::once(&mut *entry).chain(rest.iter_mut()) {
                 activate_code(code)?;
             }
-            for (_, (code, _)) in compiled.iter() {
+            for (_, (code, _)) in std::iter::once(&*entry).chain(rest.iter()) {
                 activate_code_registry(code)?;
             }
             Ok(())
         })();
 
         if let Err(error) = publication {
-            self.unregister_native_metadata(compiled, registered);
+            for (_, (code, _)) in std::iter::once(&*entry)
+                .chain(rest.iter())
+                .take(registered)
+            {
+                self.context.thread_access().unregister_code(code);
+            }
             return Err(error);
         }
         Ok(())
-    }
-
-    fn unregister_native_metadata(
-        &mut self,
-        compiled: &[(&ncl_ir::Function, (CodePtr, CodeObjectMetadata))],
-        count: usize,
-    ) {
-        for (_, (code, _)) in compiled.iter().take(count) {
-            self.context.thread_access().unregister_code(code);
-        }
     }
 
     pub(crate) fn with_evaluator_access<T>(

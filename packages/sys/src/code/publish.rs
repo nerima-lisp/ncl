@@ -65,7 +65,11 @@ impl CodePtr {
     }
 
     #[cfg(target_arch = "x86_64")]
-    const fn synchronize_cache(&mut self) -> Result<(), CodeError> {
+    #[expect(
+        clippy::missing_const_for_fn,
+        reason = "keep cache synchronization non-const across targets"
+    )]
+    fn synchronize_cache(&mut self) -> Result<(), CodeError> {
         match self.validate_cache_synchronization() {
             Ok(()) => {}
             Err(error) => return Err(error),
@@ -93,7 +97,7 @@ impl CodePtr {
         Ok(())
     }
 
-    fn activate(&self) -> Result<(), CodeError> {
+    const fn activate(&mut self) -> Result<(), CodeError> {
         if self.is_published() {
             return Err(CodeError::AlreadyPublished);
         }
@@ -103,8 +107,7 @@ impl CodePtr {
         if !self.cache_synchronized {
             return Err(CodeError::CacheNotSynchronized);
         }
-        self.entry.store(self.address(), Ordering::Release);
-        self.published.store(true, Ordering::Release);
+        self.published = true;
         Ok(())
     }
 }
@@ -173,7 +176,7 @@ pub fn seal_code(code: &mut CodePtr) -> Result<(), CodeError> {
 /// # Errors
 /// Returns an error when the range is not sealed or cache synchronization cannot be performed.
 #[cfg(target_arch = "x86_64")]
-pub const fn synchronize_code(code: &mut CodePtr) -> Result<(), CodeError> {
+pub fn synchronize_code(code: &mut CodePtr) -> Result<(), CodeError> {
     code.synchronize_cache()
 }
 

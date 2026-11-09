@@ -59,6 +59,54 @@ fn assert_homeless_sb_symbol_can_be_registered(
     assert!(pop_root(ctx, homeless_token));
 }
 
+fn assert_inherited_sb_symbol_is_imported(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    mut source: Word,
+    mut target: Word,
+) {
+    let source_token = push_root(ctx, &mut source);
+    let target_token = push_root(ctx, &mut target);
+    let mut name = string(ctx, runtime, "R6-INHERITED-SYMBOL");
+    let name_token = push_root(ctx, &mut name);
+    let (mut symbol, _) = Package::from_word(source)
+        .intern(ctx, runtime, "R6-INHERITED-SYMBOL")
+        .unwrap_or_else(|error| panic!("source intern: {error:?}"));
+    let symbol_token = push_root(ctx, &mut symbol);
+
+    assert_eq!(
+        Package::from_word(source).export(ctx, runtime, name),
+        Ok(true)
+    );
+    assert_eq!(
+        Package::from_word(target).use_package(ctx, runtime, source),
+        Ok(true)
+    );
+    assert_eq!(
+        Package::from_word(target).find_symbol(ctx, runtime, name),
+        Ok(Some((symbol, FindStatus::Inherited)))
+    );
+    runtime
+        .register_sb_symbol(
+            ctx,
+            BuiltinPackage::NclTest,
+            BuiltinPackage::SbDebug,
+            BuiltinName::new("R6-INHERITED-SYMBOL"),
+            false,
+        )
+        .unwrap_or_else(|error| panic!("inherited SB import: {error:?}"));
+    assert_eq!(
+        Package::from_word(target).find_symbol(ctx, runtime, name),
+        Ok(Some((symbol, FindStatus::Internal)))
+    );
+    assert_eq!(symbol_package(ctx, symbol), Ok(source));
+
+    assert!(pop_root(ctx, symbol_token));
+    assert!(pop_root(ctx, name_token));
+    assert!(pop_root(ctx, target_token));
+    assert!(pop_root(ctx, source_token));
+}
+
 #[test]
 fn package_documentation_round_trips() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -339,36 +387,7 @@ fn register_sb_symbol_honors_external_flag_and_rejects_invalid_inputs() {
 
     assert_homeless_sb_symbol_can_be_registered(&runtime, &mut ctx, source);
 
-    let inherited_name = string(&mut ctx, &runtime, "R6-INHERITED-SYMBOL");
-    let (inherited_symbol, _) = Package::from_word(source)
-        .intern(&mut ctx, &runtime, "R6-INHERITED-SYMBOL")
-        .unwrap_or_else(|error| panic!("source intern: {error:?}"));
-    assert_eq!(
-        Package::from_word(source).export(&mut ctx, &runtime, inherited_name),
-        Ok(true)
-    );
-    assert_eq!(
-        Package::from_word(target).use_package(&mut ctx, &runtime, source),
-        Ok(true)
-    );
-    assert_eq!(
-        Package::from_word(target).find_symbol(&mut ctx, &runtime, inherited_name),
-        Ok(Some((inherited_symbol, FindStatus::Inherited)))
-    );
-    runtime
-        .register_sb_symbol(
-            &mut ctx,
-            BuiltinPackage::NclTest,
-            BuiltinPackage::SbDebug,
-            BuiltinName::new("R6-INHERITED-SYMBOL"),
-            false,
-        )
-        .unwrap_or_else(|error| panic!("inherited SB import: {error:?}"));
-    assert_eq!(
-        Package::from_word(target).find_symbol(&mut ctx, &runtime, inherited_name),
-        Ok(Some((inherited_symbol, FindStatus::Internal)))
-    );
-    assert_eq!(symbol_package(&ctx, inherited_symbol), Ok(source));
+    assert_inherited_sb_symbol_is_imported(&runtime, &mut ctx, source, target);
 
     for (source_package, target_package, symbol_name) in [
         (

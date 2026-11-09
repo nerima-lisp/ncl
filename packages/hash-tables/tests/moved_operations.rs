@@ -225,7 +225,10 @@ fn assert_malformed_metadata(runtime: &Runtime, context: &mut ThreadContext) {
     for slot in 0..capacity {
         assert!(ncl_object::simple_vector_set(context, index, slot, Word::TRUE).is_ok());
     }
-    assert_eq!(indexed.get(context, Word::fixnum(1)), Err(ObjectError::Layout));
+    assert_eq!(
+        indexed.get(context, Word::fixnum(1)),
+        Err(ObjectError::Layout)
+    );
     assert_eq!(
         indexed.for_each_entry(context, |_, _| {}),
         Err(ObjectError::Layout)
@@ -233,7 +236,10 @@ fn assert_malformed_metadata(runtime: &Runtime, context: &mut ThreadContext) {
     for slot in 0..capacity {
         assert!(ncl_object::simple_vector_set(context, index, slot, Word::fixnum(-3)).is_ok());
     }
-    assert_eq!(indexed.get(context, Word::fixnum(1)), Err(ObjectError::Layout));
+    assert_eq!(
+        indexed.get(context, Word::fixnum(1)),
+        Err(ObjectError::Layout)
+    );
     assert_eq!(
         indexed.insert(context, runtime, Word::fixnum(1), Word::TRUE),
         Err(ObjectError::Layout)

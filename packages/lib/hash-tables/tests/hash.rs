@@ -131,9 +131,15 @@ fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError
 
     // CLHS 18.2 GETHASH uses present-p to distinguish a stored NIL from absence.
     HashTable::from_word(table).insert(&mut ctx, &runtime, key, Word::NIL)?;
-    assert_eq!(call(&runtime, &mut ctx, "GETHASH", &[key, table])?, Word::NIL);
+    assert_eq!(
+        call(&runtime, &mut ctx, "GETHASH", &[key, table])?,
+        Word::NIL
+    );
     assert_eq!(ctx.values(), &[Word::NIL, Word::TRUE]);
-    assert_eq!(call(&runtime, &mut ctx, "REMHASH", &[key, table])?, Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "REMHASH", &[key, table])?,
+        Word::TRUE
+    );
 
     let sxhash = call(&runtime, &mut ctx, "SXHASH", &[key])?;
     let mask = u64::try_from(i64::MAX).map_err(|_| ObjectError::Layout)?;

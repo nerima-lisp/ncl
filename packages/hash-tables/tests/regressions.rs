@@ -216,6 +216,17 @@ fn equal_falls_back_to_eql_for_fixnums_and_symbols() {
     );
     assert_eq!(table.get(&mut ctx, second_symbol), Ok(None));
     assert_eq!(table.count(&ctx), Ok(2));
+
+    // CLHS EQL distinguishes unequal fixnums even when they share a probe slot.
+    let eql = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("EQL table allocation failed: {error:?}"));
+    let [first_key, second_key, _] = colliding_fixnums();
+    assert!(
+        eql.insert(&mut ctx, &runtime, first_key, Word::fixnum(3))
+            .is_ok()
+    );
+    assert_eq!(eql.get(&mut ctx, second_key), Ok(None));
+    assert_eq!(eql.count(&ctx), Ok(1));
 }
 
 #[test]

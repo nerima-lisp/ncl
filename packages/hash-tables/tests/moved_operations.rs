@@ -118,6 +118,23 @@ fn hash_modes_cover_numeric_string_cons_and_iteration_contracts() {
             .unwrap_or_else(|error| panic!("table: {error:?}"));
         assert_eq!(table.weakness(&context), Ok(weakness));
     }
+
+    // CLHS EQUAL compares strings by contents and recursively compares conses.
+    let equal_table = HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)
+        .unwrap_or_else(|error| panic!("EQUAL table: {error:?}"));
+    let equal_copy = make_cons(&mut context, &runtime, lower, Word::fixnum(4))
+        .unwrap_or_else(|error| panic!("cons: {error:?}"));
+    assert!(
+        equal_table
+            .insert(&mut context, &runtime, left, Word::fixnum(11))
+            .is_ok()
+    );
+    assert_eq!(
+        equal_table.get(&mut context, equal_copy),
+        Ok(Some(Word::fixnum(11)))
+    );
+    assert_eq!(equal_table.get(&mut context, right), Ok(None));
+    assert_eq!(equal_table.count(&context), Ok(1));
 }
 
 fn new_options(
@@ -306,6 +323,17 @@ fn assert_capacity_options(runtime: &Runtime, context: &mut ThreadContext) {
     )
     .unwrap_or_else(|error| panic!("configured table: {error:?}"));
     assert_eq!(configured.capacity(context), Ok(16));
+
+    let ratio_threshold = new_options(context, runtime, Word::fixnum(8), None, Some(half.into()))
+        .unwrap_or_else(|error| panic!("ratio-threshold table: {error:?}"));
+    for key in 0..5_i64 {
+        ratio_threshold
+            .insert(context, runtime, Word::fixnum(key), Word::fixnum(key))
+            .unwrap_or_else(|error| panic!("insert {key}: {error:?}"));
+    }
+    assert_eq!(ratio_threshold.count(context), Ok(5));
+    assert_eq!(ratio_threshold.capacity(context), Ok(16));
+
     let mut double_rehash = make_double(context, runtime, 1.5)
         .unwrap_or_else(|error| panic!("double: {error:?}"))
         .as_word();
@@ -542,6 +570,13 @@ fn assert_full_index_probe(runtime: &Runtime, context: &mut ThreadContext) {
         full.insert(context, runtime, Word::fixnum(101), Word::TRUE),
         Err(ObjectError::Layout)
     );
+    assert!(ncl_object::simple_vector_set(context, index, 0, Word::fixnum(-2)).is_ok());
+    assert!(
+        full.insert(context, runtime, Word::fixnum(101), Word::TRUE)
+            .is_ok()
+    );
+    assert_eq!(full.get(context, Word::fixnum(101)), Ok(Some(Word::TRUE)));
+    assert_eq!(full.count(context), Ok(2));
 }
 
 fn assert_recursive_equal_key(runtime: &Runtime, context: &mut ThreadContext) {

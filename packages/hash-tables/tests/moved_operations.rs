@@ -211,6 +211,33 @@ fn assert_malformed_metadata(runtime: &Runtime, context: &mut ThreadContext) {
         ncl_object::simple_vector_ref(context, Word::NIL, 0),
         Err(ObjectError::TypeError)
     );
+
+    let indexed = HashTable::new(context, runtime, HashTest::Eq, Weakness::None)
+        .unwrap_or_else(|error| panic!("table: {error:?}"));
+    let index = ncl_object::get(
+        context,
+        indexed.as_word(),
+        ncl_object::widetag::HASH_TABLE,
+        12,
+    )
+    .unwrap_or(Word::NIL);
+    let capacity = ncl_object::simple_vector_length(context, index).unwrap_or(0);
+    for slot in 0..capacity {
+        assert!(ncl_object::simple_vector_set(context, index, slot, Word::TRUE).is_ok());
+    }
+    assert_eq!(indexed.get(context, Word::fixnum(1)), Err(ObjectError::Layout));
+    assert_eq!(
+        indexed.for_each_entry(context, |_, _| {}),
+        Err(ObjectError::Layout)
+    );
+    for slot in 0..capacity {
+        assert!(ncl_object::simple_vector_set(context, index, slot, Word::fixnum(-3)).is_ok());
+    }
+    assert_eq!(indexed.get(context, Word::fixnum(1)), Err(ObjectError::Layout));
+    assert_eq!(
+        indexed.insert(context, runtime, Word::fixnum(1), Word::TRUE),
+        Err(ObjectError::Layout)
+    );
 }
 
 fn assert_capacity_options(runtime: &Runtime, context: &mut ThreadContext) {

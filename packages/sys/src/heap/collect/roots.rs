@@ -39,7 +39,6 @@ impl super::super::Heap {
                 (*thread).reset_allocation_log();
             }
         }
-        state.rebuild_object_starts();
     }
 
     pub(super) fn snapshot_roots(state: &super::super::State) -> RootSnapshot {

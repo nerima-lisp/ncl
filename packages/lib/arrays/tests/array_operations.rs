@@ -863,7 +863,7 @@ fn assert_adjust_array_keyword_options(
     ctx: &mut ThreadContext,
 ) -> Result<(), ObjectError> {
     let keyword_package = runtime
-        .find_package(&ctx, "KEYWORD")
+        .find_package(ctx, "KEYWORD")
         .ok_or(ObjectError::PackageConflict)?;
     let keyword = |ctx: &mut ThreadContext, name: &str| {
         ncl_object::Package::from_word(keyword_package)

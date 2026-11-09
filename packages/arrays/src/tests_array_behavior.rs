@@ -46,6 +46,16 @@ fn multidimensional_displaced_and_adjusted_arrays_preserve_values() -> Result<()
     assert_eq!(array_row_major_ref(&ctx, adjusted, 4)?, Word::fixnum(7));
     assert_eq!(array_row_major_ref(&ctx, adjusted, 5)?, Word::fixnum(7));
 
+    // CLHS ADJUST-ARRAY preserves old elements that remain in bounds.
+    let reduced = adjust_array(&mut ctx, &runtime, adjusted, &[1, 2], Word::fixnum(6))?;
+    assert_eq!(array_dimensions(&ctx, reduced)?, vec![1, 2]);
+    assert_eq!(array_row_major_ref(&ctx, reduced, 0)?, Word::fixnum(0));
+    assert_eq!(array_row_major_ref(&ctx, reduced, 1)?, Word::fixnum(0));
+    assert_eq!(
+        array_row_major_ref(&ctx, reduced, 2),
+        Err(ObjectError::TypeError)
+    );
+
     let target = make_simple_vector(
         &mut ctx,
         &runtime,

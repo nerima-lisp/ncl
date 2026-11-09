@@ -482,6 +482,29 @@ fn assert_fill_pointer_operations(runtime: &Runtime, context: &mut ThreadContext
         Err(ObjectError::TypeError)
     );
 
+    let mut overflow_vector = make_array(
+        context,
+        runtime,
+        &[1],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: true,
+            fill_pointer: Some(1),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )
+    .unwrap_or_else(|error| panic!("overflow vector: {error:?}"));
+    let (_, grown) = vector_push_extend(context, runtime, overflow_vector, Word::fixnum(2), 1)
+        .unwrap_or_else(|error| panic!("initial overflow-vector extension: {error:?}"));
+    overflow_vector = grown;
+    // Growth beyond the representable dimensions must report a layout error.
+    assert_eq!(
+        vector_push_extend(context, runtime, overflow_vector, Word::fixnum(3), usize::MAX),
+        Err(ObjectError::Layout)
+    );
+
     let fixed = make_array(
         context,
         runtime,

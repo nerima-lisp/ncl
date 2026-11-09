@@ -197,6 +197,7 @@ pub fn lower_op(
                 OpKind::LoadField { field, .. } => field.saturating_add(1).saturating_mul(8),
                 _ => 0,
             };
+            // LoadField has no object-layout type here, so this deliberately overmatches other slot-1 loads.
             let is_function_cell = matches!(
                 &op.kind,
                 OpKind::LoadField { field, .. }

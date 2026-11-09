@@ -481,6 +481,113 @@ fn assert_bit_destination_and_shape_errors(
     Ok(())
 }
 
+fn assert_specialized_bit_vector_access(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
+    let bits = make_specialized_array(
+        ctx,
+        runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(0), Word::fixnum(1)],
+    )?;
+    assert_eq!(
+        call(runtime, ctx, "SBIT", &[bits, Word::fixnum(0)])?,
+        Word::fixnum(0)
+    );
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "SBIT",
+            &[bits, Word::fixnum(0), Word::fixnum(1)],
+        )?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(runtime, ctx, "SBIT", &[bits, Word::fixnum(0)])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(runtime, ctx, "BIT", &[bits, Word::fixnum(1)])?,
+        Word::fixnum(1)
+    );
+    assert_eq!(
+        call(runtime, ctx, "BIT", &[bits, Word::fixnum(2)]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "SBIT",
+            &[bits, Word::fixnum(0), Word::fixnum(2)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
+fn assert_general_bit_vector_access(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
+    let general_bits = make_array(
+        ctx,
+        runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::Bit,
+            initial_element: Word::fixnum(0),
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    assert_eq!(
+        call(runtime, ctx, "SIMPLE-BIT-VECTOR-P", &[general_bits])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            runtime,
+            ctx,
+            "SBIT",
+            &[general_bits, Word::fixnum(1), Word::fixnum(1)],
+        )?,
+        Word::fixnum(1)
+    );
+    assert_eq!(array_row_major_ref(ctx, general_bits, 1)?, Word::fixnum(1));
+
+    let adjustable_bits = make_array(
+        ctx,
+        runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::Bit,
+            initial_element: Word::fixnum(0),
+            adjustable: true,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    assert_eq!(
+        call(runtime, ctx, "SIMPLE-BIT-VECTOR-P", &[adjustable_bits])?,
+        Word::NIL
+    );
+    assert_eq!(
+        call(runtime, ctx, "BIT-VECTOR-P", &[adjustable_bits])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(runtime, ctx, "SBIT", &[adjustable_bits, Word::fixnum(0)],),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}
+
 #[test]
 fn vector_builtins_cover_simple_and_bit_vectors() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = setup()?;
@@ -644,111 +751,8 @@ fn array_strides_displacement_and_sbit_setter_are_consistent() -> Result<(), Obj
     array_row_major_set(&mut ctx, array, 5, Word::fixnum(42))?;
     assert_array_accesses(&runtime, &mut ctx, array)?;
     assert_array_shape_queries(&runtime, &mut ctx, array)?;
-
-    let bits = make_specialized_array(
-        &mut ctx,
-        &runtime,
-        ArrayElementType::Bit,
-        &[Word::fixnum(0), Word::fixnum(1)],
-    )?;
-    assert_eq!(
-        call(&runtime, &mut ctx, "SBIT", &[bits, Word::fixnum(0)])?,
-        Word::fixnum(0)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "SBIT",
-            &[bits, Word::fixnum(0), Word::fixnum(1)],
-        )?,
-        Word::fixnum(1)
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "SBIT", &[bits, Word::fixnum(0)])?,
-        Word::fixnum(1)
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "BIT", &[bits, Word::fixnum(1)])?,
-        Word::fixnum(1)
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "BIT", &[bits, Word::fixnum(2)]),
-        Err(ObjectError::TypeError)
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "SBIT",
-            &[bits, Word::fixnum(0), Word::fixnum(2)],
-        ),
-        Err(ObjectError::TypeError)
-    );
-
-    let general_bits = make_array(
-        &mut ctx,
-        &runtime,
-        &[2],
-        ArrayOptions {
-            element_type: ArrayElementType::Bit,
-            initial_element: Word::fixnum(0),
-            adjustable: false,
-            fill_pointer: None,
-            displaced_to: None,
-            displaced_index_offset: 0,
-        },
-    )?;
-    assert_eq!(
-        call(&runtime, &mut ctx, "SIMPLE-BIT-VECTOR-P", &[general_bits],)?,
-        Word::TRUE
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "SBIT",
-            &[general_bits, Word::fixnum(1), Word::fixnum(1)],
-        )?,
-        Word::fixnum(1)
-    );
-    assert_eq!(array_row_major_ref(&ctx, general_bits, 1)?, Word::fixnum(1));
-
-    let adjustable_bits = make_array(
-        &mut ctx,
-        &runtime,
-        &[2],
-        ArrayOptions {
-            element_type: ArrayElementType::Bit,
-            initial_element: Word::fixnum(0),
-            adjustable: true,
-            fill_pointer: None,
-            displaced_to: None,
-            displaced_index_offset: 0,
-        },
-    )?;
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "SIMPLE-BIT-VECTOR-P",
-            &[adjustable_bits],
-        )?,
-        Word::NIL
-    );
-    assert_eq!(
-        call(&runtime, &mut ctx, "BIT-VECTOR-P", &[adjustable_bits])?,
-        Word::TRUE
-    );
-    assert_eq!(
-        call(
-            &runtime,
-            &mut ctx,
-            "SBIT",
-            &[adjustable_bits, Word::fixnum(0)],
-        ),
-        Err(ObjectError::TypeError)
-    );
+    assert_specialized_bit_vector_access(&runtime, &mut ctx)?;
+    assert_general_bit_vector_access(&runtime, &mut ctx)?;
     Ok(())
 }
 

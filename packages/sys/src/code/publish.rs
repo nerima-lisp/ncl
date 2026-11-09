@@ -8,7 +8,7 @@ const PROT_READ: i32 = 1;
 const PROT_EXEC: i32 = 4;
 
 impl CodePtr {
-    fn activate_registry(&self) -> Result<(), CodeError> {
+    pub(super) fn activate_registry(&self) -> Result<(), CodeError> {
         if !self.is_published() {
             return Err(CodeError::NotPublished);
         }
@@ -193,7 +193,7 @@ pub fn synchronize_code(code: &mut CodePtr) -> Result<(), CodeError> {
 ///
 /// # Errors
 /// Returns an error when sealing or cache synchronization has not completed.
-pub fn activate_code(code: &mut CodePtr) -> Result<(), CodeError> {
+pub const fn activate_code(code: &mut CodePtr) -> Result<(), CodeError> {
     code.activate()
 }
 

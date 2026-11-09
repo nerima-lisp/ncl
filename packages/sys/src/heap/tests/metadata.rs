@@ -1,5 +1,24 @@
 use super::*;
 
+fn assert_object_start_metadata_is_consistent(heap: &Heap) {
+    let state = heap.lock_state();
+    for (page_index, page) in state.pages.iter().enumerate() {
+        assert!(
+            page.object_starts
+                .windows(2)
+                .all(|pair| pair[0].0 < pair[1].0),
+            "page object starts must stay strictly ordered"
+        );
+        for (_, object_index) in &page.object_starts {
+            let object = state.objects.get(*object_index);
+            assert!(object.is_some(), "page metadata refers to an object");
+            let Some(object) = object else { return };
+            assert_eq!(state.page_index(object.start), Some(page_index));
+            assert_eq!(state.object_index_at(object.start), Some(*object_index));
+        }
+    }
+}
+
 #[test]
 fn symbol_function_slot_tracks_simple_fun_across_two_moves() {
     const SIMPLE_FUN_TAG: u8 = 8;
@@ -62,6 +81,47 @@ fn symbol_function_slot_tracks_simple_fun_across_two_moves() {
 #[test]
 fn default_heap_capacity_is_512_mib() {
     assert_eq!(HeapConfig::default().dynamic_space_size, 512 * 1024 * 1024);
+}
+
+#[test]
+fn minor_collection_preserves_object_start_metadata() {
+    let heap = Heap::new(HeapConfig {
+        dynamic_space_size: 16 * crate::heap::pages::LOGICAL_PAGE_SIZE,
+        ..HeapConfig::default()
+    });
+    let mut thread = Thread::new();
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+
+    let allocation = heap.alloc_cons(&mut thread, Word::NIL, Word::NIL);
+    assert!(allocation.is_ok(), "root fixture allocation failed");
+    let Ok(mut root) = allocation else { return };
+    let original = root;
+    let root_token = heap.push_root(&mut root);
+
+    for _ in 0..3_000 {
+        assert!(
+            heap.alloc_cons(&mut thread, Word::NIL, Word::NIL).is_ok(),
+            "allocation failed while exercising TLAB refill"
+        );
+    }
+
+    assert_eq!(heap.collect(false), Ok(()));
+    assert_ne!(root.address(), original.address());
+    assert_object_start_metadata_is_consistent(&heap);
+
+    for _ in 0..3_000 {
+        assert!(
+            heap.alloc_cons(&mut thread, Word::NIL, Word::NIL).is_ok(),
+            "allocation failed while exercising a second TLAB refill"
+        );
+    }
+    assert_eq!(heap.collect(false), Ok(()));
+    assert_object_start_metadata_is_consistent(&heap);
+
+    assert_eq!(heap.collect(true), Ok(()));
+    assert_object_start_metadata_is_consistent(&heap);
+    assert!(heap.pop_root(root_token));
+    heap.unregister_thread(&thread);
 }
 
 #[test]

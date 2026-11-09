@@ -30,6 +30,10 @@ fn full_tlab_allocation_log_is_reconciled_and_reset_at_collection() {
     }
 
     let epoch = heap.gc_epoch();
+    assert_eq!(heap.collect(false), Ok(()));
+    assert_eq!(heap.gc_epoch(), epoch + 1);
+    assert_eq!(thread.pending_allocation_count(), 0);
+
     let next = heap.alloc(&mut thread, TypeTag { widetag: 8 }, 0);
     assert!(
         next.is_ok(),

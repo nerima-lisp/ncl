@@ -598,6 +598,21 @@ fn import_preserves_home_and_rejects_accessible_conflicts() {
         Err(ncl_object::ObjectError::PackageConflict)
     );
     assert_eq!(symbol_package(&ctx, other), Ok(Word::NIL));
+
+    Package::from_word(target)
+        .shadowing_import(&mut ctx, &runtime, other)
+        .unwrap_or_else(|error| panic!("shadowing import: {error:?}"));
+    assert_eq!(
+        Package::from_word(target).find_symbol(&mut ctx, &runtime, name),
+        Ok(Some((other, FindStatus::Internal)))
+    );
+    assert_eq!(symbol_package(&ctx, symbol), Ok(home));
+    assert_eq!(symbol_package(&ctx, other), Ok(target));
+    let shadowing = Package::from_word(target)
+        .shadowing_symbols(&ctx)
+        .unwrap_or_else(|error| panic!("shadowing symbols: {error:?}"));
+    assert_eq!(ncl_object::car(&ctx, shadowing), Ok(other));
+    assert_eq!(ncl_object::cdr(&ctx, shadowing), Ok(Word::NIL));
 }
 
 #[test]
@@ -864,6 +879,11 @@ fn gc_registers_a_callable_builtin() {
         .function(&mut ctx, "NCL-GC", "GC")
         .and_then(|word| FunctionObject::try_from(word).ok())
         .unwrap_or_else(|| panic!("GC builtin missing"));
+    let sb_gc = runtime
+        .function(&mut ctx, "SB-EXT", "GC")
+        .and_then(|word| FunctionObject::try_from(word).ok())
+        .unwrap_or_else(|| panic!("SB-EXT GC function was not registered"));
+    assert_eq!(sb_gc.as_word(), gc.as_word());
 
     assert_eq!(runtime.call_builtin(&mut ctx, gc, &[]), Ok(Word::NIL));
 }

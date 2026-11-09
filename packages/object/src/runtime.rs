@@ -272,7 +272,7 @@ impl Runtime {
     /// Return the native entry shared by builtins with no ISA-specific fast
     /// path, or `0` before [`Runtime::install_generic_builtin_entry`] runs.
     pub(crate) fn generic_builtin_entry(&self) -> usize {
-        self.generic_builtin_entry.load(Ordering::Relaxed)
+        self.generic_builtin_entry.load(Ordering::Acquire)
     }
 
     /// Install the shared native trampoline used as the default `ENTRY` for
@@ -296,7 +296,7 @@ impl Runtime {
         ctx: &mut ThreadContext,
         address: usize,
     ) -> Result<(), ObjectError> {
-        self.generic_builtin_entry.store(address, Ordering::Relaxed);
+        self.generic_builtin_entry.store(address, Ordering::Release);
         let pending: Vec<Word> = self
             .builtins
             .lock()

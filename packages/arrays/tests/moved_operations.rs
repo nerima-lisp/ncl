@@ -307,6 +307,74 @@ fn arrays_reject_invalid_options_and_displacement_targets() {
         array_row_major_ref(&context, string_view, 0),
         Ok(Word::character(u32::from('a')))
     );
+    assert_construction_option_edges(&runtime, &mut context);
+}
+
+fn assert_construction_option_edges(runtime: &Runtime, context: &mut ThreadContext) {
+    let general_options = ArrayOptions {
+        element_type: ArrayElementType::T,
+        initial_element: Word::NIL,
+        adjustable: false,
+        fill_pointer: None,
+        displaced_to: None,
+        displaced_index_offset: 0,
+    };
+    let rank_zero = make_array(context, runtime, &[], general_options)
+        .unwrap_or_else(|error| panic!("rank-zero array: {error:?}"));
+    assert_eq!(array_dimensions(context, rank_zero), Ok(Vec::new()));
+    assert_eq!(array_row_major_ref(context, rank_zero, 0), Ok(Word::NIL));
+    assert_eq!(
+        make_array(context, runtime, &[usize::MAX, 2], general_options),
+        Err(ObjectError::Layout)
+    );
+    assert_eq!(
+        make_array(
+            context,
+            runtime,
+            &[1],
+            ArrayOptions {
+                element_type: ArrayElementType::Bit,
+                initial_element: Word::fixnum(2),
+                ..general_options
+            }
+        ),
+        Err(ObjectError::TypeError)
+    );
+
+    let bits = ncl_object::make_specialized_array(
+        context,
+        runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(0)],
+    )
+    .unwrap_or_else(|error| panic!("bit target: {error:?}"));
+    assert_eq!(
+        make_array(
+            context,
+            runtime,
+            &[1],
+            ArrayOptions {
+                element_type: ArrayElementType::Character,
+                initial_element: Word::character(u32::from('x')),
+                displaced_to: Some(bits),
+                ..general_options
+            }
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        make_array(
+            context,
+            runtime,
+            &[1],
+            ArrayOptions {
+                displaced_to: Some(bits),
+                displaced_index_offset: usize::MAX,
+                ..general_options
+            }
+        ),
+        Err(ObjectError::Layout)
+    );
 }
 
 fn assert_typed_array_operations(runtime: &Runtime, context: &mut ThreadContext) {
@@ -364,6 +432,10 @@ fn assert_fill_pointer_operations(runtime: &Runtime, context: &mut ThreadContext
     assert_eq!(adjustable_array_p(context, vector), Ok(true));
     assert_eq!(array_has_fill_pointer_p(context, vector), Ok(true));
     assert_eq!(fill_pointer(context, vector), Ok(0));
+    assert_eq!(
+        set_fill_pointer(context, vector, 5),
+        Err(ObjectError::TypeError)
+    );
     assert_eq!(vector_push(context, vector, Word::fixnum(10)), Ok(Some(0)));
     assert_eq!(vector_push(context, vector, Word::fixnum(11)), Ok(Some(1)));
     assert_eq!(vector_push(context, vector, Word::fixnum(12)), Ok(None));
@@ -400,6 +472,34 @@ fn assert_fill_pointer_operations(runtime: &Runtime, context: &mut ThreadContext
     assert_eq!(fill_pointer(context, array), Err(ObjectError::TypeError));
     assert_eq!(adjustable_array_p(context, array), Ok(true));
     assert_eq!(array_has_fill_pointer_p(context, array), Ok(false));
+    assert_eq!(
+        vector_push(context, array, Word::fixnum(1)),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(vector_pop(context, array), Err(ObjectError::TypeError));
+    assert_eq!(
+        vector_push_extend(context, runtime, array, Word::fixnum(1), 1),
+        Err(ObjectError::TypeError)
+    );
+
+    let fixed = make_array(
+        context,
+        runtime,
+        &[1],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: Some(1),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )
+    .unwrap_or_else(|error| panic!("fixed fill-pointer vector: {error:?}"));
+    assert_eq!(
+        vector_push_extend(context, runtime, fixed, Word::fixnum(2), 1),
+        Err(ObjectError::TypeError)
+    );
 }
 
 #[test]

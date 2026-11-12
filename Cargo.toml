@@ -127,3 +127,8 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
+
+[profile.release-test]
+inherits = "release"
+lto = false
+codegen-units = 16

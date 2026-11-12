@@ -24,21 +24,18 @@ impl ArrayElementType {
     /// # Errors
     /// Returns [`ObjectError::Layout`] when the tag is not supported.
     pub fn from_word(word: Word) -> Result<Self, ObjectError> {
-        let tag = word
-            .as_fixnum()
-            .and_then(|value| u8::try_from(value).ok())
-            .ok_or(ObjectError::Layout)?;
-        match tag {
-            0 => Ok(Self::T),
-            1 => Ok(Self::Bit),
-            2 => Ok(Self::Character),
-            3 => Ok(Self::BaseChar),
-            4 => Ok(Self::Fixnum),
-            5 => Ok(Self::Signed),
-            6 => Ok(Self::Unsigned),
-            7 => Ok(Self::SingleFloat),
-            8 => Ok(Self::DoubleFloat),
-            9..=u8::MAX => Err(ObjectError::Layout),
+        match word.as_fixnum().and_then(|value| u8::try_from(value).ok()) {
+            Some(0) => Ok(Self::T),
+            Some(1) => Ok(Self::Bit),
+            Some(2) => Ok(Self::Character),
+            Some(3) => Ok(Self::BaseChar),
+            Some(4) => Ok(Self::Fixnum),
+            Some(5) => Ok(Self::Signed),
+            Some(6) => Ok(Self::Unsigned),
+            Some(7) => Ok(Self::SingleFloat),
+            Some(8) => Ok(Self::DoubleFloat),
+            // check-added-lines: allow(wildcard) unsupported element type codes return a layout error
+            _ => Err(ObjectError::Layout),
         }
     }
 }
@@ -94,22 +91,12 @@ pub fn make_specialized_array(
             layout::widetag::SPECIALIZED_ARRAY,
             values.len().checked_add(2).ok_or(ObjectError::Layout)?,
         )?;
-        let element_type_tag = match element_type {
-            ArrayElementType::T => 0,
-            ArrayElementType::Bit => 1,
-            ArrayElementType::Character => 2,
-            ArrayElementType::BaseChar => 3,
-            ArrayElementType::Fixnum => 4,
-            ArrayElementType::Signed => 5,
-            ArrayElementType::Unsigned => 6,
-            ArrayElementType::SingleFloat => 7,
-            ArrayElementType::DoubleFloat => 8,
-        };
         put(
             ctx,
             object,
             layout::specialized_array_offset::ELEMENT_TYPE,
-            Word::fixnum(i64::from(element_type_tag)),
+            // check-added-lines: allow(as-cast) Preserve the repr(u8) tag encoding.
+            Word::fixnum(i64::from(element_type as u8)),
         )?;
         put(
             ctx,
@@ -229,19 +216,20 @@ pub fn array_dimensions(ctx: &ThreadContext, object: Word) -> Result<Vec<usize>,
 ///
 /// # Errors
 /// Returns [`ObjectError`] for a non-specialized array or malformed tag.
-pub fn specialized_array_element_type(
-    ctx: &ThreadContext,
-    object: Word,
-) -> Result<ArrayElementType, ObjectError> {
-    if !matches!(classify_object(ctx, object), ObjectRef::SpecializedArray(_)) {
-        return Err(ObjectError::TypeError);
-    }
+fn kind(ctx: &ThreadContext, object: Word) -> Result<ArrayElementType, ObjectError> {
     ArrayElementType::from_word(get(
         ctx,
         object,
         layout::widetag::SPECIALIZED_ARRAY,
         layout::specialized_array_offset::ELEMENT_TYPE,
     )?)
+}
+
+pub fn specialized_array_element_type(
+    ctx: &ThreadContext,
+    object: Word,
+) -> Result<ArrayElementType, ObjectError> {
+    kind(ctx, object)
 }
 
 fn length(ctx: &ThreadContext, object: Word, tag: u8, slot: usize) -> Result<usize, ObjectError> {

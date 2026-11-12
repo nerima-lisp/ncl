@@ -88,14 +88,21 @@ fn loop_clause_expansion_survives_gc_stress_and_strict_forwarding() -> Result<()
         ],
     };
     ctx.set_gc_stress(true);
+    let moved_before_expansions = ctx.thread_access().forwarded_object_count_for_test();
     let mut expansion = r#loop::expand_loop_ast(&mut ctx, &runtime, &ast)?;
     let root = ncl_object::push_root(&mut ctx, &mut expansion);
     ctx.collect(true)?;
     // Conservative aliases may be pinned; verify each registered slot after collection.
     // check-added-lines: allow(panic) test-only assertion
-    assert!(ctx.thread_access().registered_root_slots_are_live_and_forwarded_for_test());
+    assert!(
+        ctx.thread_access()
+            .registered_root_slots_are_live_and_forwarded_for_test()
+    );
     // check-added-lines: allow(panic) test-only assertion
     assert!(!elements(&mut ctx, expansion)?.is_empty());
+    let moved_after_expansions = ctx.thread_access().forwarded_object_count_for_test();
+    // check-added-lines: allow(panic) test-only assertion
+    assert!(moved_after_expansions > moved_before_expansions);
     // check-added-lines: allow(panic) test-only assertion
     assert!(ncl_object::pop_root(&mut ctx, root));
     Ok(())
@@ -346,7 +353,10 @@ fn all_registered_macro_expansions_survive_gc_stress_and_forwarding() -> Result<
             ctx.collect(true)?;
             // Conservative aliases may be pinned; verify each registered slot after collection.
             // check-added-lines: allow(panic) test-only assertion
-            assert!(ctx.thread_access().registered_root_slots_are_live_and_forwarded_for_test());
+            assert!(
+                ctx.thread_access()
+                    .registered_root_slots_are_live_and_forwarded_for_test()
+            );
             let expanded_elements = elements(ctx, expanded)?;
             assert!(!expanded_elements.is_empty(), "{name}");
             assert!(ncl_object::pop_root(ctx, expanded_root));

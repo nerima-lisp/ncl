@@ -40,6 +40,7 @@ fn generalized_places_survive_gc_stress_and_strict_forwarding() {
 
     ctx.set_gc_stress(true);
     ncl_object::with_roots(&mut ctx, &cases, |ctx, roots| {
+        let moved_before_expansions = ctx.thread_access().forwarded_object_count_for_test();
         for place_root in roots {
             let value = Word::fixnum(42);
             let mut expanded = expand_setf(ctx, &runtime, &registry, &[**place_root, value])
@@ -62,6 +63,13 @@ fn generalized_places_survive_gc_stress_and_strict_forwarding() {
             // check-added-lines: allow(panic) test-only assertion
             assert!(ncl_object::pop_root(ctx, root));
         }
+        let moved_after_expansions = ctx.thread_access().forwarded_object_count_for_test();
+        // Conservative pinning may leave one place's collection with nothing movable.
+        // check-added-lines: allow(panic) test-only assertion
+        assert!(
+            moved_after_expansions > moved_before_expansions,
+            "GC stress moved no objects across generalized place expansions"
+        );
         Ok(())
     })
     .unwrap_or_else(super::test_operation_failure);

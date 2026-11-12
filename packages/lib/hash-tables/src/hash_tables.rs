@@ -35,10 +35,10 @@ const OPTIONS: Parameter = Parameter {
 };
 
 fn table(ctx: &ThreadContext, word: Word) -> Result<HashTable, ObjectError> {
-    let ObjectRef::HashTable(word) = classify_object(ctx, word) else {
-        return Err(ObjectError::TypeError);
-    };
-    Ok(HashTable::from_word(word))
+    match classify_object(ctx, word) {
+        ObjectRef::HashTable(word) => Ok(HashTable::from_word(word)),
+        _ => Err(ObjectError::TypeError),
+    }
 }
 
 fn decode_test(ctx: &ThreadContext, word: Word) -> Result<HashTest, ObjectError> {
@@ -48,17 +48,12 @@ fn decode_test(ctx: &ThreadContext, word: Word) -> Result<HashTest, ObjectError>
         }
         FunctionDesignator::Symbol(symbol) => symbol.as_word(),
     };
-    let name = symbol_text(ctx, name)?.to_ascii_uppercase();
-    if name == "EQ" {
-        Ok(HashTest::Eq)
-    } else if name == "EQL" {
-        Ok(HashTest::Eql)
-    } else if name == "EQUAL" {
-        Ok(HashTest::Equal)
-    } else if name == "EQUALP" {
-        Ok(HashTest::Equalp)
-    } else {
-        Err(ObjectError::TypeError)
+    match symbol_text(ctx, name)?.to_ascii_uppercase().as_str() {
+        "EQ" => Ok(HashTest::Eq),
+        "EQL" => Ok(HashTest::Eql),
+        "EQUAL" => Ok(HashTest::Equal),
+        "EQUALP" => Ok(HashTest::Equalp),
+        _ => Err(ObjectError::TypeError),
     }
 }
 
@@ -66,17 +61,12 @@ fn decode_weakness(ctx: &ThreadContext, word: Word) -> Result<Weakness, ObjectEr
     if word == Word::NIL {
         return Ok(Weakness::None);
     }
-    let name = symbol_text(ctx, word)?.to_ascii_uppercase();
-    if name == "KEY" {
-        Ok(Weakness::Key)
-    } else if name == "VALUE" {
-        Ok(Weakness::Value)
-    } else if name == "KEY-AND-VALUE" {
-        Ok(Weakness::KeyAndValue)
-    } else if name == "KEY-OR-VALUE" {
-        Ok(Weakness::KeyOrValue)
-    } else {
-        Err(ObjectError::TypeError)
+    match symbol_text(ctx, word)?.to_ascii_uppercase().as_str() {
+        "KEY" => Ok(Weakness::Key),
+        "VALUE" => Ok(Weakness::Value),
+        "KEY-AND-VALUE" => Ok(Weakness::KeyAndValue),
+        "KEY-OR-VALUE" => Ok(Weakness::KeyOrValue),
+        _ => Err(ObjectError::TypeError),
     }
 }
 
@@ -215,25 +205,24 @@ fn maphash_builtin(
         FunctionDesignator::try_from_word(ctx, callback_word)?;
         let table = table(ctx, table_word)?;
         let mut entries = Vec::new();
-        table.for_each_entry(ctx, |key, value| entries.push((key, value)))?;
+        table.for_each_entry(ctx, |key, value| entries.push([key, value]))?;
 
         let mut entry_tokens = Vec::with_capacity(entries.len() * 2);
-        for (key, value) in &mut entries {
-            entry_tokens.push(push_root(ctx, key));
-            entry_tokens.push(push_root(ctx, value));
+        for entry in &mut entries {
+            entry_tokens.push(push_root(ctx, &mut entry[0]));
+            entry_tokens.push(push_root(ctx, &mut entry[1]));
         }
 
         let result = (|| {
-            for (key, value) in &entries {
+            for entry in &entries {
                 let callback = FunctionDesignator::try_from_word(ctx, callback_word)?;
                 let mut caller = BuiltinFunctionCaller;
                 let mut values = MultipleValues::new();
-                let arguments = [*key, *value];
                 caller.call_function(
                     ctx,
                     runtime,
                     callback,
-                    FunctionArguments::new(&arguments),
+                    FunctionArguments::new(entry),
                     &mut values,
                 )?;
             }

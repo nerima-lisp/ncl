@@ -31,6 +31,10 @@ fn word_view_round_trips_existing_object_ref_values() {
 fn error_kind_preserves_existing_object_error_values() {
     assert_eq!(ObjectError::TypeError.kind(), ObjectErrorKind::Type);
     assert_eq!(
+        ObjectError::ForwardingViolation.kind(),
+        ObjectErrorKind::ForwardingViolation
+    );
+    assert_eq!(
         ObjectError::Storage(StorageCondition::ThreadNotRegistered).kind(),
         ObjectErrorKind::Storage(StorageCondition::ThreadNotRegistered)
     );

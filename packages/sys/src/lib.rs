@@ -241,6 +241,14 @@ pub fn object_widetag(thread: &Thread, object: Word) -> Option<u8> {
     heap.widetag(object)
 }
 
+/// Return whether `object` is a forwarded heap object rejected by strict forwarding.
+#[must_use]
+pub fn is_forwarding_violation(thread: &Thread, object: Word) -> bool {
+    thread
+        .heap()
+        .is_some_and(|heap| heap.is_forwarding_violation(object))
+}
+
 /// Read a cons payload word through a registered thread.
 #[must_use]
 pub fn read_cons_word(thread: &Thread, object: Word, slot: usize) -> Option<Word> {

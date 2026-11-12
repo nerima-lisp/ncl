@@ -12,6 +12,9 @@ impl Runtime {
         args: &[Word],
         values: &mut MultipleValues,
     ) -> Option<Result<Word, ObjectError>> {
+        if let Err(error) = ctx.validate_forwarding(function.as_word()) {
+            return Some(Err(error));
+        }
         let implementation = self
             .registered_builtin(ctx, function)
             .map(|(_, implementation)| implementation);

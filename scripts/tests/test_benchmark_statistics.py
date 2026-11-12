@@ -210,6 +210,30 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         self.assertIn("5/5", table)
         self.assertIn("3/2/0", table)
 
+    def test_micro_table_marks_a_complete_pair_effect_above_noise(self):
+        table = render_micro_table({
+            "cases": {
+                "fixture": {
+                    "engines": {
+                        "ncl": {"sample_count": 5, "median_seconds": 1.4, "range_seconds": 0.1},
+                        "sbcl": {"sample_count": 5, "median_seconds": 1.0, "range_seconds": 0.1},
+                    },
+                    "paired_comparison": {
+                        "sample_count": 5,
+                        "expected_sample_count": 5,
+                        "median_delta_seconds": 0.4,
+                        "ncl_wins": 0,
+                        "sbcl_wins": 5,
+                        "ties": 0,
+                        "noise_below": False,
+                    },
+                },
+            },
+        })
+
+        self.assertIn("exceeds noise", table)
+        self.assertIn("5/5", table)
+
     def test_compile_table_prints_case_ranges_and_noise_classification(self):
         report = {
             "runtimes": {

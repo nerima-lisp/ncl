@@ -130,6 +130,7 @@ impl FunctionCaller for BuiltinFunctionCaller {
             FunctionDesignator::Function(function) => function.as_word(),
             FunctionDesignator::Symbol(symbol) => symbol.into(),
         };
+        ctx.validate_forwarding(designator_word)?;
         let mut rooted_values = Vec::with_capacity(args.len() + 1);
         rooted_values.push(designator_word);
         rooted_values.extend_from_slice(args.as_slice());
@@ -145,6 +146,7 @@ impl FunctionCaller for BuiltinFunctionCaller {
                         return Err(ObjectError::UndefinedFunction);
                     }
                     let word = crate::symbol_function(ctx, *designator)?;
+                    ctx.validate_forwarding(word)?;
                     FunctionObject::try_from(word).map_err(|_| ObjectError::UndefinedFunction)?
                 }
             };
@@ -173,6 +175,7 @@ fn call_native(
     args: &mut [Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
+    ctx.validate_forwarding(function.as_word())?;
     let entry = function_entry(ctx, Function::from_word(function.as_word()))?;
     if entry == 0 {
         return Err(ObjectError::Layout);
@@ -266,6 +269,7 @@ impl Runtime {
         args: &[Word],
         values: &mut MultipleValues,
     ) -> Result<Word, ObjectError> {
+        ctx.validate_forwarding(function.as_word())?;
         let implementation = self
             .registered_builtin(ctx, function)
             .map(|(_, implementation)| implementation);

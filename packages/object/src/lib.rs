@@ -4,7 +4,7 @@
     reason = "Public module declarations at this crate root still lack module-level documentation."
 )]
 pub use context::{ConditionHandlerInvoker, PendingRuntimeErrors};
-pub use ncl_sys::Word;
+pub use ncl_sys::{StorageCondition, Word};
 mod array_primitives;
 mod builtin;
 mod builtin_package;
@@ -33,7 +33,6 @@ mod registry_extensions;
 mod rooted_words;
 mod roots;
 mod runtime;
-mod runtime_sb_symbols;
 pub mod scope;
 mod simple_vector;
 mod string;

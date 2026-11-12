@@ -70,7 +70,8 @@ impl BuiltinPackage {
         }
     }
 
-    pub(crate) const fn is_ncl(self) -> bool {
+    #[must_use]
+    pub const fn is_ncl(self) -> bool {
         matches!(
             self,
             Self::NclThreads
@@ -87,7 +88,8 @@ impl BuiltinPackage {
         )
     }
 
-    pub(crate) const fn is_sb(self) -> bool {
+    #[must_use]
+    pub const fn is_sb(self) -> bool {
         matches!(
             self,
             Self::SbExt

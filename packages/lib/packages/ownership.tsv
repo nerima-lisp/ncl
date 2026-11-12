@@ -47,3 +47,17 @@ NCL-EXT	LOCK-PACKAGE	function	ncl-lib-packages	1	no	package lock extension
 NCL-EXT	UNLOCK-PACKAGE	function	ncl-lib-packages	1	no	package lock extension
 NCL-EXT	PACKAGE-LOCKED-P	function	ncl-lib-packages	1	no	package lock extension
 COMMON-LISP	USE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
+SB-EXT	*AFTER-GC-HOOKS*	variable	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	*GC-REAL-TIME*	variable	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	*GC-RUN-TIME*	variable	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	CANCEL-FINALIZATION	function	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	FINALIZE	function	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	GC	function	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	GENERATION-BYTES-ALLOCATED	function	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	HASH-TABLE-WEAKNESS	function	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	MAKE-WEAK-POINTER	function	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	MAKE-WEAK-VECTOR	function	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	WEAK-POINTER	class+type	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	WEAK-POINTER-P	function	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	WEAK-POINTER-VALUE	function	ncl-lib-packages	1	no	Shared NCL-GC symbol identity
+SB-EXT	WEAK-VECTOR-P	function	ncl-lib-packages	1	no	Shared NCL-GC symbol identity

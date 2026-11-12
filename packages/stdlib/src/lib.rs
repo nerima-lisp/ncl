@@ -35,6 +35,19 @@ pub const REGISTRATION_ORDER: &[&str] = &[
     "ncl-disasm",
 ];
 
+/// Register the NCL-GC symbols that also belong to SB-EXT.
+///
+/// Call after object registration so the source symbols are available.
+///
+/// # Errors
+/// Returns an object error when a package or symbol registration fails.
+pub fn register_gc_sb_ext_symbols(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+) -> Result<(), ObjectError> {
+    ncl_lib_packages::register_gc_sb_ext_symbols(ctx, runtime)
+}
+
 /// Register every standard-library crate that currently exposes a registration
 /// entry point, in [`REGISTRATION_ORDER`].
 ///

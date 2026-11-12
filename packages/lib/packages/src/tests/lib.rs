@@ -1,6 +1,8 @@
 use super::*;
 use ncl_object::FunctionObject;
 
+mod runtime_sb_symbols;
+
 #[test]
 fn lock_operations_round_trip() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));

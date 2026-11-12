@@ -115,6 +115,91 @@ fn calls_a_published_simple_fun_through_the_native_abi() {
 }
 
 #[test]
+fn macro_call_rejects_a_forwarded_function_under_strict_forwarding() {
+    let runtime = std::sync::Arc::new(
+        ncl_object::Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}")),
+    );
+    let setup_runtime = std::sync::Arc::clone(&runtime);
+    let stale_function_bits = std::thread::spawn(move || {
+        let mut setup = ncl_object::ThreadContext::new();
+        setup
+            .register(&setup_runtime)
+            .unwrap_or_else(|error| panic!("register setup context: {error:?}"));
+        let function = setup_runtime
+            .register_builtin(
+                &mut setup,
+                ncl_object::BuiltinIdentifier::new(
+                    ncl_object::BuiltinPackage::NclTest,
+                    ncl_object::BuiltinName::new("STALE-MACRO"),
+                ),
+                ncl_object::BuiltinImplementation::direct(
+                    ncl_object::Builtin {
+                        lambda_list: ncl_object::LambdaList::fixed(&[]),
+                        convention: ncl_object::BuiltinConvention::Direct(
+                            ncl_object::Arity::exact(0),
+                        ),
+                    },
+                    stale_macro_target,
+                ),
+            )
+            .unwrap_or_else(|error| panic!("register stale macro: {error:?}"));
+        !function.as_word().bits()
+    })
+    .join()
+    .unwrap_or_else(|error| panic!("setup thread: {error:?}"));
+
+    let collection_runtime = std::sync::Arc::clone(&runtime);
+    std::thread::spawn(move || {
+        let mut collector = ncl_object::ThreadContext::new();
+        collector
+            .register(&collection_runtime)
+            .unwrap_or_else(|error| panic!("register collector context: {error:?}"));
+        collector
+            .collect(true)
+            .unwrap_or_else(|error| panic!("full collection: {error:?}"));
+    })
+    .join()
+    .unwrap_or_else(|error| panic!("collector thread: {error:?}"));
+
+    let mut caller = ncl_object::ThreadContext::new();
+    caller
+        .register(&runtime)
+        .unwrap_or_else(|error| panic!("register caller context: {error:?}"));
+    let stale_function = Word::from_bits(!stale_function_bits);
+    let current_function = runtime
+        .function(&mut caller, "NCL-TEST", "STALE-MACRO")
+        .unwrap_or_else(|| panic!("missing stale macro builtin"));
+    assert_ne!(current_function, stale_function);
+    caller.set_strict_forwarding(true);
+
+    let entry_codes = std::collections::BTreeMap::<usize, (Box<Word>, ncl_sys::RootToken)>::new();
+    assert_eq!(
+        crate::support::call_macro_function(
+            &mut caller,
+            &runtime,
+            FunctionObject::try_from(stale_function)
+                .unwrap_or_else(|error| panic!("stale function object: {error:?}")),
+            &[],
+            &entry_codes,
+        ),
+        Err(ncl_object::ObjectError::ForwardingViolation)
+    );
+}
+
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "BuiltinImplementation::direct requires the Result callback signature"
+)]
+fn stale_macro_target(
+    _ctx: &mut ncl_object::ThreadContext,
+    _runtime: &ncl_object::Runtime,
+    _args: &ncl_object::BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ncl_object::ObjectError> {
+    Ok(Word::NIL)
+}
+
+#[test]
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn native_call_reports_pending_non_local_exit_after_preserving_values() {
     let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));

@@ -292,65 +292,68 @@ pub fn call_macro_function(
     arguments: &[Word],
     entry_codes: &dyn EntryCodeLookup,
 ) -> Result<Word, ObjectError> {
-    ncl_object::with_rooted_slice(ctx, arguments, |ctx, rooted| {
-        let function_word = function.as_word();
-        let entry = function_entry(ctx, Function::from_word(function_word))?;
-        if entry == 0 {
-            return Err(ObjectError::Layout);
-        }
-        let code = function_code(ctx, Function::from_word(function_word))?;
-        let mut registers = [0_u64; 4];
-        for (register, argument) in rooted.iter().take(4).enumerate() {
-            let slot = registers.get_mut(register).ok_or(ObjectError::Layout)?;
-            *slot = argument.bits();
-        }
-        let argument_count = u64::try_from(rooted.len()).map_err(|_| ObjectError::Layout)?;
-        let rest = rooted
-            .get_mut(4..)
-            .filter(|rest| !rest.is_empty())
-            .map_or(Ok(0), |rest| {
-                u64::try_from(rest.as_mut_ptr().addr()).map_err(|_| ObjectError::Layout)
-            })?;
-        let thread = ctx.thread_access().as_non_null();
-        let mut native_context = NativeInvocation {
-            object: runtime,
-            context: ctx,
-            code,
-            entry_codes,
-        };
-        let previous =
-            replace_native_context(thread, Some(NonNull::from(&mut native_context).cast()));
-        let (result, _) = invoke_entry_with_function_address(
-            entry,
-            thread.as_ptr(),
-            function_word.bits(),
-            argument_count,
-            registers,
-            rest,
-        );
-        let _restored_context = replace_native_context(thread, previous);
-        let pending_errors = ctx.take_pending_runtime_errors();
-        if pending_errors.native.is_some() {
-            return Err(ObjectError::Layout);
-        }
-        if let Some(error) = pending_errors.lisp
-            && let Some(converter) = runtime.lisp_error_converter()
-        {
-            let converted = converter(ctx, runtime, error);
-            let converted_errors = ctx.take_pending_runtime_errors();
-            let condition = converted?;
-            ctx.set_pending_condition(condition);
-            if converted_errors.native.is_some() {
+    ctx.validate_forwarding(function.as_word())?;
+    ncl_object::with_roots(ctx, &[function.as_word()], |ctx, roots| {
+        let function_word = roots.first().ok_or(ObjectError::Layout)?.get();
+        ncl_object::with_rooted_slice(ctx, arguments, |ctx, rooted| {
+            let entry = function_entry(ctx, Function::from_word(function_word))?;
+            if entry == 0 {
                 return Err(ObjectError::Layout);
             }
-            if let Some(error) = converted_errors.object {
+            let code = function_code(ctx, Function::from_word(function_word))?;
+            let mut registers = [0_u64; 4];
+            for (register, argument) in rooted.iter().take(4).enumerate() {
+                let slot = registers.get_mut(register).ok_or(ObjectError::Layout)?;
+                *slot = argument.bits();
+            }
+            let argument_count = u64::try_from(rooted.len()).map_err(|_| ObjectError::Layout)?;
+            let rest = rooted
+                .get_mut(4..)
+                .filter(|rest| !rest.is_empty())
+                .map_or(Ok(0), |rest| {
+                    u64::try_from(rest.as_mut_ptr().addr()).map_err(|_| ObjectError::Layout)
+                })?;
+            let thread = ctx.thread_access().as_non_null();
+            let mut native_context = NativeInvocation {
+                object: runtime,
+                context: ctx,
+                code,
+                entry_codes,
+            };
+            let previous =
+                replace_native_context(thread, Some(NonNull::from(&mut native_context).cast()));
+            let (result, _) = invoke_entry_with_function_address(
+                entry,
+                thread.as_ptr(),
+                function_word.bits(),
+                argument_count,
+                registers,
+                rest,
+            );
+            let _restored_context = replace_native_context(thread, previous);
+            let pending_errors = ctx.take_pending_runtime_errors();
+            if pending_errors.native.is_some() {
+                return Err(ObjectError::Layout);
+            }
+            if let Some(error) = pending_errors.lisp
+                && let Some(converter) = runtime.lisp_error_converter()
+            {
+                let converted = converter(ctx, runtime, error);
+                let converted_errors = ctx.take_pending_runtime_errors();
+                let condition = converted?;
+                ctx.set_pending_condition(condition);
+                if converted_errors.native.is_some() {
+                    return Err(ObjectError::Layout);
+                }
+                if let Some(error) = converted_errors.object {
+                    return Err(error);
+                }
+            }
+            if let Some(error) = pending_errors.object {
                 return Err(error);
             }
-        }
-        if let Some(error) = pending_errors.object {
-            return Err(error);
-        }
-        Ok(Word::from_bits(result))
+            Ok(Word::from_bits(result))
+        })
     })
 }
 

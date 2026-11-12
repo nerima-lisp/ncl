@@ -75,7 +75,7 @@ impl super::Heap {
             &registered_root_slots_before_collection,
         );
         let compaction_result = if full {
-            state.compact_objects()
+            state.compact_objects_if_needed()
         } else {
             Ok(())
         };
@@ -108,6 +108,7 @@ impl super::Heap {
             let words = source.words.len();
             let old_address = source.start;
             let kind = source.kind;
+            let widetag = source.widetag;
             let generation = source.survived.saturating_add(1).min(2);
             let survived = source.survived.saturating_add(1);
             let pinned = source.pinned;
@@ -123,6 +124,7 @@ impl super::Heap {
                 words: new_words,
                 start: new_address,
                 kind,
+                widetag,
                 generation,
                 survived,
                 pinned,

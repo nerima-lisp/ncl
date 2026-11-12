@@ -57,6 +57,7 @@ impl Heap {
             words: managed,
             start: address,
             kind: PageKind::Large,
+            widetag: tag.widetag,
             generation: 2,
             survived: 0,
             pinned: false,

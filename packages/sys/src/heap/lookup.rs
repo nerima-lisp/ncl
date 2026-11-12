@@ -1,4 +1,4 @@
-use super::{Heap, PageKind, State, WIDETAG_MASK, Word};
+use super::{Heap, PageKind, State, Word};
 use std::sync::atomic::Ordering;
 
 const CLOSURE_WIDETAG: u8 = 9;
@@ -42,11 +42,7 @@ impl Heap {
         let object = state.objects.get(index)?;
         if is_function_pointer
             && (object.kind != PageKind::HeaderObject
-                || !object.words.first().is_some_and(|header| {
-                    let widetag = *header & WIDETAG_MASK;
-                    widetag == u64::from(SIMPLE_FUN_WIDETAG)
-                        || widetag == u64::from(CLOSURE_WIDETAG)
-                }))
+                || !matches!(object.widetag, SIMPLE_FUN_WIDETAG | CLOSURE_WIDETAG))
         {
             return None;
         }

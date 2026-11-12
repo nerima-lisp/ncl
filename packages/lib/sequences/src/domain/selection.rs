@@ -112,55 +112,74 @@ fn matches<C: FunctionCaller>(
     item: Word,
     object: Word,
 ) -> Result<bool, ObjectError> {
-    let keyed = if let Some(key) = options.key {
-        call_one(caller, ctx, runtime, key, item)?
-    } else {
-        item
-    };
-    let predicate_roots = [
-        keyed,
+    let has_key = options.key.is_some();
+    let has_test = options.test.is_some();
+    let has_test_not = options.test_not.is_some();
+    let roots = [
+        item,
         object,
         options.key.unwrap_or(Word::NIL),
         options.test.unwrap_or(Word::NIL),
         options.test_not.unwrap_or(Word::NIL),
     ];
-    scope_roots(ctx, &predicate_roots, |ctx, roots| {
-        let keyed = *roots.first().ok_or(ObjectError::Layout)?;
-        let object = *roots.get(1).ok_or(ObjectError::Layout)?;
-        let result = if options.test.is_some() {
-            let designator = function(ctx, *roots.get(3).ok_or(ObjectError::Layout)?)?;
-            let mut values = MultipleValues::new();
-            let args = [object, keyed];
-            caller.call_function(
+    scope_roots(ctx, &roots, |ctx, roots| {
+        let item = *roots.first().ok_or(ObjectError::Layout)?;
+        let keyed = if has_key {
+            call_one(
+                caller,
                 ctx,
                 runtime,
-                designator,
-                FunctionArguments::new(&args),
-                &mut values,
-            )?
-        } else if options.test_not.is_some() {
-            let designator = function(ctx, *roots.get(4).ok_or(ObjectError::Layout)?)?;
-            let mut values = MultipleValues::new();
-            let args = [object, keyed];
-            caller.call_function(
-                ctx,
-                runtime,
-                designator,
-                FunctionArguments::new(&args),
-                &mut values,
+                *roots.get(2).ok_or(ObjectError::Layout)?,
+                item,
             )?
         } else {
-            Word::NIL
+            item
         };
-        let keyed = *roots.first().ok_or(ObjectError::Layout)?;
-        let object = *roots.get(1).ok_or(ObjectError::Layout)?;
-        let truth = result != Word::NIL;
-        Ok(if options.test_not.is_some() {
-            !truth
-        } else if options.test.is_some() {
-            truth
-        } else {
-            keyed == object
+        let predicate_roots = [
+            keyed,
+            *roots.get(1).ok_or(ObjectError::Layout)?,
+            *roots.get(2).ok_or(ObjectError::Layout)?,
+            *roots.get(3).ok_or(ObjectError::Layout)?,
+            *roots.get(4).ok_or(ObjectError::Layout)?,
+        ];
+        scope_roots(ctx, &predicate_roots, |ctx, roots| {
+            let keyed = *roots.first().ok_or(ObjectError::Layout)?;
+            let object = *roots.get(1).ok_or(ObjectError::Layout)?;
+            let result = if has_test {
+                let designator = function(ctx, *roots.get(3).ok_or(ObjectError::Layout)?)?;
+                let mut values = MultipleValues::new();
+                let args = [object, keyed];
+                caller.call_function(
+                    ctx,
+                    runtime,
+                    designator,
+                    FunctionArguments::new(&args),
+                    &mut values,
+                )?
+            } else if has_test_not {
+                let designator = function(ctx, *roots.get(4).ok_or(ObjectError::Layout)?)?;
+                let mut values = MultipleValues::new();
+                let args = [object, keyed];
+                caller.call_function(
+                    ctx,
+                    runtime,
+                    designator,
+                    FunctionArguments::new(&args),
+                    &mut values,
+                )?
+            } else {
+                Word::NIL
+            };
+            let keyed = *roots.first().ok_or(ObjectError::Layout)?;
+            let object = *roots.get(1).ok_or(ObjectError::Layout)?;
+            let truth = result != Word::NIL;
+            Ok(if has_test_not {
+                !truth
+            } else if has_test {
+                truth
+            } else {
+                keyed == object
+            })
         })
     })
 }

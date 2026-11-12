@@ -1,9 +1,7 @@
 //! `REDUCE`, split out of `higher_order.rs` to keep that file under the
 //! project's line-count limit.
 
-use ncl_object::{
-    FunctionCaller, FunctionDesignator, ObjectError, Runtime, Sequence, ThreadContext, Word,
-};
+use ncl_object::{FunctionCaller, ObjectError, Runtime, Sequence, ThreadContext, Word};
 
 use super::{call, callback, scope_rooted_slice, scope_roots, values};
 
@@ -11,11 +9,13 @@ fn apply_key<C: FunctionCaller>(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     caller: &mut C,
-    key_callback: Option<FunctionDesignator>,
+    key_callback: Option<Word>,
     value: Word,
 ) -> Result<Word, ObjectError> {
     match key_callback {
-        Some(key_callback) => Ok(call(ctx, runtime, caller, key_callback, &[value])?.0),
+        Some(key_callback) => {
+            Ok(call(ctx, runtime, caller, callback(ctx, key_callback)?, &[value])?.0)
+        }
         None => Ok(value),
     }
 }
@@ -64,15 +64,16 @@ pub fn reduce<C: FunctionCaller>(
         if from_end {
             items.reverse();
         }
-        let function_callback = callback(ctx, *roots.first().ok_or(ObjectError::Layout)?)?;
+        callback(ctx, *roots.first().ok_or(ObjectError::Layout)?)?;
         if items.is_empty() && initial.is_none() {
             // CLHS 17.2.1: an empty subsequence with no :initial-value calls
             // the reducing function with zero arguments.
+            let function_callback = callback(ctx, *roots.first().ok_or(ObjectError::Layout)?)?;
             return Ok(call(ctx, runtime, caller, function_callback, &[])?.0);
         }
-        let key_callback = key
-            .map(|_| callback(ctx, *roots.get(2).ok_or(ObjectError::Layout)?))
-            .transpose()?;
+        if key.is_some() {
+            callback(ctx, *roots.get(2).ok_or(ObjectError::Layout)?)?;
+        }
         scope_rooted_slice(ctx, &items, |ctx, items| {
             let mut index = 0;
             let accumulator = if initial.is_some() {
@@ -80,11 +81,21 @@ pub fn reduce<C: FunctionCaller>(
             } else {
                 let first = *items.first().ok_or(ObjectError::TypeError)?;
                 index = 1;
+                let key_callback = if key.is_some() {
+                    Some(*roots.get(2).ok_or(ObjectError::Layout)?)
+                } else {
+                    None
+                };
                 apply_key(ctx, runtime, caller, key_callback, first)?
             };
             let accumulator_root = [accumulator];
             scope_rooted_slice(ctx, &accumulator_root, |ctx, accumulator| {
                 while index < items.len() {
+                    let key_callback = if key.is_some() {
+                        Some(*roots.get(2).ok_or(ObjectError::Layout)?)
+                    } else {
+                        None
+                    };
                     let element = apply_key(
                         ctx,
                         runtime,
@@ -97,6 +108,8 @@ pub fn reduce<C: FunctionCaller>(
                     } else {
                         [*accumulator.first().ok_or(ObjectError::Layout)?, element]
                     };
+                    let function_callback =
+                        callback(ctx, *roots.first().ok_or(ObjectError::Layout)?)?;
                     *accumulator.first_mut().ok_or(ObjectError::Layout)? =
                         call(ctx, runtime, caller, function_callback, &args)?.0;
                     index += 1;

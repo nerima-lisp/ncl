@@ -124,7 +124,7 @@ jobs:
           name: nextest-archive-x86-64-macos
           path: ${{ runner.temp }}/nextest
       - name: Run nextest shard
-        run: cargo nextest run --archive-file "$RUNNER_TEMP/nextest/nextest-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE" --partition "hash:${{ matrix.shard }}/2" --no-tests=fail
+        run: cargo nextest run --archive-file "$RUNNER_TEMP/nextest/nextest-archive.tar.zst" --extract-to "$GITHUB_WORKSPACE" --workspace-remap "$GITHUB_WORKSPACE" --partition "hash:${{ matrix.shard }}/2" --no-tests=fail
 
   x86-64-macos-test-result:
     name: Check and test (x86-64 macOS)

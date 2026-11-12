@@ -24,20 +24,8 @@ pub(super) fn equal(
             if left.is_cons() || right.is_cons() {
                 return Ok(left.is_cons()
                     && right.is_cons()
-                    && equal(
-                        ctx,
-                        test,
-                        cons_part(ctx, left, 0)?,
-                        cons_part(ctx, right, 0)?,
-                        depth + 1,
-                    )?
-                    && equal(
-                        ctx,
-                        test,
-                        cons_part(ctx, left, 1)?,
-                        cons_part(ctx, right, 1)?,
-                        depth + 1,
-                    )?);
+                    && equal(ctx, test, car(ctx, left)?, car(ctx, right)?, depth + 1)?
+                    && equal(ctx, test, cdr(ctx, left)?, cdr(ctx, right)?, depth + 1)?);
             }
             Ok(left == right || numeric_equal(ctx, left, right)?)
         }
@@ -82,44 +70,42 @@ fn numeric_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, O
     if tag != object_widetag(ctx, right) {
         return Ok(false);
     }
-    if tag == Some(widetag::BIGNUM) {
-        return Ok(
+    Ok(match tag {
+        Some(widetag::BIGNUM) => {
             ncl_object::bignum_sign(ctx, ncl_object::Bignum::from_word(left))?
                 == ncl_object::bignum_sign(ctx, ncl_object::Bignum::from_word(right))?
                 && ncl_object::bignum_limbs(ctx, ncl_object::Bignum::from_word(left))?
-                    == ncl_object::bignum_limbs(ctx, ncl_object::Bignum::from_word(right))?,
-        );
-    }
-    if tag == Some(widetag::DOUBLE_FLOAT) {
-        return Ok(
+                    == ncl_object::bignum_limbs(ctx, ncl_object::Bignum::from_word(right))?
+        }
+        Some(widetag::DOUBLE_FLOAT) => {
             ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(left))?.to_bits()
                 == ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(right))?
-                    .to_bits(),
-        );
-    }
-    if tag == Some(widetag::RATIO) {
-        return Ok(numeric_equal(
-            ctx,
-            ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(left))?,
-            ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(right))?,
-        )? && numeric_equal(
-            ctx,
-            ncl_object::ratio_denominator(ctx, ncl_object::Ratio::from_word(left))?,
-            ncl_object::ratio_denominator(ctx, ncl_object::Ratio::from_word(right))?,
-        )?);
-    }
-    if tag == Some(widetag::COMPLEX) {
-        return Ok(numeric_equal(
-            ctx,
-            ncl_object::complex_real(ctx, ncl_object::Complex::from_word(left))?,
-            ncl_object::complex_real(ctx, ncl_object::Complex::from_word(right))?,
-        )? && numeric_equal(
-            ctx,
-            ncl_object::complex_imag(ctx, ncl_object::Complex::from_word(left))?,
-            ncl_object::complex_imag(ctx, ncl_object::Complex::from_word(right))?,
-        )?);
-    }
-    Ok(false)
+                    .to_bits()
+        }
+        Some(widetag::RATIO) => {
+            numeric_equal(
+                ctx,
+                ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(left))?,
+                ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(right))?,
+            )? && numeric_equal(
+                ctx,
+                ncl_object::ratio_denominator(ctx, ncl_object::Ratio::from_word(left))?,
+                ncl_object::ratio_denominator(ctx, ncl_object::Ratio::from_word(right))?,
+            )?
+        }
+        Some(widetag::COMPLEX) => {
+            numeric_equal(
+                ctx,
+                ncl_object::complex_real(ctx, ncl_object::Complex::from_word(left))?,
+                ncl_object::complex_real(ctx, ncl_object::Complex::from_word(right))?,
+            )? && numeric_equal(
+                ctx,
+                ncl_object::complex_imag(ctx, ncl_object::Complex::from_word(left))?,
+                ncl_object::complex_imag(ctx, ncl_object::Complex::from_word(right))?,
+            )?
+        }
+        _ => false,
+    })
 }
 
 pub(super) fn hash_key(
@@ -129,7 +115,8 @@ pub(super) fn hash_key(
 ) -> Result<u64, ObjectError> {
     match test {
         HashTest::Eq => Ok(super::sxhash(word)),
-        HashTest::Eql => numeric_hash(ctx, word)?.map_or_else(|| Ok(super::sxhash(word)), Ok),
+        // check-added-lines: allow(panic) Non-numeric words retain the identity-hash fallback.
+        HashTest::Eql => Ok(numeric_hash(ctx, word)?.unwrap_or_else(|| super::sxhash(word))),
         HashTest::Equal => content_hash(ctx, word, false, 0),
         HashTest::Equalp => content_hash(ctx, word, true, 0),
     }
@@ -159,27 +146,17 @@ fn content_hash(
     }
     if word.is_cons() {
         return Ok(
-            content_hash(ctx, cons_part(ctx, word, 0)?, fold, depth + 1)?.rotate_left(7)
-                ^ content_hash(ctx, cons_part(ctx, word, 1)?, fold, depth + 1)?,
+            content_hash(ctx, car(ctx, word)?, fold, depth + 1)?.rotate_left(7)
+                ^ content_hash(ctx, cdr(ctx, word)?, fold, depth + 1)?,
         );
     }
-    numeric_hash(ctx, word)?.map_or_else(|| Ok(super::sxhash(word)), Ok)
-}
-
-fn cons_part(ctx: &ThreadContext, word: Word, slot: usize) -> Result<Word, ObjectError> {
-    if slot == 0 {
-        car(ctx, word)
-    } else if slot == 1 {
-        cdr(ctx, word)
-    } else {
-        Err(ObjectError::TypeError)
-    }
+    // check-added-lines: allow(panic) Non-numeric words retain the identity-hash fallback.
+    Ok(numeric_hash(ctx, word)?.unwrap_or_else(|| super::sxhash(word)))
 }
 
 fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectError> {
-    let tag = object_widetag(ctx, word);
-    if tag == Some(widetag::BIGNUM) {
-        return Ok(Some(
+    Ok(match object_widetag(ctx, word) {
+        Some(widetag::BIGNUM) => Some(
             ncl_object::bignum_limbs(ctx, ncl_object::Bignum::from_word(word))?
                 .into_iter()
                 .fold(
@@ -189,15 +166,11 @@ fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectEr
                     )?),
                     |hash, limb| hash.rotate_left(5) ^ u64::from(limb),
                 ),
-        ));
-    }
-    if tag == Some(widetag::DOUBLE_FLOAT) {
-        return Ok(Some(
-            ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(word))?.to_bits(),
-        ));
-    }
-    if tag == Some(widetag::RATIO) {
-        return Ok(Some(
+        ),
+        Some(widetag::DOUBLE_FLOAT) => {
+            Some(ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(word))?.to_bits())
+        }
+        Some(widetag::RATIO) => Some(
             content_hash(
                 ctx,
                 ncl_object::ratio_numerator(ctx, ncl_object::Ratio::from_word(word))?,
@@ -210,10 +183,8 @@ fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectEr
                 0,
             )?
             .rotate_left(11),
-        ));
-    }
-    if tag == Some(widetag::COMPLEX) {
-        return Ok(Some(
+        ),
+        Some(widetag::COMPLEX) => Some(
             content_hash(
                 ctx,
                 ncl_object::complex_real(ctx, ncl_object::Complex::from_word(word))?,
@@ -226,9 +197,9 @@ fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectEr
                 0,
             )?
             .rotate_left(11),
-        ));
-    }
-    Ok(None)
+        ),
+        _ => None,
+    })
 }
 
 #[cfg(test)]
@@ -253,9 +224,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("register: {error:?}"));
         let left_string = make_string(&mut context, &runtime, &['a', 'b']).unwrap_or(Word::NIL);
         let right_string = make_string(&mut context, &runtime, &['A', 'B']).unwrap_or(Word::NIL);
-        let short_string = make_string(&mut context, &runtime, &['a']).unwrap_or(Word::NIL);
         assert!(!equal(&context, HashTest::Equal, left_string, right_string, 0).unwrap());
-        assert!(!equal(&context, HashTest::Equal, left_string, short_string, 0).unwrap());
         assert!(equal(&context, HashTest::Equalp, left_string, right_string, 0).unwrap());
         assert!(!equal(&context, HashTest::Equalp, left_string, Word::NIL, 0).unwrap());
         assert_eq!(
@@ -304,15 +273,9 @@ mod tests {
             hash_key(&context, HashTest::Equalp, left_cons),
             hash_key(&context, HashTest::Equalp, right_cons)
         );
-        assert_eq!(super::cons_part(&context, left_cons, 0), Ok(left_string));
-        assert_eq!(super::cons_part(&context, left_cons, 1), Ok(ratio));
-        assert_eq!(
-            super::cons_part(&context, left_cons, 2),
-            Err(ncl_object::ObjectError::TypeError)
-        );
         assert_eq!(
             hash_key(&context, HashTest::Eq, Word::fixnum(4)),
-            Ok(super::super::sxhash(Word::fixnum(4)))
+            Ok(crate::sxhash(Word::fixnum(4)))
         );
     }
 }

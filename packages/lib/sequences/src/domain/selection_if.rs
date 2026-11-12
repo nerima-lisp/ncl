@@ -36,10 +36,10 @@ pub fn matching_indices_if<C: FunctionCaller>(
             for index in indices {
                 let item = *roots.get(index).ok_or(ObjectError::Layout)?;
                 let key = *option_roots.get(1).ok_or(ObjectError::Layout)?;
-                let keyed = if key != Word::NIL {
-                    call_one(caller, ctx, runtime, key, item)?
-                } else {
+                let keyed = if key == Word::NIL {
                     item
+                } else {
+                    call_one(caller, ctx, runtime, key, item)?
                 };
                 let predicate = *option_roots.first().ok_or(ObjectError::Layout)?;
                 let truth = call_one(caller, ctx, runtime, predicate, keyed)? != Word::NIL;

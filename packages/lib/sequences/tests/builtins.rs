@@ -15,8 +15,8 @@ fn call(
     let function = runtime
         .function(ctx, "COMMON-LISP", name)
         .unwrap_or_else(|| panic!("missing builtin {name}"));
-    let function = FunctionObject::try_from(function)
-        .unwrap_or_else(|_| panic!("{name} is not a function"));
+    let function =
+        FunctionObject::try_from(function).unwrap_or_else(|_| panic!("{name} is not a function"));
     ncl_object::with_roots(ctx, args, |ctx, roots| {
         let rooted_args = roots.iter().map(|root| root.get()).collect::<Vec<_>>();
         runtime.call_builtin(ctx, function, &rooted_args)
@@ -58,8 +58,8 @@ fn probe(
     let function = runtime
         .function(ctx, "COMMON-LISP", name)
         .unwrap_or_else(|| panic!("missing builtin {name}"));
-    let function = FunctionObject::try_from(function)
-        .unwrap_or_else(|_| panic!("{name} is not a function"));
+    let function =
+        FunctionObject::try_from(function).unwrap_or_else(|_| panic!("{name} is not a function"));
     let _ = ncl_object::with_roots(ctx, &[Word::NIL], |ctx, roots| {
         runtime.call_builtin(
             ctx,

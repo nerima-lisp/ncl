@@ -1,4 +1,4 @@
-use crate::heap_state::{HeapWords, Object, PageMetadata, State};
+use crate::heap_state::{HeapWords, MIN_OBJECTS_BEFORE_COMPACTION, Object, PageMetadata, State};
 pub use crate::heap_types::{
     Finalizer, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
     Weakness,
@@ -99,6 +99,7 @@ impl Heap {
                 used: 0,
                 gc_epoch: 0,
                 objects: Vec::new(),
+                compact_at_object_count: MIN_OBJECTS_BEFORE_COMPACTION,
                 page_range,
                 page_error,
                 pending_page_error: None,
@@ -169,6 +170,15 @@ impl Heap {
     /// Reject forwarded from-space words passed through mutator accessors.
     pub fn set_strict_forwarding(&self, on: bool) {
         self.strict_forwarding.store(on, Ordering::Relaxed);
+    }
+    pub(crate) fn is_forwarding_violation(&self, object: Word) -> bool {
+        if !self.strict_forwarding.load(Ordering::Relaxed) {
+            return false;
+        }
+        let state = self.lock_state();
+        Self::find_raw(&state, object)
+            .and_then(|index| state.objects.get(index))
+            .is_some_and(|entry| entry.forwarded_to.is_some())
     }
     /// # Errors
     /// Returns `LayoutError` when the widetag is already registered.

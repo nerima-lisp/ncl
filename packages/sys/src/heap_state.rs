@@ -4,6 +4,8 @@ use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 
+pub(crate) const MIN_OBJECTS_BEFORE_COMPACTION: usize = 1_024;
+
 #[derive(Debug)]
 pub struct HeapWords {
     pointer: NonNull<u64>,
@@ -59,6 +61,7 @@ pub struct Object {
     pub(crate) words: HeapWords,
     pub(crate) start: usize,
     pub(crate) kind: PageKind,
+    pub(crate) widetag: u8,
     pub(crate) generation: u8,
     pub(crate) survived: u8,
     pub(crate) pinned: bool,
@@ -98,6 +101,7 @@ pub struct State {
     pub(crate) used: usize,
     pub(crate) gc_epoch: u64,
     pub(crate) objects: Vec<Object>,
+    pub(crate) compact_at_object_count: usize,
     pub(crate) page_range: Option<PageRange>,
     pub(crate) page_error: Option<PageError>,
     pub(crate) pending_page_error: Option<PageError>,
@@ -114,6 +118,13 @@ pub struct State {
 }
 
 impl State {
+    pub(crate) fn compact_objects_if_needed(&mut self) -> Result<(), PageError> {
+        if self.objects.len() < self.compact_at_object_count {
+            return Ok(());
+        }
+        self.compact_objects()
+    }
+
     pub(crate) fn retire_page_forwardings(&mut self, page: usize) {
         let Some(base) = self
             .page_range
@@ -225,10 +236,16 @@ impl State {
                 page_metadata.used_bytes = page_metadata.used_bytes.max(end);
                 let generation = page_metadata.generation;
                 self.used = self.used.saturating_add(bytes);
+                let widetag = if kind == PageKind::HeaderObject {
+                    managed.first().copied().unwrap_or_default() as u8
+                } else {
+                    0
+                };
                 self.objects.push(Object {
                     words: managed,
                     start: address,
                     kind,
+                    widetag,
                     generation,
                     survived: 0,
                     pinned: false,
@@ -312,6 +329,11 @@ impl State {
             compacted.push(object);
         }
         self.objects = compacted;
+        self.compact_at_object_count = self
+            .objects
+            .len()
+            .saturating_mul(2)
+            .max(MIN_OBJECTS_BEFORE_COMPACTION);
         self.dirty_cards = dirty_cards;
         for page in &mut self.pages {
             if let Some(old_owner) = page.extent_owner {

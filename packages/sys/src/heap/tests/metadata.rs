@@ -79,6 +79,34 @@ fn symbol_function_slot_tracks_simple_fun_across_two_moves() {
 }
 
 #[test]
+fn full_collection_compacts_metadata_at_geometric_thresholds() {
+    const THRESHOLD: usize = 1_024;
+
+    let heap = Heap::new(HeapConfig::default());
+    let mut thread = Thread::new();
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+
+    for _ in 0..THRESHOLD {
+        assert!(heap.alloc_cons(&mut thread, Word::NIL, Word::NIL).is_ok());
+    }
+    assert_eq!(heap.collect(true), Ok(()));
+    assert_eq!(heap.lock_state().objects.len(), 0);
+
+    for _ in 0..THRESHOLD / 2 {
+        assert!(heap.alloc_cons(&mut thread, Word::NIL, Word::NIL).is_ok());
+    }
+    assert_eq!(heap.collect(true), Ok(()));
+    assert_eq!(heap.lock_state().objects.len(), THRESHOLD / 2);
+
+    for _ in 0..THRESHOLD / 2 {
+        assert!(heap.alloc_cons(&mut thread, Word::NIL, Word::NIL).is_ok());
+    }
+    assert_eq!(heap.collect(true), Ok(()));
+    assert_eq!(heap.lock_state().objects.len(), 0);
+    heap.unregister_thread(&thread);
+}
+
+#[test]
 fn default_heap_capacity_is_512_mib() {
     assert_eq!(HeapConfig::default().dynamic_space_size, 512 * 1024 * 1024);
 }
@@ -252,6 +280,67 @@ fn retired_forwarding_storage_is_not_a_conservative_root() {
 }
 
 #[test]
+fn retired_function_forwarders_remain_strictly_detectable() {
+    const SIMPLE_FUN_TAG: u8 = 8;
+
+    let heap = Heap::new(HeapConfig {
+        dynamic_space_size: 8 * crate::heap::pages::LOGICAL_PAGE_SIZE,
+        ..HeapConfig::default()
+    });
+    let mut thread = Thread::new();
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+    assert!(
+        heap.register_layout(
+            1,
+            crate::ReferenceLayout {
+                reference_words: vec![2],
+                boxed_from: None,
+            },
+        )
+        .is_ok()
+    );
+
+    let symbol = heap
+        .alloc(&mut thread, TypeTag { widetag: 1 }, 8)
+        .unwrap_or_else(|error| panic!("symbol allocation: {error:?}"));
+    let function = heap
+        .alloc(
+            &mut thread,
+            TypeTag {
+                widetag: SIMPLE_FUN_TAG,
+            },
+            5,
+        )
+        .unwrap_or_else(|error| panic!("function allocation: {error:?}"));
+    let stale_function = Word::pointer(function.address(), crate::LowTag::Function);
+    heap.write_words(function, &[(1, Word::fixnum(0x1234))]);
+    heap.write_words(symbol, &[(2, stale_function)]);
+    let mut rooted_symbol = symbol;
+    let root = heap.push_root(&mut rooted_symbol);
+
+    assert_eq!(heap.collect(true), Ok(()));
+    let current_function = heap.read_word(rooted_symbol, 2).unwrap_or(Word::NIL);
+    assert_ne!(current_function, stale_function);
+    let state = heap.lock_state();
+    let stale_index = state
+        .object_index_at(stale_function.address())
+        .expect("stale function metadata was removed");
+    let stale = state
+        .objects
+        .get(stale_index)
+        .expect("stale function index is valid");
+    assert!(stale.forwarded_to.is_some());
+    assert!(stale.words.is_empty(), "forwarder storage was not retired");
+    drop(state);
+
+    heap.set_strict_forwarding(true);
+    assert!(heap.is_forwarding_violation(stale_function));
+    assert_eq!(heap.forwarded_word(stale_function), Some(current_function));
+    assert!(heap.pop_root(root));
+    heap.unregister_thread(&thread);
+}
+
+#[test]
 fn collection_forwards_function_tagged_frame_root_and_preserves_entry() {
     let h = Heap::new(HeapConfig::default());
     let mut t = Thread::new();
@@ -383,6 +472,9 @@ fn dirty_card_keeps_old_to_young_reference() {
         let state = h.lock_state();
         Heap::find(&state, old).unwrap_or(usize::MAX)
     };
+    for _ in 0..1_024 {
+        assert!(h.alloc_cons(&mut t, Word::NIL, Word::NIL).is_ok());
+    }
     let card = (old.address() + 8) / CARD_SIZE;
     assert_eq!(h.collect(true), Ok(()));
     {
@@ -427,14 +519,17 @@ fn full_collection_reclaims_old_cycle() {
         state.objects.iter().filter(|object| object.alive).count(),
         0
     );
-    assert!(state.objects.is_empty());
+    assert_eq!(state.used, 0);
+    assert!(state.objects.iter().all(|object| !object.alive));
     drop(state);
     for _ in 0..8 {
         for _ in 0..32 {
             assert!(h.alloc_cons(&mut t, Word::NIL, Word::NIL).is_ok());
         }
         assert_eq!(h.collect(true), Ok(()));
-        assert!(h.lock_state().objects.is_empty());
+        let state = h.lock_state();
+        assert_eq!(state.used, 0);
+        assert!(state.objects.iter().all(|object| !object.alive));
     }
 }
 

@@ -160,6 +160,8 @@ jobs:
           - name: arm64 macOS
             runner: macos-15
     timeout-minutes: 30
+    env:
+      CARGO_BUILD_JOBS: "6"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -167,8 +169,9 @@ jobs:
           toolchain: 1.98.0
       - uses: taiki-e/install-action@nextest
       - uses: Swatinem/rust-cache@v2
-      # Build first to warm the incremental cache for the release tests below.
-      - run: cargo build --locked --workspace --release
+      - name: Build release binary for arm64 GC smoke
+        if: matrix.name == 'arm64 macOS'
+        run: cargo build --locked --package ncl --bin ncl --release
       - name: Smoke test cl-bench GC load on arm64 macOS
         if: matrix.name == 'arm64 macOS'
         shell: bash
@@ -177,7 +180,8 @@ jobs:
           output=$(target/release/ncl --load tests/fixtures/clbench_gc_load.lisp)
           test "$output" = 42
           printf 'cl-bench GC load output: %s\n' "$output"
-      - run: cargo nextest run --locked --workspace --all-features --all-targets --release --no-tests=fail
+      - name: Run optimized release tests
+        run: cargo nextest run --locked --workspace --all-features --all-targets --cargo-profile release-test --no-tests=fail
 
   gc-stress:
     name: GC stress and strict forwarding

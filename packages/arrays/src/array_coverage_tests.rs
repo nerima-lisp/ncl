@@ -86,7 +86,7 @@ fn element_type_decoding_and_low_level_array_access_are_explicit() {
         read(&context, string, 1, ncl_object::layout::widetag::STRING),
         Ok(Word::character('x' as u32))
     );
-    assert!(matches!(
+    assert_eq!(
         write(
             &mut context,
             string,
@@ -94,6 +94,8 @@ fn element_type_decoding_and_low_level_array_access_are_explicit() {
             Word::NIL,
             ncl_object::layout::widetag::STRING,
         ),
-        Err(crate::ObjectError::Storage(_))
-    ));
+        Err(crate::ObjectError::Storage(
+            ncl_object::StorageCondition::ThreadNotRegistered
+        ))
+    );
 }

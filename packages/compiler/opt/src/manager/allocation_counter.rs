@@ -44,3 +44,18 @@ where
         before.and_then(|before| (self.snapshot)()?.checked_sub(before))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{AllocationCounter, DisabledAllocationCounter};
+
+    #[test]
+    fn disabled_counter_never_reports_allocation_deltas() {
+        let mut counter = DisabledAllocationCounter;
+
+        const { assert!(!DisabledAllocationCounter::ENABLED) };
+        assert_eq!(counter.before_pass(), None);
+        assert_eq!(counter.after_pass(Some(8)), None);
+        assert_eq!(counter.after_pass(None), None);
+    }
+}

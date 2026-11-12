@@ -222,6 +222,22 @@ mod tests {
     }
 
     #[test]
+    fn allocations_before_a_scope_are_not_counted() {
+        let allocator = AllocationTrackingAllocator;
+        allocator.activate();
+        let layout = Layout::from_size_align(8, 8).expect("valid layout");
+        // SAFETY: the layout is valid and the returned pointer is deallocated below.
+        let pointer = unsafe { allocator.alloc(layout) };
+        assert!(!pointer.is_null());
+
+        let scope = AllocationTrackingScope::start().expect("scope starts");
+        assert_eq!(scope.allocated_bytes(), Some(0));
+        // SAFETY: `pointer` was allocated with this allocator and layout.
+        unsafe { allocator.dealloc(pointer, layout) };
+        assert_eq!(scope.allocated_bytes(), Some(0));
+    }
+
+    #[test]
     fn second_active_scope_is_rejected_without_stopping_the_first() {
         let result = std::thread::spawn(|| {
             let allocator = AllocationTrackingAllocator;

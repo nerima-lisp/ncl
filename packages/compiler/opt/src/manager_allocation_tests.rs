@@ -2,6 +2,16 @@ use crate::tests_support::{Fixture, leaf};
 use crate::{FunctionPass, Module, ModulePass, PassManager, PassManagerOptions, PassResult};
 use ncl_ir::Function;
 
+fn record_events(events: &mut Vec<crate::PassEvent>) -> impl FnMut(&crate::PassEvent) + '_ {
+    move |event| events.push(event.clone())
+}
+
+fn snapshot_sequence(
+    mut snapshots: std::vec::IntoIter<Option<u128>>,
+) -> impl FnMut() -> Option<u128> {
+    move || snapshots.next().flatten()
+}
+
 #[derive(Debug)]
 struct UnchangedPass;
 
@@ -36,15 +46,15 @@ fn allocation_snapshot_reports_a_valid_delta_and_omits_decreasing_values() {
     });
     manager.add_function_pass(UnchangedPass);
     manager.add_module_pass(UnchangedModulePass);
-    let mut snapshots = [Some(17_u128), Some(61_u128), Some(92_u128), Some(100_u128)].into_iter();
+    let snapshots = vec![Some(17_u128), Some(61_u128), Some(92_u128), Some(100_u128)].into_iter();
     let mut events = Vec::new();
     let report = manager
         .run_with_observer_and_allocation_snapshot(
             &mut Module {
                 functions: vec![leaf()],
             },
-            |event| events.push(event.clone()),
-            || snapshots.next().flatten(),
+            record_events(&mut events),
+            snapshot_sequence(snapshots),
         )
         .fixture();
     assert_eq!(report.stats.len(), 2);
@@ -59,15 +69,15 @@ fn allocation_snapshot_reports_a_valid_delta_and_omits_decreasing_values() {
         verify_after_each_pass: true,
     });
     manager.add_function_pass(UnchangedPass);
-    let mut snapshots = [Some(9_u128), Some(8_u128)].into_iter();
+    let snapshots = vec![Some(9_u128), Some(8_u128)].into_iter();
     let mut events = Vec::new();
     manager
         .run_with_observer_and_allocation_snapshot(
             &mut Module {
                 functions: vec![leaf()],
             },
-            |event| events.push(event.clone()),
-            || snapshots.next().flatten(),
+            record_events(&mut events),
+            snapshot_sequence(snapshots),
         )
         .fixture();
     assert_eq!(events[0].allocated_bytes, None);
@@ -81,15 +91,15 @@ fn allocation_snapshot_omits_delta_when_the_initial_snapshot_is_unavailable() {
         verify_after_each_pass: true,
     });
     manager.add_function_pass(UnchangedPass);
-    let mut snapshots = [None, Some(61_u128)].into_iter();
+    let snapshots = vec![None, Some(61_u128)].into_iter();
     let mut events = Vec::new();
     let report = manager
         .run_with_observer_and_allocation_snapshot(
             &mut Module {
                 functions: vec![leaf()],
             },
-            |event| events.push(event.clone()),
-            || snapshots.next().flatten(),
+            record_events(&mut events),
+            snapshot_sequence(snapshots),
         )
         .fixture();
 
@@ -106,15 +116,15 @@ fn allocation_snapshot_omits_delta_when_the_final_snapshot_is_unavailable() {
         verify_after_each_pass: true,
     });
     manager.add_function_pass(UnchangedPass);
-    let mut snapshots = [Some(61_u128), None].into_iter();
+    let snapshots = vec![Some(61_u128), None].into_iter();
     let mut events = Vec::new();
     let report = manager
         .run_with_observer_and_allocation_snapshot(
             &mut Module {
                 functions: vec![leaf()],
             },
-            |event| events.push(event.clone()),
-            || snapshots.next().flatten(),
+            record_events(&mut events),
+            snapshot_sequence(snapshots),
         )
         .fixture();
 

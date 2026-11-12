@@ -10,6 +10,10 @@ mod pass_execution_tests;
 #[path = "manager/provenance_tests.rs"]
 mod provenance_tests;
 
+fn record_events(events: &mut Vec<crate::PassEvent>) -> impl FnMut(&crate::PassEvent) + '_ {
+    move |event| events.push(event.clone())
+}
+
 #[derive(Debug)]
 struct TogglePass {
     changed: bool,
@@ -116,7 +120,7 @@ fn manager_rolls_back_whole_pipeline_after_verifier_error() {
     manager.add_function_pass(RenamingPass);
     manager.add_function_pass(InvalidatingPass);
     let mut events = Vec::new();
-    let result = manager.run_with_observer(&mut module, |event| events.push(event.clone()));
+    let result = manager.run_with_observer(&mut module, record_events(&mut events));
     let Err(error) = result else {
         std::process::exit(1)
     };
@@ -220,7 +224,7 @@ fn manager_rolls_back_and_skips_provenance_invalidating_pass() {
         };
         let mut events = Vec::new();
         let report = manager
-            .run_with_observer(&mut module, |event| events.push(event.clone()))
+            .run_with_observer(&mut module, record_events(&mut events))
             .fixture();
 
         assert_eq!(report.iterations, 2);
@@ -261,7 +265,7 @@ fn manager_rolls_back_and_skips_provenance_invalidating_module_pass() {
     };
     let mut events = Vec::new();
     let report = manager
-        .run_with_observer(&mut module, |event| events.push(event.clone()))
+        .run_with_observer(&mut module, record_events(&mut events))
         .fixture();
 
     assert_eq!(report.iterations, 2);
@@ -319,7 +323,7 @@ fn observer_reports_pass_context_and_verification() {
             &mut Module {
                 functions: vec![leaf()],
             },
-            |event| events.push(event.clone()),
+            record_events(&mut events),
         )
         .fixture();
     assert_eq!(events.len(), 1);
@@ -346,7 +350,7 @@ fn observer_reports_pass_failures() {
         &mut Module {
             functions: vec![leaf()],
         },
-        |event| events.push(event.clone()),
+        record_events(&mut events),
     );
     assert!(result.is_err());
     assert_eq!(events.len(), 1);

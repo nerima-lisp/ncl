@@ -1,4 +1,4 @@
-use super::{Module, PassManager, PassManagerOptions, RenamingPass, address_leaf};
+use super::{Module, PassManager, PassManagerOptions, RenamingPass, address_leaf, record_events};
 use crate::PassVerification;
 use crate::tests_support::Fixture;
 use ncl_ir::{AddressLivenessBoundary, Op, OpKind, VerifyError};
@@ -35,7 +35,7 @@ fn manager_keeps_a_preexisting_address_liveness_error_when_a_pass_renames_the_fu
     };
     let mut events = Vec::new();
     let report = manager
-        .run_with_observer(&mut module, |event| events.push(event.clone()))
+        .run_with_observer(&mut module, record_events(&mut events))
         .fixture();
 
     assert_eq!(module.functions[0].name, "address-leaf-renamed");

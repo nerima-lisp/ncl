@@ -77,7 +77,7 @@ fn module_pass_error_without_provenance_keeps_module_and_reports_failure() {
     let mut events = Vec::new();
 
     let error = manager
-        .run_with_observer(&mut module, |event| events.push(event.clone()))
+        .run_with_observer(&mut module, record_events(&mut events))
         .err()
         .ok_or("module pass error should be returned")
         .fixture();
@@ -106,7 +106,7 @@ fn module_pass_error_after_address_invalidation_rolls_back_and_reports_provenanc
     let mut events = Vec::new();
 
     let report = manager
-        .run_with_observer(&mut module, |event| events.push(event.clone()))
+        .run_with_observer(&mut module, record_events(&mut events))
         .fixture();
 
     assert_eq!(module.functions, original.functions);
@@ -145,7 +145,7 @@ fn unchanged_module_pass_reports_successful_verification() {
     let mut events = Vec::new();
 
     let report = manager
-        .run_with_observer(&mut module, |event| events.push(event.clone()))
+        .run_with_observer(&mut module, record_events(&mut events))
         .fixture();
 
     assert_eq!(module.functions, original.functions);
@@ -170,7 +170,7 @@ fn module_pass_invalid_ir_is_rejected_and_restored_with_verifier_event() {
     let mut events = Vec::new();
 
     let error = manager
-        .run_with_observer(&mut module, |event| events.push(event.clone()))
+        .run_with_observer(&mut module, record_events(&mut events))
         .err()
         .ok_or("invalid module IR should fail verification")
         .fixture();
@@ -207,7 +207,7 @@ fn module_pass_change_is_retained_and_reported_after_verification() {
     let mut events = Vec::new();
 
     let report = manager
-        .run_with_observer(&mut module, |event| events.push(event.clone()))
+        .run_with_observer(&mut module, record_events(&mut events))
         .fixture();
 
     assert_eq!(module.functions[0].name, "leaf-optimized");

@@ -10,15 +10,10 @@ use ncl_arrays::{
 use ncl_object::with_roots;
 
 fn bit_value(ctx: &ThreadContext, array: Word, index: usize) -> Result<u8, ObjectError> {
-    let Some(value) = array_row_major_ref(ctx, array, index)?.as_fixnum() else {
-        return Err(ObjectError::TypeError);
-    };
-    if value == 0 {
-        Ok(0)
-    } else if value == 1 {
-        Ok(1)
-    } else {
-        Err(ObjectError::TypeError)
+    match array_row_major_ref(ctx, array, index)?.as_fixnum() {
+        Some(0) => Ok(0),
+        Some(1) => Ok(1),
+        _ => Err(ObjectError::TypeError),
     }
 }
 
@@ -160,8 +155,7 @@ pub(super) fn bit_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let array = args.required(0)?;
-    let indices = args.as_slice().get(1..).ok_or(ObjectError::TypeError)?;
-    let index = row_major_index(&array_shape(ctx, array)?, indices)?;
+    let index = row_major_index(&array_shape(ctx, array)?, &args.as_slice()[1..])?;
     bit_value(ctx, array, index).map(|value| Word::fixnum(i64::from(value)))
 }
 
@@ -173,17 +167,19 @@ pub(super) fn sbit_builtin(
 ) -> Result<Word, ObjectError> {
     let array = args.required(0)?;
     let shape = array_shape(ctx, array)?;
-    let classification = classify_object(ctx, array);
-    let simple_bit_vector = if let ObjectRef::SpecializedArray(_) = classification {
-        array_element_type(ctx, array)? == ArrayElementType::Bit && shape.len() == 1
-    } else if let ObjectRef::Array(_) = classification {
-        array_element_type(ctx, array)? == ArrayElementType::Bit
-            && shape.len() == 1
-            && !adjustable_array_p(ctx, array)?
-            && !array_has_fill_pointer_p(ctx, array)?
-            && array_displacement(ctx, array)?.0 == Word::NIL
-    } else {
-        false
+    let simple_bit_vector = match classify_object(ctx, array) {
+        ObjectRef::SpecializedArray(_) => {
+            array_element_type(ctx, array)? == ArrayElementType::Bit && shape.len() == 1
+        }
+        ObjectRef::Array(_) => {
+            array_element_type(ctx, array)? == ArrayElementType::Bit
+                && shape.len() == 1
+                && !adjustable_array_p(ctx, array)?
+                && !array_has_fill_pointer_p(ctx, array)?
+                && array_displacement(ctx, array)?.0 == Word::NIL
+        }
+        // check-added-lines: allow(wildcard) ObjectRef is non-exhaustive.
+        _ => false,
     };
     if !simple_bit_vector {
         return Err(ObjectError::TypeError);
@@ -194,12 +190,10 @@ pub(super) fn sbit_builtin(
     let current = bit_value(ctx, array, index)?;
     match args.get(2) {
         Some(value) => {
-            let Some(value_fixnum) = value.as_fixnum() else {
-                return Err(ObjectError::TypeError);
+            let value = match value.as_fixnum() {
+                Some(0 | 1) => value,
+                _ => return Err(ObjectError::TypeError),
             };
-            if value_fixnum != 0 && value_fixnum != 1 {
-                return Err(ObjectError::TypeError);
-            }
             array_row_major_set(ctx, array, index, value)?;
             Ok(value)
         }

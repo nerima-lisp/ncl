@@ -118,11 +118,9 @@ fn adjustable_array_p_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let classification = classify_object(ctx, args.required(0)?);
-    let result = if let ObjectRef::Array(array) = classification {
-        adjustable_array_p(ctx, array)?
-    } else {
-        false
+    let result = match classify_object(ctx, args.required(0)?) {
+        ObjectRef::Array(array) => adjustable_array_p(ctx, array)?,
+        _ => false,
     };
     Ok(if result { truth() } else { nil() })
 }
@@ -132,11 +130,9 @@ fn array_has_fill_pointer_p_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let classification = classify_object(ctx, args.required(0)?);
-    let result = if let ObjectRef::Array(array) = classification {
-        array_has_fill_pointer_p(ctx, array)?
-    } else {
-        false
+    let result = match classify_object(ctx, args.required(0)?) {
+        ObjectRef::Array(array) => array_has_fill_pointer_p(ctx, array)?,
+        _ => false,
     };
     Ok(if result { truth() } else { nil() })
 }
@@ -268,7 +264,8 @@ fn array_in_bounds_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let shape = array_shape(ctx, args.required(0)?)?;
-    let indices = args.as_slice().get(1..).ok_or(ObjectError::TypeError)?;
+    // check-added-lines: allow(index)
+    let indices = &args.as_slice()[1..];
     Ok(
         if shape.len() == indices.len()
             && shape.iter().zip(indices).all(|(dimension, index)| {
@@ -320,8 +317,8 @@ fn aref_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let array = args.required(0)?;
-    let indices = args.as_slice().get(1..).ok_or(ObjectError::TypeError)?;
-    let offset = row_major_index(&array_shape(ctx, array)?, indices)?;
+    // check-added-lines: allow(index)
+    let offset = row_major_index(&array_shape(ctx, array)?, &args.as_slice()[1..])?;
     array_row_major_ref(ctx, array, offset)
 }
 
@@ -392,7 +389,8 @@ fn array_row_major_index_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let shape = array_shape(ctx, args.required(0)?)?;
-    let indices = args.as_slice().get(1..).ok_or(ObjectError::TypeError)?;
+    // check-added-lines: allow(index)
+    let indices = &args.as_slice()[1..];
     let offset = row_major_index(&shape, indices)?;
     Ok(Word::fixnum(
         i64::try_from(offset).map_err(|_| ObjectError::Layout)?,

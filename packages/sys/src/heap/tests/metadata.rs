@@ -321,17 +321,19 @@ fn retired_function_forwarders_remain_strictly_detectable() {
     assert_eq!(heap.collect(true), Ok(()));
     let current_function = heap.read_word(rooted_symbol, 2).unwrap_or(Word::NIL);
     assert_ne!(current_function, stale_function);
-    let state = heap.lock_state();
-    let stale_index = state
-        .object_index_at(stale_function.address())
-        .expect("stale function metadata was removed");
-    let stale = state
-        .objects
-        .get(stale_index)
-        .expect("stale function index is valid");
-    assert!(stale.forwarded_to.is_some());
-    assert!(stale.words.is_empty(), "forwarder storage was not retired");
-    drop(state);
+    let heap_metadata = heap.lock_state();
+    let Some(forwarder_index) = heap_metadata.object_index_at(stale_function.address()) else {
+        panic!("stale function metadata was removed");
+    };
+    let Some(forwarder_metadata) = heap_metadata.objects.get(forwarder_index) else {
+        panic!("stale function index is valid");
+    };
+    assert!(forwarder_metadata.forwarded_to.is_some());
+    assert!(
+        forwarder_metadata.words.is_empty(),
+        "forwarder storage was not retired"
+    );
+    drop(heap_metadata);
 
     heap.set_strict_forwarding(true);
     assert!(heap.is_forwarding_violation(stale_function));
@@ -530,6 +532,7 @@ fn full_collection_reclaims_old_cycle() {
         let state = h.lock_state();
         assert_eq!(state.used, 0);
         assert!(state.objects.iter().all(|object| !object.alive));
+        drop(state);
     }
 }
 

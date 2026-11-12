@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 
-pub(crate) const MIN_OBJECTS_BEFORE_COMPACTION: usize = 1_024;
+pub const MIN_OBJECTS_BEFORE_COMPACTION: usize = 1_024;
 
 #[derive(Debug)]
 pub struct HeapWords {
@@ -237,7 +237,8 @@ impl State {
                 let generation = page_metadata.generation;
                 self.used = self.used.saturating_add(bytes);
                 let widetag = if kind == PageKind::HeaderObject {
-                    managed.first().copied().unwrap_or_default() as u8
+                    u8::try_from(managed.first().copied().unwrap_or_default() & 0xff)
+                        .unwrap_or_default()
                 } else {
                     0
                 };

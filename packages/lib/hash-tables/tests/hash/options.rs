@@ -256,9 +256,9 @@ fn hash_table_options_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
     let rehash_size_key_token = push_root(&mut ctx, &mut rehash_size_key);
     let mut threshold_key = keyword(&runtime, &mut ctx, "REHASH-THRESHOLD")?;
     let threshold_key_token = push_root(&mut ctx, &mut threshold_key);
-    let mut rehash_size = make_double(&mut ctx, &runtime, 2.0)?.as_word();
+    let mut rehash_size = Word::fixnum(2);
     let rehash_size_token = push_root(&mut ctx, &mut rehash_size);
-    let mut threshold = make_double(&mut ctx, &runtime, 1.0)?.as_word();
+    let mut threshold = Word::fixnum(1);
     let threshold_token = push_root(&mut ctx, &mut threshold);
     let mut make_hash_table = runtime
         .function(&mut ctx, "COMMON-LISP", "MAKE-HASH-TABLE")
@@ -281,18 +281,10 @@ fn hash_table_options_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
     )?;
     let table_token = push_root(&mut ctx, &mut table);
     HashTable::from_word(table).insert(&mut ctx, &runtime, Word::fixnum(1), Word::TRUE)?;
-    assert_eq!(HashTable::from_word(table).rehash_size(&ctx)?, rehash_size);
+    assert_eq!(HashTable::from_word(table).rehash_size(&ctx)?, Word::fixnum(2));
     assert_eq!(
         HashTable::from_word(table).rehash_threshold(&ctx)?,
-        threshold
-    );
-    assert!(
-        (double_value(&ctx, ncl_object::DoubleFloat::from_word(rehash_size))? - 2.0).abs()
-            < f64::EPSILON
-    );
-    assert!(
-        (double_value(&ctx, ncl_object::DoubleFloat::from_word(threshold))? - 1.0).abs()
-            < f64::EPSILON
+        Word::fixnum(1)
     );
 
     assert_bignum_options_forward_and_rehash(

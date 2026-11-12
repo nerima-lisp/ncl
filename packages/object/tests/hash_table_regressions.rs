@@ -71,6 +71,78 @@ fn package_failure_releases_all_roots_before_collection() {
 }
 
 #[test]
+fn hash_table_default_threshold_failure_releases_all_roots() {
+    let heap_config = HeapConfig {
+        dynamic_space_size: 16 * 1024 * 1024,
+        bytes_considered_between_gcs: 4 * 1024 * 1024,
+    };
+    let large_object_words = 127;
+    let logical_page_size = 32 * 1024;
+    // `allocate` adds a header word, making each object 1 KiB.
+    let large_object_bytes = (large_object_words + 1) * std::mem::size_of::<Word>();
+    let large_objects_per_page = logical_page_size / large_object_bytes;
+    let large_root_count = heap_config.dynamic_space_size / large_object_bytes + 1024;
+    let runtime = Runtime::with_config(heap_config)
+        .unwrap_or_else(|error| panic!("Runtime::with_config failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    let mut sentinel = Word::NIL;
+    let sentinel_token = ncl_object::push_root(&mut ctx, &mut sentinel);
+    let roots = vec![Word::NIL; large_root_count];
+    let result = ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
+        let mut allocated = 0;
+        for _ in 0..large_objects_per_page {
+            roots[allocated] = allocate(ctx, &runtime, 0x7f, large_object_words)?;
+            allocated += 1;
+        }
+        ctx.collect(true)?;
+
+        let mut doubles = 0;
+        while doubles < large_objects_per_page * 2 {
+            roots[allocated] = ncl_object::make_double(ctx, &runtime, 2.0)?.as_word();
+            allocated += 1;
+            doubles += 1;
+        }
+        assert!(doubles > 0);
+
+        while allocated < roots.len() {
+            match allocate(ctx, &runtime, 0x7f, large_object_words) {
+                Ok(value) => {
+                    roots[allocated] = value;
+                    allocated += 1;
+                }
+                Err(ncl_object::ObjectError::Storage(StorageCondition::CapacityExceeded)) => break,
+                Err(error) => return Err(error),
+            }
+        }
+        assert!(allocated < roots.len());
+        ctx.collect(true)?;
+
+        Ok(HashTable::new_with_options(
+            ctx,
+            &runtime,
+            HashTest::Eql,
+            Weakness::None,
+            Word::fixnum(8),
+            None,
+            None,
+        ))
+    });
+    let result_shape = result.as_ref().map(|inner| inner.as_ref().map(|_| ()));
+    assert!(
+        matches!(
+            result,
+            Ok(Err(ncl_object::ObjectError::Storage(
+                StorageCondition::CapacityExceeded
+            )))
+        ),
+        "unexpected result: {result_shape:?}"
+    );
+    assert!(ncl_object::pop_root(&mut ctx, sentinel_token));
+    assert!(ctx.collect(true).is_ok());
+}
+
+#[test]
 fn moved_registered_context_allows_allocation() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();

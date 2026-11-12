@@ -27,9 +27,6 @@ pub fn matching_indices_if<C: FunctionCaller>(
     scope_roots(ctx, values, |ctx, roots| {
         let option_roots = [predicate, options.key.unwrap_or(Word::NIL)];
         scope_roots(ctx, &option_roots, |ctx, option_roots| {
-            let predicate = *option_roots.first().ok_or(ObjectError::Layout)?;
-            let key = option_roots.get(1).ok_or(ObjectError::Layout).copied()?;
-            let key = (key != Word::NIL).then_some(key);
             let (start, end) = bounds(options, values.len())?;
             let mut indices = (start..end).collect::<Vec<_>>();
             if options.from_end {
@@ -38,11 +35,13 @@ pub fn matching_indices_if<C: FunctionCaller>(
             let mut found = Vec::new();
             for index in indices {
                 let item = *roots.get(index).ok_or(ObjectError::Layout)?;
-                let keyed = if let Some(key) = key {
+                let key = *option_roots.get(1).ok_or(ObjectError::Layout)?;
+                let keyed = if key != Word::NIL {
                     call_one(caller, ctx, runtime, key, item)?
                 } else {
                     item
                 };
+                let predicate = *option_roots.first().ok_or(ObjectError::Layout)?;
                 let truth = call_one(caller, ctx, runtime, predicate, keyed)? != Word::NIL;
                 let matched = if negate { !truth } else { truth };
                 if matched {

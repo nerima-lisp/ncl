@@ -11,9 +11,12 @@ fn call(
     name: &str,
     args: &[Word],
 ) -> Word {
-    let function = *functions
-        .get(name)
+    assert!(functions.contains_key(name), "missing builtin {name}");
+    let function = runtime
+        .function(ctx, "COMMON-LISP", name)
         .unwrap_or_else(|| panic!("missing builtin {name}"));
+    let function =
+        FunctionObject::try_from(function).unwrap_or_else(|_| panic!("{name} is not a function"));
     ncl_object::with_roots(ctx, args, |ctx, roots| {
         let rooted_args = roots.iter().map(|root| root.get()).collect::<Vec<_>>();
         runtime.call_builtin(ctx, function, &rooted_args)
@@ -65,6 +68,9 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
         "REDUCE",
         "SORT",
         "UNION",
+        "EVERY",
+        "INTERSECTION",
+        "FIND",
         "SUBSTITUTE",
         "CAR",
         "CONS",
@@ -88,6 +94,9 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
     let (test_keyword, _) = Package::from_word(keyword_package)
         .intern(&mut ctx, &runtime, "TEST")
         .unwrap_or_else(|error| panic!("intern TEST: {error:?}"));
+    let (key_keyword, _) = Package::from_word(keyword_package)
+        .intern(&mut ctx, &runtime, "KEY")
+        .unwrap_or_else(|error| panic!("intern KEY: {error:?}"));
     let values = [Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)];
     let mut one = call(&runtime, &mut ctx, &functions, "LIST", &[values[0]]);
     let one_root = ncl_object::push_root(&mut ctx, &mut one);
@@ -101,12 +110,22 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
     let destination_root = ncl_object::push_root(&mut ctx, &mut destination);
     ctx.set_gc_stress(true);
     ctx.set_strict_forwarding(true);
-    let mut car = functions["CAR"].as_word();
+    let mut car = runtime
+        .function(&mut ctx, "COMMON-LISP", "CAR")
+        .expect("CAR should be registered");
     let car_root = ncl_object::push_root(&mut ctx, &mut car);
-    let mut cons = functions["CONS"].as_word();
+    let mut cons = runtime
+        .function(&mut ctx, "COMMON-LISP", "CONS")
+        .expect("CONS should be registered");
     let cons_root = ncl_object::push_root(&mut ctx, &mut cons);
+    let mut list = runtime
+        .function(&mut ctx, "COMMON-LISP", "LIST")
+        .expect("LIST should be registered");
+    let list_root = ncl_object::push_root(&mut ctx, &mut list);
     let mut test_keyword = test_keyword;
     let test_keyword_root = ncl_object::push_root(&mut ctx, &mut test_keyword);
+    let mut key_keyword = key_keyword;
+    let key_keyword_root = ncl_object::push_root(&mut ctx, &mut key_keyword);
     let mapped = call(&runtime, &mut ctx, &functions, "MAPCAR", &[car, source]);
     assert_list(&ctx, mapped, &values);
     assert_map_without_result_type(&runtime, &mut ctx, &functions, car, source);
@@ -121,10 +140,50 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
         destination
     );
     assert_list(&ctx, destination, &values);
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "MAP",
+            &[Word::NIL, list, source],
+        ),
+        Word::NIL
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, &functions, "EVERY", &[list, source]),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "FIND",
+            &[one, source, key_keyword, list, test_keyword, cons],
+        ),
+        one
+    );
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "INTERSECTION",
+            &[source, destination, key_keyword, list],
+        ),
+        Word::NIL
+    );
     let reduced = call(&runtime, &mut ctx, &functions, "REDUCE", &[cons, source]);
     assert!(reduced.is_cons());
     assert_eq!(
-        call(&runtime, &mut ctx, &functions, "SORT", &[source, cons]),
+        call(
+            &runtime,
+            &mut ctx,
+            &functions,
+            "SORT",
+            &[source, cons, key_keyword, list],
+        ),
         source
     );
     let union = call(
@@ -144,7 +203,9 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
         &[Word::fixnum(9), Word::fixnum(2), source, test_keyword, cons],
     );
     assert_list(&ctx, substituted, &[Word::fixnum(9); 3]);
+    assert!(ncl_object::pop_root(&mut ctx, key_keyword_root));
     assert!(ncl_object::pop_root(&mut ctx, test_keyword_root));
+    assert!(ncl_object::pop_root(&mut ctx, list_root));
     assert!(ncl_object::pop_root(&mut ctx, cons_root));
     assert!(ncl_object::pop_root(&mut ctx, car_root));
     assert!(ncl_object::pop_root(&mut ctx, destination_root));

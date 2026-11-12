@@ -8,6 +8,7 @@ pub enum ObjectError {
     TypeError,
     Storage(StorageCondition),
     Layout,
+    ForwardingViolation,
     Unbound,
     UndefinedFunction,
     NonLocalExit,

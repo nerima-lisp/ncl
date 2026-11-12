@@ -39,7 +39,13 @@ impl FunctionCaller for RuntimeFunctionCaller {
         args: FunctionArguments<'_>,
         values: &mut MultipleValues,
     ) -> Result<Word, ObjectError> {
+        let designator_word = match designator {
+            FunctionDesignator::Function(function) => function.as_word(),
+            FunctionDesignator::Symbol(symbol) => symbol.into(),
+        };
+        ctx.validate_forwarding(designator_word)?;
         let function = resolve_function(ctx, designator)?;
+        ctx.validate_forwarding(function.as_word())?;
         if let Some(result) =
             runtime.call_builtin_if_registered(ctx, function, args.as_slice(), values)
         {

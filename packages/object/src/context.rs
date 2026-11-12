@@ -314,6 +314,17 @@ impl ThreadContext {
     pub fn set_strict_forwarding(&self, on: bool) {
         ncl_sys::set_strict_forwarding(&self.thread, on);
     }
+    /// Reject a forwarded word when strict forwarding is enabled.
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::ForwardingViolation`] when `object` is a forwarder.
+    pub fn validate_forwarding(&self, object: Word) -> Result<(), ObjectError> {
+        if ncl_sys::is_forwarding_violation(&self.thread, object) {
+            Err(ObjectError::ForwardingViolation)
+        } else {
+            Ok(())
+        }
+    }
     #[must_use]
     pub fn condition_handler_head(&self) -> Word {
         self.condition_handler_head.get()

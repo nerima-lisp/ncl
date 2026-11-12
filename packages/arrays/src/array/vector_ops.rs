@@ -16,10 +16,7 @@ pub fn vector_push(
 ) -> Result<Option<usize>, ObjectError> {
     let pointer = fill_pointer(ctx, object)?;
     let dimensions = array_dimensions(ctx, object)?;
-    let Some(&dimension) = dimensions.first() else {
-        return Ok(None);
-    };
-    if dimensions.len() != 1 || pointer >= dimension {
+    if dimensions.len() != 1 || pointer >= dimensions[0] {
         return Ok(None);
     }
     array_row_major_set(ctx, object, pointer, value)?;
@@ -49,7 +46,6 @@ pub fn vector_push_extend(
     if dimensions.len() != 1 || !adjustable_array_p(ctx, object)? {
         return Err(ObjectError::TypeError);
     }
-    let dimension = *dimensions.first().ok_or(ObjectError::Layout)?;
     let pointer = fill_pointer(ctx, object)?;
     let capacity = length(
         ctx,
@@ -81,18 +77,13 @@ pub fn vector_push_extend(
         )?;
         return Ok((pointer, object));
     }
-    let new_length = dimension
+    let new_length = dimensions[0]
         .checked_add(extension)
         .ok_or(ObjectError::Layout)?;
     with_roots(ctx, &[value], |ctx, rooted_values| {
         let adjusted = adjust_array(ctx, runtime, object, &[new_length], Word::NIL)?;
         let index = fill_pointer(ctx, adjusted)?;
-        array_row_major_set(
-            ctx,
-            adjusted,
-            index,
-            **rooted_values.first().ok_or(ObjectError::Layout)?,
-        )?;
+        array_row_major_set(ctx, adjusted, index, *rooted_values[0])?;
         set_fill_pointer(ctx, adjusted, index + 1)?;
         Ok((index, adjusted))
     })

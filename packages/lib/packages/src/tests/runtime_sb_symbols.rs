@@ -132,6 +132,18 @@ fn package_adapter_sb_ext_symbols_share_ncl_identity_and_surface_visibility() {
     register_gc_sb_ext_symbols(&mut ctx, &runtime)
         .unwrap_or_else(|error| panic!("SB-EXT symbol registration: {error:?}"));
 
+    let gc_package = runtime
+        .find_package(&ctx, BuiltinPackage::NclGc.as_str())
+        .unwrap_or_else(|| panic!("NCL-GC package missing"));
+    for name in ["BYTES-CONSED-SINCE-GC", "GC-COUNT"] {
+        let name_word = string(&mut ctx, &runtime, name);
+        let (_, status) = Package::from_word(gc_package)
+            .find_symbol(&mut ctx, &runtime, name_word)
+            .unwrap_or_else(|error| panic!("{name} package lookup: {error:?}"))
+            .unwrap_or_else(|| panic!("{name} NCL-GC symbol missing"));
+        assert_eq!(status, FindStatus::External, "{name} export status");
+    }
+
     let object_ownership = ownership_rows(OBJECT_OWNERSHIP, "ncl-object");
     let package_ownership = ownership_rows(LIB_PACKAGES_OWNERSHIP, "ncl-lib-packages");
     let sb_ext_rows: Vec<_> = package_ownership

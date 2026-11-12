@@ -9,7 +9,7 @@ use crate::{
         reference_words, simple_vector_offset, stream_offset, structure_offset, symbol_offset,
         widetag,
     },
-    make_bignum_from_i128, make_string,
+    make_bignum_from_i128,
 };
 
 fn package_layout() -> ncl_sys::ReferenceLayout {
@@ -196,12 +196,6 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
     ] {
         package.intern(ctx, runtime, name)?;
         runtime.define_function(ctx, "NCL-GC", name, Word::UNBOUND)?;
-    }
-    for name in std::iter::once("BYTES-CONSED-SINCE-GC").chain(std::iter::once("GC-COUNT")) {
-        let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        if !package.export(ctx, runtime, name_word)? {
-            return Err(ObjectError::Layout);
-        }
     }
     let (weak_pointer, _) = package.intern(ctx, runtime, "WEAK-POINTER")?;
     runtime.define_class(ctx, "WEAK-POINTER", Word::UNBOUND)?;

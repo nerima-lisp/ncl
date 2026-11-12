@@ -8,6 +8,28 @@ use super::{
 use ncl_ir::Function;
 use std::time::Instant;
 
+pub(super) trait PassObserver {
+    const ENABLED: bool;
+
+    fn observe(&mut self, event: &PassEvent);
+}
+
+impl<F: FnMut(&PassEvent)> PassObserver for F {
+    const ENABLED: bool = true;
+
+    fn observe(&mut self, event: &PassEvent) {
+        self(event);
+    }
+}
+
+pub(super) struct DisabledPassObserver;
+
+impl PassObserver for DisabledPassObserver {
+    const ENABLED: bool = false;
+
+    fn observe(&mut self, _event: &PassEvent) {}
+}
+
 pub(super) struct PassRunContext<'a, C, O> {
     pub(super) iteration: usize,
     pub(super) verify: bool,
@@ -19,25 +41,17 @@ pub(super) struct PassRunContext<'a, C, O> {
 struct FunctionPassOutcome {
     result: Result<bool, PassError>,
     elapsed: std::time::Duration,
-    allocated_bytes: Option<u128>,
 }
 
-fn run_function_pass_body<C: AllocationCounter>(
+fn run_function_pass_body(
     pass: &mut dyn FunctionPass,
     function: &mut Function,
     snapshot: &Module,
-    counter: &mut C,
 ) -> FunctionPassOutcome {
-    let allocation_before = counter.before_pass();
     let started = Instant::now();
     let result = pass.run(function, snapshot);
     let elapsed = started.elapsed();
-    let allocated_bytes = counter.after_pass(allocation_before);
-    FunctionPassOutcome {
-        result,
-        elapsed,
-        allocated_bytes,
-    }
+    FunctionPassOutcome { result, elapsed }
 }
 
 pub(super) fn run_function_pass<C, O>(
@@ -48,7 +62,7 @@ pub(super) fn run_function_pass<C, O>(
 ) -> Result<(bool, bool), PassError>
 where
     C: AllocationCounter,
-    O: FnMut(&PassEvent),
+    O: PassObserver,
 {
     let PassRunContext {
         iteration,
@@ -69,84 +83,91 @@ where
         .get_mut(index)
         .ok_or_else(|| PassError::new(&pass_name, "function index out of bounds"))?;
     let function_name = function.name.clone();
-    let (did_change, elapsed, allocated_bytes) = {
-        let FunctionPassOutcome {
-            result,
-            elapsed,
-            allocated_bytes,
-        } = run_function_pass_body(pass, function, &snapshot, counter);
-        let original_address_errors = address_liveness_errors(&snapshot_function);
-        let new_errors = added_provenance_errors(&original_address_errors, function);
-        let did_change = match result {
-            Ok(changed) => changed,
-            Err(error) => {
-                let invocation = PassInvocation::for_function(
-                    iteration,
-                    function_name,
-                    pass_name,
-                    false,
-                    elapsed,
-                    allocated_bytes,
-                );
-                if new_errors.is_empty() {
-                    return Err(report_function_pass_error(invocation, error, observer));
-                }
-                return Ok(rollback_function_pass(
-                    function,
-                    snapshot_function,
-                    invocation,
-                    report,
-                    observer,
-                    &format!("{new_errors:?}; pass error: {}", error.message),
-                ));
+    let allocation_before = if C::ENABLED {
+        Some(counter.before_pass())
+    } else {
+        None
+    };
+    let FunctionPassOutcome { result, elapsed } = run_function_pass_body(pass, function, &snapshot);
+    let allocated_bytes = if C::ENABLED {
+        counter.after_pass(allocation_before.flatten())
+    } else {
+        None
+    };
+    let original_address_errors = address_liveness_errors(&snapshot_function);
+    let new_errors = added_provenance_errors(&original_address_errors, function);
+    let did_change = match result {
+        Ok(changed) => changed,
+        Err(error) => {
+            let invocation = PassInvocation::for_function(
+                iteration,
+                function_name,
+                pass_name,
+                false,
+                elapsed,
+                allocated_bytes,
+            );
+            if new_errors.is_empty() {
+                return Err(report_function_pass_error(invocation, error, observer));
             }
-        };
-        if !new_errors.is_empty() {
             return Ok(rollback_function_pass(
                 function,
                 snapshot_function,
-                PassInvocation::for_function(
-                    iteration,
-                    function_name,
-                    pass_name,
-                    false,
-                    elapsed,
-                    allocated_bytes,
-                ),
+                invocation,
                 report,
                 observer,
-                &format!("{new_errors:?}"),
+                &format!("{new_errors:?}; pass error: {}", error.message),
             ));
         }
-        (did_change, elapsed, allocated_bytes)
     };
+    if !new_errors.is_empty() {
+        return Ok(rollback_function_pass(
+            function,
+            snapshot_function,
+            PassInvocation::for_function(
+                iteration,
+                function_name,
+                pass_name,
+                false,
+                elapsed,
+                allocated_bytes,
+            ),
+            report,
+            observer,
+            &format!("{new_errors:?}"),
+        ));
+    }
     report.stats.push(PassStat {
         pass: pass_name.clone(),
         changed: did_change,
         elapsed,
     });
-    let changed = verify_and_notify(
-        module,
-        verify,
-        PassInvocation::for_function(
-            iteration,
-            function_name,
-            pass_name,
-            did_change,
-            elapsed,
-            allocated_bytes,
-        ),
-        observer,
-    )?;
-    Ok((changed, false))
+    if O::ENABLED {
+        let changed = verify_and_notify(
+            module,
+            verify,
+            PassInvocation::for_function(
+                iteration,
+                function_name,
+                pass_name,
+                did_change,
+                elapsed,
+                allocated_bytes,
+            ),
+            observer,
+        )?;
+        return Ok((changed, false));
+    }
+    verify_after(verify, &pass_name, module)?;
+    Ok((did_change, false))
 }
 
-fn rollback_function_pass(
+fn rollback_function_pass<O: PassObserver>(
     function: &mut Function,
     snapshot_function: Function,
     invocation: PassInvocation,
     report: &mut PassReport,
-    observer: &mut impl FnMut(&PassEvent),
+    observer: &mut O,
     detail: &str,
 ) -> (bool, bool) {
     *function = snapshot_function;
@@ -159,35 +180,49 @@ fn rollback_function_pass(
         changed: false,
         elapsed: invocation.elapsed,
     });
-    observer(&PassEvent {
-        iteration: invocation.iteration,
-        function: invocation.function,
-        pass: invocation.pass,
-        changed: Some(invocation.changed),
-        verification: PassVerification::RolledBack(message.clone()),
-        elapsed: invocation.elapsed,
-        allocated_bytes: invocation.allocated_bytes,
-        error: Some(message),
-    });
+    if O::ENABLED {
+        observer.observe(&PassEvent {
+            iteration: invocation.iteration,
+            function: invocation.function,
+            pass: invocation.pass,
+            changed: Some(invocation.changed),
+            verification: PassVerification::RolledBack(message.clone()),
+            elapsed: invocation.elapsed,
+            allocated_bytes: invocation.allocated_bytes,
+            error: Some(message),
+        });
+    }
     (false, true)
 }
 
-pub(super) fn run_module_pass(
+pub(super) fn run_module_pass<C, O>(
     pass: &mut dyn ModulePass,
     module: &mut Module,
     iteration: usize,
     verify: bool,
     report: &mut PassReport,
-    observer: &mut impl FnMut(&PassEvent),
-    counter: &mut impl AllocationCounter,
-) -> Result<(bool, bool), PassError> {
+    observer: &mut O,
+    counter: &mut C,
+) -> Result<(bool, bool), PassError>
+where
+    C: AllocationCounter,
+    O: PassObserver,
+{
     let pass_name = pass.name().to_owned();
     let snapshot = module.clone();
-    let allocation_before = counter.before_pass();
+    let allocation_before = if C::ENABLED {
+        counter.before_pass()
+    } else {
+        None
+    };
     let started = Instant::now();
     let result = pass.run(module);
     let elapsed = started.elapsed();
-    let allocated_bytes = counter.after_pass(allocation_before);
+    let allocated_bytes = if C::ENABLED {
+        counter.after_pass(allocation_before)
+    } else {
+        None
+    };
     let did_change = match result {
         Ok(changed) => changed,
         Err(error) => {
@@ -203,30 +238,28 @@ pub(super) fn run_module_pass(
                     changed: false,
                     elapsed,
                 });
-                observer(&PassEvent {
-                    iteration,
-                    function: None,
-                    pass: pass_name,
-                    changed: Some(false),
-                    verification: PassVerification::RolledBack(message.clone()),
-                    elapsed,
-                    allocated_bytes,
-                    error: Some(message),
-                });
+                if O::ENABLED {
+                    observer.observe(&PassEvent {
+                        iteration,
+                        function: None,
+                        pass: pass_name,
+                        changed: Some(false),
+                        verification: PassVerification::RolledBack(message.clone()),
+                        elapsed,
+                        allocated_bytes,
+                        error: Some(message),
+                    });
+                }
                 return Ok((false, true));
             }
-            let error = PassError::new(&pass_name, error.message);
-            observer(&PassEvent {
+            return Err(report_module_pass_error(
+                pass_name,
+                error,
                 iteration,
-                function: None,
-                pass: pass_name,
-                changed: None,
-                verification: PassVerification::NotRun,
                 elapsed,
                 allocated_bytes,
-                error: Some(error.message.clone()),
-            });
-            return Err(error);
+                observer,
+            ));
         }
     };
     let new_errors = new_module_provenance_errors(&snapshot, module);
@@ -238,16 +271,18 @@ pub(super) fn run_module_pass(
             changed: false,
             elapsed,
         });
-        observer(&PassEvent {
-            iteration,
-            function: None,
-            pass: pass_name,
-            changed: Some(false),
-            verification: PassVerification::RolledBack(message.clone()),
-            elapsed,
-            allocated_bytes,
-            error: Some(message),
-        });
+        if O::ENABLED {
+            observer.observe(&PassEvent {
+                iteration,
+                function: None,
+                pass: pass_name,
+                changed: Some(false),
+                verification: PassVerification::RolledBack(message.clone()),
+                elapsed,
+                allocated_bytes,
+                error: Some(message),
+            });
+        }
         return Ok((false, true));
     }
     report.stats.push(PassStat {
@@ -255,20 +290,48 @@ pub(super) fn run_module_pass(
         changed: did_change,
         elapsed,
     });
-    let changed = verify_and_notify(
-        module,
-        verify,
-        PassInvocation {
+    if O::ENABLED {
+        let changed = verify_and_notify(
+            module,
+            verify,
+            PassInvocation {
+                iteration,
+                function: None,
+                pass: pass_name,
+                changed: did_change,
+                elapsed,
+                allocated_bytes,
+            },
+            observer,
+        )?;
+        return Ok((changed, false));
+    }
+    verify_after(verify, &pass_name, module)?;
+    Ok((did_change, false))
+}
+
+fn report_module_pass_error<O: PassObserver>(
+    pass: String,
+    error: PassError,
+    iteration: usize,
+    elapsed: std::time::Duration,
+    allocated_bytes: Option<u128>,
+    observer: &mut O,
+) -> PassError {
+    let error = PassError::new(&pass, error.message);
+    if O::ENABLED {
+        observer.observe(&PassEvent {
             iteration,
             function: None,
-            pass: pass_name,
-            changed: did_change,
+            pass,
+            changed: None,
+            verification: PassVerification::NotRun,
             elapsed,
             allocated_bytes,
-        },
-        observer,
-    )?;
-    Ok((changed, false))
+            error: Some(error.message.clone()),
+        });
+    }
+    error
 }
 
 struct PassInvocation {
@@ -300,57 +363,65 @@ impl PassInvocation {
     }
 }
 
-fn report_function_pass_error(
+fn report_function_pass_error<O: PassObserver>(
     invocation: PassInvocation,
     error: PassError,
-    observer: &mut impl FnMut(&PassEvent),
+    observer: &mut O,
 ) -> PassError {
     let error = PassError::new(&invocation.pass, error.message);
-    observer(&PassEvent {
-        iteration: invocation.iteration,
-        function: invocation.function,
-        pass: invocation.pass,
-        changed: None,
-        verification: PassVerification::NotRun,
-        elapsed: invocation.elapsed,
-        allocated_bytes: invocation.allocated_bytes,
-        error: Some(error.message.clone()),
-    });
-    error
-}
-
-fn verify_and_notify(
-    module: &Module,
-    verify: bool,
-    invocation: PassInvocation,
-    observer: &mut impl FnMut(&PassEvent),
-) -> Result<bool, PassError> {
-    match verify_after(verify, &invocation.pass, module) {
-        Ok(()) => observer(&PassEvent {
+    if O::ENABLED {
+        observer.observe(&PassEvent {
             iteration: invocation.iteration,
             function: invocation.function,
             pass: invocation.pass,
-            changed: Some(invocation.changed),
-            verification: if verify {
-                PassVerification::Passed
-            } else {
-                PassVerification::Skipped
-            },
+            changed: None,
+            verification: PassVerification::NotRun,
             elapsed: invocation.elapsed,
             allocated_bytes: invocation.allocated_bytes,
-            error: None,
-        }),
+            error: Some(error.message.clone()),
+        });
+    }
+    error
+}
+
+fn verify_and_notify<O: PassObserver>(
+    module: &Module,
+    verify: bool,
+    invocation: PassInvocation,
+    observer: &mut O,
+) -> Result<bool, PassError> {
+    match verify_after(verify, &invocation.pass, module) {
+        Ok(()) => {
+            if O::ENABLED {
+                observer.observe(&PassEvent {
+                    iteration: invocation.iteration,
+                    function: invocation.function,
+                    pass: invocation.pass,
+                    changed: Some(invocation.changed),
+                    verification: if verify {
+                        PassVerification::Passed
+                    } else {
+                        PassVerification::Skipped
+                    },
+                    elapsed: invocation.elapsed,
+                    allocated_bytes: invocation.allocated_bytes,
+                    error: None,
+                });
+            }
+        }
         Err(error) => {
-            observer(&PassEvent {
-                iteration: invocation.iteration,
-                function: invocation.function,
-                pass: invocation.pass,
-                changed: Some(invocation.changed),
-                verification: PassVerification::Failed(error.message.clone()),
-                elapsed: invocation.elapsed,
-                allocated_bytes: invocation.allocated_bytes,
-                error: Some(error.message.clone()),
-            });
+            if O::ENABLED {
+                observer.observe(&PassEvent {
+                    iteration: invocation.iteration,
+                    function: invocation.function,
+                    pass: invocation.pass,
+                    changed: Some(invocation.changed),
+                    verification: PassVerification::Failed(error.message.clone()),
+                    elapsed: invocation.elapsed,
+                    allocated_bytes: invocation.allocated_bytes,
+                    error: Some(error.message.clone()),
+                });
+            }
             return Err(error);
         }
     }

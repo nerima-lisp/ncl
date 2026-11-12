@@ -7,7 +7,9 @@ mod allocation_counter;
 use allocation_counter::{AllocationCounter, DisabledAllocationCounter, SnapshotAllocationCounter};
 mod pass_execution;
 mod provenance;
-use pass_execution::{PassRunContext, run_function_pass, run_module_pass};
+use pass_execution::{
+    DisabledPassObserver, PassObserver, PassRunContext, run_function_pass, run_module_pass,
+};
 use std::collections::HashSet;
 
 impl PassManager {
@@ -52,7 +54,7 @@ impl PassManager {
     ///
     /// Returns a pass error or a post-pass verification failure.
     pub fn run(&mut self, module: &mut Module) -> Result<PassReport, PassError> {
-        self.run_with_observer(module, |_| {})
+        self.run_with_counter(module, DisabledPassObserver, &mut DisabledAllocationCounter)
     }
 
     /// Runs passes to a fixed point and reports each invocation to `observer`.
@@ -85,10 +87,10 @@ impl PassManager {
         self.run_with_counter(module, observer, &mut counter)
     }
 
-    fn run_with_counter<C: AllocationCounter>(
+    fn run_with_counter<C: AllocationCounter, O: PassObserver>(
         &mut self,
         module: &mut Module,
-        mut observer: impl FnMut(&PassEvent),
+        mut observer: O,
         counter: &mut C,
     ) -> Result<PassReport, PassError> {
         let snapshot = module.clone();

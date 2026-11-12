@@ -1,4 +1,6 @@
 pub(super) trait AllocationCounter {
+    const ENABLED: bool;
+
     fn before_pass(&mut self) -> Option<u128>;
     fn after_pass(&mut self, before: Option<u128>) -> Option<u128>;
 }
@@ -7,6 +9,8 @@ pub(super) trait AllocationCounter {
 pub(super) struct DisabledAllocationCounter;
 
 impl AllocationCounter for DisabledAllocationCounter {
+    const ENABLED: bool = false;
+
     fn before_pass(&mut self) -> Option<u128> {
         None
     }
@@ -30,6 +34,8 @@ impl<F> AllocationCounter for SnapshotAllocationCounter<F>
 where
     F: FnMut() -> Option<u128>,
 {
+    const ENABLED: bool = true;
+
     fn before_pass(&mut self) -> Option<u128> {
         (self.snapshot)()
     }

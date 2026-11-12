@@ -96,6 +96,30 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         self.assertEqual(summary["ties"], 0)
         self.assertTrue(summary["noise_below"])
 
+    def test_incomplete_paired_summary_has_no_noise_classification(self):
+        ncl = [{"pair": 1, "status": "passed", "seconds": 2.0}]
+        sbcl = [{"pair": 1, "status": "passed", "seconds": 1.0}]
+
+        summary = paired_statistics(ncl, sbcl, expected_sample_count=5)
+        table = render_micro_table(
+            {
+                "cases": {
+                    "fixture": {
+                        "engines": {},
+                        "paired_comparison": summary,
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(summary["sample_count"], 1)
+        self.assertEqual(summary["expected_sample_count"], 5)
+        self.assertEqual(summary["range_seconds"], 0.0)
+        self.assertIsNone(summary["noise_below"])
+        self.assertIn("1/5", table)
+        self.assertIn("| n/a |", table)
+        self.assertNotIn("exceeds noise", table)
+
     def test_micro_engine_summary_includes_timing_range(self):
         samples = [
             {

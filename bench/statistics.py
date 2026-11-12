@@ -118,10 +118,11 @@ def paired_statistics(
         for pair in sorted(first_by_pair.keys() & second_by_pair.keys())
     ]
     summary = sample_statistics(deltas)
+    sample_count = summary["sample_count"]
     median = summary["median_seconds"]
     noise_width = summary["range_seconds"]
     return {
-        "sample_count": summary["sample_count"],
+        "sample_count": sample_count,
         "expected_sample_count": expected_sample_count,
         "median_delta_seconds": median,
         "minimum_delta_seconds": summary["minimum_seconds"],
@@ -131,6 +132,10 @@ def paired_statistics(
         "ncl_wins": sum(delta < 0 for delta in deltas),
         "sbcl_wins": sum(delta > 0 for delta in deltas),
         "ties": sum(delta == 0 for delta in deltas),
-        "noise_below": None if median is None else abs(median) <= noise_width,
+        "noise_below": (
+            None
+            if median is None or sample_count != expected_sample_count
+            else abs(median) <= noise_width
+        ),
         "delta_definition": "NCL minus SBCL seconds; negative means NCL was faster",
     }

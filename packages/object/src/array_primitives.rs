@@ -60,16 +60,12 @@ pub fn validate_array_element(
             classify_object(ctx, value),
             ObjectRef::Fixnum(_) | ObjectRef::Bignum(_)
         ),
-        ArrayElementType::Unsigned => {
-            let classification = classify_object(ctx, value);
-            if let ObjectRef::Fixnum(value) = classification {
-                value >= 0
-            } else if let ObjectRef::Bignum(value) = classification {
-                !crate::bignum_sign(ctx, Bignum::from_word(value))?
-            } else {
-                false
-            }
-        }
+        ArrayElementType::Unsigned => match classify_object(ctx, value) {
+            ObjectRef::Fixnum(value) => value >= 0,
+            ObjectRef::Bignum(value) => !crate::bignum_sign(ctx, Bignum::from_word(value))?,
+            // check-added-lines: allow(wildcard) non-integer objects are invalid in unsigned arrays
+            _ => false,
+        },
         ArrayElementType::SingleFloat | ArrayElementType::DoubleFloat | ArrayElementType::T => true,
     };
     valid.then_some(value).ok_or(ObjectError::TypeError)

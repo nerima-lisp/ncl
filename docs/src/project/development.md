@@ -97,15 +97,23 @@ nix run path:.#rust-coverage -- --summary-only
 ~~~
 
 The workspace-wide 95.0% region figure is a goal. CI reports it on every
-coverage run and warns when it is below the goal. The blocking path gate reads
-the NUL-delimited `git diff --no-ext-diff --name-status --find-renames` output.
+coverage run and warns when it is below the goal. The blocking path gate
+compares the candidate coverage summary with a parent coverage summary. For
+pull requests, CI uses the pull request base commit. For branch pushes, it
+fetches the base branch tip. In both cases, CI computes their merge base with
+`git merge-base HEAD <base-sha>` and passes the NUL-delimited output of
+`git diff --no-ext-diff --name-status --find-renames -z <merge-base> HEAD` to
+the gate.
+
 For a detected rename, the candidate path uses the parent summary entry for
-the old path. A path missing from its summary contributes zero regions. The
-changed paths pass when their combined missed region count does not exceed the
-parent's count, or their combined coverage is at least 95.0%. Each changed
-path with a parent summary entry, including a renamed path matched to its old
-name, must also have no increase in missed regions or reach 95.0% coverage
-individually.
+the old path. A candidate path missing from the candidate summary contributes
+zero candidate regions; a parent path missing from the parent summary
+contributes zero parent regions. Clause (a) passes when the changed paths'
+combined missed-region count does not exceed the parent count, or their
+combined candidate coverage is at least 95.0%. Clause (b) checks each changed
+path that has a parent summary entry, including a renamed path matched to its
+old name. It passes when the candidate path has no increase in missed regions
+or reaches 95.0% coverage individually.
 The path gate runs on pull requests and non-main branch pushes. Main pushes
 skip it but still upload the workspace summary for later baselines.
 
@@ -116,10 +124,12 @@ the threshold:
 nix run path:.#rust-coverage -- --summary-only --fail-under-regions 95.0
 ~~~
 
-For the path gate, CI uses the exact merge-base coverage artifact when
-available. If that main run was cancelled or has no artifact, CI uses the
-nearest ancestor run with a non-expired coverage artifact. The gate fails when
-no such ancestor artifact is available.
+For the parent summary, CI first looks for a `coverage-summary` artifact from
+the base branch at the exact merge-base commit. If it is unavailable, CI checks
+that commit's first-parent ancestors, starting with the nearest one, and uses
+the first commit with a matching artifact. “Non-expired” means the GitHub
+artifact listing reports `expired: false`. If no matching artifact exists, the
+gate fails.
 
 For a browsable report, use `--html --output-dir artifacts/rust-coverage` in
 place of `--summary-only`. The flake app supplies the pinned Rust and LLVM

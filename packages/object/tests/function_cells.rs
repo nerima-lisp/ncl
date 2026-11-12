@@ -3,9 +3,11 @@
 use std::sync::{Arc, Barrier};
 use std::thread;
 
+use ncl_object::typed::{FunctionDesignator, Symbol};
 use ncl_object::{
-    Function, ObjectError, Runtime, ThreadContext, Word, function_entry, make_code_object,
-    make_simple_fun, make_string, make_symbol, symbol_function, symbol_offset,
+    BuiltinFunctionCaller, Function, FunctionArguments, FunctionCaller, FunctionObject,
+    HeapRootedWord, MultipleValues, ObjectError, Runtime, ThreadContext, Word, function_entry,
+    make_code_object, make_simple_fun, make_string, make_symbol, symbol_function, symbol_offset,
 };
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
@@ -44,14 +46,19 @@ fn function_entry_accessors_validate_object_layouts() {
     let entry = Word::fixnum(37);
     {
         let mut access = context.thread_access();
-        assert!(access.store_function_entry_release(fixture.words.old_function, entry));
+        assert!(
+            access
+                .store_function_entry_release(decode_word(fixture.words.old_function_bits), entry)
+        );
         assert_eq!(
-            access.load_function_entry_acquire(fixture.words.old_function),
+            access.load_function_entry_acquire(decode_word(fixture.words.old_function_bits)),
             Some(entry)
         );
-        assert!(!access.store_function_entry_release(fixture.words.symbol, entry));
+        assert!(
+            !access.store_function_entry_release(decode_word(fixture.words.symbol_bits), entry)
+        );
         assert_eq!(
-            access.load_function_entry_acquire(fixture.words.symbol),
+            access.load_function_entry_acquire(decode_word(fixture.words.symbol_bits)),
             None
         );
     }
@@ -82,17 +89,91 @@ fn function_entry_accessors_validate_object_layouts() {
         Err(ObjectError::Layout)
     ));
     assert_eq!(
-        function_entry(&context, Function::from_word(fixture.words.old_function)),
+        function_entry(
+            &context,
+            Function::from_word(decode_word(fixture.words.old_function_bits)),
+        ),
         Ok(37)
     );
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+#[test]
+fn symbol_function_slot_survives_two_full_collections() {
+    let fixture = prepare_function_cell_fixture();
+    let mut context = ThreadContext::new();
+    context
+        .register(&fixture.runtime)
+        .unwrap_or_else(|error| panic!("register context: {error:?}"));
+    let symbol = root_word(&context, fixture.words.symbol_bits);
+    let stale_function_bits = fixture.words.old_function_bits;
+    for _ in 0..2 {
+        context
+            .collect(true)
+            .unwrap_or_else(|error| panic!("full collection: {error:?}"));
+    }
+    let stale_function = FunctionObject::try_from(decode_word(stale_function_bits))
+        .unwrap_or_else(|error| panic!("stale function: {error:?}"));
+    let current_function = symbol_function(&context, symbol.get())
+        .unwrap_or_else(|error| panic!("symbol function after collection: {error:?}"));
+    assert_ne!(current_function, stale_function.as_word());
+    context
+        .write_object_slot(
+            symbol.get(),
+            symbol_offset::FUNCTION,
+            stale_function.as_word(),
+        )
+        .unwrap_or_else(|error| panic!("write stale function cell: {error:?}"));
+    context.set_strict_forwarding(true);
+
+    let mut caller = BuiltinFunctionCaller;
+    let mut values = MultipleValues::new();
+    assert_eq!(
+        caller.call_function(
+            &mut context,
+            &fixture.runtime,
+            FunctionDesignator::Function(stale_function),
+            FunctionArguments::new(&[]),
+            &mut values,
+        ),
+        Err(ObjectError::ForwardingViolation)
+    );
+    assert_eq!(
+        fixture
+            .runtime
+            .call_builtin_if_registered(&mut context, stale_function, &[], &mut values,),
+        Some(Err(ObjectError::ForwardingViolation))
+    );
+    assert_eq!(
+        caller.call_function(
+            &mut context,
+            &fixture.runtime,
+            FunctionDesignator::Symbol(Symbol::from_word(symbol.get())),
+            FunctionArguments::new(&[]),
+            &mut values,
+        ),
+        Err(ObjectError::ForwardingViolation)
+    );
+    context
+        .write_object_slot(symbol.get(), symbol_offset::FUNCTION, current_function)
+        .unwrap_or_else(|error| panic!("restore function cell: {error:?}"));
+    let result = caller.call_function(
+        &mut context,
+        &fixture.runtime,
+        FunctionDesignator::Symbol(Symbol::from_word(symbol.get())),
+        FunctionArguments::new(&[]),
+        &mut values,
+    );
+    assert_eq!(result, Ok(Word::fixnum(11)));
+    assert_eq!(values.as_slice(), &[Word::fixnum(11)]);
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 #[derive(Clone, Copy)]
 struct FunctionCellWords {
-    symbol: Word,
-    old_function: Word,
-    new_function: Word,
+    symbol_bits: u64,
+    old_function_bits: u64,
+    new_function_bits: u64,
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
@@ -100,6 +181,22 @@ struct FunctionCellFixture {
     runtime: Arc<Runtime>,
     words: FunctionCellWords,
     _code: [ncl_sys::CodePtr; 2],
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+fn encode_word(word: Word) -> u64 {
+    !word.bits()
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+fn decode_word(encoded: u64) -> Word {
+    Word::from_bits(!encoded)
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+fn root_word(context: &ThreadContext, encoded: u64) -> HeapRootedWord {
+    HeapRootedWord::new(context, decode_word(encoded))
+        .unwrap_or_else(|error| panic!("root word: {error:?}"))
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
@@ -131,6 +228,10 @@ fn prepare_function_cell_fixture() -> FunctionCellFixture {
         Word::NIL,
     )
     .unwrap_or_else(|error| panic!("new code object: {error:?}"));
+    let name = make_string(&mut setup, &runtime, &['f'])
+        .unwrap_or_else(|error| panic!("symbol name: {error:?}"));
+    let symbol =
+        make_symbol(&mut setup, &runtime, name).unwrap_or_else(|error| panic!("symbol: {error:?}"));
     let old_function = make_simple_fun(
         &mut setup,
         &runtime,
@@ -151,10 +252,6 @@ fn prepare_function_cell_fixture() -> FunctionCellFixture {
     )
     .unwrap_or_else(|error| panic!("new function: {error:?}"))
     .as_word();
-    let name = make_string(&mut setup, &runtime, &['f'])
-        .unwrap_or_else(|error| panic!("symbol name: {error:?}"));
-    let symbol =
-        make_symbol(&mut setup, &runtime, name).unwrap_or_else(|error| panic!("symbol: {error:?}"));
     setup
         .write_object_slot(symbol, symbol_offset::FUNCTION, old_function)
         .unwrap_or_else(|error| panic!("initial function cell: {error:?}"));
@@ -163,9 +260,9 @@ fn prepare_function_cell_fixture() -> FunctionCellFixture {
     FunctionCellFixture {
         runtime,
         words: FunctionCellWords {
-            symbol,
-            old_function,
-            new_function,
+            symbol_bits: encode_word(symbol),
+            old_function_bits: encode_word(old_function),
+            new_function_bits: encode_word(new_function),
         },
         _code: [old_code, new_code],
     }
@@ -179,11 +276,11 @@ fn run_reader(runtime: &Runtime, barrier: &Barrier, words: &FunctionCellWords) {
         .unwrap_or_else(|error| panic!("register reader: {error:?}"));
     barrier.wait();
     for _ in 0..5_000 {
-        let function = symbol_function(&context, words.symbol)
+        let function = symbol_function(&context, decode_word(words.symbol_bits))
             .unwrap_or_else(|error| panic!("read symbol function: {error:?}"));
-        let expected = if function == words.old_function {
+        let expected = if function == decode_word(words.old_function_bits) {
             11
-        } else if function == words.new_function {
+        } else if function == decode_word(words.new_function_bits) {
             29
         } else {
             panic!("observed an unpublished function object");
@@ -213,12 +310,16 @@ fn run_writer(runtime: &Runtime, barrier: &Barrier, words: &FunctionCellWords) {
     barrier.wait();
     for index in 0..10_000 {
         let function = if index % 2 == 0 {
-            words.new_function
+            decode_word(words.new_function_bits)
         } else {
-            words.old_function
+            decode_word(words.old_function_bits)
         };
         context
-            .write_object_slot(words.symbol, symbol_offset::FUNCTION, function)
+            .write_object_slot(
+                decode_word(words.symbol_bits),
+                symbol_offset::FUNCTION,
+                function,
+            )
             .unwrap_or_else(|error| panic!("redefine symbol function: {error:?}"));
     }
 }

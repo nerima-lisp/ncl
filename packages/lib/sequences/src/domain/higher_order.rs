@@ -153,7 +153,7 @@ pub fn map<C: FunctionCaller>(
     let callback_word = function;
     let callback_roots = [callback_word];
     scope_roots(ctx, &callback_roots, |ctx, rooted_callback| {
-        let callback = callback(ctx, *rooted_callback.first().ok_or(ObjectError::Layout)?)?;
+        callback(ctx, *rooted_callback.first().ok_or(ObjectError::Layout)?)?;
         let sources = sequences
             .iter()
             .map(|sequence| values(ctx, *sequence))
@@ -167,6 +167,8 @@ pub fn map<C: FunctionCaller>(
                         .iter()
                         .map(|source| source.get(index).copied().ok_or(ObjectError::Layout))
                         .collect::<Result<Vec<_>, _>>()?;
+                    let callback =
+                        callback(ctx, *rooted_callback.first().ok_or(ObjectError::Layout)?)?;
                     *value = call(ctx, runtime, caller, callback, &args)?.0;
                 }
                 sequence_result(ctx, runtime, result_type, rooted_result)
@@ -270,7 +272,7 @@ pub fn predicate<C: FunctionCaller>(
     }
     let callback_root = [function];
     scope_roots(ctx, &callback_root, |ctx, root| {
-        let callback = callback(ctx, *root.first().ok_or(ObjectError::Layout)?)?;
+        callback(ctx, *root.first().ok_or(ObjectError::Layout)?)?;
         let source_values = sequences
             .iter()
             .map(|sequence| values(ctx, *sequence))
@@ -284,6 +286,7 @@ pub fn predicate<C: FunctionCaller>(
                     .iter()
                     .map(|source| source.get(index).copied().ok_or(ObjectError::Layout))
                     .collect::<Result<Vec<_>, _>>()?;
+                let callback = callback(ctx, *root.first().ok_or(ObjectError::Layout)?)?;
                 let predicate_result = call(ctx, runtime, caller, callback, &args)?.0;
                 let truth = predicate_result != Word::NIL;
                 result = match kind {
@@ -341,8 +344,7 @@ fn list_map<C: FunctionCaller>(
             rooted_nested(ctx, &sources, |ctx, sources| {
                 let result = vec![Word::NIL; length];
                 scope_rooted_slice(ctx, &result, |ctx, rooted_result| {
-                    let callback =
-                        callback(ctx, *function_root.first().ok_or(ObjectError::Layout)?)?;
+                    callback(ctx, *function_root.first().ok_or(ObjectError::Layout)?)?;
                     for (index, value) in rooted_result.iter_mut().enumerate() {
                         let args = if tails {
                             lists
@@ -355,6 +357,8 @@ fn list_map<C: FunctionCaller>(
                                 .map(|source| source.get(index).copied().ok_or(ObjectError::Layout))
                                 .collect::<Result<Vec<_>, _>>()?
                         };
+                        let callback =
+                            callback(ctx, *function_root.first().ok_or(ObjectError::Layout)?)?;
                         *value = call(ctx, runtime, caller, callback, &args)?.0;
                     }
                     Ok(rooted_result.to_vec())

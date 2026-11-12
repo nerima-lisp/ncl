@@ -11,6 +11,23 @@ const fn end1_bound(options: PairSelectionOptions) -> Option<usize> {
     }
 }
 
+fn rooted_options(
+    options: PairSelectionOptions,
+    roots: &[Word],
+) -> Result<PairSelectionOptions, ObjectError> {
+    let mut rooted = options;
+    if options.selection.key.is_some() {
+        rooted.selection.key = Some(*roots.first().ok_or(ObjectError::Layout)?);
+    }
+    if options.selection.test.is_some() {
+        rooted.selection.test = Some(*roots.get(1).ok_or(ObjectError::Layout)?);
+    }
+    if options.selection.test_not.is_some() {
+        rooted.selection.test_not = Some(*roots.get(2).ok_or(ObjectError::Layout)?);
+    }
+    Ok(rooted)
+}
+
 fn matches_sequence_pair<C: FunctionCaller>(
     caller: &mut C,
     ctx: &mut ThreadContext,
@@ -31,28 +48,34 @@ fn matches_sequence_pair<C: FunctionCaller>(
     ];
     scope_roots(ctx, &roots, |ctx, roots| {
         let left = *roots.first().ok_or(ObjectError::Layout)?;
-        let right = *roots.get(1).ok_or(ObjectError::Layout)?;
         let key = *roots.get(2).ok_or(ObjectError::Layout)?;
-        let test = *roots.get(3).ok_or(ObjectError::Layout)?;
-        let test_not = *roots.get(4).ok_or(ObjectError::Layout)?;
         let left_keyed = if has_key {
             call_one(caller, ctx, runtime, key, left)?
         } else {
             left
         };
-        let keyed_roots = [left_keyed, right, key, test, test_not];
+        let keyed_roots = [
+            left_keyed,
+            *roots.get(1).ok_or(ObjectError::Layout)?,
+            *roots.get(2).ok_or(ObjectError::Layout)?,
+            *roots.get(3).ok_or(ObjectError::Layout)?,
+            *roots.get(4).ok_or(ObjectError::Layout)?,
+        ];
         scope_roots(ctx, &keyed_roots, |ctx, roots| {
             let left_keyed = *roots.first().ok_or(ObjectError::Layout)?;
             let right = *roots.get(1).ok_or(ObjectError::Layout)?;
             let key = *roots.get(2).ok_or(ObjectError::Layout)?;
-            let test = *roots.get(3).ok_or(ObjectError::Layout)?;
-            let test_not = *roots.get(4).ok_or(ObjectError::Layout)?;
             let right_keyed = if has_key {
                 call_one(caller, ctx, runtime, key, right)?
             } else {
                 right
             };
-            let comparison_roots = [left_keyed, right_keyed, test, test_not];
+            let comparison_roots = [
+                left_keyed,
+                right_keyed,
+                *roots.get(3).ok_or(ObjectError::Layout)?,
+                *roots.get(4).ok_or(ObjectError::Layout)?,
+            ];
             scope_roots(ctx, &comparison_roots, |ctx, roots| {
                 let left = *roots.first().ok_or(ObjectError::Layout)?;
                 let right = *roots.get(1).ok_or(ObjectError::Layout)?;
@@ -109,45 +132,52 @@ pub fn search_pair<C: FunctionCaller>(
     right: &mut [Word], // check-added-lines: allow(index) slice type
     options: PairSelectionOptions,
 ) -> Result<Word, ObjectError> {
+    let option_words = [
+        options.selection.key.unwrap_or(Word::NIL),
+        options.selection.test.unwrap_or(Word::NIL),
+        options.selection.test_not.unwrap_or(Word::NIL),
+    ];
     scope_roots(ctx, left, |ctx, left_roots| {
         scope_roots(ctx, right, |ctx, right_roots| {
-            let (start1, end1) = bounds_from(
-                options.start1.unwrap_or(options.selection.start),
-                end1_bound(options),
-                left.len(),
-            )?;
-            let (start2, end2) =
-                bounds_from(options.start2.unwrap_or(0), options.end2, right.len())?;
-            let width = end1 - start1;
-            if width > end2 - start2 {
-                return Ok(Word::NIL);
-            }
-            let last_start = end2 - width;
-            let candidates: Vec<usize> = if options.selection.from_end {
-                (start2..=last_start).rev().collect()
-            } else {
-                (start2..=last_start).collect()
-            };
-            for offset in candidates {
-                let mut equal = true;
-                for index in 0..width {
-                    if !matches_sequence_pair(
-                        caller,
-                        ctx,
-                        runtime,
-                        options,
-                        *left_roots.get(start1 + index).ok_or(ObjectError::Layout)?,
-                        *right_roots.get(offset + index).ok_or(ObjectError::Layout)?,
-                    )? {
-                        equal = false;
-                        break;
+            scope_roots(ctx, &option_words, |ctx, option_roots| {
+                let (start1, end1) = bounds_from(
+                    options.start1.unwrap_or(options.selection.start),
+                    end1_bound(options),
+                    left.len(),
+                )?;
+                let (start2, end2) =
+                    bounds_from(options.start2.unwrap_or(0), options.end2, right.len())?;
+                let width = end1 - start1;
+                if width > end2 - start2 {
+                    return Ok(Word::NIL);
+                }
+                let last_start = end2 - width;
+                let candidates: Vec<usize> = if options.selection.from_end {
+                    (start2..=last_start).rev().collect()
+                } else {
+                    (start2..=last_start).collect()
+                };
+                for offset in candidates {
+                    let mut equal = true;
+                    for index in 0..width {
+                        if !matches_sequence_pair(
+                            caller,
+                            ctx,
+                            runtime,
+                            rooted_options(options, option_roots)?,
+                            *left_roots.get(start1 + index).ok_or(ObjectError::Layout)?,
+                            *right_roots.get(offset + index).ok_or(ObjectError::Layout)?,
+                        )? {
+                            equal = false;
+                            break;
+                        }
+                    }
+                    if equal {
+                        return index_word(offset);
                     }
                 }
-                if equal {
-                    return index_word(offset);
-                }
-            }
-            Ok(Word::NIL)
+                Ok(Word::NIL)
+            })
         })
     })
 }
@@ -164,57 +194,64 @@ pub fn mismatch_pair<C: FunctionCaller>(
     right: &mut [Word], // check-added-lines: allow(index) slice type
     options: PairSelectionOptions,
 ) -> Result<Word, ObjectError> {
+    let option_words = [
+        options.selection.key.unwrap_or(Word::NIL),
+        options.selection.test.unwrap_or(Word::NIL),
+        options.selection.test_not.unwrap_or(Word::NIL),
+    ];
     scope_roots(ctx, left, |ctx, left_roots| {
         scope_roots(ctx, right, |ctx, right_roots| {
-            let (start1, end1) = bounds_from(
-                options.start1.unwrap_or(options.selection.start),
-                end1_bound(options),
-                left.len(),
-            )?;
-            let (start2, end2) =
-                bounds_from(options.start2.unwrap_or(0), options.end2, right.len())?;
-            let left_length = end1 - start1;
-            let right_length = end2 - start2;
-            let compared = left_length.min(right_length);
-            if options.selection.from_end {
+            scope_roots(ctx, &option_words, |ctx, option_roots| {
+                let (start1, end1) = bounds_from(
+                    options.start1.unwrap_or(options.selection.start),
+                    end1_bound(options),
+                    left.len(),
+                )?;
+                let (start2, end2) =
+                    bounds_from(options.start2.unwrap_or(0), options.end2, right.len())?;
+                let left_length = end1 - start1;
+                let right_length = end2 - start2;
+                let compared = left_length.min(right_length);
+                if options.selection.from_end {
+                    for offset in 0..compared {
+                        let left_index = end1 - 1 - offset;
+                        let right_index = end2 - 1 - offset;
+                        if !matches_sequence_pair(
+                            caller,
+                            ctx,
+                            runtime,
+                            rooted_options(options, option_roots)?,
+                            *left_roots.get(left_index).ok_or(ObjectError::Layout)?,
+                            *right_roots.get(right_index).ok_or(ObjectError::Layout)?,
+                        )? {
+                            return index_word(left_index + 1);
+                        }
+                    }
+                    if left_length == right_length {
+                        return Ok(Word::NIL);
+                    }
+                    return index_word(start1 + left_length.saturating_sub(right_length));
+                }
                 for offset in 0..compared {
-                    let left_index = end1 - 1 - offset;
-                    let right_index = end2 - 1 - offset;
+                    let left_index = start1 + offset;
+                    let right_index = start2 + offset;
                     if !matches_sequence_pair(
                         caller,
                         ctx,
                         runtime,
-                        options,
+                        rooted_options(options, option_roots)?,
                         *left_roots.get(left_index).ok_or(ObjectError::Layout)?,
                         *right_roots.get(right_index).ok_or(ObjectError::Layout)?,
                     )? {
-                        return index_word(left_index + 1);
+                        return index_word(left_index);
                     }
                 }
                 if left_length == right_length {
-                    return Ok(Word::NIL);
+                    Ok(Word::NIL)
+                } else {
+                    index_word(start1 + compared)
                 }
-                return index_word(start1 + left_length.saturating_sub(right_length));
-            }
-            for offset in 0..compared {
-                let left_index = start1 + offset;
-                let right_index = start2 + offset;
-                if !matches_sequence_pair(
-                    caller,
-                    ctx,
-                    runtime,
-                    options,
-                    *left_roots.get(left_index).ok_or(ObjectError::Layout)?,
-                    *right_roots.get(right_index).ok_or(ObjectError::Layout)?,
-                )? {
-                    return index_word(left_index);
-                }
-            }
-            if left_length == right_length {
-                Ok(Word::NIL)
-            } else {
-                index_word(start1 + compared)
-            }
+            })
         })
     })
 }

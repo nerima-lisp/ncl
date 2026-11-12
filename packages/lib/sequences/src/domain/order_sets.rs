@@ -10,6 +10,7 @@ use ncl_object::{
     MultipleValues, ObjectError, ObjectRef, Runtime, Scope, ThreadContext, Word, car, cdr,
     classify_object, rplaca, simple_vector_length, simple_vector_ref, simple_vector_set,
 };
+use std::ops::Range;
 
 pub(super) fn with_scope<'ctx, T>(
     ctx: &'ctx mut ThreadContext,
@@ -49,10 +50,19 @@ pub(super) fn list_from(
 pub(super) fn scoped_rows<T>(
     ctx: &mut ThreadContext,
     words: &[Vec<Word>], // check-added-lines: allow(index) slice type
-    f: impl FnOnce(&mut ThreadContext, &[Vec<Word>]) -> T,
-) -> T {
+    f: impl FnOnce(&mut ThreadContext, &mut [Word], &[Range<usize>]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
     let values = words.iter().flatten().copied().collect::<Vec<_>>();
-    with_scope(ctx, &values, |scope, _| f(scope.context_mut(), words))
+    let mut start = 0;
+    let ranges = words
+        .iter()
+        .map(|row| {
+            let range = start..start + row.len();
+            start = range.end;
+            range
+        })
+        .collect::<Vec<_>>();
+    ncl_object::with_rooted_slice(ctx, &values, |ctx, roots| f(ctx, roots, &ranges))
 }
 #[derive(Clone, Copy)]
 pub struct Options {
@@ -72,17 +82,34 @@ impl Default for Options {
 pub(super) fn with_options<T>(
     ctx: &mut ThreadContext,
     opts: Options,
-    f: impl FnOnce(&mut ThreadContext, Options) -> Result<T, ObjectError>,
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
     let root_values = [opts.key, opts.test, opts.test_not];
-    with_scope(ctx, &root_values, |scope, handles| {
-        let options = Options {
-            key: word(scope, *handles.iter().next().ok_or(ObjectError::Layout)?),
-            test: word(scope, *handles.iter().nth(1).ok_or(ObjectError::Layout)?),
-            test_not: word(scope, *handles.iter().nth(2).ok_or(ObjectError::Layout)?),
-        };
-        f(scope.context_mut(), options)
+    ncl_object::with_rooted_slice(ctx, &root_values, f)
+}
+pub(super) fn options_from_roots(roots: &[Word]) -> Result<Options, ObjectError> {
+    Ok(Options {
+        key: *roots.first().ok_or(ObjectError::Layout)?,
+        test: *roots.get(1).ok_or(ObjectError::Layout)?,
+        test_not: *roots.get(2).ok_or(ObjectError::Layout)?,
     })
+}
+pub(super) fn row_len(ranges: &[Range<usize>], row: usize) -> Result<usize, ObjectError> {
+    Ok(ranges.get(row).ok_or(ObjectError::Layout)?.len())
+}
+pub(super) fn row_value(
+    roots: &[Word],
+    ranges: &[Range<usize>],
+    row: usize,
+    index: usize,
+) -> Result<Word, ObjectError> {
+    let range = ranges.get(row).ok_or(ObjectError::Layout)?;
+    let offset = range
+        .start
+        .checked_add(index)
+        .filter(|offset| *offset < range.end)
+        .ok_or(ObjectError::Layout)?;
+    roots.get(offset).copied().ok_or(ObjectError::Layout)
 }
 fn symbol_name(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
     let ObjectRef::Symbol(symbol) = classify_object(ctx, word) else {
@@ -239,11 +266,15 @@ pub(super) fn matches(
 ) -> Result<bool, ObjectError> {
     let root_values = [a, b, opts.key, opts.test, opts.test_not];
     with_scope(ctx, &root_values, |scope, handles| {
-        let key_fn = word(scope, *handles.iter().nth(2).ok_or(ObjectError::Layout)?);
-        let first = word(scope, *handles.iter().next().ok_or(ObjectError::Layout)?);
-        let second = word(scope, *handles.iter().nth(1).ok_or(ObjectError::Layout)?);
+        let first_handle = *handles.iter().next().ok_or(ObjectError::Layout)?;
+        let second_handle = *handles.iter().nth(1).ok_or(ObjectError::Layout)?;
+        let key_handle = *handles.iter().nth(2).ok_or(ObjectError::Layout)?;
+        let key_fn = word(scope, key_handle);
+        let first = word(scope, first_handle);
         let keyed_a_word = key(scope.context_mut(), runtime, key_fn, first)?;
         let keyed_a = scope.root(Local::from_word(keyed_a_word));
+        let key_fn = word(scope, key_handle);
+        let second = word(scope, second_handle);
         let keyed_second_word = key(scope.context_mut(), runtime, key_fn, second)?;
         let keyed_b = scope.root(Local::from_word(keyed_second_word));
         let left = word(scope, keyed_a);
@@ -284,18 +315,19 @@ pub fn sort(
     roots.extend_from_slice(&values);
     with_scope(ctx, &roots, |scope, handles| {
         let sequence_handle = *handles.iter().next().ok_or(ObjectError::Layout)?;
-        let predicate_word = word(scope, *handles.iter().nth(1).ok_or(ObjectError::Layout)?);
-        let key_word = word(scope, *handles.iter().nth(2).ok_or(ObjectError::Layout)?);
+        let predicate_handle = *handles.iter().nth(1).ok_or(ObjectError::Layout)?;
+        let key_handle = *handles.iter().nth(2).ok_or(ObjectError::Layout)?;
         let value_handles = handles.iter().skip(3).copied().collect::<Vec<_>>();
         let key_values = scope.root_many(&vec![Local::from_word(Word::NIL); values.len()]);
-        for (key_handle, value_handle) in key_values.iter().zip(value_handles.iter()) {
+        for (key_value_handle, value_handle) in key_values.iter().zip(value_handles.iter()) {
             let value = word(scope, *value_handle);
+            let key_word = word(scope, key_handle);
             let keyed = if key_word == Word::NIL {
                 value
             } else {
                 key(scope.context_mut(), runtime, key_word, value)?
             };
-            scope.set(*key_handle, Local::from_word(keyed));
+            scope.set(*key_value_handle, Local::from_word(keyed));
         }
         let mut order: Vec<usize> = Vec::with_capacity(values.len());
         for index in 0..values.len() {
@@ -309,6 +341,7 @@ pub fn sort(
                     scope,
                     *key_values.iter().nth(other).ok_or(ObjectError::Layout)?,
                 );
+                let predicate_word = word(scope, predicate_handle);
                 if compare(
                     scope.context_mut(),
                     runtime,
@@ -355,31 +388,37 @@ pub(super) fn set_operation(
     difference: bool,
 ) -> Result<Word, ObjectError> {
     let rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
-    scoped_rows(ctx, &rows, |ctx, rows| {
-        with_options(ctx, opts, |ctx, opts| {
+    scoped_rows(ctx, &rows, |ctx, row_roots, row_ranges| {
+        with_options(ctx, opts, |ctx, option_roots| {
             let candidates = if difference {
-                (0..rows.first().map_or(0, Vec::len))
+                (0..row_len(row_ranges, 0)?)
                     .map(|index| (0, index))
                     .collect::<Vec<_>>()
             } else {
-                rows.iter()
+                row_ranges
+                    .iter()
                     .enumerate()
-                    .flat_map(|(row, values)| (0..values.len()).map(move |index| (row, index)))
+                    .flat_map(|(row, range)| (0..range.len()).map(move |index| (row, index)))
                     .collect()
             };
-            let mut result = vec![Word::NIL; candidates.len()];
+            let result = vec![Word::NIL; candidates.len()];
             let mut result_rows = vec![0; candidates.len()];
-            {
+            ncl_object::with_rooted_slice(ctx, &result, |ctx, rooted_result| {
                 let mut result_len = 0;
                 for &(candidate_row, candidate_index) in &candidates {
-                    let value = *rows
-                        .get(candidate_row)
-                        .and_then(|row| row.get(candidate_index))
-                        .ok_or(ObjectError::Layout)?;
                     let mut in_left = candidate_row == 0;
                     if candidate_row == 1 {
-                        for candidate in rows.first().ok_or(ObjectError::Layout)? {
-                            if matches(ctx, runtime, *candidate, value, opts)? {
+                        for left_index in 0..row_len(row_ranges, 0)? {
+                            let candidate = row_value(row_roots, row_ranges, 0, left_index)?;
+                            let value =
+                                row_value(row_roots, row_ranges, candidate_row, candidate_index)?;
+                            if matches(
+                                ctx,
+                                runtime,
+                                candidate,
+                                value,
+                                options_from_roots(option_roots)?,
+                            )? {
                                 in_left = true;
                                 break;
                             }
@@ -387,8 +426,17 @@ pub(super) fn set_operation(
                     }
                     let mut in_right = candidate_row == 1;
                     if candidate_row == 0 {
-                        for candidate in rows.get(1).ok_or(ObjectError::Layout)? {
-                            if matches(ctx, runtime, value, *candidate, opts)? {
+                        for right_index in 0..row_len(row_ranges, 1)? {
+                            let value =
+                                row_value(row_roots, row_ranges, candidate_row, candidate_index)?;
+                            let candidate = row_value(row_roots, row_ranges, 1, right_index)?;
+                            if matches(
+                                ctx,
+                                runtime,
+                                value,
+                                candidate,
+                                options_from_roots(option_roots)?,
+                            )? {
                                 in_right = true;
                                 break;
                             }
@@ -402,28 +450,33 @@ pub(super) fn set_operation(
                         true
                     };
                     let mut duplicate = false;
-                    for (index, candidate) in result.iter().take(result_len).enumerate() {
-                        let value = *rows
-                            .get(candidate_row)
-                            .and_then(|row| row.get(candidate_index))
-                            .ok_or(ObjectError::Layout)?;
+                    for index in 0..result_len {
+                        let value =
+                            row_value(row_roots, row_ranges, candidate_row, candidate_index)?;
+                        let candidate = *rooted_result.get(index).ok_or(ObjectError::Layout)?;
                         let row = *result_rows.get(index).ok_or(ObjectError::Layout)?;
                         let (first, second) = if row == 0 && candidate_row == 1 {
-                            (*candidate, value)
+                            (candidate, value)
                         } else {
-                            (value, *candidate)
+                            (value, candidate)
                         };
-                        if matches(ctx, runtime, first, second, opts)? {
+                        if matches(
+                            ctx,
+                            runtime,
+                            first,
+                            second,
+                            options_from_roots(option_roots)?,
+                        )? {
                             duplicate = true;
                             break;
                         }
                     }
                     if include && !duplicate {
-                        let value = *rows
-                            .get(candidate_row)
-                            .and_then(|row| row.get(candidate_index))
-                            .ok_or(ObjectError::Layout)?;
-                        *result.get_mut(result_len).ok_or(ObjectError::Layout)? = value;
+                        let value =
+                            row_value(row_roots, row_ranges, candidate_row, candidate_index)?;
+                        *rooted_result
+                            .get_mut(result_len)
+                            .ok_or(ObjectError::Layout)? = value;
                         *result_rows.get_mut(result_len).ok_or(ObjectError::Layout)? =
                             candidate_row;
                         result_len += 1;
@@ -432,9 +485,9 @@ pub(super) fn set_operation(
                 list_from(
                     ctx,
                     runtime,
-                    result.get(..result_len).ok_or(ObjectError::Layout)?,
+                    rooted_result.get(..result_len).ok_or(ObjectError::Layout)?,
                 )
-            }
+            })
         })
     })
 }

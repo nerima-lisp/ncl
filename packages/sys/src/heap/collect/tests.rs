@@ -1,6 +1,8 @@
 use super::super::Heap;
 use super::PageError;
 use super::reclaim::reclaim_empty_pages;
+use crate::heap::LOGICAL_PAGE_SIZE;
+use crate::heap_state::{HeapWords, Object};
 use crate::{HeapConfig, PageKind, SafepointState, StorageCondition, Thread, TypeTag, Word};
 
 fn checked_index(index: Option<usize>, len: usize, message: &str) -> usize {
@@ -32,6 +34,125 @@ fn make_candidate_page_reclaimable(heap: &Heap, object: Word) {
     };
     metadata.object_starts.clear();
     drop(state);
+}
+
+fn dead_object_on_page(pointer: core::ptr::NonNull<u64>) -> Object {
+    // SAFETY: the test commits and clears this page before constructing its one-word record.
+    let words = unsafe { HeapWords::new(pointer, 1) };
+    Object {
+        words,
+        start: pointer.as_ptr().addr(),
+        kind: PageKind::HeaderObject,
+        widetag: 8,
+        generation: 0,
+        survived: 0,
+        pinned: false,
+        weak: None,
+        finalizer: None,
+        alive: false,
+        forwarded_to: None,
+    }
+}
+
+#[test]
+fn dead_objects_are_retired_only_after_their_group_is_reclaimed() -> Result<(), String> {
+    let heap = Heap::new(HeapConfig {
+        dynamic_space_size: 4 * LOGICAL_PAGE_SIZE,
+        bytes_considered_between_gcs: LOGICAL_PAGE_SIZE,
+    });
+    let mut state = heap.lock_state();
+    let range = state
+        .page_range
+        .as_ref()
+        .ok_or_else(|| "test heap reserves a page range".to_owned())?;
+    let pages_per_group = range.pages_per_group();
+    assert!(range.group_count() >= 2, "fixture has two commit groups");
+    let non_reclaimable_page = pages_per_group;
+
+    let range = state
+        .page_range
+        .as_mut()
+        .ok_or_else(|| "test heap reserves a page range".to_owned())?;
+    for page in [0, non_reclaimable_page] {
+        assert_eq!(range.commit_page(page), Ok(()));
+        assert_eq!(range.clear_page(page), Ok(()));
+    }
+    let first_pointer = range
+        .page_words_pointer(0)
+        .ok_or_else(|| "first test page has an address".to_owned())?;
+    let non_reclaimable_pointer = range
+        .page_words_pointer(non_reclaimable_page)
+        .ok_or_else(|| "second-group test page has an address".to_owned())?;
+    assert_eq!(range.group_for_page(0), Some(0));
+    assert_eq!(range.group_for_page(non_reclaimable_page), Some(1));
+
+    state.objects.push(dead_object_on_page(first_pointer));
+    state
+        .objects
+        .push(dead_object_on_page(non_reclaimable_pointer));
+    state.used = 2 * core::mem::size_of::<u64>();
+    let first_metadata = state
+        .pages
+        .get_mut(0)
+        .ok_or_else(|| "first test page has metadata".to_owned())?;
+    first_metadata.kind = Some(PageKind::HeaderObject);
+    first_metadata.used_bytes = core::mem::size_of::<u64>();
+    first_metadata.owner = Some(0);
+    let non_reclaimable_metadata = state
+        .pages
+        .get_mut(non_reclaimable_page)
+        .ok_or_else(|| "second-group test page has metadata".to_owned())?;
+    non_reclaimable_metadata.kind = Some(PageKind::HeaderObject);
+    non_reclaimable_metadata.pinned = true;
+    non_reclaimable_metadata.used_bytes = core::mem::size_of::<u64>();
+    non_reclaimable_metadata.owner = Some(1);
+
+    let mut committed_groups = Vec::new();
+    let result = reclaim_empty_pages(&mut state, |range, group| {
+        if range.is_group_committed(group) == Some(true) {
+            committed_groups.push(group);
+        }
+        range.decommit_group(group)
+    });
+
+    assert_eq!(result, Ok(()));
+    assert_eq!(committed_groups, vec![0]);
+    assert!(
+        state
+            .objects
+            .first()
+            .is_some_and(|object| object.forwarded_to.is_none() && object.words.is_empty()),
+        "the dead non-forwarded record in the reclaimed group is retired"
+    );
+    assert!(
+        state
+            .objects
+            .get(1)
+            .is_some_and(|object| !object.words.is_empty()),
+        "the dead record in the non-reclaimable group is preserved"
+    );
+    assert!(
+        state
+            .pages
+            .first()
+            .is_some_and(|metadata| metadata.kind.is_none()),
+        "reclaimed page metadata is reset"
+    );
+    assert!(
+        state
+            .pages
+            .get(non_reclaimable_page)
+            .is_some_and(|metadata| metadata.pinned),
+        "non-reclaimable page metadata is preserved"
+    );
+    let range = state
+        .page_range
+        .as_ref()
+        .ok_or_else(|| "test heap retains its page range".to_owned())?;
+    assert_eq!(range.is_group_committed(0), Some(false));
+    assert_eq!(range.is_group_committed(1), Some(true));
+    drop(state);
+    Ok(())
 }
 
 #[test]

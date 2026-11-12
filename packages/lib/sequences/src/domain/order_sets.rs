@@ -4,11 +4,9 @@ pub use assoc::{assoc, member, rassoc};
 #[path = "order_sets_extra.rs"]
 mod extra;
 pub use extra::{adjoin, intersection, set_difference, set_exclusive_or, subsetp};
-use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, Handle, HandleVec, Local,
-    MultipleValues, ObjectError, ObjectRef, Runtime, Scope, ThreadContext, Word, car, cdr,
-    classify_object, rplaca, simple_vector_length, simple_vector_ref, simple_vector_set,
+    Handle, HandleVec, Local, ObjectError, ObjectRef, Runtime, Scope, ThreadContext, Word, car,
+    cdr, classify_object, rplaca, simple_vector_length, simple_vector_ref, simple_vector_set,
 };
 use std::ops::Range;
 
@@ -96,6 +94,20 @@ pub(super) fn options_from_roots(roots: &[Word]) -> Result<Options, ObjectError>
 }
 pub(super) fn row_len(ranges: &[Range<usize>], row: usize) -> Result<usize, ObjectError> {
     Ok(ranges.get(row).ok_or(ObjectError::Layout)?.len())
+}
+fn candidate_positions(
+    ranges: &[Range<usize>],
+    difference: bool,
+) -> Result<Vec<(usize, usize)>, ObjectError> {
+    if difference {
+        Ok((0..row_len(ranges, 0)?).map(|index| (0, index)).collect())
+    } else {
+        Ok(ranges
+            .iter()
+            .enumerate()
+            .flat_map(|(row, range)| (0..range.len()).map(move |index| (row, index)))
+            .collect())
+    }
 }
 pub(super) fn row_value(
     roots: &[Word],
@@ -215,93 +227,11 @@ fn set_sequence_value(
         simple_vector_set(ctx, sequence, index, value)
     }
 }
-fn call_predicate(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    function: Word,
-    args: &[Word],
-) -> Result<Word, ObjectError> {
-    let mut values = Vec::with_capacity(args.len() + 1);
-    values.push(function);
-    values.extend_from_slice(args);
-    with_scope(ctx, &values, |scope, handles| {
-        let designator = FunctionDesignator::try_from_word(
-            scope.context(),
-            word(scope, *handles.iter().next().ok_or(ObjectError::Layout)?),
-        )?;
-        let mut caller = BuiltinFunctionCaller;
-        let mut values = MultipleValues::new();
-        let args = handles
-            .iter()
-            .skip(1)
-            .map(|handle| word(scope, *handle))
-            .collect::<Vec<_>>();
-        caller.call_function(
-            scope.context_mut(),
-            runtime,
-            designator,
-            FunctionArguments::new(&args),
-            &mut values,
-        )
-    })
-}
-fn key(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    key: Word,
-    value: Word,
-) -> Result<Word, ObjectError> {
-    if key == Word::NIL {
-        Ok(value)
-    } else {
-        call_predicate(ctx, runtime, key, &[value])
-    }
-}
-pub(super) fn matches(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    a: Word,
-    b: Word,
-    opts: Options,
-) -> Result<bool, ObjectError> {
-    let root_values = [a, b, opts.key, opts.test, opts.test_not];
-    with_scope(ctx, &root_values, |scope, handles| {
-        let first_handle = *handles.iter().next().ok_or(ObjectError::Layout)?;
-        let second_handle = *handles.iter().nth(1).ok_or(ObjectError::Layout)?;
-        let key_handle = *handles.iter().nth(2).ok_or(ObjectError::Layout)?;
-        let key_fn = word(scope, key_handle);
-        let first = word(scope, first_handle);
-        let keyed_a_word = key(scope.context_mut(), runtime, key_fn, first)?;
-        let keyed_a = scope.root(Local::from_word(keyed_a_word));
-        let key_fn = word(scope, key_handle);
-        let second = word(scope, second_handle);
-        let keyed_second_word = key(scope.context_mut(), runtime, key_fn, second)?;
-        let keyed_b = scope.root(Local::from_word(keyed_second_word));
-        let left = word(scope, keyed_a);
-        let right = word(scope, keyed_b);
-        let test = word(scope, *handles.iter().nth(3).ok_or(ObjectError::Layout)?);
-        let test_not = word(scope, *handles.iter().nth(4).ok_or(ObjectError::Layout)?);
-        if test != Word::NIL {
-            Ok(call_predicate(scope.context_mut(), runtime, test, &[left, right])? != Word::NIL)
-        } else if test_not != Word::NIL {
-            Ok(
-                call_predicate(scope.context_mut(), runtime, test_not, &[left, right])?
-                    == Word::NIL,
-            )
-        } else {
-            Ok(left == right)
-        }
-    })
-}
-fn compare(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    function: Word,
-    a: Word,
-    b: Word,
-) -> Result<bool, ObjectError> {
-    Ok(call_predicate(ctx, runtime, function, &[a, b])? != Word::NIL)
-}
+#[path = "order_sets_callbacks.rs"]
+mod callbacks;
+pub(super) use callbacks::matches;
+use callbacks::{compare, key};
+
 pub fn sort(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -390,17 +320,7 @@ pub(super) fn set_operation(
     let rows = vec![sequence_values(ctx, first)?, sequence_values(ctx, second)?];
     scoped_rows(ctx, &rows, |ctx, row_roots, row_ranges| {
         with_options(ctx, opts, |ctx, option_roots| {
-            let candidates = if difference {
-                (0..row_len(row_ranges, 0)?)
-                    .map(|index| (0, index))
-                    .collect::<Vec<_>>()
-            } else {
-                row_ranges
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(row, range)| (0..range.len()).map(move |index| (row, index)))
-                    .collect()
-            };
+            let candidates = candidate_positions(row_ranges, difference)?;
             let result = vec![Word::NIL; candidates.len()];
             let mut result_rows = vec![0; candidates.len()];
             ncl_object::with_rooted_slice(ctx, &result, |ctx, rooted_result| {

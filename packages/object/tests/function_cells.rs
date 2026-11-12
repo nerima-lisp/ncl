@@ -47,18 +47,15 @@ fn function_entry_accessors_validate_object_layouts() {
     {
         let mut access = context.thread_access();
         assert!(
-            access
-                .store_function_entry_release(decode_word(fixture.words.old_function_bits), entry)
+            access.store_function_entry_release(decode_word(fixture.words.old_function), entry)
         );
         assert_eq!(
-            access.load_function_entry_acquire(decode_word(fixture.words.old_function_bits)),
+            access.load_function_entry_acquire(decode_word(fixture.words.old_function)),
             Some(entry)
         );
-        assert!(
-            !access.store_function_entry_release(decode_word(fixture.words.symbol_bits), entry)
-        );
+        assert!(!access.store_function_entry_release(decode_word(fixture.words.symbol), entry));
         assert_eq!(
-            access.load_function_entry_acquire(decode_word(fixture.words.symbol_bits)),
+            access.load_function_entry_acquire(decode_word(fixture.words.symbol)),
             None
         );
     }
@@ -91,7 +88,7 @@ fn function_entry_accessors_validate_object_layouts() {
     assert_eq!(
         function_entry(
             &context,
-            Function::from_word(decode_word(fixture.words.old_function_bits)),
+            Function::from_word(decode_word(fixture.words.old_function)),
         ),
         Ok(37)
     );
@@ -105,8 +102,8 @@ fn symbol_function_slot_survives_two_full_collections() {
     context
         .register(&fixture.runtime)
         .unwrap_or_else(|error| panic!("register context: {error:?}"));
-    let symbol = root_word(&context, fixture.words.symbol_bits);
-    let stale_function_bits = fixture.words.old_function_bits;
+    let symbol = root_word(&context, fixture.words.symbol);
+    let stale_function_bits = fixture.words.old_function;
     for _ in 0..2 {
         context
             .collect(true)
@@ -171,9 +168,9 @@ fn symbol_function_slot_survives_two_full_collections() {
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 #[derive(Clone, Copy)]
 struct FunctionCellWords {
-    symbol_bits: u64,
-    old_function_bits: u64,
-    new_function_bits: u64,
+    symbol: u64,
+    old_function: u64,
+    new_function: u64,
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
@@ -184,12 +181,12 @@ struct FunctionCellFixture {
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-fn encode_word(word: Word) -> u64 {
+const fn encode_word(word: Word) -> u64 {
     !word.bits()
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-fn decode_word(encoded: u64) -> Word {
+const fn decode_word(encoded: u64) -> Word {
     Word::from_bits(!encoded)
 }
 
@@ -260,9 +257,9 @@ fn prepare_function_cell_fixture() -> FunctionCellFixture {
     FunctionCellFixture {
         runtime,
         words: FunctionCellWords {
-            symbol_bits: encode_word(symbol),
-            old_function_bits: encode_word(old_function),
-            new_function_bits: encode_word(new_function),
+            symbol: encode_word(symbol),
+            old_function: encode_word(old_function),
+            new_function: encode_word(new_function),
         },
         _code: [old_code, new_code],
     }
@@ -276,11 +273,11 @@ fn run_reader(runtime: &Runtime, barrier: &Barrier, words: &FunctionCellWords) {
         .unwrap_or_else(|error| panic!("register reader: {error:?}"));
     barrier.wait();
     for _ in 0..5_000 {
-        let function = symbol_function(&context, decode_word(words.symbol_bits))
+        let function = symbol_function(&context, decode_word(words.symbol))
             .unwrap_or_else(|error| panic!("read symbol function: {error:?}"));
-        let expected = if function == decode_word(words.old_function_bits) {
+        let expected = if function == decode_word(words.old_function) {
             11
-        } else if function == decode_word(words.new_function_bits) {
+        } else if function == decode_word(words.new_function) {
             29
         } else {
             panic!("observed an unpublished function object");
@@ -310,16 +307,12 @@ fn run_writer(runtime: &Runtime, barrier: &Barrier, words: &FunctionCellWords) {
     barrier.wait();
     for index in 0..10_000 {
         let function = if index % 2 == 0 {
-            decode_word(words.new_function_bits)
+            decode_word(words.new_function)
         } else {
-            decode_word(words.old_function_bits)
+            decode_word(words.old_function)
         };
         context
-            .write_object_slot(
-                decode_word(words.symbol_bits),
-                symbol_offset::FUNCTION,
-                function,
-            )
+            .write_object_slot(decode_word(words.symbol), symbol_offset::FUNCTION, function)
             .unwrap_or_else(|error| panic!("redefine symbol function: {error:?}"));
     }
 }

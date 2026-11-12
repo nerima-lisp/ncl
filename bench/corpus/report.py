@@ -7,6 +7,7 @@ import statistics
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from ..statistics import sample_statistics
 
 _PASS_NAME = re.compile(r'\bpass="((?:[^"\\]|\\.)*)"')
 _PASS_TIME = re.compile(r"\belapsed_ns=([0-9]+)\b")
@@ -22,6 +23,7 @@ def aggregate_file_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     ]
     complete = len(seconds) == len(samples)
     median = statistics.median(seconds) if complete else None
+    observed_statistics = sample_statistics(seconds)
     reasons = [row["reason"] for row in samples if row["reason"] is not None]
     peaks = [
         row["peak_rss_bytes"]
@@ -34,12 +36,16 @@ def aggregate_file_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "file": first["file"],
         "line_count": first["line_count"],
         "status": "passed" if complete else "failed",
-        "sample_count": len(samples),
+        "sample_count": observed_statistics["sample_count"],
+        "expected_sample_count": len(samples),
         "compile_seconds_samples": [
             row["compile_seconds"] if row["status"] == "passed" else None for row in samples
         ],
         "compile_seconds": median,
+        "median_seconds": observed_statistics["median_seconds"],
         "minimum_compile_seconds": min(seconds) if complete else None,
+        "maximum_compile_seconds": observed_statistics["maximum_seconds"],
+        "range_seconds": observed_statistics["range_seconds"],
         "lines_per_second": first["line_count"] / median if complete and median and median > 0 else None,
         "process_wall_seconds_samples": [row["process_wall_seconds"] for row in samples],
         "peak_rss_bytes": max(peaks) if peaks else None,
@@ -104,7 +110,9 @@ def runtime_summary(
 ) -> dict[str, Any]:
     successful = [row for row in files if row["status"] == "passed" and isinstance(row["compile_seconds"], (int, float))]
     all_successful = len(successful) == len(files)
-    sample_count = files[0]["sample_count"]
+    sample_count = files[0]["expected_sample_count"]
+    if any(row["expected_sample_count"] != sample_count for row in files):
+        raise ValueError("compile source samples have inconsistent counts")
     if any(len(row["compile_seconds_samples"]) != sample_count for row in files):
         raise ValueError("compile source samples have inconsistent counts")
     total_samples = (
@@ -114,6 +122,7 @@ def runtime_summary(
     )
     total_seconds = statistics.median(total_samples) if all_successful else None
     minimum_total_seconds = min(total_samples) if all_successful else None
+    total_statistics = sample_statistics(total_samples if all_successful else [])
     line_total = sum(int(row["line_count"]) for row in successful)
     expected_line_total = sum(int(row["line_count"]) for row in files)
     peaks = [
@@ -122,16 +131,19 @@ def runtime_summary(
         if isinstance(row["peak_rss_bytes"], int) and row["peak_rss_bytes"] >= 0
     ]
     peak_samples = sum(row["peak_rss_sample_count"] for row in files)
-    expected_peak_samples = sum(row["sample_count"] for row in files)
+    expected_peak_samples = sum(row["expected_sample_count"] for row in files)
     return {
         "version": version,
         "file_count": len(files),
         "compiled_file_count": len(successful),
         "failed_file_count": len(files) - len(successful),
         "sample_runs": sample_count,
+        "total_compile_sample_count": total_statistics["sample_count"],
         "total_compile_seconds_samples": total_samples,
         "total_compile_seconds": total_seconds,
         "minimum_total_compile_seconds": minimum_total_seconds,
+        "maximum_total_compile_seconds": total_statistics["maximum_seconds"],
+        "total_compile_range_seconds": total_statistics["range_seconds"],
         "line_count": line_total,
         "expected_line_count": expected_line_total,
         "lines_per_second": line_total / total_seconds if total_seconds is not None and total_seconds > 0 else None,

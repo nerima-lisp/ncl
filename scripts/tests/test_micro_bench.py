@@ -188,6 +188,12 @@ class MicroBenchTests(unittest.TestCase):
         case = report["cases"]["float-loop"]
         self.assertEqual(case["engines"]["ncl"]["sample_count"], 5)
         self.assertEqual(case["engines"]["ncl"]["allocation_status"], "unavailable")
+        self.assertEqual(case["engines"]["ncl"]["range_seconds"], 0.0)
+        paired = case["paired_comparison"]
+        self.assertEqual(paired["sample_count"], 5)
+        self.assertEqual(paired["median_delta_seconds"], 0.0)
+        self.assertEqual((paired["ncl_wins"], paired["sbcl_wins"], paired["ties"]), (0, 0, 5))
+        self.assertTrue(paired["noise_below"])
         self.assertIn(
             "NCL-GC:BYTES-CONSED-SINCE-GC",
             case["engines"]["ncl"]["allocation_reason"],

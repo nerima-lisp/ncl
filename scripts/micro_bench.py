@@ -25,6 +25,11 @@ from micro_bench_cases import (
     _paired_count, _positive_count, _select_cases,
 )
 
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from bench.statistics import paired_statistics, sample_statistics
+
 
 def _diagnostic(result: scoreboard.ProcessResult) -> str:
     text = result.stderr or result.stdout or "process returned no diagnostic"
@@ -188,6 +193,7 @@ def _sample(
 def _summarize_engine(samples: Sequence[Mapping[str, Any]], runs: int) -> dict[str, Any]:
     passed = [sample for sample in samples if sample.get("status") == "passed"]
     seconds = [float(sample["seconds"]) for sample in passed]
+    timing_statistics = sample_statistics(seconds)
     allocation_values = [sample.get("allocated_bytes") for sample in passed]
     all_allocations = len(passed) == runs and all(
         isinstance(value, int) and not isinstance(value, bool)
@@ -228,9 +234,7 @@ def _summarize_engine(samples: Sequence[Mapping[str, Any]], runs: int) -> dict[s
     return {
         "status": "passed" if len(passed) == runs else "partial",
         "samples": list(samples),
-        "sample_count": len(passed),
-        "median_seconds": statistics.median(seconds) if seconds else None,
-        "minimum_seconds": min(seconds) if seconds else None,
+        **timing_statistics,
         "allocation_status": allocation_status,
         "allocation_counter": allocation_names or None,
         "allocation_reason": allocation_reason,
@@ -330,6 +334,11 @@ def run_micro_suite(
         case_records[case.name] = {
             "iterations": iterations,
             "engines": engine_records,
+            "paired_comparison": paired_statistics(
+                engine_records["ncl"]["samples"],
+                engine_records["sbcl"]["samples"],
+                expected_sample_count=runs,
+            ),
             "output_parity": _result_parity(engine_records),
             "codegen_inspection": codegen,
         }
@@ -363,6 +372,10 @@ def run_micro_suite(
             "selected_cases": [case.name for case in selected],
             "required_cases": [case.name for case in MICRO_CASES],
         },
+        "noise_width_definition": (
+            "per-engine timing range is max minus min; paired noise width is the "
+            "range of matched NCL-minus-SBCL pair deltas"
+        ),
         "cases": case_records,
     }
 

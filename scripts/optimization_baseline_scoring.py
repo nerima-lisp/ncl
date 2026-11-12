@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import math
-import statistics
+from pathlib import Path
+import sys
 from typing import Any, Mapping, Sequence
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from bench.statistics import compare_statistics, sample_statistics
 import conformance_scoreboard as scoreboard
 from optimization_baseline_constants import (
     BENCHMARKS, DISABLED_BENCHMARK, DISABLED_BENCHMARK_REASONS,
 )
 
 
-def _median_for_benchmark(runs: Sequence[Mapping[str, Any]], name: str) -> float | None:
+def _samples_for_benchmark(runs: Sequence[Mapping[str, Any]], name: str) -> list[float] | None:
     observations: list[float] = []
     for run in runs:
         benchmark = run["benchmarks"][name]
@@ -28,7 +34,31 @@ def _median_for_benchmark(runs: Sequence[Mapping[str, Any]], name: str) -> float
         ):
             return None
         observations.extend(float(value) for value in times)
-    return statistics.median(observations) if observations else None
+    return observations or None
+
+
+def _median_for_benchmark(runs: Sequence[Mapping[str, Any]], name: str) -> float | None:
+    observations = _samples_for_benchmark(runs, name)
+    return sample_statistics(observations or [])["median_seconds"]
+
+
+def _observed_samples_for_benchmark(runs: Sequence[Mapping[str, Any]], name: str) -> list[float]:
+    observations: list[float] = []
+    for run in runs:
+        benchmark = run["benchmarks"][name]
+        if benchmark["status"] != "passed" or not benchmark["times"]:
+            continue
+        times = benchmark["times"]
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value <= 0
+            for value in times
+        ):
+            continue
+        observations.extend(float(value) for value in times)
+    return observations
 
 
 def _score_runs(
@@ -54,6 +84,19 @@ def _score_runs(
             name: _median_for_benchmark(runtime_runs, name)
             if len(runtime_runs) == expected_counts[runtime]
             else None
+            for name in benchmark_names
+        }
+        for runtime, runtime_runs in by_runtime.items()
+    }
+    benchmark_statistics = {
+        runtime: {
+            name: {
+                **sample_statistics(_observed_samples_for_benchmark(runtime_runs, name)),
+                "measurement_run_count": sum(
+                    run["benchmarks"][name]["status"] == "passed"
+                    for run in runtime_runs
+                ),
+            }
             for name in benchmark_names
         }
         for runtime, runtime_runs in by_runtime.items()
@@ -107,6 +150,21 @@ def _score_runs(
             for name in common
         },
     }
+    benchmark_comparisons = {
+        name: {
+            "off_over_sbcl": compare_statistics(
+                benchmark_statistics["ncl_off"][name],
+                benchmark_statistics["sbcl"][name],
+                noise_basis="ratio",
+            ),
+            "default_over_sbcl": compare_statistics(
+                benchmark_statistics["ncl_default"][name],
+                benchmark_statistics["sbcl"][name],
+                noise_basis="ratio",
+            ),
+        }
+        for name in common
+    }
     slowest_ten = {
         mode: [
             {"name": name, "ncl_over_sbcl_ratio": ratio}
@@ -145,9 +203,18 @@ def _score_runs(
             runtime: {name: medians[runtime][name] for name in common}
             for runtime in medians
         },
+        "benchmark_statistics_seconds": {
+            runtime: {name: benchmark_statistics[runtime][name] for name in benchmark_names}
+            for runtime in medians
+        },
         "geometric_mean_seconds": geometric_means,
         "ncl_over_sbcl_ratio": ratios,
         "benchmark_ncl_over_sbcl_ratio": benchmark_ratios,
+        "benchmark_comparisons": benchmark_comparisons,
+        "noise_width_definition": (
+            "range is max minus min of the existing timing observations; "
+            "ratio noise is the larger per-runtime relative range"
+        ),
         "slowest_10_by_ncl_over_sbcl_ratio": slowest_ten,
         "disabled_benchmarks": disabled,
     }

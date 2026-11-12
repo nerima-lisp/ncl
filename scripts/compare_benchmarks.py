@@ -17,6 +17,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from bench.corpus.compile import BenchmarkError, run_benchmark, _safe_diagnostic
 from bench.corpus.fetch import CorpusError
+from bench.statistics import compare_statistics, sample_statistics
+from performance_summary import render_ab_comparison
 
 
 class ComparisonError(RuntimeError):
@@ -87,6 +89,7 @@ def run_comparison(
         raise ValueError("threshold must be a finite nonnegative number")
     identities = {"baseline": str(baseline_ncl), "candidate": str(candidate_ncl)}
     measurements: dict[str, list[float]] = {"baseline": [], "candidate": []}
+    file_measurements: dict[str, dict[str, list[float]]] = {"baseline": {}, "candidate": {}}
     corpus: set[str] | None = None
     order: list[str] = []
     for index in range(runs):
@@ -104,6 +107,8 @@ def run_comparison(
             if corpus is None:
                 corpus = set(values)
             measurements[side].append(_sum_common(values, corpus, side))
+            for label, seconds in values.items():
+                file_measurements[side].setdefault(label, []).append(seconds)
             order.append(side)
     if corpus is None or not corpus:
         raise ComparisonError("comparison produced no measurements")
@@ -113,6 +118,24 @@ def run_comparison(
     candidate_median = statistics.median(candidate)
     baseline_minimum = min(baseline)
     candidate_minimum = min(candidate)
+    baseline_statistics = sample_statistics(baseline)
+    candidate_statistics = sample_statistics(candidate)
+    comparison = compare_statistics(candidate_statistics, baseline_statistics)
+    file_comparisons = {}
+    for label in sorted(corpus):
+        baseline_file = sample_statistics(file_measurements["baseline"][label])
+        candidate_file = sample_statistics(file_measurements["candidate"][label])
+        file_comparisons[label] = {
+            "baseline": {
+                **baseline_file,
+                "samples_seconds": file_measurements["baseline"][label],
+            },
+            "candidate": {
+                **candidate_file,
+                "samples_seconds": file_measurements["candidate"][label],
+            },
+            "comparison": compare_statistics(candidate_file, baseline_file),
+        }
     median_regression = candidate_median >= baseline_median * (1 + threshold)
     minimum_regression = candidate_minimum >= baseline_minimum * (1 + threshold)
     regression = median_regression and minimum_regression
@@ -127,14 +150,18 @@ def run_comparison(
         "regression_threshold_ratio": 1 + threshold,
         "baseline": {
             "samples_seconds": baseline,
-            "median_seconds": baseline_median,
-            "minimum_seconds": baseline_minimum,
+            **baseline_statistics,
         },
         "candidate": {
             "samples_seconds": candidate,
-            "median_seconds": candidate_median,
-            "minimum_seconds": candidate_minimum,
+            **candidate_statistics,
         },
+        "comparison": comparison,
+        "file_comparisons": file_comparisons,
+        "noise_width_definition": (
+            "absolute candidate-minus-baseline median difference compared with "
+            "the larger of the two max-minus-min sample ranges"
+        ),
         "checks": {
             "median_at_least_threshold_slower": median_regression,
             "minimum_at_least_threshold_slower": minimum_regression,
@@ -162,7 +189,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--sbcl", default="sbcl", help="SBCL 2.6.10 executable")
     parser.add_argument("--mode", choices=("light", "full"), default="light")
     parser.add_argument("--runs", type=_positive_int, default=5, help="runs for each NCL binary (minimum 5)")
-    parser.add_argument("--output", type=Path, help="write JSON result to this path")
+    parser.add_argument("--format", choices=("json", "markdown"), default="json")
+    parser.add_argument("--output", type=Path, help="write the result to this path")
     parser.add_argument("--cache-dir", type=Path, default=REPO_ROOT / "target/bench-corpus-cache")
     parser.add_argument("--timeout", type=float, default=60.0, help="seconds allowed per Lisp process")
     return parser
@@ -190,7 +218,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         exit_status = 2
     else:
         exit_status = 1 if report["status"] == "regression" else 0
-    rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    rendered = (
+        render_ab_comparison(report) + "\n"
+        if args.format == "markdown"
+        else json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    )
     if args.output is None:
         sys.stdout.write(rendered)
     else:

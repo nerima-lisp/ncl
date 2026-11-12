@@ -15,6 +15,7 @@ import sys
 import tempfile
 from typing import Any, Callable, Sequence
 
+from ..statistics import compare_statistics, sample_statistics
 from .fetch import CorpusError, SourceFile, fetch_corpus
 from .report import aggregate_file_samples as _aggregate_file_samples
 from .report import pass_profile as _parse_pass_profile
@@ -330,8 +331,7 @@ def run_benchmark(
         startup = {
             suite: {
                 "samples": [record["median_seconds"] for record in records],
-                "median_seconds": statistics.median(record["median_seconds"] for record in records),
-                "minimum_seconds": min(record["minimum_seconds"] for record in records),
+                **sample_statistics([record["median_seconds"] for record in records]),
                 "peak_rss_bytes": max(
                     (record["peak_rss_bytes"] for record in records if isinstance(record["peak_rss_bytes"], int)),
                     default=None,
@@ -381,6 +381,29 @@ def run_benchmark(
             "ncl": _runtime_summary(ncl_version, startup["ncl"], results["ncl"], ncl_size),
             "sbcl": _runtime_summary(sbcl_version, startup["sbcl"], results["sbcl"], None),
         }
+        case_comparisons = {}
+        for ncl_file, sbcl_file in zip(runtimes["ncl"]["files"], runtimes["sbcl"]["files"]):
+            label = f"{ncl_file['suite']}/{ncl_file['file']}"
+            ncl_statistics = ncl_file if ncl_file["status"] == "passed" else {
+                "median_seconds": None,
+                "range_seconds": None,
+            }
+            sbcl_statistics = sbcl_file if sbcl_file["status"] == "passed" else {
+                "median_seconds": None,
+                "range_seconds": None,
+            }
+            case_comparisons[label] = compare_statistics(
+                ncl_statistics, sbcl_statistics, noise_basis="ratio"
+            )
+        total_statistics = {
+            runtime: sample_statistics(runtimes[runtime]["total_compile_seconds_samples"])
+            if runtimes[runtime]["failed_file_count"] == 0
+            else sample_statistics([])
+            for runtime in runtimes
+        }
+        total_comparison = compare_statistics(
+            total_statistics["ncl"], total_statistics["sbcl"], noise_basis="ratio"
+        )
         complete = all(
             runtime["failed_file_count"] == 0 and runtime["peak_rss_available"]
             for runtime in runtimes.values()
@@ -396,9 +419,15 @@ def run_benchmark(
             "startup_warmup_runs": 0,
             "process_topology": "fresh process per compile and startup sample",
             "order_scheme": "pair order alternates by sample plus sorted corpus index",
+            "noise_width_definition": (
+                "per-case and corpus-total range is max minus min; cross-runtime ratio noise "
+                "uses the larger per-runtime relative range"
+            ),
             "corpus_file_count": len(sources),
             "run_order": run_order,
             "runtimes": runtimes,
+            "case_comparisons": case_comparisons,
+            "total_comparison": total_comparison,
             "pass_profile": pass_profile,
             "allocation_metric": {
                 "unit": "bytes",

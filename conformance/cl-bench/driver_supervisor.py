@@ -292,6 +292,7 @@ def _command(
         runner,
         "--noinform",
         "--disable-debugger",
+        "--no-sysinit",
         "--userinit",
         "/dev/null",
         "--eval",

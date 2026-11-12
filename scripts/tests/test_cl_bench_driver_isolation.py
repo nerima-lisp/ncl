@@ -20,6 +20,23 @@ sys.path.insert(0, str(DRIVER_DIR))
 import driver_supervisor
 
 
+class DriverCommandTests(unittest.TestCase):
+    def test_sbcl_command_disables_system_and_user_initialization(self) -> None:
+        with patch.object(driver_supervisor, "_eval_form", return_value="(progn)"):
+            command = driver_supervisor._command(
+                engine="sbcl",
+                runner="sbcl",
+                mode="default",
+                driver=Path("driver.lisp"),
+                cwd=Path("corpus"),
+                selection=("FIB",),
+            )
+
+        self.assertIn("--no-sysinit", command)
+        self.assertIn("--userinit", command)
+        self.assertLess(command.index("--no-sysinit"), command.index("--eval"))
+
+
 @unittest.skipUnless(shutil.which("sbcl"), "SBCL is required for the driver fixture")
 class DriverIsolationTests(unittest.TestCase):
     def test_signal_termination_is_reported_as_a_failed_stage_condition(self) -> None:

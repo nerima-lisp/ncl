@@ -215,6 +215,11 @@ jobs:
           import json
           import os
           from pathlib import Path
+          from scripts.performance_summary import (
+              render_cl_bench_table,
+              render_compile_table,
+              render_micro_table,
+          )
 
           root = Path(os.environ["RESULT_DIR"])
           print(f"## Performance benchmarks ({os.environ.get('BENCH_MODE', 'unknown')} mode)\n")
@@ -244,6 +249,8 @@ jobs:
                   failed, total = row_counts(rows)
                   disabled = sum(isinstance(row, dict) and row.get("status") == "disabled" for row in rows)
                   print(f"Measurement rows failed: `{failed}/{total}`; disabled rows: `{disabled}`\n")
+                  print(render_cl_bench_table(report))
+                  print()
                   return
               if label == "micro suite":
                   rows = []
@@ -259,6 +266,8 @@ jobs:
                               rows.extend(engine.get("samples", []))
                   failed, total = row_counts(rows)
                   print(f"Sample rows failed: `{failed}/{total}`\n")
+                  print(render_micro_table(report))
+                  print()
                   return
               runtimes = report.get("runtimes", {})
               if isinstance(runtimes, dict):
@@ -310,14 +319,7 @@ jobs:
                   print(f"Compile samples per file and runtime: `{report['sample_runs']}`; warmups: `{report.get('warmup_runs_per_source', 'n/a')}`; compile order pairs: `{compile_pairs}`; startup order pairs: `{startup_pairs}`; topology: `{report.get('process_topology', 'n/a')}`\n")
               runtimes = report.get("runtimes")
               if isinstance(runtimes, dict):
-                  print("| Runtime | Compiled files | Compile median seconds | Compile minimum seconds | Lines/s | Peak RSS bytes | RSS samples | Startup median seconds | Binary size bytes |")
-                  print("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
-                  for runtime, metrics in runtimes.items():
-                      if isinstance(metrics, dict):
-                          startup = metrics.get("startup")
-                          startup_median = startup.get("median_seconds", "n/a") if isinstance(startup, dict) else "n/a"
-                          rss_samples = f"{metrics.get('peak_rss_sample_count', 'n/a')}/{metrics.get('peak_rss_expected_sample_count', 'n/a')}"
-                          print(f"| {runtime} | {metrics.get('compiled_file_count', 'n/a')} | {metrics.get('total_compile_seconds', 'n/a')} | {metrics.get('minimum_total_compile_seconds', 'n/a')} | {metrics.get('lines_per_second', 'n/a')} | {metrics.get('peak_rss_bytes', 'n/a')} | {rss_samples} | {startup_median} | {metrics.get('binary_size_bytes', 'n/a')} |")
+                  print(render_compile_table(report))
                   print()
               scores = report.get("scores")
               if isinstance(scores, dict):

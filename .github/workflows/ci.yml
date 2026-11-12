@@ -18,7 +18,7 @@ env:
 
 jobs:
   check:
-    name: Check and test (${{ matrix.name }})
+    name: ${{ matrix.name == 'x86-64 macOS' && 'Prepare test archive (x86-64 macOS)' || format('Check and test ({0})', matrix.name) }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -89,8 +89,60 @@ jobs:
           cache-workspace-crates: true
       - run: cargo fmt --all -- --check
       - run: cargo check --locked --workspace --all-targets --all-features
-      - run: cargo nextest run --locked --workspace --all-features --all-targets --no-tests=fail
+      - name: Run nextest tests
+        if: matrix.name != 'x86-64 macOS'
+        run: cargo nextest run --locked --workspace --all-features --all-targets --no-tests=fail
+      - name: Build nextest archive
+        if: matrix.name == 'x86-64 macOS'
+        run: cargo nextest archive --locked --workspace --all-features --all-targets --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst"
+      - name: Upload nextest archive
+        if: matrix.name == 'x86-64 macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextest-archive-x86-64-macos
+          path: ${{ runner.temp }}/nextest-archive.tar.zst
+          if-no-files-found: error
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+  x86-64-macos-test-shard:
+    name: x86-64 macOS test shard ${{ matrix.shard }}/2
+    runs-on: macos-15-intel
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
+      - uses: taiki-e/install-action@nextest
+      - uses: actions/download-artifact@v4
+        with:
+          name: nextest-archive-x86-64-macos
+          path: ${{ runner.temp }}/nextest
+      - name: Run nextest shard
+        run: cargo nextest run --archive-file "$RUNNER_TEMP/nextest/nextest-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE" --partition "hash:${{ matrix.shard }}/2" --no-tests=fail
+
+  x86-64-macos-test-result:
+    name: Check and test (x86-64 macOS)
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [check, x86-64-macos-test-shard]
+    steps:
+      - name: Require checks and both test shards to pass
+        env:
+          CHECK_RESULT: ${{ needs.check.result }}
+          SHARD_RESULT: ${{ needs.x86-64-macos-test-shard.result }}
+        run: |
+          set -euo pipefail
+          if [ "$CHECK_RESULT" != success ] || [ "$SHARD_RESULT" != success ]; then
+            echo "Check job result: $CHECK_RESULT"
+            echo "Test shard result: $SHARD_RESULT"
+            exit 1
+          fi
 
   release-check:
     name: Release check (${{ matrix.name }})

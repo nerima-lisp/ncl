@@ -37,6 +37,7 @@ fn call_designator(
     rooted.extend_from_slice(arguments);
     let resolved = ncl_object::with_roots(ctx, &rooted, |ctx, rooted| {
         let designator_word = **rooted.first().ok_or(ObjectError::Layout)?;
+        ctx.validate_forwarding(designator_word)?;
         let designator = function_designator(ctx, designator_word).inspect_err(|_| {
             ctx.set_pending_lisp_error(LispError::TypeError {
                 datum: designator_word,
@@ -71,6 +72,7 @@ fn call_designator(
     }
     ncl_object::with_heap_rooted_mut_slice(runtime, &rooted, |rooted| {
         let designator_word = *rooted.first().ok_or(ObjectError::Layout)?;
+        ctx.validate_forwarding(designator_word)?;
         let designator = match function_designator(ctx, designator_word) {
             Ok(designator) => designator,
             Err(error) => {
@@ -192,7 +194,10 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
 )]
 mod tests {
     use super::*;
-    use ncl_object::{Arity, Package, make_cons};
+    use ncl_object::{
+        Arity, Package, make_code_object, make_cons, make_simple_fun, make_string, make_symbol,
+    };
+    use std::sync::Arc;
 
     fn add(
         _ctx: &mut ThreadContext,
@@ -295,6 +300,202 @@ mod tests {
                 ),
             )
             .unwrap()
+    }
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    fn encode_word(word: Word) -> u64 {
+        !word.bits()
+    }
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    fn decode_word(encoded: u64) -> Word {
+        Word::from_bits(!encoded)
+    }
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    fn root_encoded_word(ctx: &ThreadContext, encoded: u64) -> ncl_object::HeapRootedWord {
+        ncl_object::HeapRootedWord::new(ctx, decode_word(encoded)).unwrap()
+    }
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    struct StaleFunctionFixture {
+        runtime: Arc<Runtime>,
+        symbol_bits: u64,
+        function_bits: u64,
+        _new_function_bits: u64,
+        funcall_bits: u64,
+        apply_bits: u64,
+        _code: [ncl_sys::CodePtr; 2],
+    }
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    fn published_value_code(value: u16) -> ncl_sys::CodePtr {
+        #[cfg(target_arch = "x86_64")]
+        let bytes = {
+            let fixnum = u32::from(value) * 2;
+            let mut bytes = [0; 11];
+            bytes[0] = 0xb8;
+            bytes[1..5].copy_from_slice(&fixnum.to_le_bytes());
+            bytes[5] = 0xba;
+            bytes[6..10].copy_from_slice(&1_u32.to_le_bytes());
+            bytes[10] = 0xc3;
+            bytes
+        };
+        #[cfg(target_arch = "aarch64")]
+        let bytes = {
+            let mov_value = 0xd280_0000_u32 | ((u32::from(value) * 2) << 5);
+            let mut bytes = [0; 12];
+            bytes[..4].copy_from_slice(&mov_value.to_le_bytes());
+            bytes[4..8].copy_from_slice(&0xd280_0021_u32.to_le_bytes());
+            bytes[8..].copy_from_slice(&0xd65f_03c0_u32.to_le_bytes());
+            bytes
+        };
+        let mut code = ncl_sys::alloc_code(bytes.len()).unwrap();
+        ncl_sys::write_code(&mut code, 0, &bytes).unwrap();
+        ncl_sys::publish_code(&mut code).unwrap();
+        code
+    }
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    fn prepare_stale_function_fixture(runtime: Arc<Runtime>) -> StaleFunctionFixture {
+        let mut setup = ThreadContext::new();
+        setup.register(&runtime).unwrap();
+        register(&mut setup, &runtime).unwrap();
+        let funcall_word = runtime
+            .function(&mut setup, "COMMON-LISP", "FUNCALL")
+            .unwrap();
+        let apply_word = runtime
+            .function(&mut setup, "COMMON-LISP", "APPLY")
+            .unwrap();
+        let old_code_ptr = published_value_code(11);
+        let new_code_ptr = published_value_code(29);
+        let old_code = make_code_object(
+            &mut setup,
+            &runtime,
+            old_code_ptr.address(),
+            old_code_ptr.len(),
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .unwrap();
+        let new_code = make_code_object(
+            &mut setup,
+            &runtime,
+            new_code_ptr.address(),
+            new_code_ptr.len(),
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        )
+        .unwrap();
+        let symbol_name = make_string(&mut setup, &runtime, &['f']).unwrap();
+        let symbol = make_symbol(&mut setup, &runtime, symbol_name).unwrap();
+        for _ in 0..1_024 {
+            make_code_object(
+                &mut setup,
+                &runtime,
+                old_code_ptr.address(),
+                old_code_ptr.len(),
+                Word::NIL,
+                Word::NIL,
+                Word::NIL,
+            )
+            .unwrap();
+        }
+        let old_function = make_simple_fun(
+            &mut setup,
+            &runtime,
+            old_code_ptr.address(),
+            Word::NIL,
+            Word::NIL,
+            old_code,
+        )
+        .unwrap()
+        .as_word();
+        let new_function = make_simple_fun(
+            &mut setup,
+            &runtime,
+            new_code_ptr.address(),
+            Word::NIL,
+            Word::NIL,
+            new_code,
+        )
+        .unwrap()
+        .as_word();
+        setup
+            .write_object_slot(symbol, ncl_object::symbol_offset::FUNCTION, old_function)
+            .unwrap();
+        let fixture = StaleFunctionFixture {
+            runtime,
+            symbol_bits: encode_word(symbol),
+            function_bits: encode_word(old_function),
+            _new_function_bits: encode_word(new_function),
+            funcall_bits: encode_word(funcall_word),
+            apply_bits: encode_word(apply_word),
+            _code: [old_code_ptr, new_code_ptr],
+        };
+        fixture
+    }
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    #[test]
+    fn funcall_and_apply_report_forwarding_violation_for_stale_symbol_functions() {
+        let runtime = Arc::new(Runtime::new().unwrap());
+        let fixture_runtime = Arc::clone(&runtime);
+        let fixture = std::thread::spawn(move || prepare_stale_function_fixture(fixture_runtime))
+            .join()
+            .unwrap();
+        let runtime = &fixture.runtime;
+
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let symbol = root_encoded_word(&ctx, fixture.symbol_bits);
+        let funcall = root_encoded_word(&ctx, fixture.funcall_bits);
+        let apply = root_encoded_word(&ctx, fixture.apply_bits);
+        ctx.collect(true).unwrap();
+        let stale_function = decode_word(fixture.function_bits);
+        let current_function = symbol_function(&ctx, symbol.get()).unwrap();
+        assert_ne!(current_function, stale_function);
+        let funcall = FunctionObject::try_from(funcall.get()).unwrap();
+        let apply = FunctionObject::try_from(apply.get()).unwrap();
+        ctx.write_object_slot(
+            symbol.get(),
+            ncl_object::symbol_offset::FUNCTION,
+            stale_function,
+        )
+        .unwrap();
+        ctx.set_strict_forwarding(true);
+        assert_eq!(
+            ctx.validate_forwarding(stale_function),
+            Err(ObjectError::ForwardingViolation)
+        );
+        assert_eq!(
+            ctx.validate_forwarding(symbol_function(&ctx, symbol.get()).unwrap()),
+            Err(ObjectError::ForwardingViolation)
+        );
+
+        assert_eq!(
+            ncl_object::classify_object(&ctx, symbol.get()),
+            ncl_object::ObjectRef::Symbol(symbol.get())
+        );
+        assert!(ncl_object::FunctionDesignator::try_from_word(&ctx, symbol.get()).is_ok());
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, funcall, &[stale_function]),
+            Err(ObjectError::ForwardingViolation)
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, apply, &[stale_function, Word::NIL]),
+            Err(ObjectError::ForwardingViolation)
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, funcall, &[symbol.get()]),
+            Err(ObjectError::ForwardingViolation)
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, apply, &[symbol.get(), Word::NIL]),
+            Err(ObjectError::ForwardingViolation)
+        );
     }
 
     #[test]

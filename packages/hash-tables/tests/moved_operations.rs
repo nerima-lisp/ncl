@@ -28,15 +28,6 @@ fn assert_hash_test_mode(
 ) {
     let table = HashTable::new(context, runtime, test, Weakness::None)
         .unwrap_or_else(|error| panic!("table: {error:?}"));
-    let view = WordView::from(classify_object(context, table.as_word()));
-    assert_eq!(HashTable::try_from_word_view(view), Ok(table));
-    let wrong_view = WordView::from(classify_object(context, Word::fixnum(17)));
-    assert!(matches!(
-        HashTable::try_from_word_view(wrong_view),
-        Err(error)
-            if error.datum == Word::fixnum(17)
-                && error.expected == ncl_object::ObjectType::HashTable
-    ));
     assert_eq!(table.test(context), Ok(test));
     assert_eq!(table.weakness(context), Ok(Weakness::None));
     assert_eq!(table.count(context), Ok(0));

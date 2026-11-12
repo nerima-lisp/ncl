@@ -6,38 +6,23 @@ pub(super) fn probe(hash: u64, step: usize, capacity: usize) -> usize {
 }
 
 pub(super) const fn decode_test(word: Word) -> Result<HashTest, ObjectError> {
-    let Some(value) = word.as_fixnum() else {
-        return Err(ObjectError::Layout);
-    };
-    if value == 0 {
-        Ok(HashTest::Eq)
-    } else if value == 1 {
-        Ok(HashTest::Eql)
-    } else if value == 2 {
-        Ok(HashTest::Equal)
-    } else if value == 3 {
-        Ok(HashTest::Equalp)
-    } else {
-        Err(ObjectError::Layout)
+    match word.as_fixnum() {
+        Some(0) => Ok(HashTest::Eq),
+        Some(1) => Ok(HashTest::Eql),
+        Some(2) => Ok(HashTest::Equal),
+        Some(3) => Ok(HashTest::Equalp),
+        _ => Err(ObjectError::Layout),
     }
 }
 
 pub(super) const fn decode_weakness(word: Word) -> Result<Weakness, ObjectError> {
-    let Some(value) = word.as_fixnum() else {
-        return Err(ObjectError::Layout);
-    };
-    if value == 0 {
-        Ok(Weakness::None)
-    } else if value == 1 {
-        Ok(Weakness::Key)
-    } else if value == 2 {
-        Ok(Weakness::Value)
-    } else if value == 3 {
-        Ok(Weakness::KeyAndValue)
-    } else if value == 4 {
-        Ok(Weakness::KeyOrValue)
-    } else {
-        Err(ObjectError::Layout)
+    match word.as_fixnum() {
+        Some(0) => Ok(Weakness::None),
+        Some(1) => Ok(Weakness::Key),
+        Some(2) => Ok(Weakness::Value),
+        Some(3) => Ok(Weakness::KeyAndValue),
+        Some(4) => Ok(Weakness::KeyOrValue),
+        _ => Err(ObjectError::Layout),
     }
 }
 

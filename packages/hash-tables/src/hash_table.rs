@@ -113,23 +113,6 @@ const TOMBSTONE: i64 = -2;
 // Index entries are EMPTY, TOMBSTONE, or positions into live key/value pairs.
 // Removed key slots use a reserved tagged word and their value slots form a free-position list.
 impl HashTable {
-    /// Convert a kernel word view to a hash-table model value.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ncl_object::TypeError`] when the view is not a hash table.
-    pub fn try_from_word_view(view: ncl_object::WordView) -> Result<Self, ncl_object::TypeError> {
-        let datum = view.as_word();
-        if let ncl_object::WordView::HashTable(word) = view {
-            Ok(Self::from_word(word))
-        } else {
-            Err(ncl_object::TypeError {
-                datum,
-                expected: ncl_object::ObjectType::HashTable,
-            })
-        }
-    }
-
     fn allocate(
         ctx: &mut ThreadContext,
         runtime: &Runtime,
@@ -156,25 +139,8 @@ impl HashTable {
                     let table = allocate(ctx, runtime, widetag::HASH_TABLE, 13)?;
                     let epoch = ctx.heap_epoch();
                     for (slot, value) in [
-                        (
-                            TEST,
-                            Word::fixnum(match test {
-                                HashTest::Eq => 0,
-                                HashTest::Eql => 1,
-                                HashTest::Equal => 2,
-                                HashTest::Equalp => 3,
-                            }),
-                        ),
-                        (
-                            WEAKNESS,
-                            Word::fixnum(match weakness {
-                                Weakness::None => 0,
-                                Weakness::Key => 1,
-                                Weakness::Value => 2,
-                                Weakness::KeyAndValue => 3,
-                                Weakness::KeyOrValue => 4,
-                            }),
-                        ),
+                        (TEST, Word::fixnum(test as i64)),
+                        (WEAKNESS, Word::fixnum(weakness as i64)),
                         (COUNT, Word::fixnum(0)),
                         (CAPACITY, fix(capacity)?),
                         (
@@ -334,24 +300,24 @@ impl HashTable {
             let entry = simple_vector_ref(ctx, index, slot)?
                 .as_fixnum()
                 .ok_or(ObjectError::Layout)?;
-            let position = if entry == EMPTY || entry == TOMBSTONE {
-                let free = table.read_i64(ctx, FREE_HEAD)?;
-                if free >= 0 {
-                    let position = usize::try_from(free).map_err(|_| ObjectError::Layout)?;
-                    let next = simple_vector_ref(ctx, kv, position * 2 + 1)?
-                        .as_fixnum()
-                        .ok_or(ObjectError::Layout)?;
-                    put(ctx, table.0, FREE_HEAD, Word::fixnum(next))?;
-                    position
-                } else {
-                    let position = table.read_usize(ctx, HIGH_WATER)?;
-                    put(ctx, table.0, HIGH_WATER, fix(position + 1)?)?;
-                    position
+            let position = match entry {
+                EMPTY | TOMBSTONE => {
+                    let free = table.read_i64(ctx, FREE_HEAD)?;
+                    if free >= 0 {
+                        let position = usize::try_from(free).map_err(|_| ObjectError::Layout)?;
+                        let next = simple_vector_ref(ctx, kv, position * 2 + 1)?
+                            .as_fixnum()
+                            .ok_or(ObjectError::Layout)?;
+                        put(ctx, table.0, FREE_HEAD, Word::fixnum(next))?;
+                        position
+                    } else {
+                        let position = table.read_usize(ctx, HIGH_WATER)?;
+                        put(ctx, table.0, HIGH_WATER, fix(position + 1)?)?;
+                        position
+                    }
                 }
-            } else if entry >= 0 {
-                usize::try_from(entry).map_err(|_| ObjectError::Layout)?
-            } else {
-                return Err(ObjectError::Layout);
+                entry if entry >= 0 => usize::try_from(entry).map_err(|_| ObjectError::Layout)?,
+                _ => return Err(ObjectError::Layout),
             };
             simple_vector_set(ctx, kv, position * 2, key)?;
             simple_vector_set(ctx, kv, position * 2 + 1, value)?;
@@ -369,14 +335,13 @@ impl HashTable {
             }
             Ok(())
         })();
-        let value_popped = ncl_object::pop_root(ctx, value_token);
-        let key_popped = ncl_object::pop_root(ctx, key_token);
-        let table_popped = ncl_object::pop_root(ctx, table_token);
-        if value_popped && key_popped && table_popped {
-            result
-        } else {
-            Err(ObjectError::Layout)
-        }
+        // check-added-lines: allow(panic) Root tokens must be popped in stack order.
+        assert!(ncl_object::pop_root(ctx, value_token));
+        // check-added-lines: allow(panic) Preserve the same root-stack invariant.
+        assert!(ncl_object::pop_root(ctx, key_token));
+        // check-added-lines: allow(panic) Preserve the same root-stack invariant.
+        assert!(ncl_object::pop_root(ctx, table_token));
+        result
     }
     /// Remove a key and return its value when present.
     ///

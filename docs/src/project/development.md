@@ -97,12 +97,15 @@ nix run path:.#rust-coverage -- --summary-only
 ~~~
 
 The workspace-wide 95.0% region figure is a goal. CI reports it on every
-coverage run and warns when it is below the goal. The blocking path gate uses
-only source paths in the `cargo llvm-cov` summary; a path missing from either
-summary has zero regions. Changed source paths pass when their combined missed
-region count does not exceed the parent's count, or their combined coverage is
-at least 95.0%. Each changed path present in the parent summary must also have
-no increase in missed regions or reach 95.0% coverage individually.
+coverage run and warns when it is below the goal. The blocking path gate reads
+the NUL-delimited `git diff --no-ext-diff --name-status --find-renames` output.
+For a detected rename, the candidate path uses the parent summary entry for
+the old path. A path missing from its summary contributes zero regions. The
+changed paths pass when their combined missed region count does not exceed the
+parent's count, or their combined coverage is at least 95.0%. Each changed
+path with a parent summary entry, including a renamed path matched to its old
+name, must also have no increase in missed regions or reach 95.0% coverage
+individually.
 The path gate runs on pull requests and non-main branch pushes. Main pushes
 skip it but still upload the workspace summary for later baselines.
 

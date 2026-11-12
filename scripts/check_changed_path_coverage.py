@@ -44,6 +44,12 @@ class CoverageSummary:
     totals: RegionStats
 
 
+@dataclass(frozen=True)
+class ChangedPath:
+    parent_path: str | None
+    candidate_path: str | None
+
+
 def _regions(value: object, context: str) -> RegionStats:
     if not isinstance(value, dict):
         raise CoverageInputError(f"{context} has no region summary")
@@ -120,25 +126,66 @@ def load_summary(path: Path, root: Path) -> CoverageSummary:
     return parse_summary(payload, root, f"coverage summary {path}")
 
 
-def normalize_changed_paths(paths: list[str], root: Path) -> list[str]:
+def normalize_changed_paths(paths: list[ChangedPath], root: Path) -> list[ChangedPath]:
     normalized = []
     seen = set()
     for path in paths:
-        if not path:
-            continue
-        relative = _relative_path(path, root)
-        if relative is not None and relative not in seen:
-            normalized.append(relative)
-            seen.add(relative)
+        parent = (
+            _relative_path(path.parent_path, root)
+            if path.parent_path is not None
+            else None
+        )
+        candidate = (
+            _relative_path(path.candidate_path, root)
+            if path.candidate_path is not None
+            else None
+        )
+        normalized_path = ChangedPath(parent, candidate)
+        if (parent is not None or candidate is not None) and normalized_path not in seen:
+            normalized.append(normalized_path)
+            seen.add(normalized_path)
     return normalized
 
 
-def changed_paths(path: Path, root: Path) -> list[str]:
+def changed_paths(path: Path, root: Path) -> list[ChangedPath]:
     try:
-        raw_paths = path.read_bytes().split(b"\0")
+        fields = path.read_bytes().split(b"\0")
     except OSError as error:
         raise CoverageInputError(f"cannot read changed path list {path}: {error}") from error
-    return normalize_changed_paths([os.fsdecode(raw) for raw in raw_paths], root)
+    if fields and not fields[-1]:
+        fields.pop()
+
+    changes = []
+    index = 0
+    while index < len(fields):
+        status = os.fsdecode(fields[index])
+        index += 1
+        if status in {"A", "D", "M", "T", "U", "X", "B"}:
+            path_count = 1
+        elif status.startswith("R") and status[1:].isdigit():
+            path_count = 2
+        elif status.startswith("C") and status[1:].isdigit():
+            path_count = 2
+        else:
+            raise CoverageInputError(f"changed path list has invalid status {status!r}")
+        if index + path_count > len(fields):
+            raise CoverageInputError(f"changed path list has incomplete {status!r} entry")
+        names = [os.fsdecode(raw) for raw in fields[index : index + path_count]]
+        if any(not name for name in names):
+            raise CoverageInputError(f"changed path list has an empty path for {status!r}")
+        index += path_count
+
+        if status == "A":
+            changes.append(ChangedPath(None, names[0]))
+        elif status == "D":
+            changes.append(ChangedPath(names[0], None))
+        elif status.startswith("R"):
+            changes.append(ChangedPath(names[0], names[1]))
+        elif status.startswith("C"):
+            changes.append(ChangedPath(None, names[1]))
+        else:
+            changes.append(ChangedPath(names[0], names[0]))
+    return normalize_changed_paths(changes, root)
 
 
 def _sum(stats: list[RegionStats]) -> RegionStats:
@@ -163,22 +210,51 @@ def _display_path(path: str) -> str:
     return html.escape(encoded, quote=True).replace("`", "&#96;").replace("|", "&#124;")
 
 
+def _display_change(path: ChangedPath) -> str:
+    if path.parent_path is None:
+        return path.candidate_path or ""
+    if path.candidate_path is None or path.parent_path == path.candidate_path:
+        return path.parent_path
+    return f"{path.parent_path} -> {path.candidate_path}"
+
+
 def evaluate(
     candidate: CoverageSummary,
     parent: CoverageSummary,
-    paths: list[str],
+    paths: list[ChangedPath],
 ) -> tuple[bool, bool, RegionStats, RegionStats, list[tuple[str, RegionStats, RegionStats, bool | None]]]:
-    candidate_group = _sum([candidate.paths.get(path, RegionStats()) for path in paths])
-    parent_group = _sum([parent.paths.get(path, RegionStats()) for path in paths])
+    candidate_group = _sum(
+        [
+            candidate.paths.get(path.candidate_path, RegionStats())
+            for path in paths
+            if path.candidate_path is not None
+        ]
+    )
+    parent_group = _sum(
+        [
+            parent.paths.get(path.parent_path, RegionStats())
+            for path in paths
+            if path.parent_path is not None
+        ]
+    )
     aggregate_pass = _passes(candidate_group, parent_group)
     per_path = []
     for path in paths:
-        if path not in parent.paths:
-            per_path.append((path, candidate.paths.get(path, RegionStats()), RegionStats(), None))
+        label = _display_change(path)
+        candidate_stats = (
+            candidate.paths.get(path.candidate_path, RegionStats())
+            if path.candidate_path is not None
+            else RegionStats()
+        )
+        parent_stats = (
+            parent.paths.get(path.parent_path, RegionStats())
+            if path.parent_path is not None
+            else RegionStats()
+        )
+        if path.parent_path is None or path.parent_path not in parent.paths:
+            per_path.append((label, candidate_stats, parent_stats, None))
             continue
-        candidate_stats = candidate.paths.get(path, RegionStats())
-        parent_stats = parent.paths[path]
-        per_path.append((path, candidate_stats, parent_stats, _passes(candidate_stats, parent_stats)))
+        per_path.append((label, candidate_stats, parent_stats, _passes(candidate_stats, parent_stats)))
     path_failures = [entry for entry in per_path if entry[3] is False]
     return aggregate_pass, not path_failures, candidate_group, parent_group, per_path
 
@@ -229,7 +305,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--parent", type=Path, required=True)
-    parser.add_argument("--changed-paths", type=Path, required=True, help="NUL-delimited git diff path list")
+    parser.add_argument(
+        "--changed-paths",
+        type=Path,
+        required=True,
+        help="NUL-delimited git diff --name-status list",
+    )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
 

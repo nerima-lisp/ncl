@@ -261,7 +261,7 @@ jobs:
             base_sha="$(git rev-parse FETCH_HEAD)"
           fi
           merge_base="$(git merge-base HEAD "$base_sha")"
-          git diff --name-only -z "$merge_base" HEAD > "$PATHS_FILE"
+          git diff --no-ext-diff --name-status --find-renames -z "$merge_base" HEAD > "$PATHS_FILE"
           printf 'merge_base=%s\n' "$merge_base" >> "$GITHUB_OUTPUT"
           printf 'paths_file=%s\n' "$PATHS_FILE" >> "$GITHUB_OUTPUT"
       - name: Find parent coverage artifact

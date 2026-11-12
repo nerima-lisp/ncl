@@ -61,7 +61,11 @@ def evaluate(files, parent_files, changed):
     root = Path("/repo")
     candidate = checker.parse_summary(summary(files), root)
     parent = checker.parse_summary(summary(parent_files), root)
-    paths = checker.normalize_changed_paths(changed, root)
+    changes = [
+        checker.ChangedPath(path, path) if isinstance(path, str) else path
+        for path in changed
+    ]
+    paths = checker.normalize_changed_paths(changes, root)
     return checker.evaluate(candidate, parent, paths)
 
 
@@ -110,7 +114,7 @@ class CheckChangedPathCoverageTests(unittest.TestCase):
             changed = root / "changed-paths"
             candidate.write_text(json.dumps(summary({"src/a.rs": (100, 6)})), encoding="utf-8")
             parent.write_text(json.dumps(summary({"src/a.rs": (100, 0)})), encoding="utf-8")
-            changed.write_bytes(b"src/a.rs\0")
+            changed.write_bytes(b"M\0src/a.rs\0")
             stdout = io.StringIO()
             with contextlib.redirect_stdout(stdout):
                 status = checker.main(
@@ -153,13 +157,65 @@ class CheckChangedPathCoverageTests(unittest.TestCase):
 
     def test_new_file_is_in_aggregate_but_has_no_parent_path_rule(self):
         aggregate, per_path, current, previous, rows = evaluate(
-            {"src/new.rs": (100, 5)}, {}, ["src/new.rs"]
+            {"src/new.rs": (100, 5)}, {}, [checker.ChangedPath(None, "src/new.rs")]
         )
         self.assertTrue(aggregate)
         self.assertTrue(per_path)
         self.assertEqual(current.count, 100)
         self.assertEqual(previous.count, 0)
         self.assertIsNone(rows[0][3])
+
+    def test_new_file_below_95_percent_fails_the_aggregate(self):
+        aggregate, per_path, current, previous, rows = evaluate(
+            {"src/new.rs": (100, 6)}, {}, [checker.ChangedPath(None, "src/new.rs")]
+        )
+        self.assertFalse(aggregate)
+        self.assertTrue(per_path)
+        self.assertEqual(current.missed, 6)
+        self.assertEqual(previous.missed, 0)
+        self.assertIsNone(rows[0][3])
+
+    def test_rename_uses_parent_source_path_for_both_clauses(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            changed = Path(temporary) / "changed-paths"
+            changed.write_bytes(b"R100\0src/old.rs\0src/new.rs\0")
+            paths = checker.changed_paths(changed, Path("/repo"))
+
+        candidate = checker.parse_summary(
+            summary({"src/new.rs": (100, 10)}), Path("/repo")
+        )
+        parent = checker.parse_summary(
+            summary({"src/old.rs": (100, 10)}), Path("/repo")
+        )
+        aggregate, per_path, current, previous, rows = checker.evaluate(
+            candidate, parent, paths
+        )
+
+        self.assertEqual(paths, [checker.ChangedPath("src/old.rs", "src/new.rs")])
+        self.assertTrue(aggregate)
+        self.assertTrue(per_path)
+        self.assertEqual(current.missed, 10)
+        self.assertEqual(previous.missed, 10)
+        self.assertEqual(rows[0][0], "src/old.rs -> src/new.rs")
+        self.assertTrue(rows[0][3])
+
+    def test_rename_regression_fails_per_path_when_aggregate_reaches_95_percent(self):
+        aggregate, per_path, current, previous, rows = evaluate(
+            {"src/new.rs": (100, 10), "src/new-feature.rs": (1000, 0)},
+            {"src/old.rs": (100, 4)},
+            [
+                checker.ChangedPath("src/old.rs", "src/new.rs"),
+                checker.ChangedPath(None, "src/new-feature.rs"),
+            ],
+        )
+
+        self.assertTrue(aggregate)
+        self.assertGreaterEqual(current.percent, checker.THRESHOLD)
+        self.assertFalse(per_path)
+        self.assertEqual(current.missed, 10)
+        self.assertEqual(previous.missed, 4)
+        self.assertFalse(rows[0][3])
+        self.assertIsNone(rows[1][3])
 
     def test_parent_summary_missing_fails_closed(self):
         with tempfile.TemporaryDirectory() as temporary:

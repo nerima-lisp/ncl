@@ -135,7 +135,7 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         self.assertEqual(off["median_seconds"], 1.05)
         self.assertAlmostEqual(off["range_seconds"], 0.1)
         self.assertEqual(scores["benchmark_comparisons"]["FIB"]["off_over_sbcl"]["noise_basis"], "ratio")
-        self.assertIn("noise 以下", render_cl_bench_table({"scores": scores}))
+        self.assertIn("below noise", render_cl_bench_table({"scores": scores}))
 
     def test_compile_file_aggregation_reports_successful_sample_range(self):
         rows = [
@@ -181,7 +181,7 @@ class BenchmarkStatisticsTests(unittest.TestCase):
             },
         })
 
-        self.assertIn("noise 以下", table)
+        self.assertIn("below noise", table)
         self.assertIn("-0.02", table)
         self.assertIn("5/5", table)
         self.assertIn("3/2/0", table)
@@ -216,7 +216,7 @@ class BenchmarkStatisticsTests(unittest.TestCase):
 
         self.assertIn("synthetic/case.lisp", table)
         self.assertIn("0.08", table)
-        self.assertIn("noise 以下", table)
+        self.assertIn("below noise", table)
 
     def test_ab_scoring_reports_per_file_spread_and_noise(self):
         samples = [10.0, 10.02, 9.98, 10.01, 9.99]
@@ -252,7 +252,7 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         self.assertTrue(report["comparison"]["noise_below"])
         self.assertEqual(report["file_comparisons"]["synthetic/one.lisp"]["candidate"]["sample_count"], 5)
         self.assertTrue(report["file_comparisons"]["synthetic/one.lisp"]["comparison"]["noise_below"])
-        self.assertIn("noise 以下", render_ab_comparison(report))
+        self.assertIn("below noise", render_ab_comparison(report))
 
 
 if __name__ == "__main__":

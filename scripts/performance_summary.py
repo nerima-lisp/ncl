@@ -15,9 +15,9 @@ def _cell(value: Any) -> str:
 
 def _noise_label(value: Any) -> str:
     if value is True:
-        return "noise 以下"
+        return "below noise"
     if value is False:
-        return "range 超"
+        return "exceeds noise"
     return "n/a"
 
 

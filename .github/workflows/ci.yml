@@ -82,7 +82,9 @@ jobs:
         with:
           toolchain: 1.98.0
           components: rustfmt, clippy
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.151
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: v1-rust
@@ -118,7 +120,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.0
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.151
       - uses: actions/download-artifact@v4
         with:
           name: nextest-archive-x86-64-macos

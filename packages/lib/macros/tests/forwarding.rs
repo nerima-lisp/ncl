@@ -6,7 +6,7 @@ use ncl_object::{
     BuiltinName, BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError, Package,
     Runtime, ThreadContext, Word, symbol_function,
 };
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 
 #[expect(
     clippy::unnecessary_wraps,
@@ -54,24 +54,32 @@ fn register_stale_target(runtime: &Arc<Runtime>) -> u64 {
 #[test]
 fn funcall_and_apply_report_forwarding_violation_for_stale_function_designators() {
     let runtime = Arc::new(Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}")));
+
+    let (collect_sender, collect_receiver) = mpsc::channel();
+    let (collector_ready_sender, collector_ready_receiver) = mpsc::channel();
+    let collection_runtime = Arc::clone(&runtime);
+    let collector = std::thread::spawn(move || {
+        let mut collector = ThreadContext::new();
+        collector
+            .register(&collection_runtime)
+            .unwrap_or_else(|error| panic!("register collector context: {error:?}"));
+        assert!(collector_ready_sender.send(()).is_ok());
+        assert!(collect_receiver.recv().is_ok());
+        collector
+            .collect(true)
+            .unwrap_or_else(|error| panic!("full collection: {error:?}"));
+    });
+    assert!(collector_ready_receiver.recv().is_ok());
+
     let setup_runtime = Arc::clone(&runtime);
     let stale_function_bits = std::thread::spawn(move || register_stale_target(&setup_runtime))
         .join()
         .unwrap_or_else(|error| panic!("setup thread: {error:?}"));
 
-    // Keep the setup thread's raw Lisp words out of the collector's conservative stack scan.
-    let collection_runtime = Arc::clone(&runtime);
-    std::thread::spawn(move || {
-        let mut collector = ThreadContext::new();
-        collector
-            .register(&collection_runtime)
-            .unwrap_or_else(|error| panic!("register collector context: {error:?}"));
-        collector
-            .collect(true)
-            .unwrap_or_else(|error| panic!("full collection: {error:?}"));
-    })
-    .join()
-    .unwrap_or_else(|error| panic!("collector thread: {error:?}"));
+    assert!(collect_sender.send(()).is_ok());
+    collector
+        .join()
+        .unwrap_or_else(|error| panic!("collector thread: {error:?}"));
 
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)

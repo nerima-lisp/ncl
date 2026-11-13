@@ -496,4 +496,3 @@ impl super::Heap {
         }
     }
 }
-

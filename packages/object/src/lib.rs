@@ -16,6 +16,7 @@ mod control_extensions;
 mod function;
 mod function_call;
 pub(crate) mod gc;
+pub mod hash_table;
 mod instance;
 mod keyword_builtins;
 pub mod layout;

@@ -4,4 +4,4 @@
 
 mod hash_table;
 
-pub use hash_table::{HashTable, HashTest, Weakness, register_layouts, sxhash};
+pub use hash_table::{HashTable, HashTest, Weakness, new_with_options, register_layouts, sxhash};

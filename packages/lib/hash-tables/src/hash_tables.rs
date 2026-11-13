@@ -1,4 +1,4 @@
-use ncl_hash_tables::{HashTable, HashTest, Weakness, sxhash};
+use ncl_hash_tables::{HashTable, HashTest, Weakness, new_with_options, sxhash};
 use ncl_object::package::{nil, truth};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
@@ -104,7 +104,7 @@ fn make_hash_table_builtin(
                 _ => return Err(ObjectError::TypeError),
             }
         }
-        Ok(HashTable::new_with_options(
+        Ok(new_with_options(
             ctx,
             runtime,
             test,

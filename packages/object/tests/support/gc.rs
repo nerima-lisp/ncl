@@ -189,6 +189,15 @@ fn package_layout_uses_header_inclusive_references() {
 }
 
 #[test]
+fn hash_table_layout_uses_header_inclusive_references() {
+    assert_eq!(
+        hash_table_layout().reference_words,
+        reference_words(&[REHASH_SIZE, REHASH_THRESHOLD, MARKER, KV, INDEX])
+    );
+    assert_eq!(hash_table_layout().boxed_from, Some(MARKER + 1));
+}
+
+#[test]
 fn gc_builtin_runs_a_full_collection() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
     let mut ctx = crate::ThreadContext::new();

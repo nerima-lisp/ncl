@@ -1,0 +1,285 @@
+use super::{
+    DEFAULT_CAPACITY, DEFAULT_REHASH_SIZE, DEFAULT_REHASH_THRESHOLD, HashTable, HashTest, Weakness,
+};
+use crate::object_access::{get, put};
+use crate::{
+    Bignum, ObjectError, ObjectRef, Ratio, Runtime, ThreadContext, bignum_limbs, bignum_sign,
+    classify_object, double_value, make_double, ratio_denominator, ratio_numerator, widetag,
+};
+use ncl_sys::Word;
+
+pub(super) fn refresh_forwarded_field(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    table: HashTable,
+    slot: usize,
+) -> Result<Word, ObjectError> {
+    let value = get(ctx, table.as_word(), widetag::HASH_TABLE, slot)?;
+    let forwarded = runtime
+        .heap
+        .forwarded_word(value)
+        .or_else(|| value.as_fixnum().map(|_| value))
+        .ok_or(ObjectError::Layout)?;
+    if forwarded != value {
+        put(ctx, table.as_word(), slot, forwarded)?;
+    }
+    Ok(forwarded)
+}
+
+#[derive(Clone, Copy, Debug)]
+enum RehashSize {
+    Add(usize),
+    Multiply(f64),
+}
+
+impl HashTable {
+    /// Allocate an empty heap hash table.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error.
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
+    pub fn new(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        test: HashTest,
+        weakness: Weakness,
+    ) -> Result<Self, ObjectError> {
+        let mut rehash_size = make_double(ctx, runtime, DEFAULT_REHASH_SIZE)?.as_word();
+        crate::with_root(ctx, &mut rehash_size, |ctx, rehash_size| {
+            let mut rehash_threshold =
+                make_double(ctx, runtime, DEFAULT_REHASH_THRESHOLD)?.as_word();
+            crate::with_root(ctx, &mut rehash_threshold, |ctx, rehash_threshold| {
+                Self::allocate(
+                    ctx,
+                    runtime,
+                    test,
+                    weakness,
+                    DEFAULT_CAPACITY,
+                    rehash_size,
+                    rehash_threshold,
+                )
+            })
+        })
+    }
+
+    /// Allocate a table from options validated by the hash-table feature crate.
+    ///
+    /// `capacity` must be a normalized capacity, and the rehash values must be valid Common Lisp
+    /// option values. This constructor stores those values without interpreting them.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error, or a type error for an invalid capacity.
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
+    #[doc(hidden)]
+    pub fn new_from_validated_options(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        test: HashTest,
+        weakness: Weakness,
+        capacity: usize,
+        rehash_size: Word,
+        rehash_threshold: Word,
+    ) -> Result<Self, ObjectError> {
+        if capacity < DEFAULT_CAPACITY || !capacity.is_power_of_two() {
+            return Err(ObjectError::TypeError);
+        }
+        let mut rehash_size = rehash_size;
+        crate::with_root(ctx, &mut rehash_size, |ctx, rehash_size| {
+            let mut rehash_threshold = rehash_threshold;
+            crate::with_root(ctx, &mut rehash_threshold, |ctx, rehash_threshold| {
+                Self::allocate(
+                    ctx,
+                    runtime,
+                    test,
+                    weakness,
+                    capacity,
+                    rehash_size,
+                    rehash_threshold,
+                )
+            })
+        })
+    }
+}
+
+fn positive_integer(ctx: &ThreadContext, word: Word) -> Result<u128, ObjectError> {
+    match classify_object(ctx, word) {
+        ObjectRef::Fixnum(value) if value > 0 => {
+            u128::try_from(value).map_err(|_| ObjectError::TypeError)
+        }
+        ObjectRef::Bignum(value) => {
+            let object = Bignum::from_word(value);
+            if bignum_sign(ctx, object)? {
+                return Err(ObjectError::TypeError);
+            }
+            let mut magnitude = 0_u128;
+            for limb in bignum_limbs(ctx, object)?.into_iter().rev() {
+                magnitude = magnitude
+                    .checked_shl(32)
+                    .and_then(|value| value.checked_add(u128::from(limb)))
+                    .ok_or(ObjectError::TypeError)?;
+            }
+            if magnitude > 0 {
+                Ok(magnitude)
+            } else {
+                Err(ObjectError::TypeError)
+            }
+        }
+        // check-added-lines: allow(wildcard) ObjectRef is non_exhaustive and unknown values are invalid.
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+fn normalize_capacity(size: u128) -> Result<usize, ObjectError> {
+    let requested = usize::try_from(size).map_err(|_| ObjectError::TypeError)?;
+    let requested = requested.max(DEFAULT_CAPACITY);
+    let capacity = requested
+        .checked_next_power_of_two()
+        .ok_or(ObjectError::TypeError)?;
+    if capacity > usize::MAX / 2 {
+        Err(ObjectError::TypeError)
+    } else {
+        Ok(capacity)
+    }
+}
+
+fn rehash_size_value(ctx: &ThreadContext, word: Word) -> Result<RehashSize, ObjectError> {
+    match classify_object(ctx, word) {
+        ObjectRef::Fixnum(value) => Ok(RehashSize::Add(
+            usize::try_from(positive_integer(ctx, Word::fixnum(value))?)
+                .map_err(|_| ObjectError::TypeError)?,
+        )),
+        ObjectRef::Bignum(value) => Ok(RehashSize::Add(
+            usize::try_from(positive_integer(ctx, value)?).map_err(|_| ObjectError::TypeError)?,
+        )),
+        ObjectRef::DoubleFloat(value) => {
+            let value = double_value(ctx, crate::DoubleFloat::from_word(value))?;
+            if value.is_finite() && value > 1.0 {
+                Ok(RehashSize::Multiply(value))
+            } else {
+                Err(ObjectError::Layout)
+            }
+        }
+        // check-added-lines: allow(wildcard) ObjectRef is non_exhaustive and unknown values are invalid.
+        _ => Err(ObjectError::Layout),
+    }
+}
+
+pub(super) fn rehash_threshold_value(ctx: &ThreadContext, word: Word) -> Result<f64, ObjectError> {
+    match classify_object(ctx, word) {
+        ObjectRef::Fixnum(value) => Ok(integer_to_f64(i128::from(value))),
+        ObjectRef::Bignum(value) => {
+            let object = Bignum::from_word(value);
+            let magnitude = bignum_to_u128(ctx, object)?;
+            let value = magnitude_to_f64(magnitude);
+            Ok(if bignum_sign(ctx, object)? {
+                -value
+            } else {
+                value
+            })
+        }
+        ObjectRef::Ratio(value) => {
+            let object = Ratio::from_word(value);
+            let numerator = rehash_threshold_value(ctx, ratio_numerator(ctx, object)?)?;
+            let denominator = rehash_threshold_value(ctx, ratio_denominator(ctx, object)?)?;
+            Ok(numerator / denominator)
+        }
+        ObjectRef::DoubleFloat(value) => double_value(ctx, crate::DoubleFloat::from_word(value)),
+        // check-added-lines: allow(wildcard) ObjectRef is non_exhaustive and unknown values are invalid.
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+fn bignum_to_u128(ctx: &ThreadContext, object: Bignum) -> Result<u128, ObjectError> {
+    let mut magnitude = 0_u128;
+    for limb in bignum_limbs(ctx, object)?.into_iter().rev() {
+        magnitude = magnitude
+            .checked_shl(32)
+            .and_then(|value| value.checked_add(u128::from(limb)))
+            .ok_or(ObjectError::TypeError)?;
+    }
+    Ok(magnitude)
+}
+
+fn magnitude_to_f64(mut magnitude: u128) -> f64 {
+    let mut value = 0.0;
+    let mut place = 1.0;
+    while magnitude != 0 {
+        if magnitude & 1 != 0 {
+            value += place;
+        }
+        magnitude >>= 1;
+        place *= 2.0;
+    }
+    value
+}
+
+fn integer_to_f64(value: i128) -> f64 {
+    let magnitude = magnitude_to_f64(value.unsigned_abs());
+    if value.is_negative() {
+        -magnitude
+    } else {
+        magnitude
+    }
+}
+
+pub(super) fn usize_to_f64(mut value: usize) -> f64 {
+    let mut result = 0.0;
+    let mut place = 1.0;
+    while value != 0 {
+        if value & 1 != 0 {
+            result += place;
+        }
+        value >>= 1;
+        place *= 2.0;
+    }
+    result
+}
+
+pub(super) fn next_capacity_from_value(
+    ctx: &ThreadContext,
+    table: HashTable,
+    rehash_size: Word,
+) -> Result<usize, ObjectError> {
+    let capacity = table.capacity(ctx)?;
+    let requested = match rehash_size_value(ctx, rehash_size)? {
+        RehashSize::Add(amount) => capacity.checked_add(amount).ok_or(ObjectError::Layout)?,
+        RehashSize::Multiply(factor) => scaled_capacity(capacity, factor)?,
+    };
+    normalize_capacity(u128::try_from(requested).map_err(|_| ObjectError::Layout)?)
+}
+
+fn scaled_capacity(capacity: usize, factor: f64) -> Result<usize, ObjectError> {
+    let (numerator, shift) = float_ratio(factor)?;
+    let capacity = u128::try_from(capacity).map_err(|_| ObjectError::Layout)?;
+    let product = capacity.checked_mul(numerator).ok_or(ObjectError::Layout)?;
+    let denominator = 1_u128.checked_shl(shift).ok_or(ObjectError::Layout)?;
+    let rounded = product
+        .checked_add(denominator - 1)
+        .ok_or(ObjectError::Layout)?
+        / denominator;
+    let minimum = capacity.checked_add(1).ok_or(ObjectError::Layout)?;
+    usize::try_from(rounded.max(minimum)).map_err(|_| ObjectError::Layout)
+}
+
+fn float_ratio(value: f64) -> Result<(u128, u32), ObjectError> {
+    let bits = value.to_bits();
+    let exponent_bits = (bits >> 52) & 0x7ff;
+    let fraction = bits & ((1_u64 << 52) - 1);
+    let (significand, exponent) = if exponent_bits == 0 {
+        (u128::from(fraction), -1074_i32)
+    } else {
+        let exponent = i32::try_from(exponent_bits).map_err(|_| ObjectError::Layout)?;
+        (u128::from((1_u64 << 52) | fraction), exponent - 1023 - 52)
+    };
+    if exponent >= 0 {
+        let shift = u32::try_from(exponent).map_err(|_| ObjectError::Layout)?;
+        Ok((
+            significand.checked_shl(shift).ok_or(ObjectError::Layout)?,
+            0,
+        ))
+    } else {
+        Ok((significand, exponent.unsigned_abs()))
+    }
+}

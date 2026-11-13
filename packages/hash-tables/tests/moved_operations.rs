@@ -1,6 +1,6 @@
 //! Hash-table operations moved from kernel integration coverage.
 
-use ncl_hash_tables::{HashTable, HashTest, Weakness};
+use ncl_hash_tables::{HashTable, HashTest, Weakness, new_with_options};
 use ncl_object::Word;
 use ncl_object::{
     ObjectError, Runtime, ThreadContext, WordView, bignum_limbs, bignum_sign, classify_object,
@@ -138,7 +138,7 @@ fn new_options(
     rehash_size: Option<Word>,
     rehash_threshold: Option<Word>,
 ) -> Result<HashTable, ObjectError> {
-    HashTable::new_with_options(
+    new_with_options(
         ctx,
         runtime,
         HashTest::Eq,

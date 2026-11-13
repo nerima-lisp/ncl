@@ -5,7 +5,7 @@ mod equalp;
 #[path = "regressions/weak_entries.rs"]
 mod weak_entries;
 
-use ncl_hash_tables::{HashTable, HashTest, Weakness, sxhash};
+use ncl_hash_tables::{HashTable, HashTest, Weakness, new_with_options, sxhash};
 use ncl_object::{ObjectError, Word};
 use ncl_object::{Runtime, ThreadContext, allocate, make_cons, make_string, make_symbol};
 
@@ -174,7 +174,7 @@ fn hash_table_default_threshold_failure_releases_all_roots() {
         roots[double_start + doubles - 1] = Word::NIL;
         ctx.collect(true)?;
 
-        Ok(HashTable::new_with_options(
+        Ok(new_with_options(
             ctx,
             &runtime,
             HashTest::Eql,

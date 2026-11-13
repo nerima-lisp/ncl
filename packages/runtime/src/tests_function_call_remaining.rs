@@ -173,6 +173,21 @@ fn macro_call_rejects_a_forwarded_function_under_strict_forwarding() {
     caller.set_strict_forwarding(true);
 
     let entry_codes = std::collections::BTreeMap::<usize, (Box<Word>, ncl_sys::RootToken)>::new();
+    let mut runtime_caller = RuntimeFunctionCaller;
+    let mut values = MultipleValues::new();
+    assert_eq!(
+        runtime_caller.call_function(
+            &mut caller,
+            &runtime,
+            FunctionDesignator::Function(
+                FunctionObject::try_from(stale_function)
+                    .unwrap_or_else(|error| panic!("stale function object: {error:?}")),
+            ),
+            FunctionArguments::new(&[]),
+            &mut values,
+        ),
+        Err(ncl_object::ObjectError::ForwardingViolation)
+    );
     assert_eq!(
         crate::support::call_macro_function(
             &mut caller,
@@ -183,6 +198,65 @@ fn macro_call_rejects_a_forwarded_function_under_strict_forwarding() {
             &entry_codes,
         ),
         Err(ncl_object::ObjectError::ForwardingViolation)
+    );
+}
+
+#[test]
+fn macro_function_call_roots_rest_arguments_through_collection() {
+    let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    runtime
+        .eval(
+            "(defun ncl-runtime-rest-argument-test \
+                (first second third fourth fifth) \
+                (progn (cons 0 nil) fifth))",
+        )
+        .unwrap_or_else(|error| panic!("compiled function: {error:?}"));
+    let fifth = ncl_object::make_cons(
+        &mut runtime.context,
+        &runtime.object,
+        Word::fixnum(42),
+        Word::NIL,
+    )
+    .unwrap_or_else(|error| panic!("fifth argument: {error:?}"));
+    let fifth = ncl_object::HeapRootedWord::new(&runtime.context, fifth)
+        .unwrap_or_else(|error| panic!("root fifth argument: {error:?}"));
+    let package = runtime
+        .object
+        .find_package(&runtime.context, "COMMON-LISP-USER")
+        .unwrap_or_else(|| panic!("missing user package"));
+    let (symbol, _) = ncl_object::Package::from_word(package)
+        .intern(
+            &mut runtime.context,
+            &runtime.object,
+            "NCL-RUNTIME-REST-ARGUMENT-TEST",
+        )
+        .unwrap_or_else(|error| panic!("intern function name: {error:?}"));
+    let function_word = ncl_object::symbol_function(&runtime.context, symbol)
+        .unwrap_or_else(|error| panic!("function cell: {error:?}"));
+    let function = FunctionObject::try_from(function_word)
+        .unwrap_or_else(|error| panic!("function object: {error:?}"));
+    runtime.context.set_gc_stress(true);
+    runtime.context.set_strict_forwarding(true);
+
+    let arguments = [
+        Word::fixnum(1),
+        Word::fixnum(2),
+        Word::fixnum(3),
+        Word::fixnum(4),
+        fifth.get(),
+    ];
+    let result = crate::support::call_macro_function(
+        &mut runtime.context,
+        &runtime.object,
+        function,
+        &arguments,
+        &runtime.entry_codes,
+    )
+    .unwrap_or_else(|error| panic!("macro function call: {error:?}"));
+
+    assert_eq!(
+        ncl_object::car(&runtime.context, result),
+        Ok(Word::fixnum(42))
     );
 }
 

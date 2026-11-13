@@ -42,7 +42,12 @@ pub(super) const fn current_stack_bounds() -> Option<(usize, usize)> {
 }
 
 #[cfg(target_arch = "x86_64")]
-pub(super) fn current_stack_pointer() -> usize {
+#[expect(
+    clippy::inline_always,
+    reason = "Callers capture a stable stack boundary before entering a blocking wait."
+)]
+#[inline(always)]
+pub fn current_stack_pointer() -> usize {
     let stack_pointer: usize;
     // SAFETY: this reads the current stack pointer without accessing memory or changing state.
     unsafe {
@@ -56,7 +61,12 @@ pub(super) fn current_stack_pointer() -> usize {
 }
 
 #[cfg(target_arch = "aarch64")]
-pub(super) fn current_stack_pointer() -> usize {
+#[expect(
+    clippy::inline_always,
+    reason = "Callers capture a stable stack boundary before entering a blocking wait."
+)]
+#[inline(always)]
+pub fn current_stack_pointer() -> usize {
     let stack_pointer: usize;
     // SAFETY: this reads the current stack pointer without accessing memory or changing state.
     unsafe {
@@ -70,6 +80,32 @@ pub(super) fn current_stack_pointer() -> usize {
 }
 
 #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-pub(super) const fn current_stack_pointer() -> Option<usize> {
+pub const fn current_stack_pointer() -> Option<usize> {
     None
+}
+
+impl super::Thread {
+    pub(crate) fn publish_snapshot_with_stack_pointer(&mut self, stack_pointer: Option<usize>) {
+        self.publish_stack_interval_with_stack_pointer(stack_pointer);
+        self.callee_saved = crate::snapshot_callee_saved();
+    }
+
+    pub(crate) fn publish_stack_interval(&mut self) {
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        let stack_pointer = Some(current_stack_pointer());
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let stack_pointer = current_stack_pointer();
+        self.publish_stack_interval_with_stack_pointer(stack_pointer);
+    }
+
+    fn publish_stack_interval_with_stack_pointer(&mut self, stack_pointer: Option<usize>) {
+        self.stack_bounds = current_stack_bounds();
+        self.stack_scan_start =
+            self.stack_bounds
+                .zip(stack_pointer)
+                .and_then(|(bounds, stack_pointer)| {
+                    super::gc_state::valid_stack_interval(bounds, stack_pointer)
+                        .then_some(stack_pointer)
+                });
+    }
 }

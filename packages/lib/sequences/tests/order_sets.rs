@@ -287,6 +287,24 @@ fn registered_set_operations_obey_test_key_and_test_not_options() -> TestResult 
     )?;
     assert_list(&ctx, difference, &[left_records[0]])?;
 
+    let left = list(&mut ctx, &runtime, &[Word::fixnum(2), Word::fixnum(2)])?;
+    let right = list(&mut ctx, &runtime, &[Word::fixnum(2)])?;
+    let intersection = call(&runtime, &mut ctx, "INTERSECTION", &[left, right])?;
+    assert_number_set(&ctx, intersection, &[2])?;
+
+    let subset = list(&mut ctx, &runtime, &[Word::fixnum(2)])?;
+    let superset = list(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(2)])?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "SUBSETP", &[subset, superset])?,
+        Word::TRUE
+    );
+
+    let existing = list(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(2)])?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ADJOIN", &[Word::fixnum(2), existing],)?,
+        existing
+    );
+
     let left = list(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(2)])?;
     let right = list(&mut ctx, &runtime, &[Word::fixnum(2), Word::fixnum(3)])?;
     let union = call(

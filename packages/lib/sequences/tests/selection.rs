@@ -203,6 +203,38 @@ fn registered_remove_passes_object_before_sequence_element() -> TestResult {
 }
 
 #[test]
+fn registered_position_uses_test_not_predicate() -> TestResult {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_sequences::register(&runtime)?;
+    let predicate = runtime.register_builtin(
+        &mut ctx,
+        SELECTION_TEST_IDENTIFIER,
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::fixed(SELECTION_TEST_PARAMETERS),
+                convention: BuiltinConvention::Direct(Arity::exact(2)),
+            },
+            greater_predicate,
+        ),
+    )?;
+    let sequence = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum))?;
+    let test_not = keyword(&mut ctx, &runtime, "TEST-NOT")?;
+
+    assert_eq!(
+        call(
+            &runtime,
+            &mut ctx,
+            "POSITION",
+            &[Word::fixnum(2), sequence, test_not, predicate.as_word()],
+        )?,
+        Word::fixnum(1)
+    );
+    Ok(())
+}
+
+#[test]
 fn registered_zero_count_preserves_substitution_and_validates_bounds() -> TestResult {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
@@ -611,6 +643,37 @@ mod search_mismatch_public_api {
     }
 
     #[test]
+    fn registered_search_uses_test_not_predicate() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let predicate = runtime
+            .register_builtin(
+                &mut ctx,
+                SELECTION_TEST_IDENTIFIER,
+                BuiltinImplementation::direct(
+                    Builtin {
+                        lambda_list: LambdaList::fixed(SELECTION_TEST_PARAMETERS),
+                        convention: BuiltinConvention::Direct(Arity::exact(2)),
+                    },
+                    super::greater_predicate,
+                ),
+            )
+            .unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
+        let pattern = list(&mut ctx, &runtime, &[2].map(Word::fixnum));
+        let sequence = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum));
+        let test_not = keyword(&mut ctx, &runtime, "TEST-NOT");
+
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[pattern, sequence, test_not, predicate.as_word()],
+            ),
+            Word::fixnum(1)
+        );
+    }
+
+    #[test]
     fn registered_mismatch_reports_leftmost_and_from_end_difference_positions() {
         let runtime =
             Runtime::new().unwrap_or_else(|error| panic!("test operation failed: {error:?}"));
@@ -654,6 +717,15 @@ mod search_mismatch_public_api {
         let equal_right = list(&mut ctx, &runtime, &[1, 2, 3].map(Word::fixnum));
         assert_eq!(
             call(&runtime, &mut ctx, "MISMATCH", &[equal_left, equal_right]),
+            Word::NIL
+        );
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[equal_left, equal_right, from_end, Word::TRUE],
+            ),
             Word::NIL
         );
     }
@@ -1101,6 +1173,34 @@ mod search_mismatch_public_api {
                 );
             }
         }
+    }
+
+    #[test]
+    fn registered_search_and_mismatch_reject_invalid_pair_bounds() {
+        let (runtime, mut ctx) = registered_selection_runtime();
+        let left = list(&mut ctx, &runtime, &[1, 2].map(Word::fixnum));
+        let right = list(&mut ctx, &runtime, &[1, 2].map(Word::fixnum));
+        let start1 = keyword(&mut ctx, &runtime, "START1");
+        assert_eq!(
+            call_result(
+                &runtime,
+                &mut ctx,
+                "SEARCH",
+                &[left, right, start1, Word::fixnum(3)],
+            ),
+            Err(ObjectError::TypeError)
+        );
+
+        let start2 = keyword(&mut ctx, &runtime, "START2");
+        assert_eq!(
+            call_result(
+                &runtime,
+                &mut ctx,
+                "MISMATCH",
+                &[left, right, start2, Word::fixnum(3)],
+            ),
+            Err(ObjectError::TypeError)
+        );
     }
 
     #[test]

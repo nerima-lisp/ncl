@@ -76,11 +76,6 @@ pub struct ThreadContext {
     evaluator_access: EvaluatorAccessSlot,
 }
 impl ThreadContext {
-    /// Return the heap's collection epoch for this registered context.
-    #[must_use]
-    pub fn heap_epoch(&self) -> u64 {
-        ncl_sys::heap_epoch(&self.thread)
-    }
     /// Create an unregistered context.
     #[must_use]
     pub fn new() -> Self {
@@ -178,8 +173,8 @@ impl ThreadContext {
             crate::with_root(ctx, &mut common_lisp_user, |ctx, common_lisp_user| {
                 let common_lisp_package = crate::Package::from_word(*common_lisp);
                 let common_lisp_user_package = crate::Package::from_word(*common_lisp_user);
-                common_lisp_package.ensure_unlocked(ctx)?;
                 common_lisp_user_package.ensure_unlocked(ctx)?;
+                common_lisp_package.ensure_unlocked(ctx)?;
 
                 let mut used = get(
                     ctx,

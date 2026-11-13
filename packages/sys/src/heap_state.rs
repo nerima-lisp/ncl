@@ -81,6 +81,7 @@ pub struct PageMetadata {
     pub(crate) extent_owner: Option<usize>,
     pub(crate) evacuation: bool,
     pub(crate) object_starts: Vec<(usize, usize)>,
+    pub(crate) incoming_forwarders: Vec<usize>,
 }
 
 impl PageMetadata {
@@ -93,6 +94,7 @@ impl PageMetadata {
         self.extent_owner = None;
         self.evacuation = false;
         self.object_starts.clear();
+        self.incoming_forwarders.clear();
     }
 }
 
@@ -136,56 +138,116 @@ impl State {
         let Some(end) = base.checked_add(LOGICAL_PAGE_SIZE) else {
             return;
         };
-        for index in 0..self.objects.len() {
-            let rewrite = {
-                let Some(source) = self.objects.get(index) else {
-                    continue;
-                };
-                if source.alive
-                    || source.forwarded_to.is_none()
-                    || !Self::is_forwarder_on_page(source, base, end)
-                {
-                    let mut next = source.forwarded_to;
-                    let mut crosses_retiring_page = false;
-                    let mut live_target = None;
-                    for _ in 0..self.objects.len() {
-                        let Some(next_index) = next else {
-                            break;
-                        };
-                        let Some(target) = self.objects.get(next_index) else {
-                            break;
-                        };
-                        crosses_retiring_page |= Self::is_forwarder_on_page(target, base, end);
-                        if target.alive {
-                            live_target = Some(next_index);
-                            break;
-                        }
-                        next = target.forwarded_to;
-                    }
-                    crosses_retiring_page.then_some(live_target)
-                } else {
-                    None
-                }
+        let has_forwarders = self.pages.get(page).is_some_and(|metadata| {
+            metadata.object_starts.iter().any(|(_, index)| {
+                self.objects
+                    .get(*index)
+                    .is_some_and(|object| Self::is_forwarder_on_page(object, base, end))
+            })
+        });
+        if !has_forwarders {
+            if let Some(metadata) = self.pages.get_mut(page) {
+                metadata.incoming_forwarders.clear();
+            }
+            return;
+        }
+        let incoming_count = self
+            .pages
+            .get(page)
+            .map_or(0, |metadata| metadata.incoming_forwarders.len());
+        for position in 0..incoming_count {
+            let Some(source_index) = self
+                .pages
+                .get(page)
+                .and_then(|metadata| metadata.incoming_forwarders.get(position))
+                .copied()
+            else {
+                continue;
             };
-            if let Some(target) = rewrite
-                && let Some(source) = self.objects.get_mut(index)
+            let Some(target_index) = self
+                .objects
+                .get(source_index)
+                .and_then(|source| source.forwarded_to)
+            else {
+                continue;
+            };
+            if !self
+                .objects
+                .get(target_index)
+                .is_some_and(|target| Self::is_forwarder_on_page(target, base, end))
+                || self
+                    .objects
+                    .get(source_index)
+                    .is_some_and(|source| Self::is_forwarder_on_page(source, base, end))
             {
+                continue;
+            }
+
+            let target = self.forwarding_target_after_page(target_index, base, end);
+            let target_page = target.and_then(|target_index| {
+                self.objects
+                    .get(target_index)
+                    .and_then(|object| self.page_index(object.start))
+                    .filter(|target_page| *target_page != page)
+            });
+            let target = target_page.and(target);
+            if let Some(source) = self.objects.get_mut(source_index) {
                 source.forwarded_to = target;
                 if target.is_none() {
                     source.words.retire();
                 }
             }
+            if let (Some(target_page), Some(_)) = (target_page, target)
+                && let Some(metadata) = self.pages.get_mut(target_page)
+            {
+                metadata.incoming_forwarders.push(source_index);
+            }
         }
-        for object in &mut self.objects {
-            if Self::is_forwarder_on_page(object, base, end) {
+
+        let object_count = self
+            .pages
+            .get(page)
+            .map_or(0, |metadata| metadata.object_starts.len());
+        for position in 0..object_count {
+            let Some(index) = self
+                .pages
+                .get(page)
+                .and_then(|metadata| metadata.object_starts.get(position))
+                .map(|(_, index)| *index)
+            else {
+                continue;
+            };
+            if let Some(object) = self.objects.get_mut(index)
+                && Self::is_forwarder_on_page(object, base, end)
+            {
                 object.forwarded_to = None;
                 object.words.retire();
             }
+        }
+        if let Some(metadata) = self.pages.get_mut(page) {
+            metadata.incoming_forwarders.clear();
         }
     }
 
     const fn is_forwarder_on_page(object: &Object, base: usize, end: usize) -> bool {
         !object.alive && object.forwarded_to.is_some() && object.start >= base && object.start < end
+    }
+
+    fn forwarding_target_after_page(
+        &self,
+        mut index: usize,
+        base: usize,
+        end: usize,
+    ) -> Option<usize> {
+        for _ in 0..self.objects.len() {
+            let object = self.objects.get(index)?;
+            if Self::is_forwarder_on_page(object, base, end) {
+                index = object.forwarded_to?;
+            } else {
+                return (object.alive || object.forwarded_to.is_some()).then_some(index);
+            }
+        }
+        None
     }
 
     pub(crate) fn flush_pending_allocations(&mut self) -> Result<(), PageError> {
@@ -385,12 +447,14 @@ impl State {
     pub(crate) fn rebuild_object_starts(&mut self) {
         for page in &mut self.pages {
             page.object_starts.clear();
+            page.incoming_forwarders.clear();
         }
         let Some(range) = self.page_range.as_ref() else {
             return;
         };
         let base = range.base_address();
         let mut starts = Vec::new();
+        let mut incoming_forwarders = Vec::new();
         for (index, object) in self.objects.iter().enumerate() {
             if !object.alive && object.forwarded_to.is_none() {
                 continue;
@@ -402,11 +466,25 @@ impl State {
             if page < self.pages.len() {
                 starts.push((page, offset % LOGICAL_PAGE_SIZE, index));
             }
+            if let Some(target_index) = object.forwarded_to
+                && let Some(target) = self.objects.get(target_index)
+                && let Some(target_offset) = target.start.checked_sub(base)
+            {
+                let target_page = target_offset / LOGICAL_PAGE_SIZE;
+                if target_page < self.pages.len() {
+                    incoming_forwarders.push((target_page, index));
+                }
+            }
         }
         starts.sort_unstable_by_key(|(page, offset, _)| (*page, *offset));
         for (page, offset, index) in starts {
             if let Some(page) = self.pages.get_mut(page) {
                 page.object_starts.push((offset, index));
+            }
+        }
+        for (page, source_index) in incoming_forwarders {
+            if let Some(page) = self.pages.get_mut(page) {
+                page.incoming_forwarders.push(source_index);
             }
         }
     }

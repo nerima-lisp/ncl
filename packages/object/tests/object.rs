@@ -132,6 +132,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     let mut roots = symbols;
     roots.push(list);
     roots.push(interned);
+    let weak_root_index = roots.len();
     roots.push(weak);
     let tokens = roots
         .iter_mut()
@@ -152,7 +153,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
 
     assert!(ctx.collect(true).is_ok());
     assert_eq!(car(&ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
-    assert_eq!(ctx.weak_value(weak), Word::NIL);
+    assert_eq!(ctx.weak_value(roots[weak_root_index]), Word::NIL);
     for token in tokens.into_iter().rev() {
         assert!(ncl_object::pop_root(&mut ctx, token));
     }

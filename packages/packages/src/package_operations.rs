@@ -29,10 +29,10 @@ impl PackageOperations for Package {
             ncl_object::with_root(ctx, &mut nickname, |ctx, nickname| {
                 let mut names = get(ctx, *package, widetag::PACKAGE, NICKNAMES)?;
                 while names != Word::NIL {
-                    if ncl_object::car(ctx, names)? == *nickname {
+                    if ncl_object::car(ctx, names).map_err(|_| ObjectError::Layout)? == *nickname {
                         return Ok(false);
                     }
-                    names = ncl_object::cdr(ctx, names)?;
+                    names = ncl_object::cdr(ctx, names).map_err(|_| ObjectError::Layout)?;
                 }
                 let names = make_cons(
                     ctx,
@@ -166,16 +166,16 @@ impl PackageOperations for Package {
         let wanted_length = ncl_object::string_length(ctx, wanted)?;
         let mut entries = self.local_nicknames(ctx)?;
         while entries != Word::NIL {
-            let entry = ncl_object::car(ctx, entries)?;
-            let next = ncl_object::cdr(ctx, entries)?;
-            let entry_name = ncl_object::car(ctx, entry)?;
+            let entry = ncl_object::car(ctx, entries).map_err(|_| ObjectError::Layout)?;
+            let next = ncl_object::cdr(ctx, entries).map_err(|_| ObjectError::Layout)?;
+            let entry_name = ncl_object::car(ctx, entry).map_err(|_| ObjectError::Layout)?;
             if ncl_object::string_length(ctx, entry_name)? == wanted_length
                 && (0..wanted_length).all(|index| {
                     ncl_object::string_ref(ctx, entry_name, index)
                         == ncl_object::string_ref(ctx, wanted, index)
                 })
             {
-                let package = ncl_object::cdr(ctx, entry)?;
+                let package = ncl_object::cdr(ctx, entry).map_err(|_| ObjectError::Layout)?;
                 return Self::try_from_word(ctx, package).map(Some);
             }
             entries = next;

@@ -1,3 +1,5 @@
+//! End-to-end behavior tests for long-form method combinations.
+
 #[path = "common/mod.rs"]
 mod common;
 

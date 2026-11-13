@@ -36,6 +36,14 @@ fn make_candidate_page_reclaimable(heap: &Heap, object: Word) {
     drop(state);
 }
 
+#[test]
+fn collection_reports_an_existing_page_error_before_scanning_roots() {
+    let heap = Heap::new(HeapConfig::default());
+    heap.lock_state().pending_page_error = Some(PageError::AdviceFailed);
+
+    assert_eq!(heap.collect(true), Err(PageError::AdviceFailed));
+}
+
 fn dead_object_on_page(pointer: core::ptr::NonNull<u64>) -> Object {
     // SAFETY: the test commits and clears this page before constructing its one-word record.
     let words = unsafe { HeapWords::new(pointer, 1) };

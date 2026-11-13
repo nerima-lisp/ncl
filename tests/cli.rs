@@ -430,3 +430,55 @@ fn randomized_method_combination_invokes_a_method_with_a_positive_integer_qualif
         "{stdout}"
     );
 }
+
+#[test]
+fn long_form_method_combination_uses_groups_and_explicit_next_methods() {
+    let source = r#"
+        (progn
+          (defun ncl-ansiload-nonnegative-weight-p (qualifiers)
+            (typep qualifiers '(cons (integer 0) null)))
+          (define-method-combination ncl-ansiload-weighted ()
+            ((primary-methods)
+             (method-list ncl-ansiload-nonnegative-weight-p))
+            (assert (= (length primary-methods) 1))
+            (assert (= (length method-list) 2))
+            (let* ((first-method (first method-list))
+                   (second-method (second method-list))
+                   (next-methods (cdr method-list))
+                   (first-weight (first (method-qualifiers first-method)))
+                   (second-weight (first (method-qualifiers second-method))))
+              `(loop
+                 (catch 'done
+                   (return
+                     (rcase
+                       (,first-weight (call-method ,first-method ,next-methods))
+                       (,second-weight (call-method ,second-method)))))))
+          )
+          (defgeneric ncl-ansiload-weighted-dispatch (value)
+            (:method-combination ncl-ansiload-weighted))
+          (defmethod ncl-ansiload-weighted-dispatch ((value integer)) :primary)
+          (defmethod ncl-ansiload-weighted-dispatch 1 ((value integer))
+            (list :integer (call-next-method)))
+          (defmethod ncl-ansiload-weighted-dispatch 0 ((value t)) :zero-weight)
+          (defmethod ncl-ansiload-weighted-dispatch :ignored ((value integer)) :ignored)
+          (defmethod ncl-ansiload-weighted-dispatch 1 ((value string)) :string)
+          (unless (equal (ncl-ansiload-weighted-dispatch 5) '(:integer :zero-weight))
+            (error "Explicit CALL-METHOD next list returned an unexpected result"))
+          (defgeneric ncl-ansiload-weighted-final-dispatch (value)
+            (:method-combination ncl-ansiload-weighted))
+          (defmethod ncl-ansiload-weighted-final-dispatch ((value integer)) :primary)
+          (defmethod ncl-ansiload-weighted-final-dispatch 0 ((value integer)) :zero-weight)
+          (defmethod ncl-ansiload-weighted-final-dispatch 1 ((value t)) :one-weight)
+          (unless (eq (ncl-ansiload-weighted-final-dispatch 5) :one-weight)
+            (error "Final RCASE clause returned an unexpected result"))
+          (format t "DMC-GROUPS-RESULT (:INTEGER :ZERO-WEIGHT) :ONE-WEIGHT~%")
+          t)
+    "#;
+    let result = output(ncl().args(["--eval", source]));
+    assert!(result.status.success(), "{result:?}");
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("DMC-GROUPS-RESULT (:INTEGER :ZERO-WEIGHT) :ONE-WEIGHT"),
+        "{stdout}"
+    );
+}

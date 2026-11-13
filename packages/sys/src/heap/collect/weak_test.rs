@@ -72,19 +72,32 @@ fn live_weak_value_tracks_relocated_referent() {
     heap.write_words(weak, &[(1, referent)]);
     heap.make_weak(weak, Weakness::Value);
 
+    let old_referent_address = referent.address();
     let mut state = heap.lock_state();
+    let referent_page = state
+        .page_index(old_referent_address)
+        .unwrap_or_else(|| panic!("referent should have a page"));
     let weak_index = Heap::find(&state, weak).unwrap_or(usize::MAX);
     let referent_index = Heap::find(&state, referent).unwrap_or(usize::MAX);
     let mut live = HashSet::from([weak_index, referent_index]);
     let moved = Heap::move_live_objects(&mut state, &mut live);
+    let new_referent_address = moved
+        .get(&old_referent_address)
+        .copied()
+        .unwrap_or_else(|| panic!("live referent should have moved"));
     let weak_index = Heap::find(&state, weak).unwrap_or(usize::MAX);
-    let referent_index = Heap::find(&state, referent).unwrap_or(usize::MAX);
-    Heap::finish_collection(&mut state, &[], &moved, &live, true);
+    let finish = Heap::finish_collection(&mut state, &[], &moved, &live, true, |range, group| {
+        range.decommit_group(group)
+    });
+    assert!(finish.decommit_result.is_ok());
 
-    let expected = Word::pointer(
-        state.objects[referent_index].words.as_ptr().addr(),
-        LowTag::List,
+    let expected = Word::pointer(new_referent_address, LowTag::List);
+    assert_eq!(
+        Word::from_bits(state.objects[weak_index].words[1]),
+        expected
     );
+    state.retire_page_forwardings(referent_page);
+    assert!(Heap::find(&state, referent).is_none());
     assert_eq!(
         Word::from_bits(state.objects[weak_index].words[1]),
         expected

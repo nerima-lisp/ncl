@@ -253,6 +253,7 @@ version = "0.1.1"
 dependencies = [
  "ncl-conditions",
  "ncl-object",
+ "ncl-packages",
  "ncl-streams",
  "ncl-sys",
  "ncl-types",

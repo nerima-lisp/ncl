@@ -225,6 +225,10 @@ fn kind(ctx: &ThreadContext, object: Word) -> Result<ArrayElementType, ObjectErr
     )?)
 }
 
+/// Return the element type tag stored in a specialized array object.
+///
+/// # Errors
+/// Returns [`ObjectError`] if the object is not a specialized array or its tag is malformed.
 pub fn specialized_array_element_type(
     ctx: &ThreadContext,
     object: Word,

@@ -212,7 +212,7 @@ fn copy_pprint_dispatch_rejects_bad_arity_and_non_tables() {
 
 #[test]
 fn printer_registration_propagates_heap_capacity_failure() {
-    let runtime = runtime_with_dynamic_space_size(16 * 1024 * 1024).unwrap();
+    let runtime = runtime_with_dynamic_space_size(1024 * 1024).unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     for name in ["COMMON-LISP", "NCL-EXT"] {

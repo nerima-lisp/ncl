@@ -219,7 +219,7 @@ fn printer_registration_propagates_heap_capacity_failure() {
     const RELEASED_EMPTY_ROOTS: usize = RESERVED_WORDS / EMPTY_STRING_WORDS;
     const EMPTY_RESERVE_ROOTS: usize = RELEASED_EMPTY_ROOTS + 1;
 
-    let runtime = runtime_with_dynamic_space_size(16 * 1024 * 1024).unwrap();
+    let runtime = runtime_with_dynamic_space_size(1024 * 1024).unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     for name in ["COMMON-LISP", "NCL-EXT"] {

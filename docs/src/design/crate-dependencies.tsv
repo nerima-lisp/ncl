@@ -9,7 +9,6 @@ ncl-clos	ncl-conditions	normal
 ncl-clos	ncl-lib-numbers	normal	
 ncl-clos	ncl-lib-streams	normal	
 ncl-clos	ncl-object	normal	
-ncl-clos	ncl-structures	normal	
 ncl-clos	ncl-types	normal	
 ncl-codegen	ncl-asm-aarch64	normal	
 ncl-codegen	ncl-asm-x86-64	normal	
@@ -20,7 +19,6 @@ ncl-compiler-front	ncl-arrays	normal
 ncl-compiler-front	ncl-clos	normal	
 ncl-compiler-front	ncl-conditions	normal	
 ncl-compiler-front	ncl-hir	normal	
-ncl-compiler-front	ncl-numbers	normal	
 ncl-compiler-front	ncl-object	normal	
 ncl-compiler-front	ncl-packages	normal	
 ncl-compiler-front	ncl-reader	normal	
@@ -49,13 +47,11 @@ ncl-ffi	ncl-sys	normal
 ncl-hash-tables	ncl-object	normal	
 ncl-hir	ncl-ir	normal	
 ncl-image	ncl-hash-tables	normal	
-ncl-image	ncl-numbers	normal	
 ncl-image	ncl-object	normal	
 ncl-image	ncl-objfile	normal	
 ncl-image	ncl-packages	normal	
 ncl-image	ncl-readtables	normal	
 ncl-image	ncl-streams	normal	
-ncl-image	ncl-structures	normal	
 ncl-image	ncl-sys	normal	
 ncl-introspection	ncl-codegen	normal	
 ncl-introspection	ncl-conditions	normal	
@@ -82,7 +78,6 @@ ncl-lib-macros	ncl-object	normal
 ncl-lib-macros	ncl-reader	normal	
 ncl-lib-macros	ncl-types	normal	
 ncl-lib-numbers	ncl-conditions	normal	
-ncl-lib-numbers	ncl-numbers	normal	
 ncl-lib-numbers	ncl-object	normal	
 ncl-lib-numbers	ncl-sys	normal	
 ncl-lib-numbers	ncl-types	normal	
@@ -94,7 +89,6 @@ ncl-lib-pathnames	ncl-clos	normal
 ncl-lib-pathnames	ncl-conditions	normal	
 ncl-lib-pathnames	ncl-hash-tables	normal	
 ncl-lib-pathnames	ncl-lib-strings	normal	
-ncl-lib-pathnames	ncl-numbers	normal	
 ncl-lib-pathnames	ncl-object	normal	
 ncl-lib-pathnames	ncl-packages	normal	
 ncl-lib-pathnames	ncl-sys	normal	
@@ -114,7 +108,6 @@ ncl-lib-strings	ncl-arrays	normal
 ncl-lib-strings	ncl-conditions	normal	
 ncl-lib-strings	ncl-object	normal	
 ncl-lib-strings	ncl-types	normal	
-ncl-numbers	ncl-object	normal	
 ncl-object	ncl-sys	normal	
 ncl-opt	ncl-hir	normal	
 ncl-os	ncl-conditions	normal	
@@ -126,10 +119,8 @@ ncl-packages	ncl-hash-tables	normal
 ncl-packages	ncl-object	normal	
 ncl-printer	ncl-arrays	normal	
 ncl-printer	ncl-conditions	normal	
-ncl-printer	ncl-numbers	normal	
 ncl-printer	ncl-object	normal	
 ncl-printer	ncl-packages	normal	
-ncl-printer	ncl-structures	normal	
 ncl-profiler	ncl-conditions	normal	
 ncl-profiler	ncl-object	normal	
 ncl-profiler	ncl-sys	normal	
@@ -149,7 +140,6 @@ ncl-runtime	ncl-ffi	normal
 ncl-runtime	ncl-image	normal	
 ncl-runtime	ncl-ir	normal	
 ncl-runtime	ncl-lib-pathnames	normal	
-ncl-runtime	ncl-numbers	normal	
 ncl-runtime	ncl-object	normal	
 ncl-runtime	ncl-objfile	normal	
 ncl-runtime	ncl-opt	normal	
@@ -158,7 +148,6 @@ ncl-runtime	ncl-printer	normal
 ncl-runtime	ncl-reader	normal	
 ncl-runtime	ncl-readtables	normal	
 ncl-runtime	ncl-stdlib	normal	
-ncl-runtime	ncl-structures	normal	
 ncl-runtime	ncl-sys	normal	
 ncl-runtime	ncl-threads	normal	
 ncl-runtime	ncl-types	normal	
@@ -193,7 +182,6 @@ ncl-stdlib	ncl-types	normal
 ncl-stdlib	ncl-uiop	normal	
 ncl-streams	ncl-object	normal	
 ncl-streams	ncl-sys	normal	
-ncl-structures	ncl-object	normal	
 ncl-threads	ncl-conditions	normal	
 ncl-threads	ncl-object	normal	
 ncl-threads	ncl-ownership	normal	

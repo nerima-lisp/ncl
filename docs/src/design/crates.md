@@ -4,7 +4,7 @@
 
 This document revises the crate map frozen on 2026-09-24. The target map governs Wave 1, Wave 2, and the compiler stages that follow. Crates represent bounded contexts named with Common Lisp HyperSpec (CLHS) terms or compiler stages. Modules inside each crate follow the same feature boundary. The revision is explicit: it adds `ncl-hir` and the HIR dependency edges listed below while retaining the prohibition on `ncl-opt -> ncl-runtime`.
 
-The kernel crate ncl-object owns Word, object tags and layouts, classification required by heap-facing code, heap and rooting APIs, ThreadContext, and Runtime's generic registries. It also owns the hash-table heap representation and core operations used by Package's INTERNAL and EXTERNAL slots. Lisp-visible hash-table operations and option interpretation belong to ncl-hash-tables. Feature model crates depend on the kernel. The kernel does not depend on a feature crate.
+The kernel crate ncl-object owns Word, object tags and layouts, classification required by heap-facing code, heap and rooting APIs, ThreadContext, Runtime's generic registries, number representations and primitives, and the structure layout, registry, class APIs, and heap operations. Lisp-visible hash-table operations and option interpretation belong to ncl-hash-tables. Other feature model crates depend on the kernel. The kernel does not depend on a feature crate.
 
 Registration belongs to the crate that owns the CLHS feature. A feature registration function registers only that feature. ncl-stdlib is the composition root that calls feature registration functions in dependency order. Runtime calls ncl-stdlib rather than owning the order table.
 
@@ -57,21 +57,21 @@ The baseline is commit 6aa6639d. The root manifest lists 38 workspace members in
 
 The earlier crate-map prose treated `ncl-codegen -> ncl-objfile` as a production edge. The baseline manifest declares it as a dev-only edge (`packages/codegen/Cargo.toml:17`), so the current graph follows the manifest. The frozen contract also barred new workspace members and reverse dependency edges. This revision makes a scoped exception for `ncl-hir`, allowing exactly these HIR edges: `ncl-compiler-front -> ncl-hir`, `ncl-hir -> ncl-ir`, and `ncl-opt -> ncl-hir`. It still prohibits `ncl-opt -> ncl-runtime`, which would reverse the existing `ncl-runtime -> ncl-opt` edge.
 
-## Feature modules moving out of ncl-object
+## Feature module ownership
 
-The destination is the model crate for each CLHS feature. CLHS builtins and registration remain in per-feature ncl-lib-* crates, ncl-reader, or ncl-clos. The target splits the current ncl-lib-hash-arrays adapter into ncl-lib-arrays and ncl-lib-hash-tables, each with a registration function for only its feature. This keeps feature state out of the kernel and keeps Runtime from owning registration order.
+The table records the owner for each feature currently represented in ncl-object. CLHS builtins and registration remain in per-feature ncl-lib-* crates, ncl-reader, or ncl-clos. The target splits the current ncl-lib-hash-arrays adapter into ncl-lib-arrays and ncl-lib-hash-tables, each with a registration function for only its feature. This keeps feature registration out of the kernel and keeps Runtime from owning registration order.
 
-| Current module | Target crate | Evidence and current consumers |
+| Current module | Target owner | Evidence and current consumers |
 | --- | --- | --- |
 | array and specialized_array | ncl-arrays | CLHS operations and builtins are in packages/lib/hash-arrays/src/arrays.rs:1-21,238-250,284-323. Callers include packages/lib/sequences/src/domain/copy_seq.rs:3-4,31-49, packages/lib/strings/src/builtins/string_ops.rs:9-31, packages/compiler/front/src/form.rs:310-353, packages/runtime/src/constants.rs:4-6,121-179, and packages/printer/src/array.rs:5,31-39. The kernel keeps representation primitives in packages/object/src/array_primitives.rs, including make_specialized_array for packages/reader/src/dispatch.rs:249 and specialized_array_ref for packages/image/src/save.rs:230. |
 | hash-table model and Lisp-facing operations | ncl-hash-tables | The kernel keeps the heap representation, layout, key equality/hash, construction, lookup, insertion, removal, and iteration used by Package's INTERNAL/EXTERNAL slots. ncl-hash-tables owns option interpretation and the feature-facing API over that core. Lisp builtins and registration are in packages/lib/hash-tables/src/hash_tables.rs and packages/lib/hash-tables/src/lib.rs. |
 | package | ncl-packages | packages/object/src/lib.rs:27,83 and packages/object/src/registry_extensions.rs:17-60. CLHS functions are in packages/lib/packages/src/introspection/intern_symbol.rs:1-3,25-43. Current callers include packages/reader/src/token.rs:431-442, packages/compiler/front/src/register.rs:31-32, and packages/runtime/src/arith_fast.rs:22-48. |
 | stream | ncl-streams | packages/object/src/lib.rs:38,105-109. Stream operations are in packages/lib/streams/src/file/adapters.rs:98,216-229,282-314. |
-| structure and structure_registry | ncl-structures | packages/object/src/lib.rs:39,110-112 and packages/object/src/structure.rs:25-56. CLOS creates and registers structures in packages/clos/src/lib_structures.rs:7-37 and packages/clos/src/lib_defstruct.rs:68. |
-| number | ncl-numbers | packages/object/src/lib.rs:24,77-81. Arithmetic is in packages/lib/numbers/src/arithmetic/core.rs:8-9,194-215. Runtime constants and compiler decoding use these APIs at packages/runtime/src/constants.rs:5-6,72-95 and packages/compiler/front/src/form.rs:211-231. |
+| structure and structure_registry | ncl-object kernel | The L1-10 run report records that StructureLayout and Runtime's structure APIs share private kernel state (reports/l110-objsplit-2b.md:17; packages/object/src/runtime.rs:28-31,92,134-227; packages/object/src/structure.rs:5-57). Keep layout, registry, class APIs, construction, and slot access together in ncl-object. |
+| number | ncl-object kernel | The L1-10 run report records direct kernel use by array primitives, hash-table equality/options, GC, and typed numeric access (reports/l110-objsplit-2b.md:13; packages/object/src/array_primitives.rs:57-64; packages/object/src/hash_table/equality.rs:79-115,173-214; packages/object/src/hash_table/options.rs:106-202; packages/object/src/gc.rs:68-78; packages/object/src/typed/numeric.rs:34-59). Keep number representations, allocation/access primitives, and typed wrappers in ncl-object. Lisp numeric builtins remain in ncl-lib-numbers. |
 | readtable | ncl-readtables | packages/object/src/lib.rs:30,86-89. Reader behavior is in packages/reader/src/readtable.rs:84-140 and packages/reader/src/copy_readtable.rs:2-4. Runtime load options use the object descriptor at packages/runtime/src/load/read_options.rs:4-7,36. |
 
-The kernel retains the tags, layout descriptors, classification, and representation-level operations needed to inspect or construct heap objects without importing feature crates. Its source concentrates those contracts in packages/object/src/layout.rs, packages/object/src/classify.rs:69-80, packages/object/src/array_primitives.rs, and packages/object/src/gc.rs:76-119,144-152. Runtime keeps generic registries in packages/object/src/runtime.rs:22-40. CLHS domain APIs for Package, HashTable, Stream, Structure, Number, Readtable, and Array do not remain as ncl-object public re-exports; the hash-table core is a representation-level exception required by package storage. Array representation primitives such as ArrayElementType, array_dimensions, specialized_array_element_type, make_specialized_array, specialized_array_ref, and specialized_array_set remain in ncl-object; ncl-arrays owns CLHS array operations.
+The kernel retains the tags, layout descriptors, classification, and representation-level operations needed to inspect or construct heap objects without importing feature crates. Its source concentrates those contracts in packages/object/src/layout.rs, packages/object/src/classify.rs:69-80, packages/object/src/array_primitives.rs, and packages/object/src/gc.rs:76-119,144-152. Runtime keeps generic registries in packages/object/src/runtime.rs:22-40. CLHS domain APIs for Package, HashTable, Stream, Readtable, and Array do not remain as ncl-object public re-exports. The hash-table core is a representation-level exception required by package storage. Array representation primitives such as ArrayElementType, array_dimensions, specialized_array_element_type, make_specialized_array, specialized_array_ref, and specialized_array_set remain in ncl-object; ncl-arrays owns CLHS array operations.
 
 ## Target crate map
 
@@ -81,15 +81,13 @@ The allowed dependency column lists normal direct dependencies. A crate may add 
 | --- | --- | --- |
 | ncl | command-line entry point | ncl-runtime |
 | ncl-sys | operating-system ABI, memory, threads, platform calls, and signal-recovery trampoline | none |
-| ncl-object | Word, layout and tags, classification, heap API, roots, ThreadContext, Runtime registries, package hash-table representation and core operations | ncl-sys |
+| ncl-object | Word, layout and tags, classification, heap API, roots, ThreadContext, Runtime registries, number representations, allocation/access primitives and typed wrappers, structure layout and registry, class APIs, construction and slot access, package hash-table representation and core operations | ncl-sys |
 | ncl-arrays | CLHS array and vector model, rank, element type, displacement, adjustment, storage | ncl-object |
 | ncl-hash-tables | Lisp-visible hash-table API and option interpretation over the object hash-table core | ncl-object |
 | ncl-packages | CLHS package model, symbol membership, export, import, shadowing and use-list | ncl-object, ncl-hash-tables |
 | ncl-streams | CLHS stream state, element type, direction, file and character stream model | ncl-object, ncl-sys |
-| ncl-structures | CLHS structure layout, construction, slot access and mutation | ncl-object |
-| ncl-numbers | CLHS number representations and typed numeric access | ncl-object |
 | ncl-readtables | CLHS readtable representation and syntax state | ncl-object |
-| ncl-compiler-front | source forms, macro expansion, declarations, and lowering to HIR | ncl-hir, ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-clos, ncl-arrays, ncl-numbers, ncl-packages |
+| ncl-compiler-front | source forms, macro expansion, declarations, and lowering to HIR | ncl-hir, ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-clos, ncl-arrays, ncl-packages |
 | ncl-hir | Lisp-semantic high-level IR and compilation-unit index for function definition locations; located at packages/compiler/hir/ | ncl-ir |
 | ncl-ir | compiler-independent intermediate representation | none |
 | ncl-opt | HIR optimization and inlining that preserve Lisp meaning | ncl-hir |
@@ -100,21 +98,21 @@ The allowed dependency column lists normal direct dependencies. A crate may add 
 | ncl-types | type specifiers, predicates and type errors | ncl-object |
 | ncl-conditions | Lisp conditions, handlers, restarts and cleanup | ncl-object, ncl-ownership |
 | ncl-reader | tokenization, reader, syntax dispatch and input forms | ncl-object, ncl-lib-pathnames, ncl-packages, ncl-readtables |
-| ncl-printer | readable and pretty printing | ncl-object, ncl-conditions, ncl-arrays, ncl-numbers, ncl-packages, ncl-structures |
-| ncl-clos | classes, slots, generic functions, MOP and defstruct integration | ncl-object, ncl-types, ncl-conditions, ncl-lib-numbers, ncl-lib-streams, ncl-structures |
-| ncl-lib-numbers | CLHS numeric functions and numeric builtin registration | ncl-object, ncl-numbers, ncl-types, ncl-conditions, ncl-sys |
+| ncl-printer | readable and pretty printing | ncl-object, ncl-conditions, ncl-arrays, ncl-packages |
+| ncl-clos | classes, slots, generic functions, MOP and defstruct integration | ncl-object, ncl-types, ncl-conditions, ncl-lib-numbers, ncl-lib-streams |
+| ncl-lib-numbers | CLHS numeric functions and numeric builtin registration | ncl-object, ncl-types, ncl-conditions, ncl-sys |
 | ncl-lib-sequences | CLHS list, sequence, tree and equality functions | ncl-object, ncl-lib-numbers, ncl-types, ncl-conditions, ncl-arrays, ncl-hash-tables |
 | ncl-lib-strings | CLHS character and string functions | ncl-object, ncl-types, ncl-conditions, ncl-arrays |
 | ncl-lib-arrays | CLHS array and vector functions and registration | ncl-object, ncl-types, ncl-conditions, ncl-arrays |
 | ncl-lib-hash-tables | CLHS hash-table functions and registration | ncl-object, ncl-types, ncl-conditions, ncl-hash-tables |
 | ncl-lib-packages | CLHS package functions and registration | ncl-object, ncl-types, ncl-conditions, ncl-packages |
 | ncl-lib-streams | CLHS stream functions and registration | ncl-object, ncl-types, ncl-conditions, ncl-sys, ncl-streams |
-| ncl-lib-pathnames | pathname model and file-system functions | ncl-object, ncl-clos, ncl-types, ncl-conditions, ncl-lib-strings, ncl-sys, ncl-hash-tables, ncl-numbers, ncl-packages |
+| ncl-lib-pathnames | pathname model and file-system functions | ncl-object, ncl-clos, ncl-types, ncl-conditions, ncl-lib-strings, ncl-sys, ncl-hash-tables, ncl-packages |
 | ncl-lib-format | FORMAT parser, directives, stream output and registration | ncl-object, ncl-types, ncl-conditions, ncl-lib-streams, ncl-lib-strings, ncl-printer, ncl-packages |
 | ncl-lib-macros | CLHS macro and function expansion functions | ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-lib-sequences |
 | ncl-stdlib | composition root for registration order | ncl-object, ncl-sys, ncl-compiler-front, ncl-types, ncl-reader, ncl-printer, ncl-conditions, ncl-clos, ncl-lib-numbers, ncl-lib-sequences, ncl-lib-strings, ncl-lib-arrays, ncl-lib-hash-tables, ncl-lib-streams, ncl-lib-pathnames, ncl-lib-packages, ncl-lib-format, ncl-lib-macros, ncl-environment, ncl-threads, ncl-ffi, ncl-image, ncl-disasm, ncl-os, ncl-uiop, ncl-asdf, ncl-profiler, ncl-coverage, ncl-debug |
-| ncl-runtime | evaluation, compilation orchestration, loading, literal materialization, and the type-check failure signaling entry point (API name set by conditions.md) | ncl-compiler-front, ncl-opt, ncl-ir, ncl-codegen, ncl-conditions, ncl-stdlib, ncl-image, ncl-objfile, ncl-threads, ncl-ffi, ncl-object, ncl-types, ncl-lib-pathnames, ncl-printer, ncl-reader, ncl-sys, ncl-asm-aarch64, ncl-asm-x86-64, ncl-arrays, ncl-numbers, ncl-packages, ncl-readtables, ncl-structures |
-| ncl-image | image serialization and restoration | ncl-object, ncl-objfile, ncl-sys, ncl-hash-tables, ncl-packages, ncl-streams, ncl-structures, ncl-numbers, ncl-readtables |
+| ncl-runtime | evaluation, compilation orchestration, loading, literal materialization, and the type-check failure signaling entry point (API name set by conditions.md) | ncl-compiler-front, ncl-opt, ncl-ir, ncl-codegen, ncl-conditions, ncl-stdlib, ncl-image, ncl-objfile, ncl-threads, ncl-ffi, ncl-object, ncl-types, ncl-lib-pathnames, ncl-printer, ncl-reader, ncl-sys, ncl-asm-aarch64, ncl-asm-x86-64, ncl-arrays, ncl-packages, ncl-readtables |
+| ncl-image | image serialization and restoration | ncl-object, ncl-objfile, ncl-sys, ncl-hash-tables, ncl-packages, ncl-streams, ncl-readtables |
 | ncl-threads | Lisp thread API | ncl-object, ncl-sys, ncl-conditions, ncl-ownership |
 | ncl-ffi | foreign declarations and calls | ncl-object, ncl-sys, ncl-conditions, ncl-ownership, ncl-arrays |
 | ncl-ownership | ownership-table parsing and validation, with no Lisp feature API | ncl-object |

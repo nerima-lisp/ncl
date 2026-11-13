@@ -8,8 +8,9 @@ impl Heap {
     /// Resolve a heap word through forwarding for registry lookups.
     #[must_use]
     pub fn forwarded_word(&self, value: Word) -> Option<Word> {
-        let state = self.lock_state();
-        let index = Self::find(&state, value)?;
+        let mut state = self.lock_state();
+        let index = Self::find_raw_with_pending(self, &mut state, value)?;
+        let index = Self::follow_forwarding(&state, index)?;
         let object = state.objects.get(index)?;
         let lowtag = value.lowtag();
         let tag = if lowtag == Word::pointer(0, crate::LowTag::List).lowtag() {
@@ -29,12 +30,9 @@ impl Heap {
     }
 
     pub(super) fn find_raw(state: &State, value: Word) -> Option<usize> {
-        let other_pointer_tag = Word::pointer(0, crate::LowTag::OtherPointer).lowtag();
         let function_pointer_tag = Word::pointer(0, crate::LowTag::Function).lowtag();
         let is_function_pointer = value.lowtag() == function_pointer_tag;
-        let is_heap_pointer =
-            value.is_cons() || value.lowtag() == other_pointer_tag || is_function_pointer;
-        if !is_heap_pointer {
+        if !Self::is_heap_pointer(value) {
             return None;
         }
         let address = value.address();
@@ -53,8 +51,32 @@ impl Heap {
         Self::follow_forwarding(state, Self::find_raw(state, value)?)
     }
 
-    pub(super) fn find_for_mutator(&self, state: &State, value: Word) -> Option<usize> {
-        let index = Self::find_raw(state, value)?;
+    const fn is_heap_pointer(value: Word) -> bool {
+        let other_pointer_tag = Word::pointer(0, crate::LowTag::OtherPointer).lowtag();
+        let function_pointer_tag = Word::pointer(0, crate::LowTag::Function).lowtag();
+        value.is_cons()
+            || value.lowtag() == other_pointer_tag
+            || value.lowtag() == function_pointer_tag
+    }
+
+    pub(super) fn find_raw_with_pending(
+        heap: &Self,
+        state: &mut State,
+        value: Word,
+    ) -> Option<usize> {
+        if let Some(index) = Self::find_raw(state, value) {
+            return Some(index);
+        }
+        if Self::is_heap_pointer(value) && heap.flush_pending_allocation_for(state, value.address())
+        {
+            Self::find_raw(state, value)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn find_for_mutator(&self, state: &mut State, value: Word) -> Option<usize> {
+        let index = Self::find_raw_with_pending(self, state, value)?;
         let object = state.objects.get(index)?;
         if self.strict_forwarding.load(Ordering::Relaxed) && object.forwarded_to.is_some() {
             return None;

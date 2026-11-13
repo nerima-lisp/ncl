@@ -53,14 +53,14 @@ fn retiring_intermediate_page_rewires_incoming_forwarders() -> Result<(), String
         ];
         state.pages[0].kind = Some(PageKind::Cons);
         state.pages[0].used_bytes = 2 * core::mem::size_of::<u64>();
-        state.pages[0].object_starts.push((0, 0));
+        state.pages[0].add_object_start(0, 0);
         state.pages[1].kind = Some(PageKind::Cons);
         state.pages[1].used_bytes = 2 * core::mem::size_of::<u64>();
-        state.pages[1].object_starts.push((0, 1));
+        state.pages[1].add_object_start(0, 1);
         state.pages[1].incoming_forwarders.push(0);
         state.pages[2].kind = Some(PageKind::Cons);
         state.pages[2].used_bytes = 2 * core::mem::size_of::<u64>();
-        state.pages[2].object_starts.push((0, 2));
+        state.pages[2].add_object_start(0, 2);
         state.pages[2].incoming_forwarders.push(1);
         drop(state);
         (original_address, intermediate_address, latest_address)

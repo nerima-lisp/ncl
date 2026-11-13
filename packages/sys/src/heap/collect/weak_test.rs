@@ -32,6 +32,7 @@ fn full_collection_clears_weak_value_outside_the_live_set() {
     heap.make_weak(weak_immediate, Weakness::Value);
 
     let mut state = heap.lock_state();
+    assert_eq!(state.flush_pending_allocations(), Ok(()));
     let weak_index = Heap::find(&state, weak).unwrap_or(usize::MAX);
     let weak_immediate_index = Heap::find(&state, weak_immediate).unwrap_or(usize::MAX);
     let referent_index = Heap::find(&state, referent).unwrap_or(usize::MAX);
@@ -74,6 +75,7 @@ fn live_weak_value_tracks_relocated_referent() -> Result<(), String> {
 
     let old_referent_address = referent.address();
     let mut state = heap.lock_state();
+    assert_eq!(state.flush_pending_allocations(), Ok(()));
     let referent_page = state
         .page_index(old_referent_address)
         .ok_or_else(|| "referent should have a page".to_owned())?;

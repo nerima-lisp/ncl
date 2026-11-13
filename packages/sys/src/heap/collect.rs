@@ -41,6 +41,7 @@ impl super::Heap {
         decommit_group: impl FnMut(&mut PageRange, usize) -> Result<(), PageError>,
     ) -> Result<(), PageError> {
         let mut state = self.lock_state();
+        self.flush_pending_allocations(&mut state);
         if let Some(error) = state.pending_page_error {
             return Err(error);
         }
@@ -151,7 +152,7 @@ impl super::Heap {
                 }
             }
             moved.insert(old_address, new_address);
-            metadata.object_starts.push((offset, new_index));
+            metadata.add_object_start(offset, new_index);
             metadata.incoming_forwarders.push(index);
             state.objects.push(copy);
             live.insert(new_index);

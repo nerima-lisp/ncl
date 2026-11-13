@@ -4,6 +4,12 @@ use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 
+#[path = "heap_state/allocations.rs"]
+mod allocations;
+#[path = "heap_state/object_index.rs"]
+mod object_index;
+use object_index::ObjectStartBitmap;
+
 pub const MIN_OBJECTS_BEFORE_COMPACTION: usize = 1_024;
 
 #[derive(Debug)]
@@ -81,6 +87,7 @@ pub struct PageMetadata {
     pub(crate) extent_owner: Option<usize>,
     pub(crate) evacuation: bool,
     pub(crate) object_starts: Vec<(usize, usize)>,
+    object_start_bitmap: Option<Box<ObjectStartBitmap>>,
     pub(crate) incoming_forwarders: Vec<usize>,
 }
 
@@ -93,7 +100,7 @@ impl PageMetadata {
         self.owner = None;
         self.extent_owner = None;
         self.evacuation = false;
-        self.object_starts.clear();
+        self.clear_object_starts();
         self.incoming_forwarders.clear();
     }
 }
@@ -250,80 +257,6 @@ impl State {
         None
     }
 
-    pub(crate) fn flush_pending_allocations(&mut self) -> Result<(), PageError> {
-        let threads = self.threads.clone();
-        for thread_pointer in threads {
-            // SAFETY: registered Thread pointers remain valid until unregistered; its
-            // append-only allocation log publishes each complete record atomically.
-            let thread = unsafe { &*thread_pointer };
-            let published = thread.pending_allocation_count();
-            let consumed = thread.reconciled_allocation_count().min(published);
-            for record_index in consumed..published {
-                let Some((address, words, kind)) = thread.pending_allocation(record_index) else {
-                    return Err(PageError::InvalidAllocationRecord);
-                };
-                let page = self.page_index(address).ok_or(PageError::PageOutOfBounds)?;
-                let range = self
-                    .page_range
-                    .as_ref()
-                    .ok_or(PageError::InvalidAllocationRecord)?;
-                let page_base = range.page_address(page).ok_or(PageError::PageOutOfBounds)?;
-                let offset = address
-                    .checked_sub(page_base)
-                    .ok_or(PageError::InvalidAllocationRecord)?;
-                let word_size = std::mem::size_of::<u64>();
-                let bytes = words
-                    .checked_mul(word_size)
-                    .ok_or(PageError::AddressSpaceOverflow)?;
-                let end = offset
-                    .checked_add(bytes)
-                    .filter(|end| *end <= LOGICAL_PAGE_SIZE)
-                    .ok_or(PageError::InvalidAllocationRecord)?;
-                if words == 0 || !offset.is_multiple_of(word_size) {
-                    return Err(PageError::InvalidAllocationRecord);
-                }
-                let page_pointer = range
-                    .page_words_pointer(page)
-                    .ok_or(PageError::PageOutOfBounds)?;
-                // SAFETY: the mutator committed this page before publishing the record;
-                // the checked, word-aligned extent fits within its logical page.
-                let pointer =
-                    NonNull::new(unsafe { page_pointer.as_ptr().add(offset / word_size) })
-                        .ok_or(PageError::PageOutOfBounds)?;
-                // SAFETY: this view covers the initialized object words in the committed page.
-                let managed = unsafe { HeapWords::new(pointer, words) };
-                let index = self.objects.len();
-                let page_metadata = self.pages.get_mut(page).ok_or(PageError::PageOutOfBounds)?;
-                page_metadata.object_starts.push((offset, index));
-                page_metadata.used_bytes = page_metadata.used_bytes.max(end);
-                let generation = page_metadata.generation;
-                self.used = self.used.saturating_add(bytes);
-                let widetag = if kind == PageKind::HeaderObject {
-                    u8::try_from(managed.first().copied().unwrap_or_default() & 0xff)
-                        .unwrap_or_default()
-                } else {
-                    0
-                };
-                self.objects.push(Object {
-                    words: managed,
-                    start: address,
-                    kind,
-                    widetag,
-                    generation,
-                    survived: 0,
-                    pinned: false,
-                    weak: None,
-                    finalizer: None,
-                    alive: true,
-                    forwarded_to: None,
-                });
-                thread.mark_allocations_reconciled(record_index + 1);
-            }
-            thread.mark_allocations_reconciled(published);
-        }
-        Ok(())
-    }
-
     pub(crate) fn compact_objects(&mut self) -> Result<(), PageError> {
         const DROPPED: usize = usize::MAX;
         const RETAINED: usize = usize::MAX - 1;
@@ -430,62 +363,5 @@ impl State {
         let offset = address.checked_sub(base)?;
         let index = offset / LOGICAL_PAGE_SIZE;
         (index < self.pages.len()).then_some(index)
-    }
-
-    pub(crate) fn object_index_at(&self, address: usize) -> Option<usize> {
-        let range = self.page_range.as_ref()?;
-        let page = self.page_index(address)?;
-        let page_base = range.page_address(page)?;
-        let offset = address.checked_sub(page_base)?;
-        let object_starts = &self.pages.get(page)?.object_starts;
-        let position = object_starts
-            .binary_search_by_key(&offset, |(start, _)| *start)
-            .ok()?;
-        object_starts.get(position).map(|(_, index)| *index)
-    }
-
-    pub(crate) fn rebuild_object_starts(&mut self) {
-        for page in &mut self.pages {
-            page.object_starts.clear();
-            page.incoming_forwarders.clear();
-        }
-        let Some(range) = self.page_range.as_ref() else {
-            return;
-        };
-        let base = range.base_address();
-        let mut starts = Vec::new();
-        let mut incoming_forwarders = Vec::new();
-        for (index, object) in self.objects.iter().enumerate() {
-            if !object.alive && object.forwarded_to.is_none() {
-                continue;
-            }
-            let Some(offset) = object.start.checked_sub(base) else {
-                continue;
-            };
-            let page = offset / LOGICAL_PAGE_SIZE;
-            if page < self.pages.len() {
-                starts.push((page, offset % LOGICAL_PAGE_SIZE, index));
-            }
-            if let Some(target_index) = object.forwarded_to
-                && let Some(target) = self.objects.get(target_index)
-                && let Some(target_offset) = target.start.checked_sub(base)
-            {
-                let target_page = target_offset / LOGICAL_PAGE_SIZE;
-                if target_page < self.pages.len() {
-                    incoming_forwarders.push((target_page, index));
-                }
-            }
-        }
-        starts.sort_unstable_by_key(|(page, offset, _)| (*page, *offset));
-        for (page, offset, index) in starts {
-            if let Some(page) = self.pages.get_mut(page) {
-                page.object_starts.push((offset, index));
-            }
-        }
-        for (page, source_index) in incoming_forwarders {
-            if let Some(page) = self.pages.get_mut(page) {
-                page.incoming_forwarders.push(source_index);
-            }
-        }
     }
 }

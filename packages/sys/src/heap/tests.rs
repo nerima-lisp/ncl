@@ -4,6 +4,8 @@ use super::*;
 mod forwarding;
 #[path = "tests/metadata.rs"]
 mod metadata;
+#[path = "tests/object_index.rs"]
+mod object_index;
 #[path = "tests/pages.rs"]
 mod pages;
 use std::sync::Arc;

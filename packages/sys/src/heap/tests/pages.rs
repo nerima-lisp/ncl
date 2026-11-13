@@ -18,14 +18,14 @@ fn full_tlab_allocation_log_is_reconciled_and_reset_at_collection() {
     assert_eq!(thread.pending_allocation_count(), capacity);
     {
         let state = heap.lock_state();
-        assert_eq!(state.objects.len(), capacity);
+        assert!(state.objects.is_empty());
         assert_eq!(
             state
                 .pages
                 .iter()
                 .map(|page| page.object_starts.len())
                 .sum::<usize>(),
-            capacity
+            0
         );
     }
 
@@ -42,6 +42,8 @@ fn full_tlab_allocation_log_is_reconciled_and_reset_at_collection() {
     let next = next.unwrap_or(Word::NIL);
     assert_eq!(heap.gc_epoch(), epoch + 1);
     assert_eq!(thread.pending_allocation_count(), 1);
+    assert_eq!(heap.widetag(next), Some(8));
+    assert_eq!(thread.reconciled_allocation_count(), 1);
 
     let state = heap.lock_state();
     assert!(state.objects.len() > capacity);
@@ -58,6 +60,39 @@ fn full_tlab_allocation_log_is_reconciled_and_reset_at_collection() {
     assert_eq!(state.object_index_at(next.address()), Some(index));
     drop(state);
     heap.unregister_thread(&thread);
+}
+
+#[test]
+fn lookup_miss_and_thread_exit_reconcile_only_required_allocation_records() {
+    let heap = Heap::new(HeapConfig::default());
+    let mut thread = Thread::new();
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+    let first = heap
+        .alloc(&mut thread, TypeTag { widetag: 8 }, 2)
+        .unwrap_or(Word::NIL);
+    let second = heap
+        .alloc(&mut thread, TypeTag { widetag: 8 }, 0)
+        .unwrap_or(Word::NIL);
+    let last = heap
+        .alloc(&mut thread, TypeTag { widetag: 8 }, 0)
+        .unwrap_or(Word::NIL);
+    assert_eq!(thread.pending_allocation_count(), 3);
+    assert_eq!(thread.reconciled_allocation_count(), 0);
+
+    let interior = Word::pointer(first.address() + 8, crate::LowTag::OtherPointer);
+    assert_eq!(heap.widetag(interior), None);
+    assert_eq!(thread.reconciled_allocation_count(), 0);
+    assert_eq!(heap.widetag(first), Some(8));
+    assert_eq!(thread.reconciled_allocation_count(), 1);
+    assert_eq!(heap.widetag(second), Some(8));
+    assert_eq!(thread.reconciled_allocation_count(), 2);
+    assert_eq!(heap.lock_state().objects.len(), 2);
+
+    heap.unregister_thread(&thread);
+    assert_eq!(thread.reconciled_allocation_count(), 3);
+    let state = heap.lock_state();
+    assert_eq!(state.objects.len(), 3);
+    assert!(Heap::find(&state, last).is_some());
 }
 
 #[test]

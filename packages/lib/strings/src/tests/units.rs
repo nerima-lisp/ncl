@@ -388,10 +388,10 @@ fn case_conversion_builtins_survive_gc_stress_with_ranges() {
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("context: {error:?}"));
     crate::register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
-    let start = keyword(&mut ctx, &runtime, "START");
-    let end = keyword(&mut ctx, &runtime, "END");
     let mut scope = ncl_object::Scope::new(&mut ctx);
+    let start = keyword(scope.context_mut(), &runtime, "START");
     let start = scope.root::<Word>(ncl_object::Local::from_word(start));
+    let end = keyword(scope.context_mut(), &runtime, "END");
     let end = scope.root::<Word>(ncl_object::Local::from_word(end));
     scope.context_mut().set_gc_stress(true);
     scope.context_mut().set_strict_forwarding(true);

@@ -43,6 +43,7 @@ impl Drop for SlowPathGuard<'_> {
             }
             gate_parked.clear();
             self.heap.slow_path_gate_waiters.store(0, Ordering::Relaxed);
+            drop(stop_world);
         }
         *generation = generation.wrapping_add(1);
         drop(self.guard.take());

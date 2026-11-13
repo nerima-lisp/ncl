@@ -123,8 +123,8 @@ pub enum WordView {
     HashTable(crate::hash_table::HashTable),
     String(StringObject),
     SimpleVector(SimpleVector),
-    SpecializedArray(Word),
-    Array(Word),
+    SpecializedArray(SpecializedArray),
+    Array(Array),
     Function(crate::Function),
     Closure(Closure),
     Instance(crate::Instance),
@@ -184,10 +184,9 @@ impl WordView {
             Self::Symbol(value) => value.into(),
             Self::HashTable(value) => value.into(),
             Self::SimpleVector(value) => value.into(),
-            Self::SpecializedArray(value)
-            | Self::Array(value)
-            | Self::Readtable(value)
-            | Self::Stream(value) => value,
+            Self::SpecializedArray(value) => value.into(),
+            Self::Array(value) => value.into(),
+            Self::Readtable(value) | Self::Stream(value) => value,
             Self::String(value) => value.into(),
             Self::Function(value) => value.into(),
             Self::Closure(value) => value.into(),
@@ -215,8 +214,10 @@ impl From<ObjectRef> for WordView {
             }
             ObjectRef::String(value) => Self::String(StringObject::from_word(value)),
             ObjectRef::SimpleVector(value) => Self::SimpleVector(SimpleVector::from_word(value)),
-            ObjectRef::SpecializedArray(value) => Self::SpecializedArray(value),
-            ObjectRef::Array(value) => Self::Array(value),
+            ObjectRef::SpecializedArray(value) => {
+                Self::SpecializedArray(SpecializedArray::from_word(value))
+            }
+            ObjectRef::Array(value) => Self::Array(Array::from_word(value)),
             ObjectRef::Function(value) => Self::Function(crate::Function::from_word(value)),
             ObjectRef::Closure(value) => Self::Closure(Closure::from_word(value)),
             ObjectRef::Instance(value) => Self::Instance(crate::Instance::from_word(value)),

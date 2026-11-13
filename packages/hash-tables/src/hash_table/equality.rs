@@ -140,7 +140,7 @@ fn content_hash(
             } else {
                 character
             };
-            hash = (hash ^ u64::from(u32::from(character))).wrapping_mul(0x0100_0000_01b3);
+            hash = (hash ^ u64::from(character as u32)).wrapping_mul(0x0100_0000_01b3);
         }
         return Ok(hash);
     }

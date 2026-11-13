@@ -41,6 +41,52 @@ fn print_control_registration_propagates_capacity_errors() {
 }
 
 #[test]
+fn upcase_interning_propagates_capacity_errors() {
+    let mut saw_capacity_error = false;
+    let mut succeeded = false;
+    for released_cells in [0, 32] {
+        match register_with_released_cells(Setup::MissingUpcase, released_cells) {
+            Err(ObjectError::Storage(ncl_sys::StorageCondition::CapacityExceeded)) => {
+                saw_capacity_error = true;
+            }
+            Ok(()) => {
+                succeeded = true;
+                break;
+            }
+            Err(error) => panic!("unexpected registration error: {error:?}"),
+        }
+    }
+    assert!(saw_capacity_error);
+    assert!(
+        succeeded,
+        "registration should succeed with sufficient capacity"
+    );
+}
+
+#[test]
+fn keyword_package_creation_propagates_capacity_errors() {
+    let mut saw_capacity_error = false;
+    let mut succeeded = false;
+    for released_cells in 0..=32 {
+        match register_with_released_cells(Setup::MissingKeywordPackage, released_cells) {
+            Err(ObjectError::Storage(ncl_sys::StorageCondition::CapacityExceeded)) => {
+                saw_capacity_error = true;
+            }
+            Ok(()) => {
+                succeeded = true;
+                break;
+            }
+            Err(error) => panic!("unexpected registration error: {error:?}"),
+        }
+    }
+    assert!(saw_capacity_error);
+    assert!(
+        succeeded,
+        "registration should succeed with sufficient capacity"
+    );
+}
+
+#[test]
 fn print_control_registration_requires_a_registered_context() {
     let runtime =
         Runtime::new().unwrap_or_else(|error| panic!("runtime initialization failed: {error}"));

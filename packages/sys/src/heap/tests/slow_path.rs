@@ -331,7 +331,11 @@ fn slow_path_guard_drop_removes_gate_waiters_from_the_next_quorum() {
         .slow_path_generation
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let guard = heap.acquire_slow_path_gate(&mut gate_owner);
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    let stack_scan_start = Some(crate::thread::stack::current_stack_pointer());
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    let stack_scan_start = None;
+    let guard = heap.acquire_slow_path_gate(&mut gate_owner, stack_scan_start);
     {
         let mut stop_world = heap
             .stop_world

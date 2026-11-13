@@ -113,7 +113,11 @@ impl Heap {
         full: bool,
         decommit_group: impl FnMut(&mut PageRange, usize) -> Result<(), PageError>,
     ) -> Result<(), PageError> {
-        let _gate = self.acquire_slow_path_gate(thread);
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        let stack_scan_start = Some(crate::thread::stack::current_stack_pointer());
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let stack_scan_start = None;
+        let _gate = self.acquire_slow_path_gate(thread, stack_scan_start);
         self.collect_with_gate_and_decommit(thread, full, decommit_group)
     }
 

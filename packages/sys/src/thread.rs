@@ -9,7 +9,7 @@ mod heap;
 mod layout;
 mod native;
 mod root_token;
-mod stack;
+pub mod stack;
 mod tlab;
 pub use access::{
     AtomicObjectWordCell, ThreadAccess, load_object_word_acquire, store_object_word_release,
@@ -230,19 +230,6 @@ impl Thread {
         published.frame_address = self.frame_address;
         published.frame_snapshot_failed = self.frame_snapshot_failed;
         published.published_epoch = epoch;
-    }
-    pub(crate) fn publish_stack_interval(&mut self) {
-        self.stack_bounds = stack::current_stack_bounds();
-        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-        let stack_pointer = Some(stack::current_stack_pointer());
-        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-        let stack_pointer = stack::current_stack_pointer();
-        self.stack_scan_start =
-            self.stack_bounds
-                .zip(stack_pointer)
-                .and_then(|(bounds, stack_pointer)| {
-                    gc_state::valid_stack_interval(bounds, stack_pointer).then_some(stack_pointer)
-                });
     }
     pub(crate) fn conservative_snapshot(&self) -> Vec<Word> {
         let mut values = self.conservative_roots.clone();

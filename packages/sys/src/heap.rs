@@ -269,7 +269,11 @@ impl Heap {
             return Err(CodeError::NotRegistered);
         }
         let code = owned.as_ref().ok_or(CodeError::NotRegistered)?;
-        let _gate = self.acquire_slow_path_gate(thread);
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        let stack_scan_start = Some(crate::thread::stack::current_stack_pointer());
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let stack_scan_start = None;
+        let _gate = self.acquire_slow_path_gate(thread, stack_scan_start);
         self.begin_collection(thread);
         let registered = {
             let state = self.lock_state();

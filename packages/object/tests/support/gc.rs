@@ -175,17 +175,7 @@ fn allocation_debt_and_gc_count_are_read_only_counters() {
 }
 
 #[test]
-fn hash_table_and_package_layouts_use_header_inclusive_references() {
-    assert_eq!(
-        hash_table_layout().reference_words,
-        [
-            REHASH_SIZE + 1,
-            REHASH_THRESHOLD + 1,
-            MARKER + 1,
-            KV + 1,
-            INDEX + 1,
-        ]
-    );
+fn package_layout_uses_header_inclusive_references() {
     assert_eq!(
         package_layout().reference_words,
         reference_words(&crate::package::reference_words())
@@ -195,7 +185,6 @@ fn hash_table_and_package_layouts_use_header_inclusive_references() {
             .reference_words
             .contains(&(crate::package::DOCUMENTATION + 1))
     );
-    assert_eq!(hash_table_layout().boxed_from, Some(MARKER + 1));
     assert_eq!(package_layout().boxed_from, Some(crate::package::NAME + 1));
 }
 

@@ -24,19 +24,20 @@ ncl_object::word_newtype!(HashTable);
 ///
 /// Returns [`ObjectError::Layout`] if the layout has already been registered.
 pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
-    runtime.register_layout(
-        widetag::HASH_TABLE,
-        ncl_object::ReferenceLayout {
-            reference_words: ncl_object::layout::reference_words(&[
-                REHASH_SIZE,
-                REHASH_THRESHOLD,
-                MARKER,
-                KV,
-                INDEX,
-            ]),
-            boxed_from: Some(MARKER + 1),
-        },
-    )
+    runtime.register_layout(widetag::HASH_TABLE, hash_table_layout())
+}
+
+fn hash_table_layout() -> ncl_object::ReferenceLayout {
+    ncl_object::ReferenceLayout {
+        reference_words: ncl_object::layout::reference_words(&[
+            REHASH_SIZE,
+            REHASH_THRESHOLD,
+            MARKER,
+            KV,
+            INDEX,
+        ]),
+        boxed_from: Some(MARKER + 1),
+    }
 }
 
 /// Hash comparison required by a Common Lisp hash table.
@@ -528,5 +529,25 @@ impl HashTable {
 
     fn read_usize(self, ctx: &ThreadContext, slot: usize) -> Result<usize, ObjectError> {
         usize::try_from(self.read_i64(ctx, slot)?).map_err(|_| ObjectError::Layout)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{INDEX, KV, MARKER, REHASH_SIZE, REHASH_THRESHOLD, hash_table_layout};
+
+    #[test]
+    fn hash_table_layout_uses_header_inclusive_references() {
+        assert_eq!(
+            hash_table_layout().reference_words,
+            [
+                REHASH_SIZE + 1,
+                REHASH_THRESHOLD + 1,
+                MARKER + 1,
+                KV + 1,
+                INDEX + 1,
+            ]
+        );
+        assert_eq!(hash_table_layout().boxed_from, Some(MARKER + 1));
     }
 }

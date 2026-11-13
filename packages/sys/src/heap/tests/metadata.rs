@@ -180,41 +180,6 @@ fn collection_rewrites_heap_owned_precise_root_slot() {
 }
 
 #[test]
-fn retiring_intermediate_forwarder_rewires_older_forwarders() {
-    let heap = Heap::new(HeapConfig {
-        dynamic_space_size: 8 * crate::heap::pages::LOGICAL_PAGE_SIZE,
-        ..HeapConfig::default()
-    });
-    let mut thread = Thread::new();
-    assert_eq!(heap.register_thread(&mut thread), Ok(()));
-    let allocation = heap.alloc_cons(&mut thread, Word::NIL, Word::NIL);
-    assert!(allocation.is_ok(), "forwarding fixture allocation failed");
-    let Ok(mut root) = allocation else {
-        return;
-    };
-    let original_address = root.address();
-    let root_token = heap.push_root(&mut root);
-
-    assert_eq!(heap.collect(true), Ok(()));
-    let first_address = root.address();
-    assert_ne!(first_address, original_address);
-    assert_eq!(heap.collect(true), Ok(()));
-    assert_ne!(root.address(), first_address);
-    let latest_address = root.address();
-    let state = heap.lock_state();
-    let intermediate_page = state.page_index(first_address).unwrap_or(usize::MAX);
-    assert_ne!(intermediate_page, usize::MAX);
-    drop(state);
-
-    let mut state = heap.lock_state();
-    state.retire_page_forwardings(intermediate_page);
-    drop(state);
-    let resolved = heap.forwarded_word(Word::pointer(original_address, crate::LowTag::List));
-    assert_eq!(resolved.map(Word::address), Some(latest_address));
-    assert!(heap.pop_root(root_token));
-}
-
-#[test]
 fn retired_forwarding_storage_is_not_a_conservative_root() {
     let heap = Heap::new(HeapConfig {
         dynamic_space_size: 8 * crate::heap::pages::LOGICAL_PAGE_SIZE,

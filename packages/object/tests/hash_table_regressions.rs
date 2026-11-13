@@ -1,5 +1,6 @@
 //! Integration tests for hash-table equality, weak entries, and regressions.
 
+use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{Package, Runtime, ThreadContext, allocate, make_cons};
 use ncl_sys::{HeapConfig, StorageCondition, Word};
 
@@ -118,15 +119,7 @@ fn hash_table_default_threshold_failure_releases_all_roots() {
         assert!(allocated < roots.len());
         ctx.collect(true)?;
 
-        Ok(HashTable::new_with_options(
-            ctx,
-            &runtime,
-            HashTest::Eql,
-            Weakness::None,
-            Word::fixnum(8),
-            None,
-            None,
-        ))
+        Ok(HashTable::new(ctx, &runtime, HashTest::Eql, Weakness::None))
     });
     let result_shape = result.as_ref().map(|inner| inner.as_ref().map(|_| ()));
     assert!(

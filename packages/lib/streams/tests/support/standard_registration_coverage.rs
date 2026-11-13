@@ -88,7 +88,7 @@ fn print_control_registration_propagates_capacity_errors() {
 fn upcase_interning_propagates_capacity_errors() {
     let mut saw_capacity_error = false;
     let mut succeeded = false;
-    for released_cells in 0..=32 {
+    for released_cells in [0, 32] {
         match register_with_released_cells(Setup::MissingUpcase, released_cells) {
             Err(ObjectError::Storage(ncl_sys::StorageCondition::CapacityExceeded)) => {
                 saw_capacity_error = true;

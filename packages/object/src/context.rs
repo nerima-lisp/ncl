@@ -168,60 +168,59 @@ impl ThreadContext {
         ] {
             runtime.ensure_package(self, name)?;
         }
-        let common_lisp = runtime
+        let mut common_lisp = runtime
             .find_package(self, "COMMON-LISP")
             .ok_or(ObjectError::Layout)?;
-        let common_lisp_user = runtime
+        let mut common_lisp_user = runtime
             .find_package(self, "COMMON-LISP-USER")
             .ok_or(ObjectError::Layout)?;
-        let mut used = get(
-            self,
-            common_lisp_user,
-            widetag::PACKAGE,
-            crate::package::USE_LIST,
-        )?;
-        let mut found = false;
-        while used != Word::NIL {
-            if ncl_sys::read_cons_word(&self.thread, used, 0) == Some(common_lisp) {
-                found = true;
-                break;
-            }
-            used = ncl_sys::read_cons_word(&self.thread, used, 1).ok_or(ObjectError::Layout)?;
-        }
-        if !found {
-            let used = make_cons(
-                self,
-                runtime,
-                common_lisp,
-                get(
-                    self,
-                    common_lisp_user,
+        crate::with_root(self, &mut common_lisp, |ctx, common_lisp| {
+            crate::with_root(ctx, &mut common_lisp_user, |ctx, common_lisp_user| {
+                let common_lisp_package = crate::Package::from_word(*common_lisp);
+                let common_lisp_user_package = crate::Package::from_word(*common_lisp_user);
+                common_lisp_package.ensure_unlocked(ctx)?;
+                common_lisp_user_package.ensure_unlocked(ctx)?;
+
+                let mut used = get(
+                    ctx,
+                    *common_lisp_user,
                     widetag::PACKAGE,
                     crate::package::USE_LIST,
-                )?,
-            )?;
-            put(self, common_lisp_user, crate::package::USE_LIST, used)?;
-        }
-        let mut used_by = get(self, common_lisp, widetag::PACKAGE, crate::package::USED_BY)?;
-        let mut found = false;
-        while used_by != Word::NIL {
-            if ncl_sys::read_cons_word(&self.thread, used_by, 0) == Some(common_lisp_user) {
-                found = true;
-                break;
-            }
-            used_by =
-                ncl_sys::read_cons_word(&self.thread, used_by, 1).ok_or(ObjectError::Layout)?;
-        }
-        if !found {
-            let used_by = make_cons(
-                self,
-                runtime,
-                common_lisp_user,
-                get(self, common_lisp, widetag::PACKAGE, crate::package::USED_BY)?,
-            )?;
-            put(self, common_lisp, crate::package::USED_BY, used_by)?;
-        }
-        Ok(())
+                )?;
+                while used != Word::NIL {
+                    if ncl_sys::read_cons_word(&ctx.thread, used, 0) == Some(*common_lisp) {
+                        return Ok(());
+                    }
+                    used =
+                        ncl_sys::read_cons_word(&ctx.thread, used, 1).ok_or(ObjectError::Layout)?;
+                }
+
+                let use_list = get(
+                    ctx,
+                    *common_lisp_user,
+                    widetag::PACKAGE,
+                    crate::package::USE_LIST,
+                )?;
+                let used = make_cons(ctx, runtime, *common_lisp, use_list)?;
+                put(ctx, *common_lisp_user, crate::package::USE_LIST, used)?;
+
+                let mut used_by =
+                    get(ctx, *common_lisp, widetag::PACKAGE, crate::package::USED_BY)?;
+                while used_by != Word::NIL {
+                    if ncl_sys::read_cons_word(&ctx.thread, used_by, 0) == Some(*common_lisp_user) {
+                        return Ok(());
+                    }
+                    used_by = ncl_sys::read_cons_word(&ctx.thread, used_by, 1)
+                        .ok_or(ObjectError::Layout)?;
+                }
+
+                let used_by_list =
+                    get(ctx, *common_lisp, widetag::PACKAGE, crate::package::USED_BY)?;
+                let used_by = make_cons(ctx, runtime, *common_lisp_user, used_by_list)?;
+                put(ctx, *common_lisp, crate::package::USED_BY, used_by)?;
+                Ok(())
+            })
+        })
     }
     /// Bind a special variable, preserving stack order.
     pub fn bind(&mut self, index: u32, value: Word) {

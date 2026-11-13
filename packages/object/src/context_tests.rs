@@ -122,7 +122,7 @@ fn taking_pending_runtime_errors_drains_all_three_sources() -> Result<(), Object
         &mut context,
         common_lisp_user,
         crate::package::USE_LIST,
-        use_list,
+        Word::NIL,
     )?;
     crate::object_access::put(
         &mut context,
@@ -134,5 +134,11 @@ fn taking_pending_runtime_errors_drains_all_three_sources() -> Result<(), Object
         context.ensure_standard_packages(&runtime),
         Err(ObjectError::Layout)
     );
+    crate::object_access::put(
+        &mut context,
+        common_lisp_user,
+        crate::package::USE_LIST,
+        use_list,
+    )?;
     Ok(())
 }

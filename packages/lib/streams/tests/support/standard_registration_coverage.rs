@@ -1,10 +1,55 @@
-use super::register_print_control_variables;
-use ncl_object::{ObjectError, Runtime, ThreadContext, Word, with_rooted_slice};
+use super::{register_print_control_variable, register_print_control_variables};
+use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, with_rooted_slice};
+use ncl_packages::{PackageListOperations, RuntimePackageOperations};
 
-fn register_with_released_cells(released_cells: usize) -> Result<(), ObjectError> {
+const PRINT_CONTROL_VARIABLES: [&str; 12] = [
+    "*PRINT-ARRAY*",
+    "*PRINT-BASE*",
+    "*PRINT-CIRCLE*",
+    "*PRINT-ESCAPE*",
+    "*PRINT-GENSYM*",
+    "*PRINT-LENGTH*",
+    "*PRINT-LEVEL*",
+    "*PRINT-LINES*",
+    "*PRINT-MISER-WIDTH*",
+    "*PRINT-PRETTY*",
+    "*PRINT-RADIX*",
+    "*PRINT-RIGHT-MARGIN*",
+];
+
+#[derive(Clone, Copy)]
+enum Setup {
+    FirstPrintVariable,
+    MissingUpcase,
+    MissingKeywordPackage,
+}
+
+fn register_with_released_cells(setup: Setup, released_cells: usize) -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
+
+    match setup {
+        Setup::FirstPrintVariable => {}
+        Setup::MissingUpcase | Setup::MissingKeywordPackage => {
+            for name in PRINT_CONTROL_VARIABLES {
+                let package = runtime.ensure_package(&mut ctx, "COMMON-LISP")?;
+                register_print_control_variable(&mut ctx, &runtime, package, name, Word::NIL)?;
+            }
+            let keyword = runtime.ensure_package(&mut ctx, "KEYWORD")?;
+            if matches!(setup, Setup::MissingUpcase) {
+                let (upcase, _) =
+                    Package::from_word(keyword).intern(&mut ctx, &runtime, "UPCASE")?;
+                let name = ncl_object::symbol_name(&ctx, upcase)?;
+                let removed = Package::from_word(keyword).unintern(&mut ctx, &runtime, name)?;
+                assert!(removed);
+            } else {
+                let removed = runtime.delete_package(&mut ctx, Package::from_word(keyword))?;
+                assert!(removed);
+                assert!(runtime.find_package(&ctx, "KEYWORD").is_none());
+            }
+        }
+    }
 
     let roots = vec![Word::NIL; 1_024];
     with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
@@ -33,7 +78,7 @@ fn register_with_released_cells(released_cells: usize) -> Result<(), ObjectError
 #[test]
 fn print_control_registration_propagates_capacity_errors() {
     assert_eq!(
-        register_with_released_cells(0),
+        register_with_released_cells(Setup::FirstPrintVariable, 0),
         Err(ObjectError::Storage(
             ncl_sys::StorageCondition::CapacityExceeded
         ))

@@ -49,7 +49,7 @@ fn full_collection_clears_weak_value_outside_the_live_set() {
 }
 
 #[test]
-fn live_weak_value_tracks_relocated_referent() {
+fn live_weak_value_tracks_relocated_referent() -> Result<(), String> {
     let heap = Heap::new(HeapConfig::default());
     let mut thread = Thread::new();
     assert_eq!(heap.register_thread(&mut thread), Ok(()));
@@ -76,7 +76,7 @@ fn live_weak_value_tracks_relocated_referent() {
     let mut state = heap.lock_state();
     let referent_page = state
         .page_index(old_referent_address)
-        .unwrap_or_else(|| panic!("referent should have a page"));
+        .ok_or_else(|| "referent should have a page".to_owned())?;
     let weak_index = Heap::find(&state, weak).unwrap_or(usize::MAX);
     let referent_index = Heap::find(&state, referent).unwrap_or(usize::MAX);
     let mut live = HashSet::from([weak_index, referent_index]);
@@ -84,7 +84,7 @@ fn live_weak_value_tracks_relocated_referent() {
     let new_referent_address = moved
         .get(&old_referent_address)
         .copied()
-        .unwrap_or_else(|| panic!("live referent should have moved"));
+        .ok_or_else(|| "live referent should have moved".to_owned())?;
     let weak_index = Heap::find(&state, weak).unwrap_or(usize::MAX);
     let finish = Heap::finish_collection(&mut state, &[], &moved, &live, true, |range, group| {
         range.decommit_group(group)
@@ -104,4 +104,5 @@ fn live_weak_value_tracks_relocated_referent() {
     );
     drop(state);
     heap.unregister_thread(&thread);
+    Ok(())
 }

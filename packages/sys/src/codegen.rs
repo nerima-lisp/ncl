@@ -21,3 +21,24 @@ pub const fn set_cons_tlab(thread: &mut Thread, bump: usize, limit: usize) {
     thread.cons_tlab_start = None;
     thread.cons_tlab_page = None;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::set_cons_tlab;
+    use crate::Thread;
+    use std::ptr::NonNull;
+
+    #[test]
+    fn setting_cons_tlab_discards_the_previous_page() {
+        let mut thread = Thread::new();
+        thread.cons_tlab_start = Some(NonNull::dangling());
+        thread.cons_tlab_page = Some(3);
+
+        set_cons_tlab(&mut thread, 16, 64);
+
+        assert_eq!(thread.cons_tlab_bump, 16);
+        assert_eq!(thread.cons_tlab_limit, 64);
+        assert_eq!(thread.cons_tlab_start, None);
+        assert_eq!(thread.cons_tlab_page, None);
+    }
+}

@@ -281,7 +281,10 @@ fn hash_table_options_survive_gc_stress_and_strict_forwarding() -> Result<(), Ob
     )?;
     let table_token = push_root(&mut ctx, &mut table);
     HashTable::from_word(table).insert(&mut ctx, &runtime, Word::fixnum(1), Word::TRUE)?;
-    assert_eq!(HashTable::from_word(table).rehash_size(&ctx)?, Word::fixnum(2));
+    assert_eq!(
+        HashTable::from_word(table).rehash_size(&ctx)?,
+        Word::fixnum(2)
+    );
     assert_eq!(
         HashTable::from_word(table).rehash_threshold(&ctx)?,
         Word::fixnum(1)

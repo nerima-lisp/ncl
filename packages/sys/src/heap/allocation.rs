@@ -20,13 +20,32 @@ pub(super) struct CoordinatedAllocation<'a> {
 
 impl Drop for SlowPathGuard<'_> {
     fn drop(&mut self) {
-        drop(self.guard.take());
+        // Pair waiter removal with generation changes so no new collection can
+        // count a woken gate waiter before it republishes its snapshot.
         let mut generation = self
             .heap
             .slow_path_generation
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if self.heap.slow_path_gate_waiters.load(Ordering::Relaxed) != 0 {
+            let mut stop_world = self
+                .heap
+                .stop_world
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let crate::stw::StopWorld {
+                parked,
+                gate_parked,
+                ..
+            } = &mut *stop_world;
+            for pointer in gate_parked.iter() {
+                parked.remove(pointer);
+            }
+            gate_parked.clear();
+            self.heap.slow_path_gate_waiters.store(0, Ordering::Relaxed);
+        }
         *generation = generation.wrapping_add(1);
+        drop(self.guard.take());
         drop(generation);
         self.heap.slow_path_ready.notify_all();
     }
@@ -298,12 +317,14 @@ impl Heap {
     pub(crate) fn acquire_slow_path_gate(&self, thread: &mut Thread) -> SlowPathGuard<'_> {
         let pointer = std::ptr::from_mut(thread).expose_provenance();
         loop {
-            let observed_generation = *self
+            let mut generation = self
                 .slow_path_generation
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let observed_generation = *generation;
             match self.slow_path_gate.try_lock() {
                 Ok(guard) => {
+                    drop(generation);
                     self.unpark_gate_waiter(thread, pointer);
                     return SlowPathGuard {
                         heap: self,
@@ -318,17 +339,16 @@ impl Heap {
                     };
                 }
                 Err(TryLockError::WouldBlock) => {
+                    // Serialize waiter publication with gate release so a waiter cannot
+                    // join the parked set after the previous generation clears it.
                     self.park_gate_waiter(thread, pointer);
-                    let mut generation = self
-                        .slow_path_generation
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     while *generation == observed_generation {
                         generation = self
                             .slow_path_ready
                             .wait(generation)
                             .unwrap_or_else(std::sync::PoisonError::into_inner);
                     }
+                    self.unpark_gate_waiter(thread, pointer);
                 }
             }
         }
@@ -339,7 +359,9 @@ impl Heap {
             .stop_world
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        stop_world.gate_parked.insert(pointer);
+        if stop_world.gate_parked.insert(pointer) {
+            self.slow_path_gate_waiters.fetch_add(1, Ordering::Relaxed);
+        }
         if thread.native_state() != crate::NativeState::Native {
             #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
             thread.publish_snapshot();
@@ -355,7 +377,9 @@ impl Heap {
             .stop_world
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        stop_world.gate_parked.remove(&pointer);
+        if stop_world.gate_parked.remove(&pointer) {
+            self.slow_path_gate_waiters.fetch_sub(1, Ordering::Relaxed);
+        }
         stop_world.parked.remove(&pointer);
         if thread.state == crate::SafepointState::Parked {
             thread.state = if thread.native_state() == crate::NativeState::Native {

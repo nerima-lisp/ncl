@@ -42,6 +42,7 @@ pub struct Heap {
     available_bytes: AtomicUsize,
     pending_page_error: AtomicBool,
     strict_forwarding: AtomicBool,
+    slow_path_gate_waiters: AtomicUsize,
     #[cfg(feature = "test-support")]
     registered_root_slots_live_and_forwarded_for_test: AtomicBool,
     slow_path_gate: Mutex<()>,
@@ -117,6 +118,7 @@ impl Heap {
             available_bytes: AtomicUsize::new(config.dynamic_space_size),
             pending_page_error: AtomicBool::new(false),
             strict_forwarding: AtomicBool::new(false),
+            slow_path_gate_waiters: AtomicUsize::new(0),
             #[cfg(feature = "test-support")]
             registered_root_slots_live_and_forwarded_for_test: AtomicBool::new(false),
             slow_path_gate: Mutex::new(()),
@@ -312,7 +314,9 @@ impl Heap {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         stop_world.parked.remove(&pointer.expose_provenance());
-        stop_world.gate_parked.remove(&pointer.expose_provenance());
+        if stop_world.gate_parked.remove(&pointer.expose_provenance()) {
+            self.slow_path_gate_waiters.fetch_sub(1, Ordering::Relaxed);
+        }
         drop(stop_world);
 
         let mut state = self.lock_state();

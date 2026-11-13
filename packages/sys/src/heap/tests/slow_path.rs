@@ -318,6 +318,55 @@ fn slow_path_returns_capacity_error_when_full_collection_cannot_fit_live_set() {
     heap.unregister_thread(&thread);
 }
 
+#[test]
+fn slow_path_guard_drop_removes_gate_waiters_from_the_next_quorum() {
+    let heap = Heap::new(HeapConfig::default());
+    let mut gate_owner = Thread::new();
+    let mut waiter = Thread::new();
+    assert_eq!(heap.register_thread(&mut gate_owner), Ok(()));
+    assert_eq!(heap.register_thread(&mut waiter), Ok(()));
+
+    let waiter_pointer = std::ptr::from_mut(&mut waiter).expose_provenance();
+    let generation_before = *heap
+        .slow_path_generation
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let guard = heap.acquire_slow_path_gate(&mut gate_owner);
+    {
+        let mut stop_world = heap
+            .stop_world
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        stop_world.gate_parked.insert(waiter_pointer);
+        stop_world.parked.insert(waiter_pointer);
+        heap.slow_path_gate_waiters
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    drop(guard);
+
+    let generation_after = *heap
+        .slow_path_generation
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert_eq!(generation_after, generation_before.wrapping_add(1));
+    let stop_world = heap
+        .stop_world
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert!(!stop_world.gate_parked.contains(&waiter_pointer));
+    assert!(!stop_world.parked.contains(&waiter_pointer));
+    drop(stop_world);
+    assert_eq!(
+        heap.slow_path_gate_waiters
+            .load(std::sync::atomic::Ordering::Relaxed),
+        0
+    );
+
+    heap.unregister_thread(&waiter);
+    heap.unregister_thread(&gate_owner);
+}
+
 struct Blocker {
     poll: mpsc::Sender<()>,
     debt: mpsc::Receiver<usize>,

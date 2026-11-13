@@ -1,5 +1,6 @@
 //! Shared runtime heap and registries.
 
+use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::keyword_builtins::{
     CHECK_KEYWORDS_DESCRIPTOR, KEYWORD_VALUE_DESCRIPTOR, MAKE_REST_LIST_DESCRIPTOR,
     check_keywords_builtin, keyword_supplied_p_builtin, keyword_value_builtin,
@@ -8,7 +9,7 @@ use crate::keyword_builtins::{
 use crate::structure_registry::{StructureDescription, StructureRegistry, StructureSymbol};
 use crate::{
     BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, LispErrorConverter,
-    ObjectError, PlaceExpander, ThreadContext, Word, with_root,
+    ObjectError, PlaceExpander, ThreadContext, Word, make_string, with_root,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
@@ -20,9 +21,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 #[derive(Debug)]
 pub struct Runtime {
     pub(crate) heap: Arc<Heap>,
-    functions: Mutex<HashMap<String, RootedWord>>,
-    pub(crate) packages: Mutex<HashMap<String, RootedWord>>,
-    pub(crate) classes: Mutex<HashMap<String, RootedWord>>,
+    functions: Mutex<Option<RootedTable>>,
+    pub(crate) packages: Mutex<Option<RootedTable>>,
+    pub(crate) classes: Mutex<Option<RootedTable>>,
     pub(crate) features: Mutex<Vec<String>>,
     pub(crate) layouts: Mutex<HashMap<u32, usize>>,
     pub(crate) next_layout: Mutex<u32>,
@@ -38,38 +39,32 @@ pub struct Runtime {
     generic_builtin_entry: AtomicUsize,
     load_port: Mutex<Option<std::sync::Arc<dyn crate::LoadPort>>>,
 }
+/// A runtime-owned table slot kept as a precise GC root.
+#[derive(Debug)]
+pub struct RootedTable {
+    slot: Box<Word>,
+    _token: RootToken,
+}
+
 /// A runtime-owned word that remains a precise GC root for the runtime life.
 #[derive(Debug)]
 pub struct RootedWord {
-    heap: Arc<Heap>,
-    slot: Option<Box<Word>>,
-    token: Option<RootToken>,
+    slot: Box<Word>,
+    _token: RootToken,
 }
 
 impl RootedWord {
-    pub(crate) fn new(heap: &Arc<Heap>, value: Word) -> Self {
+    pub(crate) fn new(heap: &Heap, value: Word) -> Self {
         let mut slot = Box::new(value);
         let token = ncl_sys::push_heap_root(heap, &mut slot);
         Self {
-            heap: Arc::clone(heap),
-            slot: Some(slot),
-            token: Some(token),
+            slot,
+            _token: token,
         }
     }
 
     pub(crate) fn get(&self) -> Word {
-        self.slot.as_deref().map_or(Word::NIL, |slot| *slot)
-    }
-}
-
-impl Drop for RootedWord {
-    fn drop(&mut self) {
-        if let Some(token) = self.token.take()
-            && self.heap.unregister_root(token).is_err()
-            && let Some(slot) = self.slot.take()
-        {
-            let _ = Box::leak(slot);
-        }
+        *self.slot
     }
 }
 impl Runtime {
@@ -88,9 +83,9 @@ impl Runtime {
         Heap::validate_address_space().map_err(ObjectError::from)?;
         let runtime = Self {
             heap: Arc::new(Heap::new(config)),
-            functions: Mutex::new(HashMap::new()),
-            packages: Mutex::new(HashMap::new()),
-            classes: Mutex::new(HashMap::new()),
+            functions: Mutex::new(None),
+            packages: Mutex::new(None),
+            classes: Mutex::new(None),
             features: Mutex::new(Vec::new()),
             layouts: Mutex::new(HashMap::new()),
             next_layout: Mutex::new(1),
@@ -107,6 +102,18 @@ impl Runtime {
         let mut context = ThreadContext::new();
         ncl_sys::register_thread(&runtime.heap, &mut context.thread).map_err(ObjectError::from)?;
         context.registered = true;
+        for target in [&runtime.functions, &runtime.packages, &runtime.classes] {
+            let table =
+                HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)?.as_word();
+            let mut slot = Box::new(table);
+            let token = ncl_sys::push_heap_root(&runtime.heap, &mut slot);
+            *target
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(RootedTable {
+                slot,
+                _token: token,
+            });
+        }
         context.ensure_standard_packages(&runtime)?;
         runtime.register_keyword_builtins(&mut context)?;
         Ok(runtime)
@@ -378,11 +385,6 @@ impl Runtime {
     pub fn widetag(&self, object: Word) -> Option<u8> {
         ncl_sys::widetag(&self.heap, object)
     }
-    /// Return a forwarded word when the heap has moved its object.
-    #[must_use]
-    pub fn forwarded_word(&self, word: Word) -> Option<Word> {
-        self.heap.forwarded_word(word)
-    }
     /// Configure strict stale-word checking for this runtime heap.
     pub fn set_strict_forwarding(&self, on: bool) {
         self.heap.set_strict_forwarding(on);
@@ -441,21 +443,29 @@ impl Runtime {
     ) -> Result<(), ObjectError> {
         let key = format!("{package}::{name}");
         let mut function = function;
-        with_root(ctx, &mut function, |_, function| {
-            let mut functions = self
-                .functions
-                .lock()
-                .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
-            functions.insert(key, RootedWord::new(&self.heap, *function));
-            drop(functions);
-            Ok(())
+        with_root(ctx, &mut function, |context, function| {
+            let mut key = make_string(context, self, &key.chars().collect::<Vec<_>>())?;
+            with_root(context, &mut key, |context, key| {
+                HashTable::from_word(Self::table(&self.functions)?)
+                    .insert(context, self, *key, *function)
+            })
         })
     }
     /// Look up a registered function object.
     #[must_use]
-    pub fn function(&self, _ctx: &mut ThreadContext, package: &str, name: &str) -> Option<Word> {
+    pub fn function(&self, ctx: &mut ThreadContext, package: &str, name: &str) -> Option<Word> {
         let key = format!("{package}::{name}");
-        self.functions.lock().ok()?.get(&key).map(RootedWord::get)
+        let key = make_string(ctx, self, &key.chars().collect::<Vec<_>>()).ok()?;
+        let table = Self::table(&self.functions).ok()?;
+        HashTable::from_word(table).get(ctx, key).ok().flatten()
+    }
+    pub(crate) fn table(registry: &Mutex<Option<RootedTable>>) -> Result<Word, ObjectError> {
+        registry
+            .lock()
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?
+            .as_ref()
+            .map(|root| *root.slot)
+            .ok_or(ObjectError::Layout)
     }
 
     /// Install the higher-layer converter for typed builtin failures.

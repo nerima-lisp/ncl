@@ -98,7 +98,6 @@ impl RuntimePackageOperations for Runtime {
                 }
                 if removed {
                     put(ctx, *package, NAME, Word::NIL)?;
-                    self.release_package_symbols(*package)?;
                 }
                 Ok(removed)
             })

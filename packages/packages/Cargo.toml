@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+ncl-hash-tables = { path = "../hash-tables" }
 ncl-object = { path = "../object" }
 
 [lints]

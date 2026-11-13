@@ -1,11 +1,9 @@
 //! Heap-resident package namespaces.
+use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::object_access::{get, put};
 use crate::widetag;
-use crate::{
-    ObjectError, Runtime, ThreadContext, make_cons, make_string, make_symbol, rplacd, symbol_name,
-};
+use crate::{ObjectError, Runtime, ThreadContext, make_cons, make_string, make_symbol};
 use ncl_sys::Word;
-use std::collections::HashSet;
 mod metadata;
 crate::word_newtype!(Package);
 /// Result of looking up a name in a package.
@@ -40,37 +38,8 @@ pub(crate) fn reference_words() -> Vec<usize> {
     ]
 }
 
-fn string_text(ctx: &ThreadContext, string: Word) -> Result<String, ObjectError> {
-    let length = crate::string_length(ctx, string)?;
-    let mut text = String::new();
-    for index in 0..length {
-        text.push(crate::string_ref(ctx, string, index)?);
-    }
-    Ok(text)
-}
-
-pub(crate) fn symbol_table_entries(
-    ctx: &ThreadContext,
-    package: Word,
-    slot: usize,
-) -> Result<Vec<(String, Word)>, ObjectError> {
-    let mut entries = get(ctx, package, widetag::PACKAGE, slot)?;
-    let mut seen = HashSet::new();
-    let mut symbols = Vec::new();
-    while entries != Word::NIL {
-        if !seen.insert(entries) {
-            return Err(ObjectError::Layout);
-        }
-        let symbol = ncl_sys::read_cons_word(&ctx.thread, entries, 0).ok_or(ObjectError::Layout)?;
-        let name = symbol_name(ctx, symbol)?;
-        symbols.push((string_text(ctx, name)?, symbol));
-        entries = ncl_sys::read_cons_word(&ctx.thread, entries, 1).ok_or(ObjectError::Layout)?;
-    }
-    Ok(symbols)
-}
-
 impl Package {
-    /// Allocate an empty package and its internal and external symbol lists.
+    /// Allocate an empty package and its internal and external symbol tables.
     ///
     /// # Errors
     /// Returns an allocation or layout error when package objects cannot be built.
@@ -84,23 +53,31 @@ impl Package {
     ) -> Result<Self, ObjectError> {
         let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
         crate::with_root(ctx, &mut name_word, |ctx, name_word| {
-            let object = crate::allocate(ctx, runtime, widetag::PACKAGE, 11)?;
-            for (slot, value) in [
-                (LOCK, Word::fixnum(0)),
-                (GENSYM, Word::fixnum(0)),
-                (NAME, *name_word),
-                (NICKNAMES, Word::NIL),
-                (USE_LIST, Word::NIL),
-                (USED_BY, Word::NIL),
-                (INTERNAL, Word::NIL),
-                (EXTERNAL, Word::NIL),
-                (SHADOWING, Word::NIL),
-                (LOCAL_NICKNAMES, Word::NIL),
-                (DOCUMENTATION, Word::NIL),
-            ] {
-                put(ctx, object, slot, value)?;
-            }
-            Ok(Self::from_word(object))
+            let mut internal =
+                HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+            crate::with_root(ctx, &mut internal, |ctx, internal| {
+                let mut external =
+                    HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+                crate::with_root(ctx, &mut external, |ctx, external| {
+                    let object = crate::allocate(ctx, runtime, widetag::PACKAGE, 11)?;
+                    for (slot, value) in [
+                        (LOCK, Word::fixnum(0)),
+                        (GENSYM, Word::fixnum(0)),
+                        (NAME, *name_word),
+                        (NICKNAMES, Word::NIL),
+                        (USE_LIST, Word::NIL),
+                        (USED_BY, Word::NIL),
+                        (INTERNAL, *internal),
+                        (EXTERNAL, *external),
+                        (SHADOWING, Word::NIL),
+                        (LOCAL_NICKNAMES, Word::NIL),
+                        (DOCUMENTATION, Word::NIL),
+                    ] {
+                        put(ctx, object, slot, value)?;
+                    }
+                    Ok(Self::from_word(object))
+                })
+            })
         })
     }
     /// Return the package name object.
@@ -141,115 +118,6 @@ impl Package {
     /// Returns an object error when package metadata is malformed.
     pub fn used_by_list(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
         get(ctx, self.0, widetag::PACKAGE, USED_BY)
-    }
-
-    /// Look up a symbol in the package's internal or external table.
-    ///
-    /// # Errors
-    /// Returns an object error if the package table or symbol name is malformed, or registry
-    /// storage is unavailable.
-    pub fn table_symbol(
-        self,
-        ctx: &ThreadContext,
-        runtime: &Runtime,
-        external: bool,
-        name: Word,
-    ) -> Result<Option<Word>, ObjectError> {
-        let key = string_text(ctx, name)?;
-        if runtime.package_symbols_indexed(self.0) {
-            return runtime.package_symbol(self.0, external, &key);
-        }
-        let slot = if external { EXTERNAL } else { INTERNAL };
-        Ok(symbol_table_entries(ctx, self.0, slot)?
-            .into_iter()
-            .find_map(|(entry_name, symbol)| (entry_name == key).then_some(symbol)))
-    }
-
-    /// Insert a symbol into the package's internal or external table.
-    ///
-    /// # Errors
-    /// Returns an object error if the package table or symbol name is malformed, or registry
-    /// storage is unavailable.
-    pub fn insert_table_symbol(
-        self,
-        ctx: &mut ThreadContext,
-        runtime: &Runtime,
-        external: bool,
-        name: Word,
-        symbol: Word,
-    ) -> Result<(), ObjectError> {
-        let roots = [self.0, name, symbol];
-        crate::with_rooted_slice(ctx, &roots, |ctx, roots| {
-            let package = roots.first().copied().ok_or(ObjectError::Layout)?;
-            let name = roots.get(1).copied().ok_or(ObjectError::Layout)?;
-            let symbol = roots.get(2).copied().ok_or(ObjectError::Layout)?;
-            let key = string_text(ctx, name)?;
-            let slot = if external { EXTERNAL } else { INTERNAL };
-            Self::from_word(package).remove_table_symbol(ctx, runtime, external, name)?;
-            let list = get(ctx, package, widetag::PACKAGE, slot)?;
-            let list = make_cons(ctx, runtime, symbol, list)?;
-            put(ctx, package, slot, list)?;
-            runtime.insert_package_symbol(package, external, key, symbol)
-        })
-    }
-
-    /// Remove a symbol from the package's internal or external table.
-    ///
-    /// # Errors
-    /// Returns an object error if the package table or symbol name is malformed, or registry
-    /// storage is unavailable.
-    pub fn remove_table_symbol(
-        self,
-        ctx: &mut ThreadContext,
-        runtime: &Runtime,
-        external: bool,
-        name: Word,
-    ) -> Result<Option<Word>, ObjectError> {
-        let roots = [self.0, name];
-        crate::with_rooted_slice(ctx, &roots, |ctx, roots| {
-            let package = roots.first().copied().ok_or(ObjectError::Layout)?;
-            let name = roots.get(1).copied().ok_or(ObjectError::Layout)?;
-            let key = string_text(ctx, name)?;
-            let slot = if external { EXTERNAL } else { INTERNAL };
-            let indexed_symbol = if runtime.package_symbols_indexed(package) {
-                let Some(symbol) = runtime.package_symbol(package, external, &key)? else {
-                    return Ok(None);
-                };
-                Some(symbol)
-            } else {
-                None
-            };
-            let mut current = get(ctx, package, widetag::PACKAGE, slot)?;
-            let mut previous = Word::NIL;
-            let mut seen = HashSet::new();
-            while current != Word::NIL {
-                if !seen.insert(current) {
-                    return Err(ObjectError::Layout);
-                }
-                let symbol =
-                    ncl_sys::read_cons_word(&ctx.thread, current, 0).ok_or(ObjectError::Layout)?;
-                let next =
-                    ncl_sys::read_cons_word(&ctx.thread, current, 1).ok_or(ObjectError::Layout)?;
-                let matches = if let Some(indexed_symbol) = indexed_symbol {
-                    symbol == indexed_symbol
-                } else {
-                    string_text(ctx, symbol_name(ctx, symbol)?)? == key
-                };
-                if matches {
-                    if previous == Word::NIL {
-                        put(ctx, package, slot, next)?;
-                    } else {
-                        rplacd(ctx, previous, next)?;
-                    }
-                    runtime.remove_package_symbol(package, external, &key)?;
-                    return Ok(Some(symbol));
-                }
-                previous = current;
-                current = next;
-            }
-            runtime.remove_package_symbol(package, external, &key)?;
-            Ok(None)
-        })
     }
 
     /// Add a nickname to this package.
@@ -296,13 +164,15 @@ impl Package {
     pub fn find_symbol(
         self,
         ctx: &mut ThreadContext,
-        runtime: &Runtime,
+        _runtime: &Runtime,
         name: Word,
     ) -> Result<Option<(Word, FindStatus)>, ObjectError> {
-        if let Some(symbol) = self.table_symbol(ctx, runtime, false, name)? {
+        let internal = HashTable::from_word(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
+        if let Some(symbol) = internal.get(ctx, name)? {
             return Ok(Some((symbol, FindStatus::Internal)));
         }
-        if let Some(symbol) = self.table_symbol(ctx, runtime, true, name)? {
+        let external = HashTable::from_word(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
+        if let Some(symbol) = external.get(ctx, name)? {
             return Ok(Some((symbol, FindStatus::External)));
         }
         let mut used = get(ctx, self.0, widetag::PACKAGE, USE_LIST)?;
@@ -310,7 +180,8 @@ impl Package {
             let package =
                 ncl_sys::read_cons_word(&ctx.thread, used, 0).ok_or(ObjectError::Layout)?;
             let package = Self::from_word(package);
-            if let Some(symbol) = package.table_symbol(ctx, runtime, true, name)? {
+            let external = HashTable::from_word(get(ctx, package.0, widetag::PACKAGE, EXTERNAL)?);
+            if let Some(symbol) = external.get(ctx, name)? {
                 return Ok(Some((symbol, FindStatus::Inherited)));
             }
             used = ncl_sys::read_cons_word(&ctx.thread, used, 1).ok_or(ObjectError::Layout)?;
@@ -355,8 +226,8 @@ impl Package {
                     } else {
                         FindStatus::Internal
                     };
-                    Self::from_word(*package)
-                        .insert_table_symbol(ctx, runtime, external, *name_word, *symbol)?;
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, table_slot)?)
+                        .insert(ctx, runtime, *name_word, *symbol)?;
                     Ok((*symbol, status))
                 })
             })

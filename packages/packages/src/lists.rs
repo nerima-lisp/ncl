@@ -1,5 +1,6 @@
 use crate::{PackageListOperations, PackageOperations};
-use ncl_object::package::{NICKNAMES, SHADOWING, USE_LIST, USED_BY};
+use ncl_hash_tables::HashTable;
+use ncl_object::package::{EXTERNAL, INTERNAL, NICKNAMES, SHADOWING, USE_LIST, USED_BY};
 use ncl_object::widetag;
 use ncl_object::{
     ObjectError, Package, Runtime, ThreadContext, Word, car, cdr, get, make_cons, make_symbol, put,
@@ -80,13 +81,12 @@ impl PackageListOperations for Package {
             Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             ncl_object::with_root(ctx, &mut name, |ctx, name| {
-                let symbol = match Self::from_word(*package)
-                    .remove_table_symbol(ctx, runtime, false, *name)?
-                {
+                let internal =
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                let symbol = match internal.remove(ctx, runtime, *name)? {
                     Some(symbol) => Some(symbol),
-                    None => {
-                        Self::from_word(*package).remove_table_symbol(ctx, runtime, true, *name)?
-                    }
+                    None => HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?)
+                        .remove(ctx, runtime, *name)?,
                 };
                 let Some(mut symbol) = symbol else {
                     return Ok(false);
@@ -164,8 +164,8 @@ impl PackageListOperations for Package {
                             ncl_object::layout::symbol_offset::PACKAGE,
                             *package,
                         )?;
-                        Self::from_word(*package)
-                            .insert_table_symbol(ctx, runtime, false, *name, *symbol)?;
+                        HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                            .insert(ctx, runtime, *name, *symbol)?;
                     }
                     let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
                     while list != Word::NIL {

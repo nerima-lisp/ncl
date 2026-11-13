@@ -1,8 +1,5 @@
 //! Shared runtime heap and registries.
 
-mod package_symbols;
-use package_symbols::PackageSymbols;
-
 use crate::keyword_builtins::{
     CHECK_KEYWORDS_DESCRIPTOR, KEYWORD_VALUE_DESCRIPTOR, MAKE_REST_LIST_DESCRIPTOR,
     check_keywords_builtin, keyword_supplied_p_builtin, keyword_value_builtin,
@@ -25,7 +22,6 @@ pub struct Runtime {
     pub(crate) heap: Arc<Heap>,
     functions: Mutex<HashMap<String, RootedWord>>,
     pub(crate) packages: Mutex<HashMap<String, RootedWord>>,
-    package_symbols: Mutex<Vec<PackageSymbols>>,
     pub(crate) classes: Mutex<HashMap<String, RootedWord>>,
     pub(crate) features: Mutex<Vec<String>>,
     pub(crate) layouts: Mutex<HashMap<u32, usize>>,
@@ -94,7 +90,6 @@ impl Runtime {
             heap: Arc::new(Heap::new(config)),
             functions: Mutex::new(HashMap::new()),
             packages: Mutex::new(HashMap::new()),
-            package_symbols: Mutex::new(Vec::new()),
             classes: Mutex::new(HashMap::new()),
             features: Mutex::new(Vec::new()),
             layouts: Mutex::new(HashMap::new()),

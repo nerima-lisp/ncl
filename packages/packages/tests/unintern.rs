@@ -1,6 +1,8 @@
 //! Package symbol unintern behavior.
 
-use ncl_object::{Package, Runtime, ThreadContext, make_string, make_symbol, put};
+use ncl_hash_tables::HashTable;
+use ncl_object::package::{EXTERNAL, INTERNAL, Package};
+use ncl_object::{Runtime, ThreadContext, get, make_string, make_symbol, put, widetag};
 use ncl_packages::PackageListOperations;
 
 #[test]
@@ -31,11 +33,19 @@ fn unintern_does_not_remove_external_when_internal_matches() {
         package.as_word(),
     )
     .unwrap_or_else(|error| panic!("external home: {error:?}"));
-    package
-        .insert_table_symbol(&mut ctx, &runtime, false, name, internal)
+    let internal_table = HashTable::from_word(
+        get(&ctx, package.as_word(), widetag::PACKAGE, INTERNAL)
+            .unwrap_or_else(|error| panic!("internal table: {error:?}")),
+    );
+    internal_table
+        .insert(&mut ctx, &runtime, name, internal)
         .unwrap_or_else(|error| panic!("internal insert: {error:?}"));
-    package
-        .insert_table_symbol(&mut ctx, &runtime, true, name, external)
+    let external_table = HashTable::from_word(
+        get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL)
+            .unwrap_or_else(|error| panic!("external table: {error:?}")),
+    );
+    external_table
+        .insert(&mut ctx, &runtime, name, external)
         .unwrap_or_else(|error| panic!("external insert: {error:?}"));
 
     assert!(
@@ -43,9 +53,6 @@ fn unintern_does_not_remove_external_when_internal_matches() {
             .unintern(&mut ctx, &runtime, name)
             .unwrap_or_else(|error| panic!("unintern: {error:?}"))
     );
-    assert_eq!(
-        package.table_symbol(&ctx, &runtime, true, name),
-        Ok(Some(external))
-    );
-    assert_eq!(package.table_symbol(&ctx, &runtime, false, name), Ok(None));
+    assert_eq!(external_table.get(&mut ctx, name), Ok(Some(external)));
+    assert_eq!(internal_table.get(&mut ctx, name), Ok(None));
 }

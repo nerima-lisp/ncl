@@ -1,8 +1,8 @@
 use crate::PackageOperations;
+use ncl_hash_tables::HashTable;
 use ncl_object::package::{EXTERNAL, INTERNAL, NICKNAMES};
 use ncl_object::widetag;
 use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, get, make_cons, put};
-use std::collections::HashSet;
 
 impl PackageOperations for Package {
     fn for_each_symbol<F>(self, ctx: &ThreadContext, mut visit: F) -> Result<(), ObjectError>
@@ -10,15 +10,8 @@ impl PackageOperations for Package {
         F: FnMut(Word),
     {
         for slot in std::iter::once(INTERNAL).chain(std::iter::once(EXTERNAL)) {
-            let mut entries = get(ctx, self.as_word(), widetag::PACKAGE, slot)?;
-            let mut seen = HashSet::new();
-            while entries != Word::NIL {
-                if !seen.insert(entries) {
-                    return Err(ObjectError::Layout);
-                }
-                visit(ncl_object::car(ctx, entries)?);
-                entries = ncl_object::cdr(ctx, entries)?;
-            }
+            HashTable::from_word(get(ctx, self.as_word(), widetag::PACKAGE, slot)?)
+                .for_each_entry(ctx, |_, symbol| visit(symbol))?;
         }
         Ok(())
     }
@@ -64,15 +57,14 @@ impl PackageOperations for Package {
             Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             ncl_object::with_root(ctx, &mut name, |ctx, name| {
-                let mut symbol = if let Some(symbol) =
-                    Self::from_word(*package).remove_table_symbol(ctx, runtime, false, *name)?
-                {
+                let internal =
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                let mut symbol = if let Some(symbol) = internal.remove(ctx, runtime, *name)? {
                     symbol
                 } else {
-                    if Self::from_word(*package)
-                        .table_symbol(ctx, runtime, true, *name)?
-                        .is_some()
-                    {
+                    let external =
+                        HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                    if external.get(ctx, *name)?.is_some() {
                         return Ok(true);
                     }
                     let Some((symbol, ncl_object::FindStatus::Inherited)) =
@@ -81,13 +73,13 @@ impl PackageOperations for Package {
                         return Ok(false);
                     };
                     Self::from_word(*package).import(ctx, runtime, *name, symbol)?;
-                    Self::from_word(*package)
-                        .remove_table_symbol(ctx, runtime, false, *name)?
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                        .remove(ctx, runtime, *name)?
                         .ok_or(ObjectError::Layout)?
                 };
                 ncl_object::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    Self::from_word(*package)
-                        .insert_table_symbol(ctx, runtime, true, *name, *symbol)
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?)
+                        .insert(ctx, runtime, *name, *symbol)
                 })?;
                 Ok(true)
             })
@@ -105,14 +97,14 @@ impl PackageOperations for Package {
             Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             ncl_object::with_root(ctx, &mut name, |ctx, name| {
-                let Some(mut symbol) =
-                    Self::from_word(*package).remove_table_symbol(ctx, runtime, true, *name)?
-                else {
+                let external =
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                let Some(mut symbol) = external.remove(ctx, runtime, *name)? else {
                     return Ok(false);
                 };
                 ncl_object::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    Self::from_word(*package)
-                        .insert_table_symbol(ctx, runtime, false, *name, *symbol)
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                        .insert(ctx, runtime, *name, *symbol)
                 })?;
                 Ok(true)
             })
@@ -158,8 +150,8 @@ impl PackageOperations for Package {
                             *package,
                         )?;
                     }
-                    Self::from_word(*package)
-                        .insert_table_symbol(ctx, runtime, false, *name, *symbol)
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                        .insert(ctx, runtime, *name, *symbol)
                 })
             })
         })

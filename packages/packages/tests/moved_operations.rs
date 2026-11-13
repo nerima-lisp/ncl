@@ -1,8 +1,9 @@
 //! Package operations moved from kernel integration coverage.
 
+use ncl_object::layout::widetag;
 use ncl_object::package::{FindStatus, INTERNAL, Package};
 use ncl_object::{
-    ObjectError, Runtime, ThreadContext, Word, make_cons, make_string, make_symbol, put, rplacd,
+    ObjectError, Runtime, ThreadContext, Word, get, make_string, make_symbol, simple_vector_set,
     symbol_name,
 };
 use ncl_packages::{PackageListOperations, PackageOperations};
@@ -86,19 +87,16 @@ fn package_registry_and_visibility_operations_cover_all_statuses() {
         .unwrap_or_else(|error| panic!("visit package symbols: {error:?}"));
     assert_eq!(visited.len(), 2);
 
-    let cyclic = Package::new(&mut context, &runtime, "CYCLIC-SYMBOLS")
-        .unwrap_or_else(|error| panic!("cyclic package: {error:?}"));
-    let name = make_string(&mut context, &runtime, &['C', 'Y', 'C'])
-        .unwrap_or_else(|error| panic!("cyclic symbol name: {error:?}"));
-    let symbol = make_symbol(&mut context, &runtime, name)
-        .unwrap_or_else(|error| panic!("cyclic symbol: {error:?}"));
-    let entries = make_cons(&mut context, &runtime, symbol, Word::NIL)
-        .unwrap_or_else(|error| panic!("cyclic entry: {error:?}"));
-    rplacd(&mut context, entries, entries).unwrap_or_else(|error| panic!("cyclic link: {error:?}"));
-    put(&mut context, cyclic.as_word(), INTERNAL, entries)
-        .unwrap_or_else(|error| panic!("cyclic package table: {error:?}"));
+    let malformed = Package::new(&mut context, &runtime, "MALFORMED-SYMBOL-TABLE")
+        .unwrap_or_else(|error| panic!("malformed package: {error:?}"));
+    let internal = get(&context, malformed.as_word(), widetag::PACKAGE, INTERNAL)
+        .unwrap_or_else(|error| panic!("internal table: {error:?}"));
+    let index = get(&context, internal, widetag::HASH_TABLE, 12)
+        .unwrap_or_else(|error| panic!("hash table index: {error:?}"));
+    simple_vector_set(&mut context, index, 0, Word::NIL)
+        .unwrap_or_else(|error| panic!("malformed index entry: {error:?}"));
     assert_eq!(
-        cyclic.for_each_symbol(&context, |_| {}),
+        malformed.for_each_symbol(&context, |_| {}),
         Err(ObjectError::Layout)
     );
 }

@@ -152,7 +152,6 @@ impl Runtime {
                     Package::from_word(*package).register_nickname(ctx, self, *name)?;
                 }
                 let key = string_from_word(ctx, *name)?;
-                self.register_package_symbols(ctx, *package)?;
                 self.packages
                     .lock()
                     .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?

@@ -427,7 +427,6 @@ fn register_sb_symbol_propagates_malformed_source_package_error() -> Result<(), 
         ncl_object::package::INTERNAL,
         Word::fixnum(0),
     )?;
-    let release_result = runtime.release_package_symbols(source);
     let malformed_source = register_sb_symbol(
         &mut ctx,
         &runtime,
@@ -438,12 +437,8 @@ fn register_sb_symbol_propagates_malformed_source_package_error() -> Result<(), 
     );
 
     assert_eq!(
-        (absent_symbol, release_result, malformed_source),
-        (
-            Err(ObjectError::Unsupported),
-            Ok(()),
-            Err(ObjectError::Layout)
-        )
+        (absent_symbol, malformed_source),
+        (Err(ObjectError::Unsupported), Err(ObjectError::TypeError))
     );
     Ok(())
 }

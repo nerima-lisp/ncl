@@ -309,6 +309,7 @@ dependencies = [
 name = "ncl-packages"
 version = "0.1.1"
 dependencies = [
+ "ncl-hash-tables",
  "ncl-object",
 ]
 

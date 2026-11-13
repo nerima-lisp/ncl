@@ -167,7 +167,11 @@ impl Heap {
             }
         }
 
-        let gate = self.acquire_slow_path_gate(thread);
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        let stack_scan_start = Some(crate::thread::stack::current_stack_pointer());
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let stack_scan_start = None;
+        let gate = self.acquire_slow_path_gate(thread, stack_scan_start);
         if self.pending_page_error.load(Ordering::Acquire)
             && self.take_pending_page_error().is_some()
         {
@@ -315,7 +319,12 @@ impl Heap {
         }
     }
 
-    pub(crate) fn acquire_slow_path_gate(&self, thread: &mut Thread) -> SlowPathGuard<'_> {
+    pub(crate) fn acquire_slow_path_gate(
+        &self,
+        thread: &mut Thread,
+        // Captured by the caller so this function's changing wait frame is excluded.
+        stack_scan_start: Option<usize>,
+    ) -> SlowPathGuard<'_> {
         let pointer = std::ptr::from_mut(thread).expose_provenance();
         loop {
             let mut generation = self
@@ -342,7 +351,7 @@ impl Heap {
                 Err(TryLockError::WouldBlock) => {
                     // Serialize waiter publication with gate release so a waiter cannot
                     // join the parked set after the previous generation clears it.
-                    self.park_gate_waiter(thread, pointer);
+                    self.park_gate_waiter(thread, pointer, stack_scan_start);
                     while *generation == observed_generation {
                         generation = self
                             .slow_path_ready
@@ -355,7 +364,12 @@ impl Heap {
         }
     }
 
-    fn park_gate_waiter(&self, thread: &mut Thread, pointer: usize) {
+    fn park_gate_waiter(
+        &self,
+        thread: &mut Thread,
+        pointer: usize,
+        stack_scan_start: Option<usize>,
+    ) {
         let mut stop_world = self
             .stop_world
             .lock()
@@ -365,7 +379,7 @@ impl Heap {
         }
         if thread.native_state() != crate::NativeState::Native {
             #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-            thread.publish_snapshot();
+            thread.publish_snapshot_with_stack_pointer(stack_scan_start);
             thread.state = crate::SafepointState::Parked;
             stop_world.parked.insert(pointer);
         }

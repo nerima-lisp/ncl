@@ -20,7 +20,8 @@ fn heap_lookup_rejects_immediate_with_live_object_address() {
     );
     assert_eq!(fixnum.address(), cons.address());
 
-    let state = heap.lock_state();
+    let mut state = heap.lock_state();
+    assert_eq!(state.flush_pending_allocations(), Ok(()));
     assert!(Heap::find(&state, cons).is_some());
     assert!(Heap::find(&state, other).is_some());
     assert!(

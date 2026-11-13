@@ -52,7 +52,7 @@ impl Heap {
         let Some(first_page) = state.pages.get_mut(start_page) else {
             return Err(StorageCondition::CapacityExceeded);
         };
-        first_page.object_starts.push((0, index));
+        first_page.add_object_start(0, index);
         state.objects.push(Object {
             words: managed,
             start: address,

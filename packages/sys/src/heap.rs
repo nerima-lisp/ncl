@@ -177,8 +177,8 @@ impl Heap {
         if !self.strict_forwarding.load(Ordering::Relaxed) {
             return false;
         }
-        let state = self.lock_state();
-        Self::find_raw(&state, object)
+        let mut state = self.lock_state();
+        Self::find_raw_with_pending(self, &mut state, object)
             .and_then(|index| state.objects.get(index))
             .is_some_and(|entry| entry.forwarded_to.is_some())
     }
@@ -324,6 +324,9 @@ impl Heap {
         drop(stop_world);
 
         let mut state = self.lock_state();
+        if let Err(error) = state.flush_thread_allocations(pointer) {
+            self.remember_page_error(&mut state, error);
+        }
         let owner = pointer.addr();
         for page in &mut state.pages {
             if page.owner == Some(owner) {
@@ -349,8 +352,11 @@ impl Heap {
             .count()
     }
     pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
-        let state = self.lock_state();
-        state.objects[self.find_for_mutator(&state, object)?]
+        let mut state = self.lock_state();
+        let index = self.find_for_mutator(&mut state, object)?;
+        state
+            .objects
+            .get(index)?
             .words
             .get(slot)
             .map(|value| Word::from_bits(*value))
@@ -360,14 +366,14 @@ impl Heap {
     }
     pub(crate) fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
         let mut state = self.lock_state();
-        self.find_for_mutator(&state, object)
+        self.find_for_mutator(&mut state, object)
             .and_then(|index| state.objects[index].words.get_mut(slot))
             .map(|target| *target = value.bits())
             .is_some()
     }
     pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
-        let state = self.lock_state();
-        let index = self.find_for_mutator(&state, object)?;
+        let mut state = self.lock_state();
+        let index = self.find_for_mutator(&mut state, object)?;
         let entry = state.objects.get(index)?;
         let header = (entry.kind != PageKind::Cons).then(|| entry.words.first().copied())??;
         drop(state);
@@ -375,7 +381,7 @@ impl Heap {
     }
     fn write_words(&self, object: Word, values: &[(usize, Word)]) {
         let mut state = self.lock_state();
-        if let Some(index) = self.find_for_mutator(&state, object) {
+        if let Some(index) = self.find_for_mutator(&mut state, object) {
             for (slot, value) in values {
                 if *slot < state.objects[index].words.len() {
                     state.objects[index].words[*slot] = value.bits();
@@ -385,7 +391,7 @@ impl Heap {
     }
     pub(crate) fn barrier(&self, object: Word, slot: usize) {
         let mut state = self.lock_state();
-        if let Some(index) = self.find_for_mutator(&state, object)
+        if let Some(index) = self.find_for_mutator(&mut state, object)
             && let Some(entry) = state.objects.get(index)
             && entry.generation > 0
             && slot < entry.words.len()
@@ -398,20 +404,20 @@ impl Heap {
     }
     pub(crate) fn make_weak(&self, value: Word, weakness: Weakness) -> Word {
         let mut state = self.lock_state();
-        if let Some(index) = self.find_for_mutator(&state, value) {
+        if let Some(index) = self.find_for_mutator(&mut state, value) {
             state.objects[index].weak = Some(weakness);
         }
         value
     }
     pub(crate) fn weak_value(&self, value: Word) -> Word {
-        let state = self.lock_state();
-        self.find_for_mutator(&state, value)
+        let mut state = self.lock_state();
+        self.find_for_mutator(&mut state, value)
             .and_then(|i| state.objects[i].words.get(1).copied())
             .map_or(Word::NIL, Word::from_bits)
     }
     pub(crate) fn register_finalizer(&self, object: Word, callback: Finalizer) {
         let mut state = self.lock_state();
-        if let Some(index) = self.find_for_mutator(&state, object) {
+        if let Some(index) = self.find_for_mutator(&mut state, object) {
             state.objects[index].finalizer = Some((callback, false));
         }
     }
@@ -427,17 +433,29 @@ impl Heap {
         self.lock_state().after_gc_hooks.push(hook);
     }
     fn lock_state(&self) -> std::sync::MutexGuard<'_, State> {
-        let mut state = self
-            .state
+        self.state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+    pub(crate) fn flush_pending_allocations(&self, state: &mut State) {
         if let Err(error) = state.flush_pending_allocations() {
-            if state.pending_page_error.is_none() {
-                state.pending_page_error = Some(error);
-            }
-            self.pending_page_error.store(true, Ordering::Release);
+            self.remember_page_error(state, error);
         }
-        state
+    }
+    pub(crate) fn flush_pending_allocation_for(&self, state: &mut State, address: usize) -> bool {
+        match state.flush_pending_allocation_for(address) {
+            Ok(found) => found,
+            Err(error) => {
+                self.remember_page_error(state, error);
+                false
+            }
+        }
+    }
+    fn remember_page_error(&self, state: &mut State, error: pages::PageError) {
+        if state.pending_page_error.is_none() {
+            state.pending_page_error = Some(error);
+        }
+        self.pending_page_error.store(true, Ordering::Release);
     }
     pub(crate) fn take_pending_page_error(&self) -> Option<pages::PageError> {
         let mut state = self.lock_state();

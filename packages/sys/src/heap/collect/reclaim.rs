@@ -160,11 +160,15 @@ fn mark_reclaimable_pages(state: &mut super::super::State) -> Result<Vec<bool>, 
             .iter()
             .any(|(_, index)| objects.get(*index).is_some_and(|object| object.alive));
         if metadata.pinned || live_extent || live_start {
+            let original_count = metadata.object_starts.len();
             metadata.object_starts.retain(|(_, index)| {
                 objects
                     .get(*index)
                     .is_some_and(|object| object.alive || object.forwarded_to.is_some())
             });
+            if metadata.object_starts.len() != original_count {
+                metadata.rebuild_object_start_bitmap();
+            }
             continue;
         }
         let page = reclaimable
@@ -242,6 +246,7 @@ fn reset_reclaimable_pages(
                     .get(*index)
                     .is_some_and(|object| object.forwarded_to.is_some())
             });
+            metadata.rebuild_object_start_bitmap();
             if metadata.object_starts.is_empty() {
                 metadata.incoming_forwarders.clear();
             }

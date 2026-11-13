@@ -13,6 +13,7 @@ fn checked_index(index: Option<usize>, len: usize, message: &str) -> usize {
 
 fn make_candidate_page_reclaimable(heap: &Heap, object: Word) {
     let mut state = heap.lock_state();
+    assert_eq!(state.flush_pending_allocations(), Ok(()));
     let object_index = checked_index(
         Heap::find(&state, object),
         state.objects.len(),
@@ -32,7 +33,7 @@ fn make_candidate_page_reclaimable(heap: &Heap, object: Word) {
     let Some(metadata) = state.pages.get_mut(page) else {
         return;
     };
-    metadata.object_starts.clear();
+    metadata.clear_object_starts();
     drop(state);
 }
 
@@ -175,6 +176,7 @@ fn failed_decommit_keeps_candidate_page_committed_and_unavailable() {
     );
     let object = allocation.unwrap_or(Word::NIL);
     let mut state = heap.lock_state();
+    assert_eq!(state.flush_pending_allocations(), Ok(()));
     let object_index = checked_index(
         Heap::find(&state, object),
         state.objects.len(),

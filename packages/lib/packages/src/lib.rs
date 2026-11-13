@@ -385,6 +385,26 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     Ok(())
 }
 
+/// Register package operations and the NCL-GC symbols exposed through SB-EXT.
+///
+/// The aliases are installed when object registration provided the source GC symbol.
+///
+/// # Errors
+/// Returns an object-layer error if package or symbol registration fails.
+pub fn register_with_gc_sb_ext_symbols(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+) -> Result<(), ObjectError> {
+    register(runtime)?;
+    if runtime
+        .function(ctx, BuiltinPackage::NclGc.as_str(), "GC")
+        .is_some()
+    {
+        register_gc_sb_ext_symbols(ctx, runtime)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "tests/lib.rs"]
 mod tests;

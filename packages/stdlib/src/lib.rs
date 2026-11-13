@@ -35,19 +35,6 @@ pub const REGISTRATION_ORDER: &[&str] = &[
     "ncl-disasm",
 ];
 
-/// Register the NCL-GC symbols that also belong to SB-EXT.
-///
-/// Call after object registration so the source symbols are available.
-///
-/// # Errors
-/// Returns an object error when a package or symbol registration fails.
-pub fn register_gc_sb_ext_symbols(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-) -> Result<(), ObjectError> {
-    ncl_lib_packages::register_gc_sb_ext_symbols(ctx, runtime)
-}
-
 /// Register every standard-library crate that currently exposes a registration
 /// entry point, in [`REGISTRATION_ORDER`].
 ///
@@ -59,7 +46,6 @@ pub fn register_gc_sb_ext_symbols(
 /// Returns the first [`ObjectError`] reported by a crate registration.
 pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     ncl_lib_arrays::register_layouts(runtime)?;
-    ncl_lib_hash_tables::register_layouts(runtime)?;
     ncl_types::register(runtime)?;
     ncl_types::builtins::register(runtime)?;
     // Pre-intern the standard Common Lisp symbols (special operators,
@@ -83,7 +69,7 @@ pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     ncl_lib_macros::register(runtime)?;
     ncl_lib_streams::register_with_context(runtime, ctx)?;
     ncl_lib_pathnames::register(ctx, runtime)?;
-    ncl_lib_packages::register(runtime)?;
+    ncl_lib_packages::register_with_gc_sb_ext_symbols(ctx, runtime)?;
     ncl_lib_format::register(runtime)?;
     ncl_threads::register(runtime)?;
     ncl_ffi::register(runtime)?;

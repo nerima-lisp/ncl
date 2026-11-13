@@ -20,6 +20,21 @@ fn register_all_registers_clos() {
 }
 
 #[test]
+fn register_all_exports_object_gc_functions_through_sb_ext() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_object::register(&mut ctx, &runtime).unwrap();
+
+    ncl_stdlib::register_all(&mut ctx, &runtime).unwrap();
+
+    assert_eq!(
+        runtime.function(&mut ctx, "SB-EXT", "GC"),
+        runtime.function(&mut ctx, "NCL-GC", "GC")
+    );
+}
+
+#[test]
 fn register_all_registers_hash_arrays() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();

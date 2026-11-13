@@ -86,6 +86,7 @@ fn collection_parks_two_concurrently_allocating_threads() {
     let first = ncl_threads::spawn(&runtime, "allocator-a", allocating_worker).unwrap();
     let second = ncl_threads::spawn(&runtime, "allocator-b", allocating_worker).unwrap();
     while WORKERS_STARTED.load(Ordering::SeqCst) < 2 {
+        main_ctx.thread_access().poll_safepoint();
         std::thread::yield_now();
     }
 

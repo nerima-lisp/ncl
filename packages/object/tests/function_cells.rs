@@ -1,6 +1,6 @@
 //! Stress-tests function-cell publication while a symbol is redefined concurrently.
 
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Barrier, mpsc};
 use std::thread;
 
 use ncl_object::typed::{FunctionDesignator, Symbol};
@@ -97,18 +97,40 @@ fn function_entry_accessors_validate_object_layouts() {
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 #[test]
 fn symbol_function_slot_survives_two_full_collections() {
-    let fixture = prepare_function_cell_fixture();
+    let runtime = Arc::new(Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}")));
+    let (collect_sender, collect_receiver) = mpsc::channel();
+    let (collector_ready_sender, collector_ready_receiver) = mpsc::channel();
+    let collection_runtime = Arc::clone(&runtime);
+    let collector = thread::spawn(move || {
+        let mut collector = ThreadContext::new();
+        collector
+            .register(&collection_runtime)
+            .unwrap_or_else(|error| panic!("register collector context: {error:?}"));
+        assert!(collector_ready_sender.send(()).is_ok());
+        assert!(collect_receiver.recv().is_ok());
+        collector
+            .collect(true)
+            .unwrap_or_else(|error| panic!("setup full collection: {error:?}"));
+    });
+    assert!(collector_ready_receiver.recv().is_ok());
+    let setup_runtime = Arc::clone(&runtime);
+    let fixture = thread::spawn(move || prepare_function_cell_fixture_with_runtime(setup_runtime))
+        .join()
+        .unwrap_or_else(|error| panic!("setup thread: {error:?}"));
+
     let mut context = ThreadContext::new();
     context
         .register(&fixture.runtime)
         .unwrap_or_else(|error| panic!("register context: {error:?}"));
     let symbol = root_word(&context, fixture.words.symbol);
+    context.thread_access().enter_native();
+    assert!(collect_sender.send(()).is_ok());
+    collector
+        .join()
+        .unwrap_or_else(|error| panic!("collector thread: {error:?}"));
+    context.thread_access().leave_native();
+
     let stale_function_bits = fixture.words.old_function;
-    for _ in 0..2 {
-        context
-            .collect(true)
-            .unwrap_or_else(|error| panic!("full collection: {error:?}"));
-    }
     let stale_function = FunctionObject::try_from(decode_word(stale_function_bits))
         .unwrap_or_else(|error| panic!("stale function: {error:?}"));
     let current_function = symbol_function(&context, symbol.get())
@@ -153,7 +175,22 @@ fn symbol_function_slot_survives_two_full_collections() {
     );
     context
         .write_object_slot(symbol.get(), symbol_offset::FUNCTION, current_function)
-        .unwrap_or_else(|error| panic!("restore function cell: {error:?}"));
+        .unwrap_or_else(|error| {
+            panic!("restore function cell before second collection: {error:?}")
+        });
+    context.set_strict_forwarding(false);
+    context
+        .collect(true)
+        .unwrap_or_else(|error| panic!("second full collection: {error:?}"));
+
+    let current_function = symbol_function(&context, symbol.get())
+        .unwrap_or_else(|error| panic!("symbol function after second collection: {error:?}"));
+    let entry = function_entry(&context, Function::from_word(current_function))
+        .unwrap_or_else(|error| panic!("function entry after second collection: {error:?}"));
+    assert_ne!(
+        entry, 0,
+        "symbol function must not point at a cleared entry"
+    );
     let result = caller.call_function(
         &mut context,
         &fixture.runtime,
@@ -199,6 +236,11 @@ fn root_word(context: &ThreadContext, encoded: u64) -> HeapRootedWord {
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn prepare_function_cell_fixture() -> FunctionCellFixture {
     let runtime = Arc::new(Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}")));
+    prepare_function_cell_fixture_with_runtime(runtime)
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+fn prepare_function_cell_fixture_with_runtime(runtime: Arc<Runtime>) -> FunctionCellFixture {
     let mut setup = ThreadContext::new();
     setup
         .register(&runtime)

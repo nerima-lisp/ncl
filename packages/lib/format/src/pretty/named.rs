@@ -32,7 +32,7 @@ pub(super) fn execute(
     .map_err(|_| FormatError::at(directive, FormatErrorKind::InvalidDirectiveUse))?;
     let runtime = state.runtime;
     let found = with_root(state.ctx, &mut symbol_name, |ctx, name| {
-        Package::from_word(package).find_symbol(ctx, runtime, *name)
+        Package::from_word(package).find_symbol(ctx, *name)
     })
     .map_err(|_| FormatError::at(directive, FormatErrorKind::InvalidDirectiveUse))?;
     let Some((mut symbol, status)) = found else {

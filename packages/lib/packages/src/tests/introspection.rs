@@ -361,7 +361,7 @@ fn package_iteration_fixture(
         ncl_object::make_string(ctx, runtime, &"SHADOWED".chars().collect::<Vec<_>>())?;
     target.shadow(ctx, runtime, shadowed_name)?;
     let (shadowed_local, _) = target
-        .find_symbol(ctx, runtime, shadowed_name)?
+        .find_symbol(ctx, shadowed_name)?
         .ok_or(ObjectError::Layout)?;
     target.use_package(ctx, runtime, source.as_word())?;
     target.import(ctx, runtime, imported_name, imported)?;
@@ -759,7 +759,7 @@ fn package_operations_survive_gc_stress() -> Result<(), ObjectError> {
         &['S', 'T', 'R', 'E', 'S', 'S', 'E', 'D'],
     )?;
     assert_eq!(
-        Package::from_word(package).find_symbol(&mut ctx, &runtime, lookup)?,
+        Package::from_word(package).find_symbol(&mut ctx, lookup)?,
         Some((symbol, ncl_object::FindStatus::External))
     );
 

@@ -164,7 +164,6 @@ impl Package {
     pub fn find_symbol(
         self,
         ctx: &mut ThreadContext,
-        _runtime: &Runtime,
         name: Word,
     ) -> Result<Option<(Word, FindStatus)>, ObjectError> {
         let internal = HashTable::from_word(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
@@ -206,9 +205,7 @@ impl Package {
             Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
             crate::with_root(ctx, &mut name_word, |ctx, name_word| {
-                if let Some(found) =
-                    Self::from_word(*package).find_symbol(ctx, runtime, *name_word)?
-                {
+                if let Some(found) = Self::from_word(*package).find_symbol(ctx, *name_word)? {
                     return Ok(found);
                 }
                 let mut symbol = make_symbol(ctx, runtime, *name_word)?;

@@ -73,7 +73,7 @@ fn assert_inherited_sb_symbol_is_imported(
         Ok(true)
     );
     assert_eq!(
-        Package::from_word(target).find_symbol(ctx, runtime, name),
+        Package::from_word(target).find_symbol(ctx, name),
         Ok(Some((symbol, FindStatus::Inherited)))
     );
     register_sb_symbol(
@@ -86,7 +86,7 @@ fn assert_inherited_sb_symbol_is_imported(
     )
     .unwrap_or_else(|error| panic!("inherited SB import: {error:?}"));
     assert_eq!(
-        Package::from_word(target).find_symbol(ctx, runtime, name),
+        Package::from_word(target).find_symbol(ctx, name),
         Ok(Some((symbol, FindStatus::Internal)))
     );
     assert_eq!(symbol_package(ctx, symbol), Ok(source));
@@ -138,7 +138,7 @@ fn package_adapter_sb_ext_symbols_share_ncl_identity_and_surface_visibility() {
     for name in ["BYTES-CONSED-SINCE-GC", "GC-COUNT"] {
         let name_word = string(&mut ctx, &runtime, name);
         let (_, status) = Package::from_word(gc_package)
-            .find_symbol(&mut ctx, &runtime, name_word)
+            .find_symbol(&mut ctx, name_word)
             .unwrap_or_else(|error| panic!("{name} package lookup: {error:?}"))
             .unwrap_or_else(|| panic!("{name} NCL-GC symbol missing"));
         assert_eq!(status, FindStatus::External, "{name} export status");
@@ -171,7 +171,7 @@ fn package_adapter_sb_ext_symbols_share_ncl_identity_and_surface_visibility() {
         let name_token = ncl_object::push_root(&mut ctx, &mut name);
 
         let (source_symbol, _) = Package::from_word(source_package)
-            .find_symbol(&mut ctx, &runtime, name)
+            .find_symbol(&mut ctx, name)
             .unwrap_or_else(|error| panic!("{} source lookup: {error:?}", row.symbol))
             .unwrap_or_else(|| panic!("{} source symbol missing", row.symbol));
         let mut source_symbol = source_symbol;
@@ -181,7 +181,7 @@ fn package_adapter_sb_ext_symbols_share_ncl_identity_and_surface_visibility() {
         assert_eq!(home_before, source_package, "{} source home", row.symbol);
 
         let (sb_symbol, sb_status) = Package::from_word(sb_package)
-            .find_symbol(&mut ctx, &runtime, name)
+            .find_symbol(&mut ctx, name)
             .unwrap_or_else(|error| panic!("{} SB lookup: {error:?}", row.symbol))
             .unwrap_or_else(|| panic!("{} SB symbol missing", row.symbol));
         assert_eq!(sb_symbol, source_symbol, "{} symbol identity", row.symbol);
@@ -241,7 +241,7 @@ fn register_sb_symbol_honors_external_flag_and_rejects_invalid_inputs() {
         .unwrap_or_else(|| panic!("SB-DEBUG package missing"));
     let target_token = push_root(&mut ctx, &mut target);
     assert_eq!(
-        Package::from_word(target).find_symbol(&mut ctx, &runtime, name),
+        Package::from_word(target).find_symbol(&mut ctx, name),
         Ok(Some((source_symbol, FindStatus::Internal)))
     );
     for external in [false, false, true, true] {
@@ -258,7 +258,7 @@ fn register_sb_symbol_honors_external_flag_and_rejects_invalid_inputs() {
         );
     }
     assert_eq!(
-        Package::from_word(target).find_symbol(&mut ctx, &runtime, name),
+        Package::from_word(target).find_symbol(&mut ctx, name),
         Ok(Some((source_symbol, FindStatus::External)))
     );
     assert_eq!(symbol_package(&ctx, source_symbol), Ok(source));

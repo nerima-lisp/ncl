@@ -96,9 +96,7 @@ fn package_iteration_symbols_for(
             PackageIterationMode::External => {
                 for symbol in local.iter().copied() {
                     let name = symbol_name(ctx, symbol)?;
-                    if let Some((_, FindStatus::External)) =
-                        package.find_symbol(ctx, runtime, name)?
-                    {
+                    if let Some((_, FindStatus::External)) = package.find_symbol(ctx, name)? {
                         symbols.push(symbol);
                     }
                 }
@@ -112,13 +110,11 @@ fn package_iteration_symbols_for(
                     used.for_each_symbol(ctx, |symbol| candidates.push(symbol))?;
                     for candidate in candidates {
                         let name = symbol_name(ctx, candidate)?;
-                        let Some((_, FindStatus::External)) =
-                            used.find_symbol(ctx, runtime, name)?
-                        else {
+                        let Some((_, FindStatus::External)) = used.find_symbol(ctx, name)? else {
                             continue;
                         };
                         let Some((visible, FindStatus::Inherited)) =
-                            package.find_symbol(ctx, runtime, name)?
+                            package.find_symbol(ctx, name)?
                         else {
                             continue;
                         };

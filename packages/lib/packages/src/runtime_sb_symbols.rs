@@ -31,7 +31,7 @@ pub fn register_sb_symbol(
         let mut name_word = make_string(ctx, runtime, &name.as_str().chars().collect::<Vec<_>>())?;
         with_root(ctx, &mut name_word, |ctx, name_word| {
             let Some((mut symbol, _)) =
-                Package::from_word(*source_package).find_symbol(ctx, runtime, *name_word)?
+                Package::from_word(*source_package).find_symbol(ctx, *name_word)?
             else {
                 // check-added-lines: allow(unsupported) The API rejects absent symbols without interning.
                 return Err(ObjectError::Unsupported);

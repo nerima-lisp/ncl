@@ -32,7 +32,7 @@ pub(super) fn intern(
     let name = string_designator(ctx, args.required(0)?)?;
     let package = package_arg(ctx, runtime, args, 1)?;
     let name_word = name.as_word();
-    let was_accessible = package.find_symbol(ctx, runtime, name_word)?.is_some();
+    let was_accessible = package.find_symbol(ctx, name_word)?.is_some();
     let keyword_package = runtime
         .find_package(ctx, "KEYWORD")
         .ok_or(ObjectError::Layout)?;

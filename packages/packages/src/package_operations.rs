@@ -68,7 +68,7 @@ impl PackageOperations for Package {
                         return Ok(true);
                     }
                     let Some((symbol, ncl_object::FindStatus::Inherited)) =
-                        Self::from_word(*package).find_symbol(ctx, runtime, *name)?
+                        Self::from_word(*package).find_symbol(ctx, *name)?
                     else {
                         return Ok(false);
                     };
@@ -132,7 +132,7 @@ impl PackageOperations for Package {
                         ncl_object::layout::symbol_offset::PACKAGE,
                     )?;
                     if let Some((existing, status)) =
-                        Self::from_word(*package).find_symbol(ctx, runtime, *name)?
+                        Self::from_word(*package).find_symbol(ctx, *name)?
                     {
                         if existing == *symbol {
                             if status != ncl_object::FindStatus::Inherited {

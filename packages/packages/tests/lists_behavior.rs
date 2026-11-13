@@ -94,7 +94,7 @@ fn shadow_and_shadowing_import_are_internal_idempotent_and_uninternable() {
         .shadow(&mut ctx, &runtime, shadow_name)
         .expect("shadow");
     let (shadow, status) = package
-        .find_symbol(&mut ctx, &runtime, shadow_name)
+        .find_symbol(&mut ctx, shadow_name)
         .expect("find shadow")
         .expect("shadow symbol");
     assert_eq!(status, FindStatus::Internal);
@@ -107,10 +107,7 @@ fn shadow_and_shadowing_import_are_internal_idempotent_and_uninternable() {
         .expect("duplicate shadow");
     assert_shadowing_list(&ctx, package, &[shadow]);
     assert_eq!(package.unintern(&mut ctx, &runtime, shadow_name), Ok(true));
-    assert_eq!(
-        package.find_symbol(&mut ctx, &runtime, shadow_name),
-        Ok(None)
-    );
+    assert_eq!(package.find_symbol(&mut ctx, shadow_name), Ok(None));
     assert_shadowing_list(&ctx, package, &[]);
 
     let source = Package::new(&mut ctx, &runtime, "IMPORT-SOURCE")
@@ -131,15 +128,15 @@ fn shadow_and_shadowing_import_are_internal_idempotent_and_uninternable() {
         .shadowing_import(&mut ctx, &runtime, symbol)
         .expect("duplicate import");
     assert_eq!(
-        package.find_symbol(&mut ctx, &runtime, name),
+        package.find_symbol(&mut ctx, name),
         Ok(Some((symbol, FindStatus::Internal)))
     );
     assert_shadowing_list(&ctx, package, &[symbol]);
     assert_eq!(package.unintern(&mut ctx, &runtime, name), Ok(true));
-    assert_eq!(package.find_symbol(&mut ctx, &runtime, name), Ok(None));
+    assert_eq!(package.find_symbol(&mut ctx, name), Ok(None));
     assert_shadowing_list(&ctx, package, &[]);
     assert_eq!(
-        source.find_symbol(&mut ctx, &runtime, name),
+        source.find_symbol(&mut ctx, name),
         Ok(Some((symbol, FindStatus::Internal)))
     );
 }

@@ -401,7 +401,7 @@ fn gentemp(
                 let package_word = package.first().copied().ok_or(ObjectError::Layout)?;
                 let name_word = roots.first().copied().ok_or(ObjectError::Layout)?;
                 Ok(Package::from_word(package_word)
-                    .find_symbol(ctx, runtime, name_word)?
+                    .find_symbol(ctx, name_word)?
                     .is_some())
             })? {
                 continue;

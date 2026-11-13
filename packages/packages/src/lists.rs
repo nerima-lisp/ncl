@@ -149,13 +149,12 @@ impl PackageListOperations for Package {
             Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             ncl_object::with_root(ctx, &mut name, |ctx, name| {
-                let (mut symbol, new_symbol) = if let Some((symbol, _)) =
-                    Self::from_word(*package).find_symbol(ctx, runtime, *name)?
-                {
-                    (symbol, false)
-                } else {
-                    (make_symbol(ctx, runtime, *name)?, true)
-                };
+                let (mut symbol, new_symbol) =
+                    if let Some((symbol, _)) = Self::from_word(*package).find_symbol(ctx, *name)? {
+                        (symbol, false)
+                    } else {
+                        (make_symbol(ctx, runtime, *name)?, true)
+                    };
                 ncl_object::with_root(ctx, &mut symbol, |ctx, symbol| {
                     if new_symbol {
                         put(

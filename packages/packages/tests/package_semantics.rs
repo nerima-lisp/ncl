@@ -187,7 +187,7 @@ fn common_lisp_user_inherits_common_lisp_symbols_under_gc_stress() {
         assert_eq!(user_status, FindStatus::Inherited);
         let lookup_name = string(&mut ctx, &runtime, name);
         assert_eq!(
-            Package::from_word(user_word).find_symbol(&mut ctx, &runtime, lookup_name),
+            Package::from_word(user_word).find_symbol(&mut ctx, lookup_name),
             Ok(Some((common_symbol, FindStatus::Inherited)))
         );
         assert!(ncl_object::pop_root(&mut ctx, common_symbol_token));
@@ -216,7 +216,7 @@ fn import_preserves_home_and_rejects_accessible_conflicts() {
         .import(&mut ctx, &runtime, name, symbol)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_eq!(
-        Package::from_word(target).find_symbol(&mut ctx, &runtime, name),
+        Package::from_word(target).find_symbol(&mut ctx, name),
         Ok(Some((symbol, FindStatus::Internal)))
     );
     let other = ncl_object::make_symbol(&mut ctx, &runtime, name)
@@ -231,7 +231,7 @@ fn import_preserves_home_and_rejects_accessible_conflicts() {
         .shadowing_import(&mut ctx, &runtime, other)
         .unwrap_or_else(|error| panic!("shadowing import: {error:?}"));
     assert_eq!(
-        Package::from_word(target).find_symbol(&mut ctx, &runtime, name),
+        Package::from_word(target).find_symbol(&mut ctx, name),
         Ok(Some((other, FindStatus::Internal)))
     );
     assert_eq!(symbol_package(&ctx, symbol), Ok(home));
@@ -287,7 +287,7 @@ fn unintern_clears_home_and_shadowing_but_not_inherited() {
             .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert_eq!(
-        Package::from_word(base).find_symbol(&mut ctx, &runtime, name),
+        Package::from_word(base).find_symbol(&mut ctx, name),
         Ok(None)
     );
     assert_eq!(symbol_package(&ctx, symbol), Ok(Word::NIL));
@@ -334,7 +334,7 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
             .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert_eq!(
-        Package::from_word(user).find_symbol(&mut ctx, &runtime, name),
+        Package::from_word(user).find_symbol(&mut ctx, name),
         Ok(Some((symbol, FindStatus::Inherited)))
     );
     assert!(
@@ -343,7 +343,7 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
             .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert_eq!(
-        Package::from_word(user).find_symbol(&mut ctx, &runtime, name),
+        Package::from_word(user).find_symbol(&mut ctx, name),
         Ok(Some((symbol, FindStatus::External)))
     );
     assert!(
@@ -363,7 +363,7 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
         .shadow(&mut ctx, &runtime, name)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_eq!(
-        Package::from_word(base).find_symbol(&mut ctx, &runtime, name),
+        Package::from_word(base).find_symbol(&mut ctx, name),
         Ok(Some((symbol, FindStatus::External)))
     );
     assert!(
@@ -478,7 +478,7 @@ fn package_nickname_intern_and_import_update_metadata() {
         .unwrap_or_else(|error| panic!("import: {error:?}"));
     assert_eq!(symbol_package(&ctx, uninterned), Ok(package.as_word()));
     assert_eq!(
-        package.find_symbol(&mut ctx, &runtime, name),
+        package.find_symbol(&mut ctx, name),
         Ok(Some((uninterned, FindStatus::Internal)))
     );
 }

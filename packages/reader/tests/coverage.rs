@@ -41,7 +41,7 @@ fn registers_every_owned_symbol() {
         let name_token = push_root(&mut ctx, &mut name);
         assert!(
             Package::from_word(package)
-                .find_symbol(&mut ctx, &runtime, name)
+                .find_symbol(&mut ctx, name)
                 .unwrap()
                 .is_some(),
             "{}::{} was not interned",

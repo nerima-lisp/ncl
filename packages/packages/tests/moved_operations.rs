@@ -64,7 +64,7 @@ fn package_lists_remove_non_head_entries_and_reject_conflicts() {
             .unintern(&mut context, &runtime, name)
             .unwrap_or(false)
     );
-    assert_eq!(second.find_symbol(&mut context, &runtime, name), Ok(None));
+    assert_eq!(second.find_symbol(&mut context, name), Ok(None));
 }
 
 #[test]
@@ -134,12 +134,12 @@ fn assert_symbol_visibility(
         .unwrap_or_else(|error| panic!("intern: {error:?}"));
     assert_eq!(status, FindStatus::Internal);
     assert_eq!(
-        producer.find_symbol(context, runtime, name),
+        producer.find_symbol(context, name),
         Ok(Some((symbol, FindStatus::Internal)))
     );
     assert!(producer.export(context, runtime, name).unwrap_or(false));
     assert_eq!(
-        producer.find_symbol(context, runtime, name),
+        producer.find_symbol(context, name),
         Ok(Some((symbol, FindStatus::External)))
     );
     assert!(producer.export(context, runtime, name).unwrap_or(false));
@@ -170,7 +170,7 @@ fn assert_symbol_visibility(
             .unwrap_or(false)
     );
     assert_eq!(
-        consumer.find_symbol(context, runtime, inherited_name),
+        consumer.find_symbol(context, inherited_name),
         Ok(Some((inherited, FindStatus::Inherited)))
     );
     assert!(
@@ -179,7 +179,7 @@ fn assert_symbol_visibility(
             .is_ok()
     );
     assert_eq!(
-        consumer.find_symbol(context, runtime, inherited_name),
+        consumer.find_symbol(context, inherited_name),
         Ok(Some((inherited, FindStatus::Internal)))
     );
     assert!(
@@ -255,7 +255,7 @@ fn package_visibility_and_list_removal_cover_internal_external_and_inherited() {
             .unwrap_or(false)
     );
     assert_eq!(
-        consumer.find_symbol(&mut context, &runtime, name_a),
+        consumer.find_symbol(&mut context, name_a),
         Ok(Some((symbol_a, FindStatus::Inherited)))
     );
     assert!(
@@ -273,7 +273,7 @@ fn package_visibility_and_list_removal_cover_internal_external_and_inherited() {
             .unwrap_or(false)
     );
     assert_eq!(
-        consumer.find_symbol(&mut context, &runtime, name_a),
+        consumer.find_symbol(&mut context, name_a),
         Ok(Some((symbol_a, FindStatus::Internal)))
     );
     assert!(consumer.shadow(&mut context, &runtime, name_b).is_ok());
@@ -288,10 +288,7 @@ fn package_visibility_and_list_removal_cover_internal_external_and_inherited() {
             .unintern(&mut context, &runtime, name_a)
             .unwrap_or(false)
     );
-    assert_eq!(
-        consumer.find_symbol(&mut context, &runtime, name_b),
-        Ok(None)
-    );
+    assert_eq!(consumer.find_symbol(&mut context, name_b), Ok(None));
 }
 
 #[test]
@@ -354,7 +351,7 @@ fn registry_package_operations_survive_gc_stress() {
         .import(&mut ctx, &runtime, import_name, imported)
         .unwrap_or_else(|error| panic!("import: {error:?}"));
     assert_eq!(
-        Package::from_word(used).find_symbol(&mut ctx, &runtime, import_name),
+        Package::from_word(used).find_symbol(&mut ctx, import_name),
         Ok(Some((imported, FindStatus::Internal)))
     );
     let (symbol, _) = Package::from_word(used)
@@ -381,7 +378,7 @@ fn registry_package_operations_survive_gc_stress() {
     )
     .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     assert_eq!(
-        Package::from_word(package).find_symbol(&mut ctx, &runtime, lookup),
+        Package::from_word(package).find_symbol(&mut ctx, lookup),
         Ok(Some((symbol, FindStatus::Inherited)))
     );
     assert_eq!(runtime.ensure_package(&mut ctx, "STRESS-A"), Ok(package));

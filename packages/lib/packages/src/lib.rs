@@ -1,6 +1,7 @@
 //! Typed package-lock builtins.
 
 mod introspection;
+mod runtime_gc_symbols;
 mod runtime_sb_symbols;
 mod symbols;
 
@@ -11,7 +12,8 @@ use ncl_object::{
 };
 use ncl_packages::PackageOperations;
 
-pub use runtime_sb_symbols::{register_gc_sb_ext_symbols, register_sb_symbol};
+pub use runtime_gc_symbols::register_gc_sb_ext_symbols;
+pub use runtime_sb_symbols::register_sb_symbol;
 
 const PACKAGE: Parameter = Parameter {
     name: BuiltinName::new("PACKAGE"),

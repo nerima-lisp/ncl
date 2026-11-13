@@ -341,6 +341,7 @@ fn slow_path_guard_drop_removes_gate_waiters_from_the_next_quorum() {
         stop_world.parked.insert(waiter_pointer);
         heap.slow_path_gate_waiters
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        drop(stop_world);
     }
 
     drop(guard);

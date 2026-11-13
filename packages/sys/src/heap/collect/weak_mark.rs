@@ -160,3 +160,7 @@ fn is_immediate(value: Word) -> bool {
         || value.is_character()
         || value.is_unbound()
 }
+
+#[cfg(test)]
+#[path = "weak_test.rs"]
+mod tests;

@@ -497,6 +497,3 @@ impl super::Heap {
     }
 }
 
-#[cfg(test)]
-#[path = "collect/weak_test.rs"]
-mod weak_test;

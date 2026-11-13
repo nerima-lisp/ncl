@@ -1,5 +1,5 @@
-use super::super::{Heap, HeapConfig, ReferenceLayout, TypeTag, Weakness};
-use super::HashSet;
+use super::super::super::{Heap, HeapConfig, ReferenceLayout, TypeTag, Weakness};
+use super::super::HashSet;
 use crate::{Thread, Word};
 
 #[test]

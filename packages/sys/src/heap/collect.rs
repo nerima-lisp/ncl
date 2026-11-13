@@ -150,6 +150,7 @@ impl super::Heap {
             }
             moved.insert(old_address, new_address);
             metadata.object_starts.push((offset, new_index));
+            metadata.incoming_forwarders.push(index);
             state.objects.push(copy);
             live.insert(new_index);
         }

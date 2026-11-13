@@ -242,6 +242,9 @@ fn reset_reclaimable_pages(
                     .get(*index)
                     .is_some_and(|object| object.forwarded_to.is_some())
             });
+            if metadata.object_starts.is_empty() {
+                metadata.incoming_forwarders.clear();
+            }
         }
     }
     Ok(())

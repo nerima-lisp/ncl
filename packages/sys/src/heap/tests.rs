@@ -1,5 +1,7 @@
 use super::*;
 
+#[path = "tests/forwarding.rs"]
+mod forwarding;
 #[path = "tests/metadata.rs"]
 mod metadata;
 #[path = "tests/pages.rs"]

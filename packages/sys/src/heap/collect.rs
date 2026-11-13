@@ -1,4 +1,6 @@
 use super::{FORWARDED_FLAG, HashMap, HashSet, Object, PageKind, Weakness, Word, scan};
+#[path = "collect/weak_cleanup.rs"]
+mod weak_cleanup;
 #[path = "collect/weak_mark.rs"]
 mod weak_mark;
 use weak_mark::WeakMarkContext;
@@ -229,7 +231,7 @@ impl super::Heap {
             }
         }
         Self::clear_dead_hash_table_entries(state, moved, live, full);
-        Self::clear_dead_weak_and_collect(state, live, full);
+        Self::clear_dead_weak_and_collect(state, moved, live, full);
         state.dirty_cards = state
             .dirty_cards
             .iter()
@@ -463,20 +465,14 @@ impl super::Heap {
         *count_slot = Word::fixnum(new_count).bits();
     }
 
-    fn clear_dead_weak_and_collect(state: &mut super::State, live: &HashSet<usize>, full: bool) {
+    fn clear_dead_weak_and_collect(
+        state: &mut super::State,
+        moved: &HashMap<usize, usize>,
+        live: &HashSet<usize>,
+        full: bool,
+    ) {
         for index in 0..state.objects.len() {
-            if !state.objects[index].alive || state.objects[index].weak.is_none() {
-                continue;
-            }
-            let value = state.objects[index]
-                .words
-                .get(1)
-                .copied()
-                .map_or(Word::NIL, Word::from_bits);
-            let retained = weak_mark::referent_is_live(state, live, full, value);
-            if !retained {
-                state.objects[index].words[1] = Word::NIL.bits();
-            }
+            weak_cleanup::update_weak_slot(state, moved, live, index, full);
         }
         for index in 0..state.objects.len() {
             if !state.objects[index].alive || live.contains(&index) {

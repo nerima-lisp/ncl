@@ -34,14 +34,23 @@ impl PackageOperations for Package {
                     }
                     names = ncl_object::cdr(ctx, names).map_err(|_| ObjectError::Layout)?;
                 }
-                let names = make_cons(
+                let registered = runtime.package_is_registered(ctx, *package)?;
+                if registered {
+                    runtime.check_package_name(ctx, *package, *nickname)?;
+                }
+                let mut names = make_cons(
                     ctx,
                     runtime,
                     *nickname,
                     get(ctx, *package, widetag::PACKAGE, NICKNAMES)?,
                 )?;
-                put(ctx, *package, NICKNAMES, names)?;
-                Ok(true)
+                ncl_object::with_root(ctx, &mut names, |ctx, names| {
+                    if registered {
+                        runtime.register_package_name(ctx, *package, *nickname)?;
+                    }
+                    put(ctx, *package, NICKNAMES, *names)?;
+                    Ok(true)
+                })
             })
         })
     }

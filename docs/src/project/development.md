@@ -88,6 +88,13 @@ cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 Use `nix develop path:.` when the Rust tools are not installed locally or when
 you want the same toolchain and supporting programs used by the project gates.
 
+### macOS validation
+
+GitHub Actions runs the Rust matrix on x86-64 Linux and AArch64 Linux. At the
+operator's direction, macOS checks run locally to reduce runner queueing. Each
+lane runs Gate 5 for formatting, Gate 6 for Clippy, and Gate 7 for workspace
+tests on a native AArch64 macOS host. The matching commands are listed above.
+
 ## Rust coverage
 
 Run the Rust workspace tests with LLVM coverage and inspect the workspace report:

@@ -18,7 +18,7 @@ env:
 
 jobs:
   check:
-    name: ${{ matrix.name == 'x86-64 macOS' && 'Prepare test archive (x86-64 macOS)' || matrix.name == 'arm64 macOS' && 'Prepare test archive (arm64 macOS)' || format('Check and test ({0})', matrix.name) }}
+    name: Check and test (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -28,10 +28,6 @@ jobs:
             runner: ubuntu-24.04
           - name: aarch64 Linux
             runner: ubuntu-24.04-arm
-          - name: arm64 macOS
-            runner: macos-15
-          - name: x86-64 macOS
-            runner: macos-15-intel
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -91,111 +87,8 @@ jobs:
           cache-workspace-crates: true
       - run: cargo fmt --all -- --check
       - run: cargo check --locked --workspace --all-targets --all-features
-      - name: Run nextest tests
-        if: matrix.name != 'x86-64 macOS' && matrix.name != 'arm64 macOS'
-        run: cargo nextest run --locked --workspace --all-features --all-targets --no-tests=fail
-      - name: Build nextest archive
-        if: matrix.name == 'x86-64 macOS' || matrix.name == 'arm64 macOS'
-        run: cargo nextest archive --locked --workspace --all-features --all-targets --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst"
-      - name: Upload nextest archive
-        if: matrix.name == 'x86-64 macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: nextest-archive-x86-64-macos
-          path: ${{ runner.temp }}/nextest-archive.tar.zst
-          if-no-files-found: error
-      - name: Upload arm64 nextest archive
-        if: matrix.name == 'arm64 macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: nextest-archive-arm64-macos
-          path: ${{ runner.temp }}/nextest-archive.tar.zst
-          if-no-files-found: error
+      - run: cargo nextest run --locked --workspace --all-features --all-targets --no-tests=fail
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-
-  x86-64-macos-test-shard:
-    name: x86-64 macOS test shard ${{ matrix.shard }}/2
-    runs-on: macos-15-intel
-    needs: check
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.98.0
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: nextest@0.9.151
-      - uses: actions/download-artifact@v4
-        with:
-          name: nextest-archive-x86-64-macos
-          path: ${{ runner.temp }}/nextest
-      - name: Run nextest shard
-        run: cargo nextest run --archive-file "$RUNNER_TEMP/nextest/nextest-archive.tar.zst" --extract-to "$GITHUB_WORKSPACE" --workspace-remap "$GITHUB_WORKSPACE" --partition "hash:${{ matrix.shard }}/2" --no-tests=fail
-
-  x86-64-macos-test-result:
-    name: Check and test (x86-64 macOS)
-    runs-on: ubuntu-latest
-    if: ${{ always() }}
-    needs: [check, x86-64-macos-test-shard]
-    steps:
-      - name: Require checks and both test shards to pass
-        env:
-          CHECK_RESULT: ${{ needs.check.result }}
-          SHARD_RESULT: ${{ needs.x86-64-macos-test-shard.result }}
-        run: |
-          set -euo pipefail
-          if [ "$CHECK_RESULT" != success ] || [ "$SHARD_RESULT" != success ]; then
-            echo "Check job result: $CHECK_RESULT"
-            echo "Test shard result: $SHARD_RESULT"
-            exit 1
-          fi
-
-  arm64-macos-test-shard:
-    name: arm64 macOS test shard ${{ matrix.shard }}/2
-    runs-on: macos-15
-    needs: check
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.98.0
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: nextest@0.9.151
-      - uses: actions/download-artifact@v4
-        with:
-          name: nextest-archive-arm64-macos
-          path: ${{ runner.temp }}/nextest
-      - name: Run nextest shard
-        run: cargo nextest run --archive-file "$RUNNER_TEMP/nextest/nextest-archive.tar.zst" --extract-to "$GITHUB_WORKSPACE" --workspace-remap "$GITHUB_WORKSPACE" --partition "hash:${{ matrix.shard }}/2" --no-tests=fail
-
-  arm64-macos-test-result:
-    name: Check and test (arm64 macOS)
-    runs-on: ubuntu-latest
-    if: ${{ always() }}
-    needs: [check, arm64-macos-test-shard]
-    steps:
-      - name: Require checks and both test shards to pass
-        env:
-          CHECK_RESULT: ${{ needs.check.result }}
-          SHARD_RESULT: ${{ needs.arm64-macos-test-shard.result }}
-        run: |
-          set -euo pipefail
-          if [ "$CHECK_RESULT" != success ] || [ "$SHARD_RESULT" != success ]; then
-            echo "Check job result: $CHECK_RESULT"
-            echo "Test shard result: $SHARD_RESULT"
-            exit 1
-          fi
 
   release-check:
     name: Release check (${{ matrix.name }})
@@ -206,8 +99,6 @@ jobs:
         include:
           - name: x86-64 Linux
             runner: ubuntu-24.04
-          - name: arm64 macOS
-            runner: macos-15
     timeout-minutes: 30
     env:
       CARGO_BUILD_JOBS: "6"
@@ -218,17 +109,6 @@ jobs:
           toolchain: 1.98.0
       - uses: taiki-e/install-action@nextest
       - uses: Swatinem/rust-cache@v2
-      - name: Build release binary for arm64 GC smoke
-        if: matrix.name == 'arm64 macOS'
-        run: cargo build --locked --package ncl --bin ncl --release
-      - name: Smoke test cl-bench GC load on arm64 macOS
-        if: matrix.name == 'arm64 macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          output=$(target/release/ncl --load tests/fixtures/clbench_gc_load.lisp)
-          test "$output" = 42
-          printf 'cl-bench GC load output: %s\n' "$output"
       - name: Run optimized release tests
         run: cargo nextest run --locked --workspace --all-features --all-targets --cargo-profile release-test --no-tests=fail
 

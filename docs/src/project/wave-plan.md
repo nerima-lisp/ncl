@@ -191,8 +191,12 @@ ncl-stdlib -> existing dependencies plus ncl-threads, ncl-ffi, ncl-image, ncl-co
   available.
 - For local lane work, run `cargo test -p <crate>` for each changed crate. If a
   test under `tests/` changes, run `cargo test -p ncl --test <name>`.
-- CI runs formatting, checks, debug and release tests, and release builds on
-  x86-64 Linux and AArch64 macOS. The coverage job runs on Ubuntu:
+- CI runs formatting, checks, and debug tests on x86-64 Linux and AArch64 Linux.
+  The x86-64 Linux jobs also run release tests and the release smoke build.
+  Coverage runs on Ubuntu.
+- At the operator's direction, each lane runs Gate 5 for formatting, Gate 6
+  for Clippy, and Gate 7 for workspace tests locally on native AArch64 macOS.
+- Run the full local verification set:
 
 ```sh
 cargo fmt --all -- --check

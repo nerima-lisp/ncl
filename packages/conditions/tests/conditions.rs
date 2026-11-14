@@ -93,9 +93,8 @@ fn invoke_continue_restart_from_condition(
 ) -> Result<Word, ncl_object::ObjectError> {
     let condition = ncl_object::Instance::from_word(arguments.first().copied().unwrap());
     let name = slot_ref(ctx, condition, 0)?;
-    let expected_control = slot_ref(ctx, condition, 1)?;
     let function = invoke_restart_by_name(ctx, name, &[]).unwrap_or(Word::NIL);
-    ctx.set_values(&[expected_control, function]);
+    ctx.set_values(&[function]);
     Ok(Word::NIL)
 }
 
@@ -383,7 +382,7 @@ fn unwind_marks_the_exit() {
 }
 
 #[test]
-fn cerror_continue_restart_returns_the_supplied_control() {
+fn cerror_continue_restart_resumes_after_the_handler() {
     let (runtime, mut ctx) = setup();
     let mut continue_name =
         make_string(&mut ctx, &runtime, &"CONTINUE".chars().collect::<Vec<_>>()).unwrap();
@@ -411,8 +410,8 @@ fn cerror_continue_restart_returns_the_supplied_control() {
         cerror(&mut ctx, &runtime, Word::fixnum(42), Word::NIL, condition),
         Ok(())
     );
-    assert_eq!(ctx.values(), &[Word::fixnum(42), Word::fixnum(42)]);
-    assert!(ctx.take_non_local_exit());
+    assert_eq!(ctx.values().len(), 1);
+    assert!(!ctx.take_non_local_exit());
     pop_handler(&mut ctx, &runtime, chain);
     pop_root(&mut ctx, condition_token);
     pop_root(&mut ctx, class_token);

@@ -102,7 +102,7 @@ struct RoundCase {
     label: &'static str,
 }
 
-fn assert_round_case(runtime: &Runtime, ctx: &mut ThreadContext, case: RoundCase) {
+fn assert_round_case(runtime: &Runtime, ctx: &mut ThreadContext, case: &RoundCase) {
     let quotient = call(runtime, ctx, "ROUND", &[case.numerator, case.divisor]).unwrap();
     let mut remainder = ctx.values()[1];
     let remainder_root = ncl_object::push_root(ctx, &mut remainder);
@@ -396,7 +396,7 @@ fn multi_limb_round_ties_to_even_for_opposite_signs() {
             label: "ROUND(-3.5b,-b)",
         },
     ] {
-        assert_round_case(&runtime, &mut ctx, case);
+        assert_round_case(&runtime, &mut ctx, &case);
     }
 
     assert!(ncl_object::pop_root(&mut ctx, negative_half_root));
@@ -460,7 +460,7 @@ fn ratio_round_ties_to_even_with_integer_divisor() {
             label: "ROUND(-5/2,1)",
         },
     ] {
-        assert_round_case(&runtime, &mut ctx, case);
+        assert_round_case(&runtime, &mut ctx, &case);
     }
 
     assert!(ncl_object::pop_root(&mut ctx, negative_half_root));

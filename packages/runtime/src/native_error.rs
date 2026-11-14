@@ -191,7 +191,10 @@ mod tests {
     use ncl_object::{LispError, ObjectError, ObjectType};
     use ncl_sys::{NativeError, NativeOperation, OverflowSemantics, Word};
 
-    use super::{NativeCondition, native_failure, pending_object_error, signal_native_load_error};
+    use super::{
+        NativeCondition, native_failure, pending_object_error, signal_native_load_error,
+        signal_pending_native_error,
+    };
     use crate::{Runtime, RuntimeError};
 
     #[test]
@@ -338,6 +341,43 @@ mod tests {
             RuntimeError::Object(ObjectError::TypeError)
         ));
         assert_eq!(runtime.context.take_pending_condition(), Some(condition));
+        Ok(())
+    }
+
+    #[test]
+    fn pending_native_type_error_records_an_unhandled_exit() -> Result<(), Box<dyn std::error::Error>> {
+        let mut runtime = Runtime::new()?;
+        let error = NativeError::TypeMismatch {
+            operation: NativeOperation::Car,
+            operand: 0,
+            value: Word::fixnum(7),
+        };
+
+        assert!(matches!(
+            signal_pending_native_error(&mut runtime.context, &runtime.object, error),
+            Some(Ok(()))
+        ));
+        assert!(runtime.context.take_non_local_exit());
+        assert_eq!(
+            runtime.context.take_pending(),
+            Some(ObjectError::Unsupported)
+        );
+        assert_eq!(runtime.context.take_pending_condition(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn pending_native_object_error_does_not_signal_a_lisp_condition() -> Result<(), Box<dyn std::error::Error>> {
+        let mut runtime = Runtime::new()?;
+        let error = NativeError::Allocation {
+            operation: NativeOperation::Cons,
+            condition: ncl_sys::StorageCondition::CapacityExceeded,
+        };
+
+        assert!(signal_pending_native_error(&mut runtime.context, &runtime.object, error).is_none());
+        assert_eq!(runtime.context.take_pending(), None);
+        assert_eq!(runtime.context.take_pending_condition(), None);
+        assert!(!runtime.context.take_non_local_exit());
         Ok(())
     }
 

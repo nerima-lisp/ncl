@@ -201,3 +201,108 @@ fn resolve_function(
 )]
 #[path = "tests_function_call.rs"]
 mod tests;
+
+#[cfg(test)]
+mod pending_native_error_tests {
+    use ncl_object::{
+        Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+        BuiltinName, BuiltinPackage, Function, FunctionObject, LambdaList, MultipleValues,
+        ObjectError, Parameter, ParameterType, ThreadContext, Word, function_code,
+    };
+
+    use crate::support::NativeInvocation;
+    use crate::Runtime;
+
+    const PENDING_OBJECT_ERROR_ID: BuiltinIdentifier = BuiltinIdentifier::new(
+        BuiltinPackage::NclTest,
+        BuiltinName::new("RUNTIME-PENDING-OBJECT-ERROR"),
+    );
+    const PENDING_ERROR_PARAMETERS: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("VALUE"),
+        ty: ParameterType::Any,
+    }];
+
+    fn pending_object_error(
+        context: &mut ThreadContext,
+        _runtime: &ncl_object::Runtime,
+        _args: &BuiltinArgs<'_>,
+        _values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        context.set_pending(ObjectError::Layout);
+        Ok(Word::NIL)
+    }
+
+    fn register_pending_builtin(
+        runtime: &mut Runtime,
+        identifier: BuiltinIdentifier,
+        implementation: ncl_object::RustBuiltin,
+    ) -> Result<FunctionObject, ObjectError> {
+        let descriptor = Builtin {
+            lambda_list: LambdaList::new(PENDING_ERROR_PARAMETERS, &[], None, &[], false),
+            convention: BuiltinConvention::Direct(Arity::exact(1)),
+        };
+        runtime.object.register_builtin(
+            &mut runtime.context,
+            identifier,
+            BuiltinImplementation::direct(descriptor, implementation),
+        )
+    }
+
+    fn call_builtin_through_native_trampoline(
+        runtime: &mut Runtime,
+        function: FunctionObject,
+        code: ncl_object::CodeObject,
+        args: &mut [Word],
+        values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        let object = &runtime.object;
+        let entry_codes = &runtime.entry_codes;
+        let context = &mut runtime.context;
+        let thread = context.thread_access().as_non_null();
+        let mut invocation = NativeInvocation {
+            object,
+            context,
+            code,
+            entry_codes,
+        };
+        let previous = ncl_sys::replace_native_context(
+            thread,
+            Some(std::ptr::NonNull::from(&mut invocation).cast()),
+        );
+        let result = super::call_native(
+            invocation.context,
+            invocation.object,
+            function,
+            args,
+            values,
+        );
+        let _ = ncl_sys::replace_native_context(thread, previous);
+        result
+    }
+
+    #[test]
+    fn native_call_returns_object_error_without_signaling_type_error(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut runtime = Runtime::new()?;
+        let function = register_pending_builtin(
+            &mut runtime,
+            PENDING_OBJECT_ERROR_ID,
+            pending_object_error,
+        )?;
+        let code = function_code(&runtime.context, Function::from_word(function.as_word()))?;
+        let mut values = MultipleValues::new();
+        let result = call_builtin_through_native_trampoline(
+            &mut runtime,
+            function,
+            code,
+            &mut [Word::fixnum(1)],
+            &mut values,
+        );
+
+        assert_eq!(result, Err(ObjectError::Layout));
+        assert!(values.is_empty());
+        assert_eq!(runtime.context.take_pending_condition(), None);
+        assert!(!runtime.context.take_non_local_exit());
+        Ok(())
+    }
+}

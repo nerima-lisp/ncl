@@ -262,7 +262,15 @@ fn record_format_error(
     }));
     match &error.kind {
         FormatErrorKind::Print(PrintError::Object(error)) => *error,
-        _ => ObjectError::TypeError,
+        FormatErrorKind::Parse(_)
+        | FormatErrorKind::MissingArgument
+        | FormatErrorKind::WrongArgumentType
+        | FormatErrorKind::InvalidParameter
+        | FormatErrorKind::InvalidDirectiveUse
+        | FormatErrorKind::ImproperList
+        | FormatErrorKind::Print(
+            PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity,
+        ) => ObjectError::TypeError,
     }
 }
 

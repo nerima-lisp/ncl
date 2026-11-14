@@ -8,7 +8,7 @@ use ncl_object::{
     ParameterType, Runtime, ThreadContext, Word, classify_object, make_cons, make_string,
     string_length, string_ref, symbol_name, symbol_value, with_root,
 };
-use ncl_printer::{CharSink, PrintError, StringSink};
+use ncl_printer::{PrintError, StringSink};
 
 use crate::{FormatError, FormatErrorKind, ParseErrorKind, execute, parse};
 
@@ -141,18 +141,7 @@ fn format_builtin(
                     error
                 };
                 if let Some(error) = write_error {
-                    if let PrintError::Object(error) = error {
-                        return Err(stream_write_error_to_object_error(ctx, *stream, error));
-                    }
-                    let format_error = FormatError::new(0, None, FormatErrorKind::Print(error));
-                    return Err(format_error_to_object_error(
-                        ctx,
-                        runtime,
-                        &format_error,
-                        format_control,
-                        arguments,
-                        Some(*stream),
-                    ));
+                    return Err(stream_write_error_to_object_error(ctx, *stream, error));
                 }
                 Ok(Word::NIL)
             })
@@ -199,7 +188,7 @@ fn target_stream_for_error(
     } else if matches!(classify_object(ctx, destination), ObjectRef::Stream(_)) {
         Ok(Some(destination))
     } else {
-        Ok(None)
+        Err(ObjectError::TypeError)
     }
 }
 
@@ -349,8 +338,8 @@ impl<'a> WriteCharSink<'a> {
     }
 }
 
-impl CharSink for WriteCharSink<'_> {
-    fn write_char(&mut self, character: char) -> Result<(), PrintError> {
+impl WriteCharSink<'_> {
+    fn write_char(&mut self, character: char) -> Result<(), ObjectError> {
         let character = Word::character(u32::from(character));
         ncl_object::with_root(self.ctx, &mut self.stream, |ctx, stream| {
             let args = [character, *stream];
@@ -358,7 +347,6 @@ impl CharSink for WriteCharSink<'_> {
                 .call_builtin(ctx, self.function, &args)
                 .map(|_| ())
         })
-        .map_err(PrintError::Object)
     }
 }
 

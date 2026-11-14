@@ -278,6 +278,11 @@ fn format_signals_simple_error_for_parse_and_argument_failures() {
         Err(ObjectError::TypeError)
     );
     assert_pending_simple_error(&mut ctx, &runtime, malformed.get(), "NIL");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::fixnum(1), malformed.get()],),
+        Err(ObjectError::TypeError)
+    );
+    assert!(ctx.take_pending_condition().is_none());
 
     let make_output = FunctionObject::try_from(
         runtime

@@ -1,6 +1,8 @@
 //! Runtime package-name index lifecycle tests.
 
-use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, make_string, pop_root, push_root};
+use ncl_object::{
+    ObjectError, Package, Runtime, ThreadContext, Word, make_string, pop_root, push_root,
+};
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
     make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())
@@ -52,7 +54,10 @@ fn registration_and_owner_checked_removal_keep_the_index_consistent() {
         runtime.unregister_package_name_for_package(&mut ctx, owner, nickname),
         Ok(false)
     );
-    assert_eq!(runtime.unregister_package_name(&mut ctx, nickname), Ok(false));
+    assert_eq!(
+        runtime.unregister_package_name(&mut ctx, nickname),
+        Ok(false)
+    );
 
     let mut primary = Package::from_word(owner)
         .name(&ctx)

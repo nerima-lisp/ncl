@@ -1,5 +1,21 @@
 use super::*;
 
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "object start offset must be word aligned")]
+fn page_object_index_rejects_unaligned_start_offsets() {
+    let heap = Heap::new(HeapConfig::default());
+    heap.lock_state().pages[0].add_object_start(1, 0);
+}
+
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "object start offset must be inside its page")]
+fn page_object_index_rejects_out_of_page_start_offsets() {
+    let heap = Heap::new(HeapConfig::default());
+    heap.lock_state().pages[0].add_object_start(LOGICAL_PAGE_SIZE, 0);
+}
+
 #[test]
 fn page_object_start_bitmap_uses_word_rank_and_keeps_extent_continuations_unindexed() {
     let heap = Heap::new(HeapConfig::default());

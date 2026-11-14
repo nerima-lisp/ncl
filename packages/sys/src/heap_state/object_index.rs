@@ -7,6 +7,35 @@ const BITMAP_WORDS: usize = OBJECT_WORDS_PER_PAGE.div_ceil(BITS_PER_BITMAP_WORD)
 const RANK_WORDS: usize = 8;
 const RANK_GROUPS: usize = BITMAP_WORDS.div_ceil(RANK_WORDS);
 
+#[derive(Clone, Copy)]
+struct ObjectWordIndex(usize);
+
+impl ObjectWordIndex {
+    fn from_byte_offset(byte_offset: usize) -> Option<Self> {
+        let word_size = std::mem::size_of::<u64>();
+        if !byte_offset.is_multiple_of(word_size) {
+            debug_assert!(
+                byte_offset.is_multiple_of(word_size),
+                "object start offset must be word aligned"
+            );
+            return None;
+        }
+        let word_index = byte_offset / word_size;
+        if word_index >= OBJECT_WORDS_PER_PAGE {
+            debug_assert!(
+                word_index < OBJECT_WORDS_PER_PAGE,
+                "object start offset must be inside its page"
+            );
+            return None;
+        }
+        Some(Self(word_index))
+    }
+
+    const fn byte_offset(self) -> usize {
+        self.0 * std::mem::size_of::<u64>()
+    }
+}
+
 #[derive(Debug)]
 pub(super) struct ObjectStartBitmap {
     bits: [u64; BITMAP_WORDS],
@@ -25,30 +54,38 @@ impl Default for ObjectStartBitmap {
 }
 
 impl ObjectStartBitmap {
-    fn insert(&mut self, byte_offset: usize) {
-        if !byte_offset.is_multiple_of(std::mem::size_of::<u64>()) {
-            return;
-        }
-        let word_offset = byte_offset / std::mem::size_of::<u64>();
-        if word_offset >= OBJECT_WORDS_PER_PAGE {
-            return;
-        }
-        let bitmap_word = word_offset / BITS_PER_BITMAP_WORD;
-        let bit = 1_u64 << (word_offset % BITS_PER_BITMAP_WORD);
+    fn insert(&mut self, word_offset: ObjectWordIndex) -> bool {
+        let bitmap_word = word_offset.0 / BITS_PER_BITMAP_WORD;
+        let bit = 1_u64 << (word_offset.0 % BITS_PER_BITMAP_WORD);
         let Some(bits) = self.bits.get_mut(bitmap_word) else {
-            return;
+            debug_assert!(
+                bitmap_word < self.bits.len(),
+                "object word index exceeds bitmap bounds"
+            );
+            return false;
         };
         if *bits & bit != 0 {
-            return;
+            return true;
         }
-        *bits |= bit;
-        if let Some(count) = self.word_counts.get_mut(bitmap_word) {
-            *count += 1;
-        }
+        let Some(word_count) = self.word_counts.get_mut(bitmap_word) else {
+            debug_assert!(
+                bitmap_word < self.word_counts.len(),
+                "object word index exceeds rank word bounds"
+            );
+            return false;
+        };
         let group = bitmap_word / RANK_WORDS;
-        if let Some(count) = self.group_counts.get_mut(group) {
-            *count += 1;
-        }
+        let Some(group_count) = self.group_counts.get_mut(group) else {
+            debug_assert!(
+                group < self.group_counts.len(),
+                "object word index exceeds rank group bounds"
+            );
+            return false;
+        };
+        *bits |= bit;
+        *word_count += 1;
+        *group_count += 1;
+        true
     }
 
     fn rank_of(&self, byte_offset: usize) -> Option<usize> {
@@ -91,6 +128,17 @@ impl PageMetadata {
     }
 
     pub(crate) fn add_object_start(&mut self, offset: usize, index: usize) {
+        let Some(word_offset) = ObjectWordIndex::from_byte_offset(offset) else {
+            return;
+        };
+        if !self
+            .object_start_bitmap
+            .get_or_insert_with(Box::default)
+            .insert(word_offset)
+        {
+            return;
+        }
+        let offset = word_offset.byte_offset();
         match self
             .object_starts
             .binary_search_by_key(&offset, |(start, _)| *start)
@@ -102,9 +150,6 @@ impl PageMetadata {
             }
             Err(position) => self.object_starts.insert(position, (offset, index)),
         }
-        self.object_start_bitmap
-            .get_or_insert_with(Box::default)
-            .insert(offset);
     }
 
     pub(crate) fn rebuild_object_start_bitmap(&mut self) {
@@ -114,7 +159,9 @@ impl PageMetadata {
         }
         let mut bitmap = Box::<ObjectStartBitmap>::default();
         for (offset, _) in &self.object_starts {
-            bitmap.insert(*offset);
+            if let Some(word_offset) = ObjectWordIndex::from_byte_offset(*offset) {
+                let _ = bitmap.insert(word_offset);
+            }
         }
         self.object_start_bitmap = Some(bitmap);
     }

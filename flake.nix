@@ -55,12 +55,7 @@
               };
               cargoLock.lockFile = ./Cargo.lock;
               cargoBuildFlags = [ "--workspace" ];
-              cargoTestFlags = [
-                "--workspace"
-                "--all-features"
-                "--all-targets"
-              ];
-              doCheck = true;
+              doCheck = false;
               meta.description = "A Rust-native Common Lisp runtime";
               meta.mainProgram = "ncl";
             };
@@ -132,7 +127,17 @@
       checks = forAllSystems (
         { pkgs, rust }:
         {
-          default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+          default =
+            let
+              ncl = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+            in
+            pkgs.runCommand "ncl-release-smoke" { } ''
+              eval_literal="$(${ncl}/bin/ncl --eval '42')"
+              test "$eval_literal" = 42
+              eval_add="$(${ncl}/bin/ncl --eval '(+ 1 2)')"
+              test "$eval_add" = 3
+              mkdir -p "$out"
+            '';
           cargo-test =
             let
               rustPlatform = pkgs.makeRustPlatform {

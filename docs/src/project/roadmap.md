@@ -39,7 +39,7 @@ Wave B starts when dependencies freeze: N23 hash-arrays; N28 LOOP; N29 pathnames
 
 Wave C covers N42 Phase 2; N52 Phase 5; N53 compiler SIMD; N71 ncl-uiop; N72 ncl-asdf; N74 ncl-coverage; N75 ncl-debug; and N77 library backends and the load matrix. D-13's sb-simd and sb-perf contribs are scheduled last on x86-64 Linux, separately from compiler SIMD.
 
-D-6 limits concurrent lanes to 16, including one integration lane. D-12 targets x86-64 and AArch64 on macOS and Linux. The current CI matrix covers x86-64 Linux and AArch64 macOS.
+D-6 limits concurrent lanes to 16, including one integration lane. D-12 targets x86-64 and AArch64 on macOS and Linux. The CI matrix covers x86-64 Linux and AArch64 Linux; macOS validation runs locally on native AArch64 hosts by operator direction.
 
 ## Milestones
 

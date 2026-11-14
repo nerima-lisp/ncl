@@ -28,6 +28,45 @@ fn word_view_round_trips_existing_object_ref_values() {
 }
 
 #[test]
+fn word_view_round_trips_every_heap_object_ref_variant() {
+    let word = Word::fixnum(7);
+    let cases = [
+        (ObjectRef::Cons(word), word),
+        (ObjectRef::Symbol(word), word),
+        (ObjectRef::HashTable(word), word),
+        (ObjectRef::String(word), word),
+        (ObjectRef::SimpleVector(word), word),
+        (ObjectRef::SpecializedArray(word), word),
+        (ObjectRef::Array(word), word),
+        (ObjectRef::Function(word), word),
+        (ObjectRef::Closure(word), word),
+        (ObjectRef::Instance(word), word),
+        (ObjectRef::Structure(word), word),
+        (ObjectRef::Bignum(word), word),
+        (ObjectRef::Ratio(word), word),
+        (ObjectRef::DoubleFloat(word), word),
+        (ObjectRef::Complex(word), word),
+        (ObjectRef::Package(word), word),
+        (ObjectRef::Readtable(word), word),
+        (ObjectRef::Stream(word), word),
+        (ObjectRef::Code(word), word),
+        (ObjectRef::Other { word, widetag: 1 }, word),
+        (
+            ObjectRef::Other {
+                word: Word::TRUE,
+                widetag: 0,
+            },
+            Word::TRUE,
+        ),
+        (ObjectRef::Immediate(Word::TRUE), Word::TRUE),
+    ];
+
+    for (reference, expected) in cases {
+        assert_eq!(WordView::from(reference).as_word(), expected);
+    }
+}
+
+#[test]
 fn error_kind_preserves_existing_object_error_values() {
     assert_eq!(ObjectError::TypeError.kind(), ObjectErrorKind::Type);
     assert_eq!(

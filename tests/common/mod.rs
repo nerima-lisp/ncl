@@ -47,25 +47,22 @@ pub(super) fn assert_ncl_eval_cases(cases: &[CliEvalCase]) {
             .enumerate()
             .map(|(index, case)| {
                 let case_index = first_case_index + index;
-                let label = lisp_string_literal(&format!("{}#{case_index}", case.name));
-                let expected = lisp_string_literal(&case.expected);
                 format!(
                     "(handler-case \
                         (let* ((*random-state* (make-random-state nil)) \
                                (ncl-e2e-batch-value-{case_index} {}) \
                                (ncl-e2e-batch-printed-{case_index} \
                                    (format nil \"~S\" ncl-e2e-batch-value-{case_index}))) \
-                          (unless (string= ncl-e2e-batch-printed-{case_index} {expected}) \
-                            (list {label} :mismatch \
-                                  ncl-e2e-batch-printed-{case_index} {expected}))) \
+                          (format t \"S~D:\" (length ncl-e2e-batch-printed-{case_index})) \
+                          (write-string ncl-e2e-batch-printed-{case_index})) \
                       (condition (ncl-e2e-batch-condition-{case_index}) \
-                        (list {label} :condition)))",
-                    case.source
+                        (write-string \"E0:\")))",
+                    case.source,
                 )
             })
             .collect::<Vec<_>>()
             .join(" ");
-        let source = format!("(remove nil (list {forms}))");
+        let source = format!("(progn {forms} nil)");
         let case_names = batch
             .iter()
             .map(|case| case.name.as_str())
@@ -84,25 +81,63 @@ pub(super) fn assert_ncl_eval_cases(cases: &[CliEvalCase]) {
             "batch {batch_index} ({case_names}) wrote to stderr: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
-            "NIL\n",
-            "batch {batch_index} ({case_names}) returned a mismatched case or wrote to stdout"
-        );
+        let stdout = std::str::from_utf8(&output.stdout).unwrap_or_else(|error| {
+            panic!("batch {batch_index} ({case_names}) wrote invalid UTF-8 to stdout: {error}")
+        });
+        assert_case_outputs(stdout, batch, first_case_index, batch_index);
     }
 }
 
-fn lisp_string_literal(value: &str) -> String {
-    let mut literal = String::with_capacity(value.len() + 2);
-    literal.push('"');
-    for character in value.chars() {
-        if matches!(character, '"' | '\\') {
-            literal.push('\\');
-        }
-        literal.push(character);
+pub(super) fn assert_case_outputs(
+    output: &str,
+    cases: &[CliEvalCase],
+    first_case_index: usize,
+    batch_index: usize,
+) {
+    let mut remaining = output;
+    for (index, case) in cases.iter().enumerate() {
+        let label = format!("{}#{}", case.name, first_case_index + index);
+        let (printed, rest) =
+            take_case_record(remaining).unwrap_or_else(|error| panic!("{label}: {error}"));
+        assert_eq!(printed, case.expected, "{label}");
+        remaining = rest;
     }
-    literal.push('"');
-    literal
+
+    assert_eq!(
+        remaining, "NIL\n",
+        "batch {batch_index} returned unexpected output after its case records"
+    );
+}
+
+fn take_case_record(output: &str) -> Result<(&str, &str), &'static str> {
+    if output.starts_with("E0:") {
+        return Err("NCL evaluation signaled a condition");
+    }
+
+    let rest = output
+        .strip_prefix('S')
+        .ok_or("expected a successful case record")?;
+    let (length, value) = rest
+        .split_once(':')
+        .ok_or("case record is missing its length separator")?;
+    if length.is_empty() || !length.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("case record has an invalid character count");
+    }
+    let character_count = length
+        .parse::<usize>()
+        .map_err(|_| "case record character count is out of range")?;
+    let (printed, remaining) = split_at_character_count(value, character_count)
+        .ok_or("case record ended before its declared character count")?;
+    Ok((printed, remaining))
+}
+
+fn split_at_character_count(value: &str, character_count: usize) -> Option<(&str, &str)> {
+    let byte_count = match value.char_indices().nth(character_count) {
+        Some((byte_count, _)) => byte_count,
+        None if value.chars().count() == character_count => value.len(),
+        None => return None,
+    };
+    Some(value.split_at(byte_count))
 }
 
 #[derive(Clone, Copy, Debug)]

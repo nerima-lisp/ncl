@@ -108,15 +108,10 @@ pub fn install(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectE
     install_slots(runtime, &mut scope, "STREAM-ERROR", &["STREAM"])?;
     install_slots(runtime, &mut scope, "FILE-ERROR", &["PATHNAME"])?;
 
-    // check-added-lines: allow(index) array literal, not indexing
-    for (name, initarg_names) in [
-        ("CELL-ERROR", &["NAME"][..]),
-        ("UNBOUND-VARIABLE", &["NAME"][..]),
-        ("UNDEFINED-FUNCTION", &["NAME"][..]),
-        ("UNBOUND-SLOT", &["NAME", "INSTANCE"][..]),
-    ] {
-        install_slots(runtime, &mut scope, name, initarg_names)?;
-    }
+    install_slots(runtime, &mut scope, "CELL-ERROR", &["NAME"])?;
+    install_slots(runtime, &mut scope, "UNBOUND-VARIABLE", &["NAME"])?;
+    install_slots(runtime, &mut scope, "UNDEFINED-FUNCTION", &["NAME"])?;
+    install_slots(runtime, &mut scope, "UNBOUND-SLOT", &["NAME", "INSTANCE"])?;
     Ok(())
 }
 

@@ -7,7 +7,6 @@ use ncl_object::ObjectError;
 /// The printer never panics on a bad object; every accessor failure is
 /// converted into [`PrintError::Object`].
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
 pub enum PrintError {
     /// An `ncl-object` accessor rejected the value.
     Object(ObjectError),

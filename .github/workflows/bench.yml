@@ -1,9 +1,9 @@
 name: Performance benchmarks
 
 on:
-  pull_request:
   push:
-    branches: ["cand/**"]
+    branches: ["main"]
+  # To benchmark a candidate, select its branch under Actions > Performance benchmarks > Run workflow.
   workflow_dispatch:
 
 permissions:

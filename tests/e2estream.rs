@@ -1,5 +1,9 @@
 //! End-to-end tests for stream builtins and file output.
 
+#[path = "common/mod.rs"]
+mod common;
+
+use common::{CliEvalCase, assert_ncl_eval_cases};
 use std::process::{Command, Output, Stdio};
 
 use ncl_lib_streams::registration::REGISTERED_BUILTINS;
@@ -222,9 +226,14 @@ fn run(source: &str) -> Output {
         .unwrap_or_else(|error| panic!("{source}: {error}"))
 }
 
+fn stream_case_requires_process_stdout(builtin: &str) -> bool {
+    matches!(builtin, "PRINC" | "PRIN1" | "PRINT")
+}
+
 #[test]
 fn registered_stream_builtins_have_compiled_probes() {
     assert_eq!(REGISTERED_BUILTINS.len(), 28);
+    assert_eq!(CASES.len(), 38);
     assert_eq!(
         REGISTERED_BUILTINS
             .iter()
@@ -246,7 +255,26 @@ fn registered_stream_builtins_have_compiled_probes() {
             case.builtin
         );
     }
-    for case in CASES {
+
+    let batch = CASES
+        .iter()
+        .enumerate()
+        .filter(|(_, case)| !stream_case_requires_process_stdout(case.builtin))
+        .map(|(index, case)| {
+            CliEvalCase::new(
+                format!("{}#{index}", case.builtin),
+                case.source,
+                case.expected,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(batch.len(), 35);
+    assert_ncl_eval_cases(&batch);
+
+    for case in CASES
+        .iter()
+        .filter(|case| stream_case_requires_process_stdout(case.builtin))
+    {
         let output = run(case.source);
         assert_eq!(output.status.code(), Some(0), "{}", case.builtin);
         assert!(

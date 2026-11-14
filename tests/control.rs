@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{assert_eval_with_stress, run_ncl};
+use common::{CliEvalCase, assert_eval_with_stress, assert_ncl_eval_cases};
 
 struct Case {
     name: &'static str,
@@ -118,22 +118,12 @@ const CASES: &[Case] = &[
 
 #[test]
 fn control_flow_and_loop_regressions_hold_through_the_cli() {
-    for case in CASES {
-        let output = run_ncl(case.source);
-        assert_eq!(output.status.code(), Some(0), "{}: {:?}", case.name, output);
-        assert!(
-            output.stderr.is_empty(),
-            "{}: stderr={:?}",
-            case.name,
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout).trim_end(),
-            case.expected,
-            "{}",
-            case.name
-        );
-    }
+    assert_eq!(CASES.len(), 19);
+    let batch = CASES
+        .iter()
+        .map(|case| CliEvalCase::new(case.name, case.source, case.expected))
+        .collect::<Vec<_>>();
+    assert_ncl_eval_cases(&batch);
 }
 
 /// A subset of the battery, compiled in-process under `gc_stress` +

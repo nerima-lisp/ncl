@@ -173,45 +173,51 @@ pub fn warn(ctx: &mut ThreadContext, condition: Word) -> Result<(), ConditionErr
 
 /// Signal a condition after installing a `CONTINUE` restart.
 ///
-/// The `continue_control` word is stored as the restart function and
-/// `continue_args` as its report. The restart is removed before returning.
+/// The restart uses a non-callable continuation marker, and `continue_args`
+/// supplies its report. The restart is removed before returning.
 ///
 /// # Errors
 /// Returns the same failures as [`signal`].
 pub fn cerror(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    continue_control: Word,
+    _continue_control: Word,
     continue_args: Word,
     condition: Word,
 ) -> Result<(), ConditionError> {
-    let matched = ncl_object::with_roots(
-        ctx,
-        &[continue_control, continue_args, condition],
-        |ctx, roots| {
-            let continue_control = **roots.first().ok_or(ncl_object::ObjectError::Layout)?;
-            let continue_args = **roots.get(1).ok_or(ncl_object::ObjectError::Layout)?;
-            let condition = **roots.get(2).ok_or(ncl_object::ObjectError::Layout)?;
-            let name = make_string(ctx, runtime, &"CONTINUE".chars().collect::<Vec<_>>())?;
-            let restart = crate::restart::push_restart(
-                ctx,
-                runtime,
-                name,
-                continue_control,
-                continue_args,
-                Word::NIL,
-                Word::NIL,
-            )
-            .map_err(condition_object_error)?;
-            // `signal_matched`, not `signal`: the caller (`CERROR`'s builtin)
-            // needs to distinguish "a handler ran" from "unhandled" to know
-            // whether to print the default report, and `ConditionError`
-            // does not survive this closure's `ObjectError` boundary.
-            let result = signal_matched(ctx, condition);
-            crate::restart::pop_restart(ctx, restart);
-            result.map_err(condition_object_error)
-        },
-    )
+    let matched = ncl_object::with_roots(ctx, &[continue_args, condition], |ctx, roots| {
+        let continue_args = **roots.first().ok_or(ncl_object::ObjectError::Layout)?;
+        let condition = **roots.get(1).ok_or(ncl_object::ObjectError::Layout)?;
+        let name = make_string(ctx, runtime, &"CONTINUE".chars().collect::<Vec<_>>())?;
+        let restart = crate::restart::push_restart(
+            ctx,
+            runtime,
+            name,
+            // check-added-lines: allow(unbound) CERROR needs a non-callable resume marker.
+            Word::UNBOUND,
+            continue_args,
+            Word::NIL,
+            Word::NIL,
+        )
+        .map_err(condition_object_error)?;
+        // `signal_matched`, not `signal`: the caller (`CERROR`'s builtin)
+        // needs to distinguish "a handler ran" from "unhandled" to know
+        // whether to print the default report, and `ConditionError`
+        // does not survive this closure's `ObjectError` boundary.
+        let result = signal_matched(ctx, condition);
+        let non_local_exit = ctx.take_non_local_exit();
+        let continued = non_local_exit
+            && ctx
+                .values()
+                .first()
+                // check-added-lines: allow(unbound) distinguish CERROR's resume from other exits.
+                .is_some_and(|value| *value == Word::UNBOUND);
+        if non_local_exit && !continued {
+            ctx.set_non_local_exit(true);
+        }
+        crate::restart::pop_restart(ctx, restart);
+        result.map_err(condition_object_error)
+    })
     .map_err(ConditionError::from)?;
     if matched {
         Ok(())

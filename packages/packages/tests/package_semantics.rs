@@ -2,7 +2,7 @@
 
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    BuiltinPackage, ObjectError, Runtime, ThreadContext, Word, cdr, make_string, pop_root,
+    BuiltinPackage, Runtime, ThreadContext, Word, cdr, make_string, pop_root,
     push_root, string_length, string_ref, symbol_name, symbol_package,
 };
 use ncl_packages::{PackageListOperations, PackageOperations};

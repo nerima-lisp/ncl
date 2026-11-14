@@ -2,12 +2,20 @@ use super::*;
 
 #[inline(never)]
 fn insert_weak_key_entry(ctx: &mut ThreadContext, runtime: &Runtime, table_word: Word) {
-    let key = string(ctx, runtime, "weak-key");
-    let value = string(ctx, runtime, "weak-value");
+    let mut key = string(ctx, runtime, "weak-key");
+    let key_token = ncl_object::push_root(ctx, &mut key);
+    let mut value = string(ctx, runtime, "weak-value");
+    let value_token = ncl_object::push_root(ctx, &mut value);
     HashTable::from_word(table_word)
         .insert(ctx, runtime, key, value)
         .unwrap_or_else(|error| panic!("weak-key insertion failed: {error:?}"));
     assert_eq!(HashTable::from_word(table_word).count(ctx), Ok(1));
+    assert!(ncl_object::pop_root(ctx, value_token));
+    assert!(ncl_object::pop_root(ctx, key_token));
+    // Release the roots and clear these locals so conservative scanning cannot preserve the weak key.
+    key = Word::NIL;
+    value = Word::NIL;
+    std::hint::black_box((&key, &value));
 }
 
 #[test]
@@ -17,7 +25,6 @@ fn weak_key_entry_is_removed_when_key_dies() {
         .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
         .as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
-    // Return from this frame before collection so the dead key is outside the conservative stack scan.
     insert_weak_key_entry(&mut ctx, &runtime, table_word);
     assert!(ctx.collect(true).is_ok());
     let table = HashTable::from_word(table_word);

@@ -121,6 +121,12 @@ fn weak_entry_after_gc(
 
 #[test]
 fn hash_table_default_threshold_failure_releases_all_roots() {
+    const LOGICAL_PAGE_BYTES: usize = 32 * 1024;
+    const PAYLOAD_WORDS: usize = 64;
+    const OBJECT_WORDS: usize = PAYLOAD_WORDS + 1;
+    const DOUBLE_OBJECT_WORDS: usize = 2;
+    const FULL_PAGES_TO_RELEASE: usize = 2;
+
     let default_runtime =
         Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut heap_config = default_runtime.gc_config();
@@ -131,8 +137,11 @@ fn hash_table_default_threshold_failure_releases_all_roots() {
         .unwrap_or_else(|error| panic!("Runtime::with_config failed: {error:?}"));
     ncl_hash_tables::register_layouts(&runtime)
         .unwrap_or_else(|error| panic!("hash-table layouts: {error:?}"));
-    let large_root_count =
-        heap_config.dynamic_space_size / (64 * std::mem::size_of::<Word>()) + 1024;
+    let doubles_per_page = LOGICAL_PAGE_BYTES / (DOUBLE_OBJECT_WORDS * std::mem::size_of::<Word>());
+    let large_root_count = heap_config.dynamic_space_size
+        / (PAYLOAD_WORDS * std::mem::size_of::<Word>())
+        + 1024
+        + FULL_PAGES_TO_RELEASE * doubles_per_page;
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     let mut sentinel = Word::NIL;
@@ -141,7 +150,7 @@ fn hash_table_default_threshold_failure_releases_all_roots() {
     let result = ncl_object::with_rooted_slice(&mut ctx, &roots, |ctx, roots| {
         let mut allocated = 0;
         while allocated < roots.len() {
-            match allocate(ctx, &runtime, 0x7f, 64) {
+            match allocate(ctx, &runtime, 0x7f, PAYLOAD_WORDS) {
                 Ok(value) => {
                     roots[allocated] = value;
                     allocated += 1;
@@ -152,8 +161,13 @@ fn hash_table_default_threshold_failure_releases_all_roots() {
         }
         assert!(allocated > 0);
         assert!(allocated < roots.len());
-        let double_start = allocated - 1;
-        roots[double_start] = Word::NIL;
+        // The page heap can reuse space only after every object on a page is dead.
+        let objects_per_page = LOGICAL_PAGE_BYTES / (OBJECT_WORDS * std::mem::size_of::<Word>());
+        // One extra object spans a full page despite the initial TLAB's unknown offset.
+        let roots_to_release = objects_per_page * FULL_PAGES_TO_RELEASE + 1;
+        assert!(allocated >= roots_to_release);
+        let double_start = allocated - roots_to_release;
+        roots[double_start..allocated].fill(Word::NIL);
         ctx.collect(true)?;
 
         let mut doubles = 0;

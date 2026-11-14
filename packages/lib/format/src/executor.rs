@@ -18,7 +18,6 @@ pub struct FormatError {
 
 /// The reason a FORMAT directive could not be executed.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
 pub enum FormatErrorKind {
     Parse(ParseErrorKind),
     MissingArgument,

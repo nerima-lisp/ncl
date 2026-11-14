@@ -1,6 +1,6 @@
 //! Conversion of object-layer typed builtin failures into CL conditions.
 
-use ncl_object::typed::ConditionErrorData;
+use ncl_object::typed::{ConditionErrorData, FormatErrorCause, FormatPrintError};
 use ncl_object::{
     ArithmeticError, CellError, LispError, ObjectError, ObjectType, Package, Runtime,
     ThreadContext, Word, pop_root, push_root,
@@ -212,6 +212,17 @@ pub fn condition_from_lisp_error(
             format_control,
             format_arguments,
         } => return simple_error_condition(ctx, runtime, format_control, format_arguments),
+        LispError::FormatError(error) => {
+            if let FormatErrorCause::Print(FormatPrintError::Object(error)) = error.cause {
+                return condition_from_lisp_error(ctx, runtime, LispError::Object(error));
+            }
+            return simple_error_condition(
+                ctx,
+                runtime,
+                error.format_control,
+                error.format_arguments,
+            );
+        }
         LispError::Object(ObjectError::TypeError) => (
             ConditionIdentifier::TypeError,
             words(&[Word::NIL, Word::NIL]),

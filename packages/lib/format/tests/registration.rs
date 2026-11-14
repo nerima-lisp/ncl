@@ -4,11 +4,13 @@
 )]
 //! Tests for registered FORMAT builtins and their runtime behavior.
 
+use ncl_conditions::{ConditionIdentifier, condition_class_of};
 use ncl_lib_format::register;
 use ncl_object::{
-    FunctionObject, HeapRootedWord, ObjectError, Package, Runtime, ThreadContext, Word, make_cons,
-    make_string, make_symbol, set_symbol_value, string_ref, symbol_value,
+    FunctionObject, HeapRootedWord, Instance, ObjectError, Package, Runtime, ThreadContext, Word,
+    make_cons, make_string, make_symbol, set_symbol_value, slot_ref, string_ref, symbol_value,
 };
+use ncl_printer::{PrintOptions, StringSink, write};
 
 fn string(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> Word {
     make_string(ctx, runtime, &text.chars().collect::<Vec<_>>()).expect("string")
@@ -21,10 +23,55 @@ fn read_string(ctx: &ThreadContext, value: Word) -> String {
         .collect()
 }
 
+fn assert_pending_simple_error(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    format_control: Word,
+    expected_arguments: &str,
+) {
+    let condition = ctx
+        .take_pending_condition()
+        .expect("FORMAT failure signals a condition");
+    let condition = HeapRootedWord::new(ctx, condition).expect("root condition");
+    let actual_class = condition_class_of(ctx, condition.get()).expect("condition class");
+    let expected_class = ConditionIdentifier::SimpleError
+        .class(ctx, runtime)
+        .expect("SIMPLE-ERROR class");
+    assert_eq!(actual_class.as_word(), expected_class.as_word());
+    assert_eq!(
+        slot_ref(ctx, Instance::from_word(condition.get()), 0).expect("format-control slot"),
+        format_control,
+    );
+
+    let arguments =
+        slot_ref(ctx, Instance::from_word(condition.get()), 1).expect("format-arguments slot");
+    let mut sink = StringSink::new();
+    write(ctx, runtime, arguments, &mut sink, &PrintOptions::default())
+        .expect("print format arguments");
+    assert_eq!(sink.into_string(), expected_arguments);
+}
+
+fn assert_pending_stream_error(ctx: &mut ThreadContext, runtime: &Runtime, stream: Word) {
+    let condition = ctx
+        .take_pending_condition()
+        .expect("stream failure signals a condition");
+    let condition = HeapRootedWord::new(ctx, condition).expect("root condition");
+    let actual_class = condition_class_of(ctx, condition.get()).expect("condition class");
+    let expected_class = ConditionIdentifier::StreamError
+        .class(ctx, runtime)
+        .expect("STREAM-ERROR class");
+    assert_eq!(actual_class.as_word(), expected_class.as_word());
+    assert_eq!(
+        slot_ref(ctx, Instance::from_word(condition.get()), 0).expect("stream slot"),
+        stream,
+    );
+}
+
 fn setup() -> (Runtime, ThreadContext, FunctionObject) {
     let runtime = Runtime::new().expect("runtime");
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).expect("context");
+    ncl_conditions::register(&runtime).expect("conditions");
     ncl_lib_streams::register(&runtime).expect("streams");
     register(&runtime).expect("format");
     let function = runtime
@@ -132,6 +179,7 @@ fn format_maps_improper_iteration_arguments_to_type_error() {
         ),
         Err(ObjectError::TypeError)
     );
+    assert_pending_simple_error(&mut ctx, &runtime, control.get(), "((1 . 2))");
 }
 
 #[test] // CLHS 22.3
@@ -220,15 +268,52 @@ fn format_maps_invalid_controls_arguments_destinations_and_stream_writes() {
     );
 
     let malformed = string(&runtime, &mut ctx, "~z");
+    let malformed = HeapRootedWord::new(&ctx, malformed).expect("root malformed control");
     assert_eq!(
-        runtime.call_builtin(&mut ctx, format, &[Word::NIL, malformed]),
+        runtime.call_builtin(&mut ctx, format, &[Word::NIL, malformed.get()]),
         Err(ObjectError::TypeError)
     );
+    assert_pending_simple_error(&mut ctx, &runtime, malformed.get(), "NIL");
+
+    let make_output = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-STRING-OUTPUT-STREAM")
+            .expect("make output stream"),
+    )
+    .expect("make output function");
+    let stream = runtime
+        .call_builtin(&mut ctx, make_output, &[])
+        .expect("output stream");
+    let stream = HeapRootedWord::new(&ctx, stream).expect("root output stream");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[stream.get(), malformed.get()]),
+        Err(ObjectError::TypeError)
+    );
+    assert_pending_simple_error(&mut ctx, &runtime, malformed.get(), "NIL");
+
+    let common_lisp = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .expect("COMMON-LISP package");
+    let (output_symbol, _) = Package::from_word(common_lisp)
+        .intern(&mut ctx, &runtime, "*STANDARD-OUTPUT*")
+        .expect("standard output symbol");
+    let previous_output = symbol_value(&ctx, output_symbol).expect("previous standard output");
+    let previous_output = HeapRootedWord::new(&ctx, previous_output).expect("root previous output");
+    set_symbol_value(&mut ctx, output_symbol, stream.get()).expect("bind output stream");
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, format, &[Word::TRUE, malformed.get()]),
+        Err(ObjectError::TypeError)
+    );
+    assert_pending_simple_error(&mut ctx, &runtime, malformed.get(), "NIL");
+    set_symbol_value(&mut ctx, output_symbol, previous_output.get())
+        .expect("restore standard output");
+
     let missing_argument = string(&runtime, &mut ctx, "~A");
     assert_eq!(
         runtime.call_builtin(&mut ctx, format, &[Word::NIL, missing_argument]),
         Err(ObjectError::TypeError)
     );
+    assert_pending_simple_error(&mut ctx, &runtime, missing_argument, "NIL");
     let wrong_type = string(&runtime, &mut ctx, "~C");
     let wrong_type = HeapRootedWord::new(&ctx, wrong_type).expect("root control");
     let text = string(&runtime, &mut ctx, "not a character");
@@ -236,6 +321,12 @@ fn format_maps_invalid_controls_arguments_destinations_and_stream_writes() {
     assert_eq!(
         runtime.call_builtin(&mut ctx, format, &[Word::NIL, wrong_type.get(), text.get()]),
         Err(ObjectError::TypeError)
+    );
+    assert_pending_simple_error(
+        &mut ctx,
+        &runtime,
+        wrong_type.get(),
+        "(\"not a character\")",
     );
 
     let make_input = FunctionObject::try_from(
@@ -312,6 +403,7 @@ fn format_propagates_errors_while_formatting_to_a_stream() {
         runtime.call_builtin(&mut ctx, format, &[stream.get(), control.get()]),
         Err(ObjectError::TypeError)
     );
+    assert_pending_simple_error(&mut ctx, &runtime, control.get(), "NIL");
 
     assert_eq!(
         runtime.call_builtin(&mut ctx, close, &[stream.get()]),
@@ -327,4 +419,5 @@ fn format_propagates_errors_while_formatting_to_a_stream() {
         ),
         Err(ObjectError::TypeError)
     );
+    assert_pending_stream_error(&mut ctx, &runtime, stream.get());
 }

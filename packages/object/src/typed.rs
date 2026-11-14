@@ -10,8 +10,9 @@ mod sequence;
 
 pub use character::Character;
 pub use error::{
-    ArithmeticError, CellError, ConditionErrorData, ControlError, FileError, LispError,
-    ObjectErrorKind, ObjectType, PackageError, ProgramError, StreamError, TypeError,
+    ArithmeticError, CellError, ConditionErrorData, ControlError, FileError, FormatErrorCause,
+    FormatErrorData, FormatParseError, FormatPrintError, LispError, ObjectErrorKind, ObjectType,
+    PackageError, ProgramError, StreamError, TypeError,
 };
 pub use numeric::{Fixnum, Integer, Number, Rational, Real};
 pub use sequence::{

@@ -1,12 +1,16 @@
+use ncl_object::typed::{
+    ConditionErrorData, FormatErrorCause, FormatErrorData, FormatParseError, FormatPrintError,
+    LispError, StreamError,
+};
 use ncl_object::{
     Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError, ObjectRef, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, classify_object, make_string, string_length,
-    string_ref, symbol_name, symbol_value, with_root,
+    ParameterType, Runtime, ThreadContext, Word, classify_object, make_cons, make_string,
+    string_length, string_ref, symbol_name, symbol_value, with_root,
 };
 use ncl_printer::{CharSink, PrintError, StringSink};
 
-use crate::{FormatError, FormatErrorKind, execute, parse};
+use crate::{FormatError, FormatErrorKind, ParseErrorKind, execute, parse};
 
 const DESTINATION: Parameter = Parameter {
     name: BuiltinName::new("DESTINATION"),
@@ -58,26 +62,46 @@ fn format_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let mut destination = args.required(0)?;
-    let control = args.required(1)?;
-    let control = string_value(ctx, control)?;
-    let parsed = parse(&control).map_err(|error| {
-        let format_error = FormatError::new(
-            error.offset,
-            error.directive,
-            FormatErrorKind::Parse(error.kind),
-        );
-        format_error_to_object_error(&format_error)
-    })?;
+    let format_control = args.required(1)?;
+    let control = string_value(ctx, format_control)?;
     let arguments = (2..args.len())
         .map(|index| args.get(index).ok_or(ObjectError::TypeError))
         .collect::<Result<Vec<_>, _>>()?;
 
-    ncl_object::with_rooted_slice(ctx, &arguments, |ctx, arguments| {
-        ncl_object::with_root(ctx, &mut destination, |ctx, destination| {
+    ncl_object::with_root(ctx, &mut destination, |ctx, destination| {
+        ncl_object::with_rooted_slice(ctx, &arguments, |ctx, arguments| {
+            let parsed = match parse(&control) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    let format_error = FormatError::new(
+                        error.offset,
+                        error.directive,
+                        FormatErrorKind::Parse(error.kind),
+                    );
+                    let stream = target_stream_for_error(ctx, runtime, *destination)?;
+                    return Err(format_error_to_object_error(
+                        ctx,
+                        runtime,
+                        &format_error,
+                        format_control,
+                        arguments,
+                        stream,
+                    ));
+                }
+            };
+
             if *destination == Word::NIL {
                 let mut sink = StringSink::new();
-                execute(&parsed, arguments, ctx, runtime, &mut sink)
-                    .map_err(|error| format_error_to_object_error(&error))?;
+                execute(&parsed, arguments, ctx, runtime, &mut sink).map_err(|error| {
+                    format_error_to_object_error(
+                        ctx,
+                        runtime,
+                        &error,
+                        format_control,
+                        arguments,
+                        None,
+                    )
+                })?;
                 return make_string(
                     ctx,
                     runtime,
@@ -94,17 +118,41 @@ fn format_builtin(
             };
             ncl_object::with_root(ctx, &mut stream, |ctx, stream| {
                 let mut sink = StringSink::new();
-                execute(&parsed, arguments, ctx, runtime, &mut sink)
-                    .map_err(|error| format_error_to_object_error(&error))?;
+                execute(&parsed, arguments, ctx, runtime, &mut sink).map_err(|error| {
+                    format_error_to_object_error(
+                        ctx,
+                        runtime,
+                        &error,
+                        format_control,
+                        arguments,
+                        Some(*stream),
+                    )
+                })?;
                 let output = sink.into_string();
-                let mut writer = WriteCharSink::new(ctx, runtime, *stream)?;
-                for character in output.chars() {
-                    writer.write_char(character).map_err(|error| match error {
-                        PrintError::Object(error) => error,
-                        PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity => {
-                            ObjectError::TypeError
+                let write_error = {
+                    let mut writer = WriteCharSink::new(ctx, runtime, *stream)?;
+                    let mut error = None;
+                    for character in output.chars() {
+                        if let Err(failure) = writer.write_char(character) {
+                            error = Some(failure);
+                            break;
                         }
-                    })?;
+                    }
+                    error
+                };
+                if let Some(error) = write_error {
+                    if let PrintError::Object(error) = error {
+                        return Err(stream_write_error_to_object_error(ctx, *stream, error));
+                    }
+                    let format_error = FormatError::new(0, None, FormatErrorKind::Print(error));
+                    return Err(format_error_to_object_error(
+                        ctx,
+                        runtime,
+                        &format_error,
+                        format_control,
+                        arguments,
+                        Some(*stream),
+                    ));
                 }
                 Ok(Word::NIL)
             })
@@ -139,18 +187,131 @@ fn standard_output(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, O
     })
 }
 
-const fn format_error_to_object_error(error: &FormatError) -> ObjectError {
+fn target_stream_for_error(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    destination: Word,
+) -> Result<Option<Word>, ObjectError> {
+    if destination == Word::NIL {
+        Ok(None)
+    } else if destination == Word::TRUE {
+        standard_output(ctx, runtime).map(Some)
+    } else if matches!(classify_object(ctx, destination), ObjectRef::Stream(_)) {
+        Ok(Some(destination))
+    } else {
+        Ok(None)
+    }
+}
+
+fn format_error_to_object_error(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    error: &FormatError,
+    format_control: Word,
+    arguments: &[Word],
+    stream: Option<Word>,
+) -> ObjectError {
+    if let Some(mut stream) = stream {
+        return match with_root(ctx, &mut stream, |ctx, stream| {
+            Ok(record_format_error(
+                ctx,
+                runtime,
+                error,
+                format_control,
+                arguments,
+                Some(*stream),
+            ))
+        }) {
+            Ok(error) | Err(error) => error,
+        };
+    }
+    record_format_error(ctx, runtime, error, format_control, arguments, None)
+}
+
+fn stream_write_error_to_object_error(
+    ctx: &mut ThreadContext,
+    stream: Word,
+    error: ObjectError,
+) -> ObjectError {
+    ctx.set_pending_lisp_error(LispError::Condition(ConditionErrorData::StreamError {
+        kind: StreamError::Io,
+        stream,
+    }));
+    error
+}
+
+fn record_format_error(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    error: &FormatError,
+    format_control: Word,
+    arguments: &[Word],
+    stream: Option<Word>,
+) -> ObjectError {
+    let format_arguments = match format_argument_list(ctx, runtime, arguments) {
+        Ok(arguments) => arguments,
+        Err(error) => return error,
+    };
+    ctx.set_pending_lisp_error(LispError::FormatError(FormatErrorData {
+        cause: format_error_cause(&error.kind),
+        position: error.position,
+        directive: error.directive,
+        format_control,
+        format_arguments,
+        stream,
+    }));
     match &error.kind {
         FormatErrorKind::Print(PrintError::Object(error)) => *error,
-        FormatErrorKind::Parse(_)
-        | FormatErrorKind::MissingArgument
-        | FormatErrorKind::WrongArgumentType
-        | FormatErrorKind::InvalidParameter
-        | FormatErrorKind::InvalidDirectiveUse
-        | FormatErrorKind::ImproperList
-        | FormatErrorKind::Print(
-            PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity,
-        ) => ObjectError::TypeError,
+        _ => ObjectError::TypeError,
+    }
+}
+
+fn format_argument_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    arguments: &[Word],
+) -> Result<Word, ObjectError> {
+    ncl_object::with_rooted_slice(ctx, arguments, |ctx, arguments| {
+        let list = ncl_object::HeapRootedWord::new(ctx, Word::NIL)?;
+        for argument in arguments.iter().rev() {
+            list.set(make_cons(ctx, runtime, *argument, list.get())?);
+        }
+        Ok(list.get())
+    })
+}
+
+fn format_error_cause(error: &FormatErrorKind) -> FormatErrorCause {
+    match error {
+        FormatErrorKind::Parse(kind) => FormatErrorCause::Parse(match kind {
+            ParseErrorKind::UnterminatedDirective => FormatParseError::UnterminatedDirective,
+            ParseErrorKind::InvalidParameter => FormatParseError::InvalidParameter,
+            ParseErrorKind::MissingDirective => FormatParseError::MissingDirective,
+            ParseErrorKind::UnknownDirective => FormatParseError::UnknownDirective,
+            ParseErrorKind::UnexpectedTerminator => FormatParseError::UnexpectedTerminator,
+            ParseErrorKind::UnterminatedConstruct { expected } => {
+                FormatParseError::UnterminatedConstruct {
+                    expected: *expected,
+                }
+            }
+            ParseErrorKind::UnterminatedFunctionName => FormatParseError::UnterminatedFunctionName,
+        }),
+        FormatErrorKind::MissingArgument => FormatErrorCause::MissingArgument,
+        FormatErrorKind::WrongArgumentType => FormatErrorCause::WrongArgumentType,
+        FormatErrorKind::InvalidParameter => FormatErrorCause::InvalidParameter,
+        FormatErrorKind::InvalidDirectiveUse => FormatErrorCause::InvalidDirectiveUse,
+        FormatErrorKind::ImproperList => FormatErrorCause::ImproperList,
+        FormatErrorKind::Print(PrintError::Object(error)) => {
+            FormatErrorCause::Print(FormatPrintError::Object(*error))
+        }
+        FormatErrorKind::Print(PrintError::Sink(_)) => {
+            FormatErrorCause::Print(FormatPrintError::Sink)
+        }
+        FormatErrorKind::Print(PrintError::NotReadable) => {
+            FormatErrorCause::Print(FormatPrintError::NotReadable)
+        }
+        FormatErrorKind::Print(PrintError::Circularity) => {
+            FormatErrorCause::Print(FormatPrintError::Circularity)
+        }
     }
 }
 
@@ -192,3 +353,7 @@ impl CharSink for WriteCharSink<'_> {
         .map_err(PrintError::Object)
     }
 }
+
+#[cfg(test)]
+#[path = "registration/tests.rs"]
+mod tests;

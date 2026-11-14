@@ -1,5 +1,15 @@
 use super::*;
 
+#[inline(never)]
+fn insert_weak_key_entry(ctx: &mut ThreadContext, runtime: &Runtime, table_word: Word) {
+    let key = string(ctx, runtime, "weak-key");
+    let value = string(ctx, runtime, "weak-value");
+    HashTable::from_word(table_word)
+        .insert(ctx, runtime, key, value)
+        .unwrap_or_else(|error| panic!("weak-key insertion failed: {error:?}"));
+    assert_eq!(HashTable::from_word(table_word).count(ctx), Ok(1));
+}
+
 #[test]
 fn weak_key_entry_is_removed_when_key_dies() {
     let (runtime, mut ctx) = setup();
@@ -7,25 +17,8 @@ fn weak_key_entry_is_removed_when_key_dies() {
         .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
         .as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
-
-    std::thread::scope(|scope| {
-        let worker = scope.spawn(|| {
-            let mut worker_ctx = ThreadContext::new();
-            worker_ctx
-                .register(&runtime)
-                .unwrap_or_else(|error| panic!("worker registration failed: {error:?}"));
-            let key = string(&mut worker_ctx, &runtime, "weak-key");
-            let value = string(&mut worker_ctx, &runtime, "weak-value");
-            HashTable::from_word(table_word)
-                .insert(&mut worker_ctx, &runtime, key, value)
-                .unwrap_or_else(|error| panic!("weak-key insertion failed: {error:?}"));
-            assert_eq!(HashTable::from_word(table_word).count(&worker_ctx), Ok(1));
-        });
-        worker
-            .join()
-            .unwrap_or_else(|_| panic!("weak-key worker panicked"));
-    });
-
+    // Return from this frame before collection so the dead key is outside the conservative stack scan.
+    insert_weak_key_entry(&mut ctx, &runtime, table_word);
     assert!(ctx.collect(true).is_ok());
     let table = HashTable::from_word(table_word);
     assert_eq!(table.count(&ctx), Ok(0));

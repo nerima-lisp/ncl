@@ -80,6 +80,32 @@ fn eval_lowering_publishes_single_value_defaults_in_nested_functions() {
 }
 
 #[test]
+fn lowers_car_and_cdr_to_checked_primitives() {
+    for (name, expected) in [
+        ("CAR", ncl_ir::Prim::Car),
+        ("CDR", ncl_ir::Prim::Cdr),
+    ] {
+        let mut fx = Fixture::new();
+        let argument = fx.user("pair");
+        let form = fx.form(name, &[argument]);
+        let expr = fx.expand(form).expect("expand cons accessor");
+        let lowered = lower_toplevel(&expr).expect("lower cons accessor");
+        assert_verifies(&lowered.entry);
+
+        let args = lowered
+            .entry
+            .blocks
+            .iter()
+            .flat_map(|block| &block.ops)
+            .find_map(|op| match &op.kind {
+                OpKind::Prim { op, args, .. } if *op == expected => Some(args),
+                _ => None,
+            });
+        assert_eq!(args.map(Vec::len), Some(1), "{name} primitive operand");
+    }
+}
+
+#[test]
 fn lowers_general_array_literal_with_shape_type_and_identity() {
     let mut fx = Fixture::new();
     let array = make_array(

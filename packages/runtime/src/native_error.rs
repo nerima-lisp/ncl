@@ -345,7 +345,8 @@ mod tests {
     }
 
     #[test]
-    fn pending_native_type_error_records_an_unhandled_exit() -> Result<(), Box<dyn std::error::Error>> {
+    fn pending_native_type_error_records_an_unhandled_exit()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut runtime = Runtime::new()?;
         let error = NativeError::TypeMismatch {
             operation: NativeOperation::Car,
@@ -367,14 +368,17 @@ mod tests {
     }
 
     #[test]
-    fn pending_native_object_error_does_not_signal_a_lisp_condition() -> Result<(), Box<dyn std::error::Error>> {
+    fn pending_native_object_error_does_not_signal_a_lisp_condition()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut runtime = Runtime::new()?;
         let error = NativeError::Allocation {
             operation: NativeOperation::Cons,
             condition: ncl_sys::StorageCondition::CapacityExceeded,
         };
 
-        assert!(signal_pending_native_error(&mut runtime.context, &runtime.object, error).is_none());
+        assert!(
+            signal_pending_native_error(&mut runtime.context, &runtime.object, error).is_none()
+        );
         assert_eq!(runtime.context.take_pending(), None);
         assert_eq!(runtime.context.take_pending_condition(), None);
         assert!(!runtime.context.take_non_local_exit());

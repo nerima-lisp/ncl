@@ -210,8 +210,8 @@ mod pending_native_error_tests {
         ObjectError, Parameter, ParameterType, ThreadContext, Word, function_code,
     };
 
-    use crate::support::NativeInvocation;
     use crate::Runtime;
+    use crate::support::NativeInvocation;
 
     const PENDING_OBJECT_ERROR_ID: BuiltinIdentifier = BuiltinIdentifier::new(
         BuiltinPackage::NclTest,
@@ -229,7 +229,7 @@ mod pending_native_error_tests {
         _values: &mut MultipleValues,
     ) -> Result<Word, ObjectError> {
         context.set_pending(ObjectError::Layout);
-        Ok(Word::NIL)
+        Err(ObjectError::Layout)
     }
 
     fn register_pending_builtin(
@@ -281,14 +281,11 @@ mod pending_native_error_tests {
     }
 
     #[test]
-    fn native_call_returns_object_error_without_signaling_type_error(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn native_call_returns_object_error_without_signaling_type_error()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut runtime = Runtime::new()?;
-        let function = register_pending_builtin(
-            &mut runtime,
-            PENDING_OBJECT_ERROR_ID,
-            pending_object_error,
-        )?;
+        let function =
+            register_pending_builtin(&mut runtime, PENDING_OBJECT_ERROR_ID, pending_object_error)?;
         let code = function_code(&runtime.context, Function::from_word(function.as_word()))?;
         let mut values = MultipleValues::new();
         let result = call_builtin_through_native_trampoline(

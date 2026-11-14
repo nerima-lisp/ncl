@@ -228,7 +228,7 @@ fn format_error_to_object_error(
     record_format_error(ctx, runtime, error, format_control, arguments, None)
 }
 
-fn stream_write_error_to_object_error(
+const fn stream_write_error_to_object_error(
     ctx: &mut ThreadContext,
     stream: Word,
     error: ObjectError,
@@ -288,7 +288,7 @@ fn format_argument_list(
     })
 }
 
-fn format_error_cause(error: &FormatErrorKind) -> FormatErrorCause {
+const fn format_error_cause(error: &FormatErrorKind) -> FormatErrorCause {
     match error {
         FormatErrorKind::Parse(kind) => FormatErrorCause::Parse(match kind {
             ParseErrorKind::UnterminatedDirective => FormatParseError::UnterminatedDirective,

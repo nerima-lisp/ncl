@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import os
 import platform
 import re
 import subprocess
@@ -31,6 +33,9 @@ from optimization_baseline_scoring import (
 from bench.timing import MINIMUM_SAMPLE_SECONDS, measurement_metadata
 
 
+DEFAULT_CL_BENCH_CHILD_TIMEOUT_SECONDS = 20.0
+
+
 def _positive_count(value: str) -> int:
     try:
         count = int(value)
@@ -39,6 +44,16 @@ def _positive_count(value: str) -> int:
     if count < 1:
         raise argparse.ArgumentTypeError("must be a positive integer")
     return count
+
+
+def _positive_finite_float(value: str) -> float:
+    try:
+        number = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive finite number") from error
+    if not math.isfinite(number) or number <= 0:
+        raise argparse.ArgumentTypeError("must be a positive finite number")
+    return number
 
 
 def _paired_count(value: str) -> int:
@@ -122,6 +137,19 @@ def _process_record(
     }
 
 
+def _load_average() -> list[float] | None:
+    getloadavg = getattr(os, "getloadavg", None)
+    if getloadavg is None:
+        return None
+    try:
+        values = [float(value) for value in getloadavg()]
+    except (OSError, TypeError, ValueError):
+        return None
+    if len(values) != 3 or any(not math.isfinite(value) or value < 0 for value in values):
+        return None
+    return values
+
+
 def _timed_command(
     command: Sequence[str],
     *,
@@ -180,10 +208,16 @@ def _run_benchmark_process(
     sample: int | None = None,
     benchmark_names: Sequence[str] = BENCHMARKS,
 ) -> dict[str, Any]:
+    sample_load_average_start = _load_average() if phase == "measurement" else None
     process_result, wall_seconds = _timed_command(command, cwd=cwd, timeout=timeout)
+    sample_load_average_end = _load_average() if phase == "measurement" else None
     driver_status, flat_times, benchmarks, driver_error, unexpected = _driver_data(
         process_result, benchmark_names
     )
+    for benchmark in benchmarks.values():
+        for sample_metadata_entry in benchmark.get("sample_metadata", []):
+            sample_metadata_entry["load_average_process_start"] = sample_load_average_start
+            sample_metadata_entry["load_average_process_end"] = sample_load_average_end
     process = _process_record(process_result, wall_seconds)
     record: dict[str, Any] = {
         "phase": phase,
@@ -191,6 +225,8 @@ def _run_benchmark_process(
         "driver_status": driver_status,
         "driver_times": flat_times,
         "benchmarks": benchmarks,
+        "sample_load_average_start": sample_load_average_start,
+        "sample_load_average_end": sample_load_average_end,
     }
     if mode is not None:
         record["mode"] = mode
@@ -209,10 +245,33 @@ def _ncl_command(
     binary: Path,
     mode: str,
     benchmark_names: Sequence[str] = BENCHMARKS,
+    *,
+    cwd: Path,
+    runs: int | None,
+    child_timeout_seconds: float,
 ) -> list[str]:
-    command = [str(NCL_DRIVER), str(binary), mode]
-    if tuple(benchmark_names) != BENCHMARKS:
-        command.extend(benchmark_names)
+    command = [
+        sys.executable,
+        str(DRIVER_SUPERVISOR),
+        "--engine",
+        "ncl",
+        "--runner",
+        str(binary),
+        "--mode",
+        mode,
+        "--driver",
+        str(NCL_DRIVER.with_name("ncl-driver.lisp")),
+        "--cwd",
+        str(cwd),
+        "--minimum-sample-seconds",
+        str(MINIMUM_SAMPLE_SECONDS),
+        "--child-timeout-seconds",
+        str(child_timeout_seconds),
+        "--include-sample-metadata",
+    ]
+    if runs is not None:
+        command.extend(("--runs", str(runs)))
+    command.extend(benchmark_names)
     return command
 
 
@@ -221,8 +280,10 @@ def _sbcl_command(
     benchmark_names: Sequence[str] = BENCHMARKS,
     *,
     cwd: Path,
+    runs: int | None,
+    child_timeout_seconds: float,
 ) -> list[str]:
-    return [
+    command = [
         sys.executable,
         str(DRIVER_SUPERVISOR),
         "--engine",
@@ -235,8 +296,16 @@ def _sbcl_command(
         str(SBCL_DRIVER),
         "--cwd",
         str(cwd),
-        *benchmark_names,
+        "--minimum-sample-seconds",
+        str(MINIMUM_SAMPLE_SECONDS),
+        "--child-timeout-seconds",
+        str(child_timeout_seconds),
+        "--include-sample-metadata",
     ]
+    if runs is not None:
+        command.extend(("--runs", str(runs)))
+    command.extend(benchmark_names)
+    return command
 
 
 def run_baseline(
@@ -250,9 +319,15 @@ def run_baseline(
     benchmarks: Sequence[str] | None = None,
     ncl_revision: str | None = None,
     ncl_revision_source: str | None = None,
+    cl_bench_runs: int | None = None,
+    child_timeout_seconds: float = DEFAULT_CL_BENCH_CHILD_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     if pairs < 5 or sbcl_samples < 5:
         raise ValueError("at least 5 samples are required for each runtime comparison")
+    if cl_bench_runs is not None and cl_bench_runs < 1:
+        raise ValueError("CL-Bench runs override must be a positive integer")
+    if not math.isfinite(child_timeout_seconds) or child_timeout_seconds <= 0:
+        raise ValueError("CL-Bench child timeout must be a positive finite number")
     ncl_binary = Path(ncl).expanduser().resolve()
     benchmark_names = _select_benchmarks(benchmarks)
     revision = _revision_record(ncl_revision, ncl_revision_source)
@@ -269,7 +344,13 @@ def run_baseline(
     source_root = scoreboard.checkout_source("cl-bench", cache_dir).resolve()
     source = _cl_bench_working_directory(source_root)
     runs: list[dict[str, Any]] = []
-    sbcl_command = _sbcl_command(sbcl, benchmark_names, cwd=source)
+    sbcl_command = _sbcl_command(
+        sbcl,
+        benchmark_names,
+        cwd=source,
+        runs=cl_bench_runs,
+        child_timeout_seconds=child_timeout_seconds,
+    )
     warmup_rounds = _round_schedule(warmups, warmups)
     measurement_rounds = _round_schedule(pairs, sbcl_samples)
     measurement: dict[str, Any] | None = None
@@ -278,16 +359,26 @@ def run_baseline(
             measurement = measurement_metadata(
                 SBCL_VERSION,
                 ncl_sha=revision["commit"],
-                minimum_sample_seconds=None,
+                minimum_sample_seconds=MINIMUM_SAMPLE_SECONDS,
             )
         for round_items in rounds:
             for item in round_items:
                 if item["engine"] == "ncl":
                     runs.append(_run_benchmark_process(
                         phase=phase,
-                        command=_ncl_command(ncl_binary, item["mode"], benchmark_names),
+                        command=_ncl_command(
+                            ncl_binary,
+                            item["mode"],
+                            benchmark_names,
+                            cwd=source,
+                            runs=cl_bench_runs,
+                            child_timeout_seconds=child_timeout_seconds,
+                        ),
                         cwd=source,
-                        timeout=scoreboard.DEFAULT_COMMAND_TIMEOUT,
+                        timeout=max(
+                            scoreboard.DEFAULT_COMMAND_TIMEOUT,
+                            child_timeout_seconds + 30.0,
+                        ),
                         mode=item["mode"],
                         pair=item.get("pair"),
                         sample=item.get("sample"),
@@ -298,7 +389,10 @@ def run_baseline(
                         phase=phase,
                         command=sbcl_command,
                         cwd=source,
-                        timeout=scoreboard.DEFAULT_COMMAND_TIMEOUT,
+                        timeout=max(
+                            scoreboard.DEFAULT_COMMAND_TIMEOUT,
+                            child_timeout_seconds + 30.0,
+                        ),
                         sample=item["sample"],
                         benchmark_names=benchmark_names,
                     ))
@@ -310,6 +404,47 @@ def run_baseline(
         benchmark_names=benchmark_names,
     )
     runtimes = {"ncl": ncl_runtime, "sbcl": sbcl_runtime}
+    timed_sample_metadata = [
+        sample
+        for run in runs
+        if run["phase"] == "measurement"
+        for benchmark in run["benchmarks"].values()
+        if benchmark["status"] == "passed"
+        for sample in benchmark.get("sample_metadata", [])
+    ]
+    expected_timed_samples = sum(
+        len(benchmark["times"])
+        for run in runs
+        if run["phase"] == "measurement"
+        for benchmark in run["benchmarks"].values()
+        if benchmark["status"] == "passed"
+    )
+    minimum_met_count = sum(
+        sample["minimum_duration_met"] for sample in timed_sample_metadata
+    )
+    minimum_policy = {
+        "target_seconds": MINIMUM_SAMPLE_SECONDS,
+        "met": (
+            expected_timed_samples > 0
+            and len(timed_sample_metadata) == expected_timed_samples
+            and minimum_met_count == expected_timed_samples
+        ),
+        "sample_count": len(timed_sample_metadata),
+        "expected_sample_count": expected_timed_samples,
+        "samples_met": minimum_met_count,
+    }
+    if len(timed_sample_metadata) != expected_timed_samples:
+        minimum_policy["reason"] = "sample metadata missing for some timed observations"
+    elif not expected_timed_samples:
+        minimum_policy["reason"] = "no completed timed observations"
+    elif minimum_met_count != expected_timed_samples:
+        minimum_policy["reason"] = "some timed observations finished below the target"
+    else:
+        minimum_policy["reason"] = "all timed observations met the target"
+    command_timeout_seconds = max(
+        scoreboard.DEFAULT_COMMAND_TIMEOUT,
+        child_timeout_seconds + 30.0,
+    )
     report = {
         "schema_version": 1,
         "status": "pending",
@@ -337,16 +472,15 @@ def run_baseline(
             "measurement_round_order": measurement_rounds,
             "sbcl_warmups": warmups,
             "sbcl_samples": sbcl_samples,
-            "inner_repetitions_per_sample": 1,
-            "minimum_sample_duration_policy": {
-                "target_seconds": MINIMUM_SAMPLE_SECONDS,
-                "met": False,
-                "reason": (
-                    "the fixed CL-Bench driver times one benchmark call per sample and "
-                    "exposes no repeat-count setting"
-                ),
+            "inner_repetitions_per_sample": "adaptive doubling from 1",
+            "cl_bench_runs_override": cl_bench_runs,
+            "minimum_sample_duration_policy": minimum_policy,
+            "allocation_metric": {
+                "status": "unavailable",
+                "reason": "the shared CL-Bench driver does not collect allocation counts",
             },
-            "command_timeout_seconds": scoreboard.DEFAULT_COMMAND_TIMEOUT,
+            "child_timeout_seconds": child_timeout_seconds,
+            "command_timeout_seconds": command_timeout_seconds,
             "benchmarks": list(benchmark_names),
         },
         "runs": runs,
@@ -373,6 +507,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmups", type=_positive_count, default=1)
     parser.add_argument("--pairs", type=_paired_count, default=5)
     parser.add_argument("--sbcl-samples", type=_paired_count, default=5)
+    parser.add_argument("--cl-bench-runs", type=_positive_count)
+    parser.add_argument(
+        "--child-timeout-seconds",
+        type=_positive_finite_float,
+        default=DEFAULT_CL_BENCH_CHILD_TIMEOUT_SECONDS,
+        help="per-child CL-Bench timeout (default: 20 seconds)",
+    )
     parser.add_argument(
         "--benchmark",
         action="append",
@@ -397,6 +538,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             benchmarks=args.benchmarks,
             ncl_revision=args.ncl_revision,
             ncl_revision_source=args.ncl_revision_source,
+            cl_bench_runs=args.cl_bench_runs,
+            child_timeout_seconds=args.child_timeout_seconds,
         )
     except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as error:
         parser.exit(1, f"optimization-baseline: {error}\n")

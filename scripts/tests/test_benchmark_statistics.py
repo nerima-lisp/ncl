@@ -162,20 +162,20 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         self.assertEqual(scores["benchmark_comparisons"]["FIB"]["off_over_sbcl"]["noise_basis"], "ratio")
         self.assertIn("below noise", render_cl_bench_table({"scores": scores}))
 
-    def test_cl_bench_table_renders_metadata_fixed_call_count_and_failures(self):
+    def test_cl_bench_table_renders_sample_metadata_and_high_load_status(self):
         table = render_cl_bench_table({
             "measurement": {
                 "ncl_sha": "a" * 40,
                 "sbcl_version": "2.6.10",
                 "host": "Linux x86_64",
-                "load_average": [1.0, 2.0, 3.0],
+                "load_average": [99.0, 99.0, 99.0],
             },
             "protocol": {
-                "inner_repetitions_per_sample": 1,
+                "inner_repetitions_per_sample": "adaptive doubling from 1",
                 "minimum_sample_duration_policy": {
                     "target_seconds": 0.1,
                     "met": False,
-                    "reason": "fixed one-call driver",
+                    "reason": "some timed observations finished below the target",
                 },
             },
             "runs": [
@@ -192,18 +192,36 @@ class BenchmarkStatisticsTests(unittest.TestCase):
                 {
                     "phase": "measurement",
                     "mode": "default",
-                    "benchmarks": {"FIB": {"status": "passed"}},
+                    "benchmarks": {"FIB": {
+                        "status": "passed",
+                        "sample_metadata": [{
+                            "repetitions": 8,
+                            "duration_seconds": 0.075,
+                            "minimum_duration_met": False,
+                            "load_average_process_start": [1.0, 2.0, 3.0],
+                            "load_average_process_end": [1.0, 2.0, 3.0],
+                        }],
+                    }},
                 },
                 {
                     "phase": "measurement",
-                    "benchmarks": {"FIB": {"status": "passed"}},
+                    "benchmarks": {"FIB": {
+                        "status": "passed",
+                        "sample_metadata": [{
+                            "repetitions": 16,
+                            "duration_seconds": 0.2,
+                            "minimum_duration_met": True,
+                            "load_average_process_start": [81.0, 90.0, 95.0],
+                            "load_average_process_end": [82.0, 91.0, 96.0],
+                        }],
+                    }},
                 },
             ],
             "scores": {
                 "benchmark_statistics_seconds": {
                     "ncl_off": {"FIB": {"sample_count": 0}},
-                    "ncl_default": {"FIB": {"sample_count": 0}},
-                    "sbcl": {"FIB": {"sample_count": 0}},
+                    "ncl_default": {"FIB": {"sample_count": 1}},
+                    "sbcl": {"FIB": {"sample_count": 1}},
                 },
                 "benchmark_ncl_over_sbcl_ratio": {
                     "off_over_sbcl": {"FIB": None},
@@ -211,17 +229,21 @@ class BenchmarkStatisticsTests(unittest.TestCase):
                 },
                 "benchmark_comparisons": {
                     "FIB": {
-                        "off_over_sbcl": {"noise_below": None},
-                        "default_over_sbcl": {"noise_below": None},
+                        "off_over_sbcl": {"noise_below": False},
+                        "default_over_sbcl": {"noise_below": True},
                     },
                 },
             },
         })
 
         self.assertIn("NCL off fail: TypeError: invalid argument", table)
-        self.assertIn("NCL default fail: no positive timed samples", table)
-        self.assertIn("SBCL fail: no positive timed samples", table)
-        self.assertIn("1 | not enforced", table)
+        self.assertIn("| 8 | missed (0/1) | start 1/2/3; end 1/2/3 |", table)
+        self.assertIn("| FIB | NCL default | passed |", table)
+        self.assertIn("SBCL | load 高で未確定", table)
+        self.assertIn(
+            "16 | met (1/1) | start 81/90/95; end 82/91/96",
+            table,
+        )
         self.assertIn("a" * 40, table)
         self.assertIn("2.6.10", table)
         self.assertIn("Linux x86_64", table)

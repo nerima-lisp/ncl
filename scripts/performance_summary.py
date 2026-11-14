@@ -128,6 +128,83 @@ def _cl_bench_failure(report: Mapping[str, Any], name: str, mode: str | None, la
     return "passed"
 
 
+def _cl_bench_sample_metadata(
+    report: Mapping[str, Any], name: str, mode: str | None
+) -> list[Mapping[str, Any]]:
+    samples = []
+    for run in report.get("runs", []):
+        if not isinstance(run, Mapping) or run.get("phase") != "measurement":
+            continue
+        if run.get("mode") != mode:
+            continue
+        benchmarks = run.get("benchmarks", {})
+        record = benchmarks.get(name, {}) if isinstance(benchmarks, Mapping) else {}
+        if not isinstance(record, Mapping) or record.get("status") != "passed":
+            continue
+        sample_metadata = record.get("sample_metadata", [])
+        if isinstance(sample_metadata, (list, tuple)):
+            samples.extend(
+                sample for sample in sample_metadata if isinstance(sample, Mapping)
+            )
+    return samples
+
+
+def _cl_bench_repetitions(samples: list[Mapping[str, Any]], fallback: Any) -> str:
+    if not samples:
+        return _cell(fallback)
+    return ",".join(_cell(sample.get("repetitions")) for sample in samples)
+
+
+def _cl_bench_floor(samples: list[Mapping[str, Any]]) -> str:
+    if not samples:
+        return "n/a"
+    met = sum(sample.get("minimum_duration_met") is True for sample in samples)
+    per_sample = ",".join(
+        "met" if sample.get("minimum_duration_met") is True else "missed"
+        for sample in samples
+    )
+    return f"{per_sample} ({met}/{len(samples)})"
+
+
+def _cl_bench_load(samples: list[Mapping[str, Any]]) -> tuple[str, bool]:
+    values = []
+    high = False
+    for sample in samples:
+        start = sample.get("load_average_process_start")
+        end = sample.get("load_average_process_end")
+        valid_start = isinstance(start, (list, tuple)) and len(start) == 3
+        valid_end = isinstance(end, (list, tuple)) and len(end) == 3
+        if not valid_start and not valid_end:
+            values.append("n/a")
+            continue
+        start_text = "/".join(_cell(value) for value in start) if valid_start else "n/a"
+        end_text = "/".join(_cell(value) for value in end) if valid_end else "n/a"
+        rendered = f"start {start_text}; end {end_text}"
+        is_high = any(
+            isinstance(load[0], (int, float)) and load[0] > 80
+            for load, valid in ((start, valid_start), (end, valid_end))
+            if valid
+        )
+        high = high or is_high
+        values.append(rendered)
+    return "; ".join(values) if values else "n/a", high
+
+
+def _cl_bench_noise_inconclusive(
+    comparisons: Mapping[str, Any], name: str, comparison_mode: str | None
+) -> bool:
+    benchmark = comparisons.get(name, {})
+    if not isinstance(benchmark, Mapping):
+        return False
+    modes = (comparison_mode,) if comparison_mode else ("off_over_sbcl", "default_over_sbcl")
+    return any(
+        isinstance(benchmark.get(mode), Mapping)
+        and benchmark[mode].get("noise_below") is True
+        for mode in modes
+        if mode is not None
+    )
+
+
 def render_cl_bench_table(report: Mapping[str, Any]) -> str:
     scores = report.get("scores", {})
     stats_by_runtime = scores.get("benchmark_statistics_seconds", {})
@@ -136,17 +213,16 @@ def render_cl_bench_table(report: Mapping[str, Any]) -> str:
     names = list(stats_by_runtime.get("ncl_off", {}))
     ncl_sha, sbcl_version, host, load_average = _measurement_cells(report)
     protocol = report.get("protocol", {})
-    repetitions = protocol.get("inner_repetitions_per_sample", "n/a")
     minimum_policy = protocol.get("minimum_sample_duration_policy", {})
-    if isinstance(minimum_policy, Mapping) and minimum_policy.get("met") is False:
-        minimum_status = "not enforced"
-    else:
-        minimum_status = _cell(minimum_policy.get("target_seconds")) if isinstance(
-            minimum_policy, Mapping
-        ) else "n/a"
+    repetitions = protocol.get("inner_repetitions_per_sample", "n/a")
+    target = (
+        _cell(minimum_policy.get("target_seconds"))
+        if isinstance(minimum_policy, Mapping)
+        else "n/a"
+    )
     lines = [
-        "| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | NCL/SBCL ratio | Noise | Calls per timing sample | 0.1s minimum | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
-        "|---|---|---|---:|---:|---:|---:|---|---:|---|---|---|---|---|",
+        f"| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | NCL/SBCL ratio | Noise | Calls per timing sample | {target}s floor | Process-start/end load average (1/5/15m) | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
+        "|---|---|---|---:|---:|---:|---:|---|---:|---|---|---|---|---|---|",
     ]
     implementations = (
         ("ncl_off", "NCL off", "off_over_sbcl", "off"),
@@ -159,6 +235,12 @@ def render_cl_bench_table(report: Mapping[str, Any]) -> str:
             comparison = comparisons.get(name, {}).get(comparison_mode, {}) if comparison_mode else {}
             ratio = ratios.get(comparison_mode, {}).get(name) if comparison_mode else None
             result = _cl_bench_failure(report, name, run_mode, label)
+            sample_metadata = _cl_bench_sample_metadata(report, name, run_mode)
+            sample_load, high_load = _cl_bench_load(sample_metadata)
+            if result == "passed" and high_load and _cl_bench_noise_inconclusive(
+                comparisons, name, comparison_mode
+            ):
+                result = "load 高で未確定"
             sample_count = stats.get("sample_count")
             if result == "passed" and sample_count == 0:
                 result = f"{label} fail: no positive timed samples"
@@ -168,7 +250,9 @@ def render_cl_bench_table(report: Mapping[str, Any]) -> str:
                 f"| {_cell(name)} | {label} | {_cell(result)} | {_cell(stats.get('sample_count'))} "
                 f"| {_cell(stats.get('median_seconds'))} | {_cell(stats.get('range_seconds'))} "
                 f"| {_cell(ratio)} | {_noise_label(comparison.get('noise_below')) if comparison_mode else 'n/a'} "
-                f"| {_cell(repetitions)} | {minimum_status} | {ncl_sha} | {sbcl_version} | {host} | {load_average} |"
+                f"| {_cl_bench_repetitions(sample_metadata, repetitions)} "
+                f"| {_cl_bench_floor(sample_metadata)} | {sample_load} "
+                f"| {ncl_sha} | {sbcl_version} | {host} | {load_average} |"
             )
     return "\n".join(lines)
 

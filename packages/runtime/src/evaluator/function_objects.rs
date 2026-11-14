@@ -15,8 +15,14 @@ impl Runtime {
         literal_objects: &mut HashMap<u32, HeapRootedWord>,
     ) -> Result<(HeapRootedWord, HeapRootedWord), RuntimeError> {
         let entry = compiled.entry_address()?;
+        let mut function_with_runtime_constants = function.clone();
+        if compiled.type_error_list_constant {
+            function_with_runtime_constants
+                .constants
+                .push(super::type_error_list_constant());
+        }
         let constants = self.make_constants(
-            function,
+            &function_with_runtime_constants,
             pending_functions,
             uninterned_symbols,
             literal_objects,

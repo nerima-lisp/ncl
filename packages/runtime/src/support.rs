@@ -69,6 +69,7 @@ pub struct NativeAbi<'a> {
     pub(crate) object: &'a ObjectRuntime,
     pub(crate) functions: &'a BTreeMap<u32, PublishedFunction>,
     pub(crate) undefined_function_stub: usize,
+    pub(crate) type_error_list_constant_index: Option<i64>,
 }
 
 impl RuntimeAbi for NativeAbi<'_> {
@@ -106,6 +107,11 @@ impl RuntimeAbi for NativeAbi<'_> {
             RuntimeFunction::MakeValueCell => ncl_sys::function_address!(native_make_value_cell)
                 .map_err(|error| RuntimeError::Native(error.to_string()))
                 .map_err(|_| AbiError::UnsupportedRuntimeFunction(function)),
+            RuntimeFunction::SignalTypeError => {
+                ncl_sys::function_address!(crate::signal::ncl_signal_type_error)
+                    .map_err(|error| RuntimeError::Native(error.to_string()))
+                    .map_err(|_| AbiError::UnsupportedRuntimeFunction(function))
+            }
             RuntimeFunction::WriteBarrier => {
                 ncl_sys::function_address!(write_barrier::native_write_barrier)
                     .map_err(|error| RuntimeError::Native(error.to_string()))
@@ -153,6 +159,9 @@ impl RuntimeAbi for NativeAbi<'_> {
     }
 
     fn constant_word_named(&self, name: ncl_codegen::ConstantName<'_>) -> Option<i64> {
+        if name.as_str() == "type-error-expected:LIST" {
+            return self.type_error_list_constant_index;
+        }
         let id = name
             .as_str()
             .strip_prefix("function-entry:")?

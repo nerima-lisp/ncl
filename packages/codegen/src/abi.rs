@@ -101,6 +101,8 @@ pub enum RuntimeFunction {
     MakeValueCell,
     /// Record a heap reference store without entering the Lisp runtime.
     WriteBarrier,
+    /// Signal a type error from a compiled guard's out-of-line slow path.
+    SignalTypeError,
     /// Enter a catch handler.
     EnterCatch,
     /// Enter an unwind-protect handler.

@@ -51,6 +51,20 @@ pub const fn native_failure(error: NativeError) -> RuntimeError {
     RuntimeError::NativeFailure { error, condition }
 }
 
+pub fn signal_pending_native_error(
+    ctx: &mut ThreadContext,
+    object: &ObjectRuntime,
+    error: NativeError,
+) -> Option<Result<(), ObjectError>> {
+    let RuntimeError::NativeFailure { condition, .. } = native_failure(error) else {
+        return None;
+    };
+    match condition {
+        NativeCondition::Lisp(error) => Some(crate::signal::signal_lisp_error(ctx, object, error)),
+        NativeCondition::Object(_) => None,
+    }
+}
+
 pub fn signal_native_failure(
     ctx: &mut ThreadContext,
     object: &ObjectRuntime,

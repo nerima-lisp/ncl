@@ -20,6 +20,7 @@ mod makeclosure_tests;
 mod native_error;
 mod nonlocal;
 mod optimization;
+pub(crate) mod signal;
 mod support;
 #[cfg(test)]
 mod tests_file_environment;
@@ -314,11 +315,25 @@ impl Runtime {
             [0; 4],
             0,
         );
+        let pending_errors = native_context.context.take_pending_runtime_errors();
+        let native_runtime_error = match pending_errors.native {
+            Some(error) => {
+                match native_error::signal_pending_native_error(
+                    native_context.context,
+                    native_context.object,
+                    error,
+                ) {
+                    Some(Ok(())) => None,
+                    Some(Err(error)) => Some(error.into()),
+                    None => Some(native_failure(error)),
+                }
+            }
+            None => None,
+        };
         let _ = ncl_sys::replace_native_context(thread, previous);
         let ((value, value_count), _) = (result, native_context);
-        let pending_errors = context.take_pending_runtime_errors();
-        if let Some(error) = pending_errors.native {
-            return Err(native_failure(error));
+        if let Some(error) = native_runtime_error {
+            return Err(error);
         }
         if let Some(error) = pending_errors.lisp
             && let Some(converter) = self.object.lisp_error_converter()

@@ -298,6 +298,7 @@ fn native_compilation(
         frame_size,
         function_name: "fixture".to_owned(),
         safepoint_maps: Vec::new(),
+        type_error_list_constant: false,
     })
 }
 

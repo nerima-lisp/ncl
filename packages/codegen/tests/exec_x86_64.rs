@@ -162,8 +162,13 @@ impl RuntimeAbi for BuiltinAbi {
             }
             RuntimeFunction::AllocateSlow => Ok(alloc_slow as *const () as usize as u64),
             RuntimeFunction::SafepointSlow => Ok(safepoint_slow as *const () as usize as u64),
+            RuntimeFunction::SignalTypeError => Ok(0x1000),
             _ => Err(ncl_codegen::AbiError::UnsupportedRuntimeFunction(function)),
         }
+    }
+
+    fn constant_word(&self, name: &str) -> Option<i64> {
+        (name == "type-error-expected:LIST").then_some(0)
     }
 }
 
@@ -475,26 +480,21 @@ fn executes_both_branch_paths_with_block_arguments() {
     assert_eq!(invoke(2), (Word::fixnum(2).bits(), 1));
 }
 
-#[path = "exec_x86_64/cons.rs"]
-mod cons;
-#[path = "exec_x86_64/fib.rs"]
-mod fib;
-
-#[path = "exec_x86_64/basic.rs"]
-mod basic;
-
 #[path = "exec_x86_64/arrays.rs"]
 mod arrays;
-
+#[path = "exec_x86_64/basic.rs"]
+mod basic;
 #[path = "exec_x86_64/calls.rs"]
 mod calls;
-
-#[path = "exec_x86_64/tail.rs"]
-mod tail;
-
 #[path = "exec_x86_64/checked_calls.rs"]
 mod checked_calls;
+#[path = "exec_x86_64/cons.rs"]
+mod cons;
 #[path = "exec_x86_64/errors.rs"]
 mod errors;
+#[path = "exec_x86_64/fib.rs"]
+mod fib;
 #[path = "exec_x86_64/relocations.rs"]
 mod relocations;
+#[path = "exec_x86_64/tail.rs"]
+mod tail;

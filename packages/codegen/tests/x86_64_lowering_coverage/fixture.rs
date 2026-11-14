@@ -29,12 +29,17 @@ impl RuntimeAbi for X86_64FixtureAbi {
             | RuntimeFunction::EnterProgv
             | RuntimeFunction::LeaveCatch
             | RuntimeFunction::LeaveUnwindProtect
-            | RuntimeFunction::LeaveProgv => Ok(0x1000),
+            | RuntimeFunction::LeaveProgv
+            | RuntimeFunction::SignalTypeError => Ok(0x1000),
             _ => Err(AbiError::UnsupportedRuntimeFunction(function)),
         }
     }
 
     fn constant_word(&self, name: &str) -> Option<i64> {
-        (name == "function-entry:7").then_some(0x2000)
+        match name {
+            "function-entry:7" => Some(0x2000),
+            "type-error-expected:LIST" => Some(0),
+            _ => None,
+        }
     }
 }

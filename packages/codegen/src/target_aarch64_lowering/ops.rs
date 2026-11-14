@@ -3,7 +3,7 @@ use super::{CallCheckContext, emit, load_value, primitives, store_value};
 use crate::machine_verify::SafepointSite;
 use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
-use ncl_ir::{Compare, Function, Op, OpKind, ValueId};
+use ncl_ir::{Compare, Function, Op, OpKind, Prim, ValueId};
 
 fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u64, CodegenError> {
     match constant {
@@ -42,7 +42,7 @@ pub(super) fn lower_write_barrier_call(
     emit(assembler, Inst::Blr { rn: Reg(17) })
 }
 
-fn load_heap_constant(
+pub(super) fn load_heap_constant(
     assembler: &mut Assembler,
     index: ncl_ir::ConstantIndex,
 ) -> Result<(), CodegenError> {
@@ -302,8 +302,23 @@ pub fn lower_op(
                 store_value(assembler, allocation, result, Reg(16))?;
             }
         }
-        OpKind::Prim { op, args, .. } => {
-            primitives::lower_prim(assembler, op, args, result, allocation, abi)?;
+        OpKind::Prim { op: prim, args, .. } => {
+            if matches!(prim, Prim::Car | Prim::Cdr) {
+                call_pc = Some(super::checked_car_cdr::lower(
+                    assembler,
+                    super::checked_car_cdr::CarCdrOperation {
+                        prim,
+                        args,
+                        result,
+                        source_origin: op.loc,
+                    },
+                    allocation,
+                    abi,
+                    check_context,
+                )?);
+            } else {
+                primitives::lower_prim(assembler, prim, args, result, allocation, abi)?;
+            }
         }
         OpKind::Compare { op, left, right } => {
             load_value(assembler, allocation, *left, Reg(16))?;

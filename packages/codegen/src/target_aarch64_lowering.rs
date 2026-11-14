@@ -468,6 +468,8 @@ fn lower_builtin(
 pub(super) mod calls;
 #[path = "target_aarch64_lowering/checked_call.rs"]
 mod checked_call;
+#[path = "target_aarch64_lowering/checked_car_cdr.rs"]
+mod checked_car_cdr;
 #[path = "target_aarch64_lowering/checked_ops.rs"]
 mod checked_ops;
 #[path = "target_aarch64_lowering/constants.rs"]

@@ -31,6 +31,7 @@ impl RuntimeAbi for X86_64FixtureAbi {
             | RuntimeFunction::EnterCatch
             | RuntimeFunction::EnterUnwindProtect
             | RuntimeFunction::EnterProgv
+            | RuntimeFunction::SignalTypeError
             | RuntimeFunction::LeaveCatch
             | RuntimeFunction::LeaveUnwindProtect
             | RuntimeFunction::LeaveProgv => Ok(0x1000),
@@ -39,6 +40,10 @@ impl RuntimeAbi for X86_64FixtureAbi {
     }
 
     fn constant_word(&self, name: &str) -> Option<i64> {
-        (name == "function-entry:7").then_some(0x2000)
+        match name {
+            "function-entry:7" => Some(0x2000),
+            "type-error-expected:LIST" => Some(0),
+            _ => None,
+        }
     }
 }

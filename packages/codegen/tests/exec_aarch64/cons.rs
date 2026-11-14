@@ -1,51 +1,19 @@
 use super::*;
 
-fn build_cons_function() -> ncl_ir::Function {
+fn build_cons_allocation_function() -> ncl_ir::Function {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(6),
         "cons-fast",
         Vec::new(),
-        vec![Ty::Word],
+        vec![Ty::Address],
     );
-    let object = builder
+    let allocation = builder
         .push_op(OpKind::Alloc { words: 2 }, &[Ty::Address])
         .expect("allocation")[0];
-    let object_word = convert(&mut builder, Convert::AddressToWord, object, Ty::Word);
-    let first_loaded = builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::Car,
-                args: vec![object_word],
-                condition: None,
-            },
-            &[Ty::Word],
-        )
-        .expect("load car")[0];
-    let second_loaded = builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::Cdr,
-                args: vec![object_word],
-                condition: None,
-            },
-            &[Ty::Word],
-        )
-        .expect("load cdr")[0];
-    let first_loaded = convert(&mut builder, Convert::WordToI64, first_loaded, Ty::I64);
-    let second_loaded = convert(&mut builder, Convert::WordToI64, second_loaded, Ty::I64);
-    let sum = builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::FixnumAdd,
-                args: vec![first_loaded, second_loaded],
-                condition: None,
-            },
-            &[Ty::I64],
-        )
-        .expect("sum")[0];
-    let sum = convert(&mut builder, Convert::I64ToWord, sum, Ty::Word);
     builder
-        .terminate(Terminator::Return { values: vec![sum] })
+        .terminate(Terminator::Return {
+            values: vec![allocation],
+        })
         .expect("return");
 
     builder.finish()
@@ -142,9 +110,10 @@ fn build_cons_store_function() -> ncl_ir::Function {
 }
 
 #[test]
-fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
+fn executes_two_word_allocation_on_tlab_fast_path() {
     let abi = BuiltinAbi;
-    let compiled = compile_function_aarch64(&build_cons_function(), &abi).expect("lowering");
+    let compiled =
+        compile_function_aarch64(&build_cons_allocation_function(), &abi).expect("lowering");
     let mut code = alloc_code(compiled.code.len()).expect("code allocation");
     write_code(&mut code, 0, &compiled.code).expect("code write");
     publish_code(&mut code).expect("code publication");
@@ -160,7 +129,7 @@ fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
         [0; 4],
         0,
     );
-    assert_eq!(value, Word::fixnum(0).bits());
+    assert_eq!(usize::try_from(value).expect("allocation address"), bump);
     assert_eq!(count, 1);
     assert_eq!(tlab_bump(&thread), bump + 16);
     let Some(map) = compiled.safepoint_maps.first() else {

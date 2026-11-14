@@ -245,7 +245,7 @@ fn format_writes_to_a_stream_and_the_bound_standard_output() {
 }
 
 #[test] // CLHS 22.3
-fn format_maps_invalid_controls_arguments_destinations_and_stream_writes() {
+fn format_rejects_invalid_controls_and_destinations() {
     let (runtime, mut ctx, format) = setup();
     let valid_control = string(&runtime, &mut ctx, "~A");
     let valid_control = HeapRootedWord::new(&ctx, valid_control).expect("root valid control");
@@ -266,7 +266,11 @@ fn format_maps_invalid_controls_arguments_destinations_and_stream_writes() {
         runtime.call_builtin(&mut ctx, format, &[Word::NIL, Word::character(0x11_0000)]),
         Err(ObjectError::TypeError)
     );
+}
 
+#[test] // NCL FORMAT error policy from conditions.md
+fn format_signals_simple_error_for_parse_and_argument_failures() {
+    let (runtime, mut ctx, format) = setup();
     let malformed = string(&runtime, &mut ctx, "~z");
     let malformed = HeapRootedWord::new(&ctx, malformed).expect("root malformed control");
     assert_eq!(
@@ -328,7 +332,11 @@ fn format_maps_invalid_controls_arguments_destinations_and_stream_writes() {
         wrong_type.get(),
         "(\"not a character\")",
     );
+}
 
+#[test] // CLHS 22.3
+fn format_rejects_input_stream_and_invalid_standard_output_destinations() {
+    let (runtime, mut ctx, format) = setup();
     let make_input = FunctionObject::try_from(
         runtime
             .function(&mut ctx, "COMMON-LISP", "MAKE-STRING-INPUT-STREAM")

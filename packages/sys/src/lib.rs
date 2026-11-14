@@ -1,4 +1,5 @@
 #![deny(unsafe_op_in_unsafe_fn, clippy::undocumented_unsafe_blocks)]
+#![cfg_attr(ncl_address_sanitizer, feature(sanitize))]
 //! The single unsafe boundary of the NCL runtime.
 
 mod allocation_tracking;

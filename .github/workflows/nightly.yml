@@ -160,8 +160,8 @@ jobs:
     timeout-minutes: 60
     env:
       RUSTUP_TOOLCHAIN: nightly-2026-10-29
-      RUSTFLAGS: -Zsanitizer=address
-      RUSTDOCFLAGS: -Zsanitizer=address
+      RUSTFLAGS: -Zsanitizer=address --cfg ncl_address_sanitizer
+      RUSTDOCFLAGS: -Zsanitizer=address --cfg ncl_address_sanitizer
       ASAN_OPTIONS: detect_leaks=1
     steps:
       - uses: actions/checkout@v4

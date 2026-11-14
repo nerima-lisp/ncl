@@ -2,6 +2,13 @@ use crate::native_error::NativeError;
 use crate::word::Word;
 use core::sync::atomic::AtomicUsize;
 use std::ptr;
+#[cfg_attr(ncl_address_sanitizer, inline(never))]
+#[cfg_attr(ncl_address_sanitizer, sanitize(address = "off"))]
+const unsafe fn read_conservative_stack_word(address: usize) -> u64 {
+    // SAFETY: callers provide an aligned word inside a published, stopped stack interval.
+    unsafe { std::ptr::with_exposed_provenance::<u64>(address).read() }
+}
+
 mod access;
 mod control;
 mod gc_state;
@@ -260,11 +267,9 @@ impl Thread {
                 while address.checked_add(8).is_some_and(|next| next <= end) {
                     if !precise_root_addresses.contains(&address) {
                         // SAFETY: the collector reads only a published, stopped stack interval at word alignment.
-                        values.push(unsafe {
-                            Word::from_bits(
-                                std::ptr::with_exposed_provenance::<u64>(address).read(),
-                            )
-                        });
+                        values.push(Word::from_bits(unsafe {
+                            read_conservative_stack_word(address)
+                        }));
                     }
                     address += 8;
                 }

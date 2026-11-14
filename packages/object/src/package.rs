@@ -187,6 +187,31 @@ impl Package {
         }
         Ok(None)
     }
+    fn find_symbol_by_name(
+        self,
+        ctx: &mut ThreadContext,
+        name: &str,
+    ) -> Result<Option<(Word, FindStatus)>, ObjectError> {
+        let internal = HashTable::from_word(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
+        if let Some(symbol) = internal.get_string(ctx, name)? {
+            return Ok(Some((symbol, FindStatus::Internal)));
+        }
+        let external = HashTable::from_word(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
+        if let Some(symbol) = external.get_string(ctx, name)? {
+            return Ok(Some((symbol, FindStatus::External)));
+        }
+        let mut used = get(ctx, self.0, widetag::PACKAGE, USE_LIST)?;
+        while used != Word::NIL {
+            let package =
+                ncl_sys::read_cons_word(&ctx.thread, used, 0).ok_or(ObjectError::Layout)?;
+            let external = HashTable::from_word(get(ctx, package, widetag::PACKAGE, EXTERNAL)?);
+            if let Some(symbol) = external.get_string(ctx, name)? {
+                return Ok(Some((symbol, FindStatus::Inherited)));
+            }
+            used = ncl_sys::read_cons_word(&ctx.thread, used, 1).ok_or(ObjectError::Layout)?;
+        }
+        Ok(None)
+    }
     /// Intern a symbol by name, returning its symbol and status.
     ///
     /// # Errors
@@ -203,11 +228,11 @@ impl Package {
         let mut package = self.0;
         crate::with_root(ctx, &mut package, |ctx, package| {
             Self::from_word(*package).ensure_unlocked(ctx)?;
+            if let Some(found) = Self::from_word(*package).find_symbol_by_name(ctx, name)? {
+                return Ok(found);
+            }
             let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
             crate::with_root(ctx, &mut name_word, |ctx, name_word| {
-                if let Some(found) = Self::from_word(*package).find_symbol(ctx, *name_word)? {
-                    return Ok(found);
-                }
                 let mut symbol = make_symbol(ctx, runtime, *name_word)?;
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
                     put(

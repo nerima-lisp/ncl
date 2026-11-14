@@ -76,6 +76,21 @@ fn strings_equal(
     Ok(true)
 }
 
+pub(super) fn string_equal(ctx: &ThreadContext, word: Word, value: &str) -> Result<bool, ObjectError> {
+    if ncl_sys::object_widetag(&ctx.thread, word) != Some(widetag::STRING) {
+        return Ok(false);
+    }
+    if string_length(ctx, word)? != value.chars().count() {
+        return Ok(false);
+    }
+    for (index, character) in value.chars().enumerate() {
+        if string_ref(ctx, word, index)? != character {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 fn numeric_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, ObjectError> {
     let tag = ncl_sys::object_widetag(&ctx.thread, left);
     if tag != ncl_sys::object_widetag(&ctx.thread, right) {
@@ -145,13 +160,7 @@ fn content_hash(
     if ncl_sys::object_widetag(&ctx.thread, word) == Some(widetag::STRING) {
         let mut hash = 0xcbf2_9ce4_8422_2325;
         for index in 0..string_length(ctx, word)? {
-            let character = string_ref(ctx, word, index)?;
-            let character = if fold {
-                character.to_ascii_uppercase()
-            } else {
-                character
-            };
-            hash = (hash ^ u64::from(character as u32)).wrapping_mul(0x0100_0000_01b3);
+            update_string_hash(&mut hash, string_ref(ctx, word, index)?, fold);
         }
         return Ok(hash);
     }
@@ -162,6 +171,23 @@ fn content_hash(
         );
     }
     Ok(numeric_hash(ctx, word)?.unwrap_or_else(|| crate::hash_table::sxhash(word)))
+}
+
+pub(super) fn string_hash(value: &str) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325;
+    for character in value.chars() {
+        update_string_hash(&mut hash, character, false);
+    }
+    hash
+}
+
+fn update_string_hash(hash: &mut u64, character: char, fold: bool) {
+    let character = if fold {
+        character.to_ascii_uppercase()
+    } else {
+        character
+    };
+    *hash = (*hash ^ u64::from(u32::from(character))).wrapping_mul(0x0100_0000_01b3);
 }
 
 fn cons_part(ctx: &ThreadContext, word: Word, slot: usize) -> Result<Word, ObjectError> {

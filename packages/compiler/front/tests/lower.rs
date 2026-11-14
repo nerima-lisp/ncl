@@ -81,10 +81,7 @@ fn eval_lowering_publishes_single_value_defaults_in_nested_functions() {
 
 #[test]
 fn lowers_car_and_cdr_to_checked_primitives() {
-    for (name, expected) in [
-        ("CAR", ncl_ir::Prim::Car),
-        ("CDR", ncl_ir::Prim::Cdr),
-    ] {
+    for (name, expected) in [("CAR", ncl_ir::Prim::Car), ("CDR", ncl_ir::Prim::Cdr)] {
         let mut fx = Fixture::new();
         let argument = fx.user("pair");
         let form = fx.form(name, &[argument]);

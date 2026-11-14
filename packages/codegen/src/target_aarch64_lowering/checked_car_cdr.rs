@@ -253,6 +253,10 @@ fn emit_type_error_signal(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "Lowering tests use named setup failures and assert emitted instructions or errors."
+)]
 mod tests {
     use std::collections::HashMap;
 
@@ -304,7 +308,7 @@ mod tests {
     }
 
     fn lower_for_test(
-        prim: Prim,
+        prim: &Prim,
         args: &[ValueId],
         with_result: bool,
         source_origin: Option<DebugLocationId>,
@@ -318,12 +322,8 @@ mod tests {
                 ty: Ty::Word,
             }]
         };
-        let mut builder = FunctionBuilder::new(
-            FunctionId(1200),
-            "checked-car-cdr-test",
-            params,
-            Vec::new(),
-        );
+        let mut builder =
+            FunctionBuilder::new(FunctionId(1200), "checked-car-cdr-test", params, Vec::new());
         let result = with_result.then(|| {
             builder
                 .push_op(
@@ -352,7 +352,7 @@ mod tests {
         let site = lower(
             &mut assembler,
             CarCdrOperation {
-                prim: &prim,
+                prim,
                 args,
                 result,
                 source_origin,
@@ -371,14 +371,20 @@ mod tests {
     fn encode(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
         let mut assembler = Assembler::new();
         for instruction in instructions {
-            assembler.emit(&instruction).expect("encode expected instruction");
+            assembler
+                .emit(&instruction)
+                .expect("encode expected instruction");
         }
-        assembler.finish().expect("finish expected instructions").bytes
+        assembler
+            .finish()
+            .expect("finish expected instructions")
+            .bytes
     }
 
     fn assert_contains(code: &[u8], expected: &[u8], message: &str) {
         assert!(
-            code.windows(expected.len()).any(|window| window == expected),
+            code.windows(expected.len())
+                .any(|window| window == expected),
             "{message}: expected {expected:02x?} in {code:02x?}"
         );
     }
@@ -386,14 +392,8 @@ mod tests {
     #[test]
     fn car_and_cdr_lowering_load_their_cons_fields() {
         for (prim, offset) in [(Prim::Car, 0), (Prim::Cdr, 8)] {
-            let (code, _) = lower_for_test(
-                prim,
-                &[ValueId(0)],
-                true,
-                None,
-                &TestAbi::default(),
-            )
-            .expect("lower checked cons access");
+            let (code, _) = lower_for_test(&prim, &[ValueId(0)], true, None, &TestAbi::default())
+                .expect("lower checked cons access");
             let expected = encode([Inst::Ldr {
                 rt: Reg(16),
                 mem: MemOperand::Unscaled {
@@ -401,18 +401,21 @@ mod tests {
                     offset,
                 },
             }]);
-            assert_contains(&code, &expected, "lowering emits the selected cons field load");
+            assert_contains(
+                &code,
+                &expected,
+                "lowering emits the selected cons field load",
+            );
         }
     }
 
     #[test]
     fn lowering_handles_no_result_and_encodes_source_origin() {
-        for (source_origin, encoded_origin) in [
-            (Some(DebugLocationId(73)), 73_u64),
-            (None, u64::MAX),
-        ] {
+        for (source_origin, encoded_origin) in
+            [(Some(DebugLocationId(73)), 73_u64), (None, u64::MAX)]
+        {
             let (code, _) = lower_for_test(
-                Prim::Car,
+                &Prim::Car,
                 &[ValueId(0)],
                 false,
                 source_origin,
@@ -426,14 +429,8 @@ mod tests {
 
     #[test]
     fn malformed_operand_arity_returns_the_specific_error() {
-        let error = lower_for_test(
-            Prim::Car,
-            &[],
-            false,
-            None,
-            &TestAbi::default(),
-        )
-        .expect_err("CAR requires one operand");
+        let error = lower_for_test(&Prim::Car, &[], false, None, &TestAbi::default())
+            .expect_err("CAR requires one operand");
         assert_eq!(
             error,
             CodegenError::Unsupported("CAR or CDR requires one operand".into())
@@ -443,7 +440,7 @@ mod tests {
     #[test]
     fn missing_type_error_signal_entry_is_reported() {
         let error = lower_for_test(
-            Prim::Car,
+            &Prim::Car,
             &[ValueId(0)],
             false,
             None,
@@ -464,7 +461,7 @@ mod tests {
     #[test]
     fn missing_list_constant_is_reported() {
         let error = lower_for_test(
-            Prim::Cdr,
+            &Prim::Cdr,
             &[ValueId(0)],
             false,
             None,

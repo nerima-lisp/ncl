@@ -394,5 +394,4 @@ mod tests {
             Err(CodegenError::Unsupported(message)) if message == "aset has no value operand"
         ));
     }
-
 }

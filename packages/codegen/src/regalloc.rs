@@ -440,7 +440,6 @@ mod tests {
         ));
         assert!(allocation.safepoint_registers.values().all(Vec::is_empty));
     }
-
 }
 
 #[cfg(test)]

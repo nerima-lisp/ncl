@@ -16,6 +16,7 @@ unsafe_code = "allow"
 unsafe_op_in_unsafe_fn = "deny"
 missing_debug_implementations = "warn"
 missing_docs = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(ncl_address_sanitizer)'] }
 
 [lints.clippy]
 all = "warn"

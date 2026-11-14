@@ -1,9 +1,10 @@
 use super::*;
 use ncl_codegen::{AbiError, ContextField, RuntimeAbi, RuntimeFunction};
 use ncl_ir::{FunctionBuilder, OpKind, Terminator};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-static PRECISE_COLLECTIONS: AtomicUsize = AtomicUsize::new(0);
+std::thread_local! {
+    static PRECISE_COLLECTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 struct PreciseCollectionAbi<T>(T);
 
@@ -29,7 +30,7 @@ extern "C" fn collect_precisely(thread: &mut ncl_sys::Thread, frame_fp: usize, r
     thread.capture_native_frame(frame_fp, return_pc);
     if !thread.frame_snapshot_failed() {
         ncl_sys::collect(thread, true);
-        PRECISE_COLLECTIONS.fetch_add(1, Ordering::SeqCst);
+        PRECISE_COLLECTIONS.with(|count| count.set(count.get() + 1));
     }
     thread.clear_safepoint_request();
 }
@@ -48,7 +49,7 @@ fn compile_collection_function(function: &ncl_ir::Function) -> ncl_codegen::Comp
     compiled.unwrap_or_else(|error| panic!("lower precise collection function: {error:?}"))
 }
 
-fn collect_at_precise_safepoint(ctx: &mut ThreadContext) {
+pub fn collect_at_precise_safepoint(ctx: &mut ThreadContext) {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(1),
         "weak-table-precise-collection",
@@ -91,13 +92,13 @@ fn collect_at_precise_safepoint(ctx: &mut ThreadContext) {
         .register_code(&code, metadata)
         .unwrap_or_else(|error| panic!("register collection code: {error:?}"));
 
-    PRECISE_COLLECTIONS.store(0, Ordering::SeqCst);
+    PRECISE_COLLECTIONS.with(|count| count.set(0));
     ctx.thread_access().request_poll();
     let (_, count) =
         ctx.thread_access()
             .invoke_entry(&code, compiled.entry_offset as usize, 0, [0; 4], 0);
     assert_eq!(count, 0);
-    assert_eq!(PRECISE_COLLECTIONS.load(Ordering::SeqCst), 1);
+    PRECISE_COLLECTIONS.with(|count| assert_eq!(count.get(), 1));
     assert!(ctx.thread_access().unregister_code(&code).is_some());
 }
 
@@ -127,15 +128,29 @@ fn weak_key_entry_is_removed_when_key_dies() {
 
 #[test]
 fn weak_value_entry_is_removed_when_value_dies() {
-    weak_entry_after_gc(Weakness::Value, true, false, 0, Word::NIL);
+    weak_entry_helpers::weak_entry_after_gc(Weakness::Value, true, false, 0, Word::NIL, true);
 }
 
 #[test]
 fn weak_key_and_value_entry_requires_both_referents() {
-    weak_entry_after_gc(Weakness::KeyAndValue, false, false, 0, Word::NIL);
+    weak_entry_helpers::weak_entry_after_gc(
+        Weakness::KeyAndValue,
+        false,
+        false,
+        0,
+        Word::NIL,
+        true,
+    );
 }
 
 #[test]
 fn weak_key_or_value_entry_survives_when_key_is_live() {
-    weak_entry_after_gc(Weakness::KeyOrValue, true, false, 1, Word::fixnum(99));
+    weak_entry_helpers::weak_entry_after_gc(
+        Weakness::KeyOrValue,
+        true,
+        false,
+        1,
+        Word::fixnum(99),
+        false,
+    );
 }

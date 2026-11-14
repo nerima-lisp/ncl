@@ -5,13 +5,32 @@ use ncl_object::{
     bignum_limbs, bignum_sign, classify_object, double_value, make_bignum_from_i128, make_double,
     make_ratio, ratio_denominator, ratio_numerator,
 };
+use ncl_sys::RootSlot;
+use std::cell::Cell;
+
+use crate::arithmetic::{Integer, arbitrary_integer, arbitrary_integer_word};
+
+fn with_root<T>(
+    ctx: &mut ThreadContext,
+    value: &mut Word,
+    f: impl FnOnce(&mut ThreadContext, RootSlot<'_>) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut slot = Cell::new(*value);
+    let token = ncl_object::push_root(ctx, slot.get_mut());
+    let result = f(ctx, RootSlot::new(&slot));
+    *value = slot.get();
+    if !ncl_object::pop_root(ctx, token) {
+        return Err(ObjectError::Layout);
+    }
+    result
+}
 
 fn integer_to_f64(value: i128) -> Result<f64, ObjectError> {
-    let magnitude = value.unsigned_abs();
-    let limb =
-        |shift| f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).unwrap_or(0));
-    let result =
-        limb(96) * 2_f64.powi(96) + limb(64) * 2_f64.powi(64) + limb(32) * 2_f64.powi(32) + limb(0);
+    let bytes = value.unsigned_abs().to_le_bytes();
+    let mut result = 0.0_f64;
+    for limb_bytes in bytes.as_chunks::<4>().0.iter().rev() {
+        result = result.mul_add(4_294_967_296.0, f64::from(u32::from_le_bytes(*limb_bytes)));
+    }
     let result = if value.is_negative() { -result } else { result };
     result
         .is_finite()
@@ -19,9 +38,10 @@ fn integer_to_f64(value: i128) -> Result<f64, ObjectError> {
         .ok_or(ObjectError::TypeError)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Number {
     Integer(i128),
+    BigInteger(Integer),
     Ratio(i128, i128),
     Float(f64),
 }
@@ -93,7 +113,12 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
 }
 fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectError> {
     match classify_object(ctx, word) {
-        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => Ok(Number::Integer(integer(ctx, word)?)),
+        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => {
+            let value = arbitrary_integer(ctx, word)?;
+            Ok(value
+                .to_i128()
+                .map_or(Number::BigInteger(value), Number::Integer))
+        }
         ObjectRef::Ratio(value) => {
             let object = ncl_object::Ratio::from_word(value);
             ratio(
@@ -109,12 +134,19 @@ fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectError> {
         _ => Err(ObjectError::TypeError),
     }
 }
-fn as_float(value: Number) -> Result<f64, ObjectError> {
+fn as_float(value: &Number) -> Result<f64, ObjectError> {
     match value {
-        Number::Integer(value) => integer_to_f64(value),
-        Number::Ratio(n, d) => Ok(integer_to_f64(n)? / integer_to_f64(d)?),
-        Number::Float(value) => Ok(value),
+        Number::Integer(value) => integer_to_f64(*value),
+        Number::BigInteger(value) => Ok(value.to_f64()),
+        Number::Ratio(n, d) => Ok(integer_to_f64(*n)? / integer_to_f64(*d)?),
+        Number::Float(value) => Ok(*value),
     }
+}
+
+fn integer_number(value: Integer) -> Number {
+    value
+        .to_i128()
+        .map_or(Number::BigInteger(value), Number::Integer)
 }
 fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<Word, ObjectError> {
     match value {
@@ -128,26 +160,43 @@ fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<Wor
                 || make_bignum_from_i128(ctx, runtime, value).map(Into::into),
                 Ok,
             ),
+        Number::BigInteger(value) => arbitrary_integer_word(ctx, runtime, value),
         Number::Ratio(n, d) => {
-            let n = word(ctx, runtime, Number::Integer(n))?;
-            let d = word(ctx, runtime, Number::Integer(d))?;
-            make_ratio(ctx, runtime, n, d).map(Into::into)
+            let mut n = word(ctx, runtime, Number::Integer(n))?;
+            with_root(ctx, &mut n, |ctx, n| {
+                let mut d = word(ctx, runtime, Number::Integer(d))?;
+                with_root(ctx, &mut d, |ctx, d| {
+                    make_ratio(ctx, runtime, *n, *d).map(Into::into)
+                })
+            })
         }
         Number::Float(value) => make_double(ctx, runtime, value).map(Into::into),
     }
 }
 
 fn exact_remainder(value: Number, divisor: Number, floor: bool) -> Option<Number> {
-    let (value_n, value_d) = match value {
-        Number::Integer(value) => (value, 1),
-        Number::Ratio(n, d) => (n, d),
-        Number::Float(_) => return None,
+    let (value_integer, value_fraction) = match value {
+        Number::Integer(value) => (Some(Integer::from_i128(value)), Some((value, 1))),
+        Number::BigInteger(value) => (Some(value), None),
+        Number::Ratio(numerator, denominator) => (None, Some((numerator, denominator))),
+        Number::Float(_) => (None, None),
     };
-    let (divisor_n, divisor_d) = match divisor {
-        Number::Integer(value) => (value, 1),
-        Number::Ratio(n, d) => (n, d),
-        Number::Float(_) => return None,
+    let (divisor_integer, divisor_fraction) = match divisor {
+        Number::Integer(value) => (Some(Integer::from_i128(value)), Some((value, 1))),
+        Number::BigInteger(value) => (Some(value), None),
+        Number::Ratio(numerator, denominator) => (None, Some((numerator, denominator))),
+        Number::Float(_) => (None, None),
     };
+    if let (Some(value), Some(divisor)) = (value_integer, divisor_integer) {
+        let (_, remainder) = if floor {
+            value.div_floor_rem(&divisor)?
+        } else {
+            value.div_trunc_rem(&divisor)?
+        };
+        return Some(integer_number(remainder));
+    }
+    let (value_n, value_d) = value_fraction?;
+    let (divisor_n, divisor_d) = divisor_fraction?;
     if divisor_n == 0 {
         return None;
     }
@@ -175,11 +224,11 @@ fn remainder(
 ) -> Result<Word, ObjectError> {
     let value = number(ctx, args.required(0)?)?;
     let divisor = number(ctx, args.required(1)?)?;
-    if let Some(value) = exact_remainder(value, divisor, floor) {
+    if let Some(value) = exact_remainder(value.clone(), divisor.clone(), floor) {
         return word(ctx, runtime, value);
     }
-    let value_float = as_float(value)?;
-    let divisor_float = as_float(divisor)?;
+    let value_float = as_float(&value)?;
+    let divisor_float = as_float(&divisor)?;
     if divisor_float == 0.0 {
         return Err(ObjectError::TypeError);
     }

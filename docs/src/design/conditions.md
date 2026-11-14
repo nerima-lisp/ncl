@@ -59,7 +59,9 @@ ncl_signal_type_error(datum, expected_type, source_origin)
 - The runtime resolves the current `ThreadContext` from the generated-code ABI.
 - `datum` is the offending Lisp `Word`; the entry roots it before any allocation.
 - `expected_type` is a GC-rooted constant-pool `Word` denoting the complete Common Lisp type specifier. A named type is its symbol; a compound or range type is its complete type-specifier form. It is not an `ObjectType`, HIR lattice tag, class name, or string. The entry roots it while constructing the condition.
-- `source_origin` is a stable `SourceOriginId`, resolved through runtime metadata to file identity, form identity, source span, and expansion-origin chain. Generated checks use the HIR source-origin ID; native builtins use a runtime-origin ID in the same namespace. It is metadata, not a heap pointer.
+- `source_origin` identifies source metadata such as file, form, source span, and expansion origin. It is not a heap pointer; this lane's representation is specified below.
+
+For L1-1.2, codegen passes the existing `DebugLocationId` as `source_origin` and adds no `ncl-ir` type. Runtime resolves this handle through available source metadata; if the location is unavailable or cannot be resolved, it still signals the condition without attaching a source location.
 
 The entry replaces `LispError::TypeError { datum, expected: ObjectType }` with a typed payload that retains `datum`, the complete expected-type `Word`, and `source_origin`. The current variant is too narrow (`packages/object/src/typed/error.rs:84-87`). The condition converter places the exact values in `TYPE-ERROR`'s `:datum` and `:expected-type` slots. Native checked builtins translate their low-level mismatch into this entry with the canonical expected-type object; codegen guards and HIR checkgen call the same `ncl_signal_type_error` entry. Source metadata is currently initialized with an empty vector (`packages/runtime/src/lib.rs:276-287`); L1-1.5 registers origin IDs there so source spans resolve in compiled-origin reports, with code offsets available for origins lacking a source record.
 

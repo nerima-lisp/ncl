@@ -6,7 +6,7 @@
 
 use ncl_object::{
     DoubleFloat, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    classify_object, double_value,
+    classify_object, double_value, make_bignum_from_limbs,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -56,6 +56,93 @@ fn float(ctx: &ThreadContext, word: Word) -> f64 {
         ObjectRef::DoubleFloat(value) => double_value(ctx, DoubleFloat::from_word(value)).unwrap(),
         other => panic!("expected float, got {other:?}"),
     }
+}
+
+fn ratio(runtime: &Runtime, ctx: &mut ThreadContext, numerator: i64, denominator: i64) -> Word {
+    call(
+        runtime,
+        ctx,
+        "/",
+        &[Word::fixnum(numerator), Word::fixnum(denominator)],
+    )
+    .unwrap()
+}
+
+fn integer_from_limbs(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    negative: bool,
+    limbs: &[u32],
+) -> Word {
+    make_bignum_from_limbs(ctx, runtime, negative, limbs)
+        .unwrap()
+        .into()
+}
+
+fn assert_equal(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    actual: Word,
+    expected: Word,
+    label: &str,
+) {
+    assert_eq!(
+        call(runtime, ctx, "=", &[actual, expected]).unwrap(),
+        Word::TRUE,
+        "{label}"
+    );
+}
+
+struct RoundCase {
+    numerator: Word,
+    divisor: Word,
+    quotient: i128,
+    remainder: Word,
+    integer_remainder: bool,
+    label: &'static str,
+}
+
+fn assert_round_case(runtime: &Runtime, ctx: &mut ThreadContext, case: RoundCase) {
+    let quotient = call(runtime, ctx, "ROUND", &[case.numerator, case.divisor]).unwrap();
+    let mut remainder = ctx.values()[1];
+    let remainder_root = ncl_object::push_root(ctx, &mut remainder);
+    assert_eq!(
+        integer(ctx, quotient),
+        case.quotient,
+        "{} quotient",
+        case.label
+    );
+    assert_eq!(
+        call(runtime, ctx, "INTEGERP", &[quotient]).unwrap(),
+        Word::TRUE
+    );
+    assert_eq!(
+        call(runtime, ctx, "RATIONALP", &[remainder]).unwrap(),
+        Word::TRUE,
+        "{} remainder type",
+        case.label,
+    );
+    assert_eq!(
+        call(runtime, ctx, "INTEGERP", &[remainder]).unwrap(),
+        if case.integer_remainder {
+            Word::TRUE
+        } else {
+            Word::NIL
+        },
+        "{} remainder integer type",
+        case.label,
+    );
+    assert_equal(runtime, ctx, remainder, case.remainder, case.label);
+
+    let mut product = call(runtime, ctx, "*", &[quotient, case.divisor]).unwrap();
+    let product_root = ncl_object::push_root(ctx, &mut product);
+    let mut reconstructed = call(runtime, ctx, "+", &[product, remainder]).unwrap();
+    let reconstructed_root = ncl_object::push_root(ctx, &mut reconstructed);
+    assert_equal(runtime, ctx, reconstructed, case.numerator, case.label);
+
+    assert!(ncl_object::pop_root(ctx, reconstructed_root));
+    assert!(ncl_object::pop_root(ctx, product_root));
+    assert!(ncl_object::pop_root(ctx, remainder_root));
 }
 
 #[test]
@@ -254,4 +341,132 @@ fn rounding_promotes_i128_min_negation_to_bignum() {
         );
         assert_eq!(integer(&ctx, ctx.values()[1]), 0, "{name} remainder");
     }
+}
+
+#[test]
+fn multi_limb_round_ties_to_even_for_opposite_signs() {
+    let (runtime, mut ctx) = setup();
+    // SBCL 2.6.10: b=2^128, tie=3*b+b/2; ROUND returns +/-4 and signed b/2.
+    let mut b = integer_from_limbs(&runtime, &mut ctx, false, &[0, 0, 0, 0, 1]);
+    let b_root = ncl_object::push_root(&mut ctx, &mut b);
+    let mut negative_b = integer_from_limbs(&runtime, &mut ctx, true, &[0, 0, 0, 0, 1]);
+    let negative_b_root = ncl_object::push_root(&mut ctx, &mut negative_b);
+    let tie_limbs = [0, 0, 0, 0x8000_0000, 3];
+    let mut tie = integer_from_limbs(&runtime, &mut ctx, false, &tie_limbs);
+    let tie_root = ncl_object::push_root(&mut ctx, &mut tie);
+    let mut negative_tie = integer_from_limbs(&runtime, &mut ctx, true, &tie_limbs);
+    let negative_tie_root = ncl_object::push_root(&mut ctx, &mut negative_tie);
+    let half_limbs = [0, 0, 0, 0x8000_0000];
+    let mut half = integer_from_limbs(&runtime, &mut ctx, false, &half_limbs);
+    let half_root = ncl_object::push_root(&mut ctx, &mut half);
+    let mut negative_half = integer_from_limbs(&runtime, &mut ctx, true, &half_limbs);
+    let negative_half_root = ncl_object::push_root(&mut ctx, &mut negative_half);
+
+    for case in [
+        RoundCase {
+            numerator: tie,
+            divisor: negative_b,
+            quotient: -4,
+            remainder: negative_half,
+            integer_remainder: true,
+            label: "ROUND(3.5b,-b)",
+        },
+        RoundCase {
+            numerator: negative_tie,
+            divisor: b,
+            quotient: -4,
+            remainder: half,
+            integer_remainder: true,
+            label: "ROUND(-3.5b,b)",
+        },
+        RoundCase {
+            numerator: tie,
+            divisor: b,
+            quotient: 4,
+            remainder: negative_half,
+            integer_remainder: true,
+            label: "ROUND(3.5b,b)",
+        },
+        RoundCase {
+            numerator: negative_tie,
+            divisor: negative_b,
+            quotient: 4,
+            remainder: half,
+            integer_remainder: true,
+            label: "ROUND(-3.5b,-b)",
+        },
+    ] {
+        assert_round_case(&runtime, &mut ctx, case);
+    }
+
+    assert!(ncl_object::pop_root(&mut ctx, negative_half_root));
+    assert!(ncl_object::pop_root(&mut ctx, half_root));
+    assert!(ncl_object::pop_root(&mut ctx, negative_tie_root));
+    assert!(ncl_object::pop_root(&mut ctx, tie_root));
+    assert!(ncl_object::pop_root(&mut ctx, negative_b_root));
+    assert!(ncl_object::pop_root(&mut ctx, b_root));
+}
+
+#[test]
+fn ratio_round_ties_to_even_with_integer_divisor() {
+    let (runtime, mut ctx) = setup();
+    // SBCL 2.6.10: ROUND(7/2,1)=(4,-1/2), ROUND(5/2,1)=(2,1/2),
+    // with opposite signs producing (-4,1/2) and (-2,-1/2).
+    let mut seven_halves = ratio(&runtime, &mut ctx, 7, 2);
+    let seven_halves_root = ncl_object::push_root(&mut ctx, &mut seven_halves);
+    let mut negative_seven_halves = ratio(&runtime, &mut ctx, -7, 2);
+    let negative_seven_halves_root = ncl_object::push_root(&mut ctx, &mut negative_seven_halves);
+    let mut five_halves = ratio(&runtime, &mut ctx, 5, 2);
+    let five_halves_root = ncl_object::push_root(&mut ctx, &mut five_halves);
+    let mut negative_five_halves = ratio(&runtime, &mut ctx, -5, 2);
+    let negative_five_halves_root = ncl_object::push_root(&mut ctx, &mut negative_five_halves);
+    let mut half = ratio(&runtime, &mut ctx, 1, 2);
+    let half_root = ncl_object::push_root(&mut ctx, &mut half);
+    let mut negative_half = ratio(&runtime, &mut ctx, -1, 2);
+    let negative_half_root = ncl_object::push_root(&mut ctx, &mut negative_half);
+    let one = Word::fixnum(1);
+
+    for case in [
+        RoundCase {
+            numerator: seven_halves,
+            divisor: one,
+            quotient: 4,
+            remainder: negative_half,
+            integer_remainder: false,
+            label: "ROUND(7/2,1)",
+        },
+        RoundCase {
+            numerator: negative_seven_halves,
+            divisor: one,
+            quotient: -4,
+            remainder: half,
+            integer_remainder: false,
+            label: "ROUND(-7/2,1)",
+        },
+        RoundCase {
+            numerator: five_halves,
+            divisor: one,
+            quotient: 2,
+            remainder: half,
+            integer_remainder: false,
+            label: "ROUND(5/2,1)",
+        },
+        RoundCase {
+            numerator: negative_five_halves,
+            divisor: one,
+            quotient: -2,
+            remainder: negative_half,
+            integer_remainder: false,
+            label: "ROUND(-5/2,1)",
+        },
+    ] {
+        assert_round_case(&runtime, &mut ctx, case);
+    }
+
+    assert!(ncl_object::pop_root(&mut ctx, negative_half_root));
+    assert!(ncl_object::pop_root(&mut ctx, half_root));
+    assert!(ncl_object::pop_root(&mut ctx, negative_five_halves_root));
+    assert!(ncl_object::pop_root(&mut ctx, five_halves_root));
+    assert!(ncl_object::pop_root(&mut ctx, negative_seven_halves_root));
+    assert!(ncl_object::pop_root(&mut ctx, seven_halves_root));
 }

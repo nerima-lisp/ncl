@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from benchmark_constants import REPO_ROOT
-from bench.timing import MINIMUM_SAMPLE_SECONDS
 
 
 CASE_DIR = REPO_ROOT / "bench/micro/cases"
@@ -84,8 +83,13 @@ def _lisp_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _driver_source(case: MicroCase, engine: str, iterations: int) -> str:
+def _driver_source(case: MicroCase, engine: str, iterations: int, repetitions: int = 1) -> str:
+    if not isinstance(repetitions, int) or isinstance(repetitions, bool) or repetitions < 1:
+        raise ValueError("repetitions must be a positive integer")
     source = _lisp_string(str((CASE_DIR / case.source).resolve()))
+    measured_calls = "\n".join(
+        f"      (micro-case {iterations})" for _ in range(repetitions)
+    )
     if engine == "ncl":
         missing_counter_reason = "NCL-GC:BYTES-CONSED-SINCE-GC unavailable"
         allocation_setup = '''(defun micro-counter-info ()
@@ -136,16 +140,14 @@ def _driver_source(case: MicroCase, engine: str, iterations: int) -> str:
   (let* ((gc-count-before (and gc-count-counter (funcall gc-count-counter)))
          (allocated-before (and counter (funcall counter)))
          (started (get-internal-real-time))
-         (minimum-ticks (ceiling (* {MINIMUM_SAMPLE_SECONDS}d0 internal-time-units-per-second)))
-         (repetitions 0)
+         (repetitions {repetitions})
          (result nil)
          (ticks 0))
-    (loop
-      (setf result (micro-case {iterations}))
-      (incf repetitions)
-      (setf ticks (- (get-internal-real-time) started))
-      (when (>= ticks minimum-ticks)
-        (return)))
+    (setf result
+          (progn
+{measured_calls}
+          ))
+    (setf ticks (- (get-internal-real-time) started))
     (let* ((allocated-after (and counter (funcall counter)))
          (gc-count-after (and gc-count-counter (funcall gc-count-counter)))
          (gc-count-valid

@@ -56,6 +56,8 @@ def _parse_result(
     engine: str,
     *,
     iterations: int = DEFAULT_ITERATIONS,
+    expected_repetitions: int | None = None,
+    require_minimum_duration: bool = True,
 ) -> dict[str, Any]:
     records = []
     repetition_counts = []
@@ -78,6 +80,9 @@ def _parse_result(
         raise ValueError("driver output must contain exactly one MICRO_RESULT record")
     if len(repetition_counts) != 1 or repetition_counts[0] < 1:
         raise ValueError("driver output must contain one positive MICRO_REPETITIONS count")
+    repetitions = repetition_counts[0]
+    if expected_repetitions is not None and repetitions != expected_repetitions:
+        raise ValueError("driver repetition count does not match the requested count")
     record = records[0]
     expected_keys = {
         "case",
@@ -100,10 +105,12 @@ def _parse_result(
         value = record[field]
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError(f"driver result {field} must be an integer")
-    if record["ticks"] <= 0 or record["units_per_second"] <= 0:
+    if record["ticks"] < 0 or record["units_per_second"] <= 0:
+        raise ValueError("driver time must be positive and above the clock resolution")
+    if require_minimum_duration and record["ticks"] == 0:
         raise ValueError("driver time must be positive and above the clock resolution")
     elapsed_seconds = record["ticks"] / record["units_per_second"]
-    if elapsed_seconds < MINIMUM_SAMPLE_SECONDS:
+    if require_minimum_duration and elapsed_seconds < MINIMUM_SAMPLE_SECONDS:
         raise ValueError("driver sample is shorter than the minimum measurement time")
     allocation = record["allocated_bytes"]
     if allocation is not None and (
@@ -141,7 +148,6 @@ def _parse_result(
     expected = case.expected_result(iterations)
     if record["result"] != expected:
         raise ValueError(f"workload result mismatch: expected {expected}, got {record['result']}")
-    repetitions = repetition_counts[0]
     record["repetitions"] = repetitions
     record["iteration_count"] = iterations * repetitions
     record["elapsed_seconds"] = elapsed_seconds
@@ -184,31 +190,47 @@ def _sample(
     iterations: int,
     driver_path: Path,
 ) -> dict[str, Any]:
-    driver_path.write_text(_driver_source(case, engine, iterations), encoding="utf-8")
-    started = time.perf_counter()
-    result = _run_command(
-        [binary, "--script", str(driver_path)],
-        cwd=REPO_ROOT,
-        timeout=PROCESS_TIMEOUT,
-    )
-    wall_seconds = max(0.0, time.perf_counter() - started)
-    sample: dict[str, Any] = {
-        "pair": pair,
-        "engine": engine,
-        "process_status": result.status,
-        "return_code": result.returncode,
-        "wall_seconds": wall_seconds,
-    }
-    if result.status != "passed" or result.returncode != 0:
-        sample.update({"status": "failed", "reason": _diagnostic(result)})
+    repetitions = 1
+    total_wall_seconds = 0.0
+    while True:
+        driver_path.write_text(
+            _driver_source(case, engine, iterations, repetitions), encoding="utf-8"
+        )
+        started = time.perf_counter()
+        result = _run_command(
+            [binary, "--script", str(driver_path)],
+            cwd=REPO_ROOT,
+            timeout=PROCESS_TIMEOUT,
+        )
+        total_wall_seconds += max(0.0, time.perf_counter() - started)
+        sample: dict[str, Any] = {
+            "pair": pair,
+            "engine": engine,
+            "process_status": result.status,
+            "return_code": result.returncode,
+            "wall_seconds": total_wall_seconds,
+        }
+        if result.status != "passed" or result.returncode != 0:
+            sample.update({"status": "failed", "reason": _diagnostic(result)})
+            return sample
+        try:
+            parsed = _parse_result(
+                result.stdout,
+                case,
+                engine,
+                iterations=iterations,
+                expected_repetitions=repetitions,
+                require_minimum_duration=False,
+            )
+        except (TypeError, ValueError) as error:
+            sample.update({"status": "failed", "reason": str(error)})
+            return sample
+        if parsed["elapsed_seconds"] < MINIMUM_SAMPLE_SECONDS:
+            repetitions *= 2
+            continue
+        sample.update(parsed)
+        sample["status"] = "passed"
         return sample
-    try:
-        sample.update(_parse_result(result.stdout, case, engine, iterations=iterations))
-    except (TypeError, ValueError) as error:
-        sample.update({"status": "failed", "reason": str(error)})
-        return sample
-    sample["status"] = "passed"
-    return sample
 
 
 def _summarize_engine(samples: Sequence[Mapping[str, Any]], runs: int) -> dict[str, Any]:

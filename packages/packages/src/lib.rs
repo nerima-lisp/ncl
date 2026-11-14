@@ -61,8 +61,14 @@ pub trait PackageListOperations {
     /// Remove a package nickname.
     ///
     /// # Errors
-    /// Returns [`ObjectError`] if the package is locked or its nickname data is invalid.
-    fn remove_nickname(self, ctx: &mut ThreadContext, nickname: Word) -> Result<bool, ObjectError>;
+    /// Returns [`ObjectError`] if the package is locked, its nickname data is invalid, or the
+    /// runtime registry is malformed.
+    fn remove_nickname(
+        self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        nickname: Word,
+    ) -> Result<bool, ObjectError>;
 }
 
 /// CLHS operations over package symbols, exports, and local nicknames.

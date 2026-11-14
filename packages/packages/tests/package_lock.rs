@@ -62,7 +62,7 @@ fn locked_package_rejects_namespace_mutations_with_typed_error() {
     );
     assert_eq!(ctx.take_pending_lisp_error(), expected);
     assert_eq!(
-        package.remove_nickname(&mut ctx, nickname),
+        package.remove_nickname(&mut ctx, &runtime, nickname),
         Err(ObjectError::TypeError)
     );
     assert_eq!(ctx.take_pending_lisp_error(), expected);

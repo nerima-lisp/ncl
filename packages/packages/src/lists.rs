@@ -127,12 +127,25 @@ impl PackageListOperations for Package {
         })
     }
 
-    fn remove_nickname(self, ctx: &mut ThreadContext, nickname: Word) -> Result<bool, ObjectError> {
+    fn remove_nickname(
+        self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        nickname: Word,
+    ) -> Result<bool, ObjectError> {
         let mut package = self.as_word();
         ncl_object::with_root(ctx, &mut package, |ctx, package| {
             Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut nickname = nickname;
             ncl_object::with_root(ctx, &mut nickname, |ctx, nickname| {
+                let (present, another_equal_nickname) =
+                    nickname_removal_state(ctx, *package, *nickname)?;
+                if !present {
+                    return Ok(false);
+                }
+                if !another_equal_nickname {
+                    runtime.unregister_package_name_for_package(ctx, *package, *nickname)?;
+                }
                 remove_from_list(ctx, *package, NICKNAMES, *nickname)
             })
         })
@@ -242,6 +255,47 @@ fn remove_from_list(
         current = next;
     }
     Ok(false)
+}
+
+fn nickname_removal_state(
+    ctx: &ThreadContext,
+    package: Word,
+    target: Word,
+) -> Result<(bool, bool), ObjectError> {
+    let mut current = get(ctx, package, widetag::PACKAGE, NICKNAMES)?;
+    let mut found_target = false;
+    let mut another_equal_nickname = false;
+    while current != Word::NIL {
+        let nickname = list_car(ctx, current).ok_or(ObjectError::Layout)?;
+        if nickname == target && !found_target {
+            found_target = true;
+        } else if names_equal(ctx, nickname, target)? {
+            another_equal_nickname = true;
+        }
+        current = list_cdr(ctx, current)?;
+    }
+    Ok((found_target, another_equal_nickname))
+}
+
+fn names_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, ObjectError> {
+    if left == right {
+        return Ok(true);
+    }
+    if ncl_object::object_widetag(ctx, left) != Some(widetag::STRING)
+        || ncl_object::object_widetag(ctx, right) != Some(widetag::STRING)
+    {
+        return Ok(false);
+    }
+    let length = ncl_object::string_length(ctx, left)?;
+    if length != ncl_object::string_length(ctx, right)? {
+        return Ok(false);
+    }
+    for index in 0..length {
+        if ncl_object::string_ref(ctx, left, index)? != ncl_object::string_ref(ctx, right, index)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn list_car(ctx: &ThreadContext, list: Word) -> Option<Word> {

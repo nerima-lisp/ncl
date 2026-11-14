@@ -17,8 +17,8 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  check:
-    name: Check and test (${{ matrix.name }})
+  fast-checks:
+    name: Fast checks (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -34,6 +34,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Check added Rust lines
+        if: matrix.name == 'x86-64 Linux'
         env:
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
@@ -45,6 +46,7 @@ jobs:
           fi
           python3 scripts/check_added_lines.py --base "$BASE_SHA"
       - name: Verify toolchain version consistency
+        if: matrix.name == 'x86-64 Linux'
         run: |
           set -euo pipefail
           expected="$(grep -m1 '^channel' rust-toolchain.toml | perl -pe 's/channel = "(.*)"/\1/')"
@@ -71,13 +73,44 @@ jobs:
           fi
           exit $fail
       - run: python3 scripts/reachability.py --self-test
+        if: matrix.name == 'x86-64 Linux'
       - run: python3 scripts/reachability.py
+        if: matrix.name == 'x86-64 Linux'
       - run: python3 scripts/check_standards.py
+        if: matrix.name == 'x86-64 Linux'
       - run: python3 conformance/ownership/check.py
+        if: matrix.name == 'x86-64 Linux'
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.0
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust
+          cache-workspace-crates: true
+      - run: cargo fmt --all -- --check
+        if: matrix.name == 'x86-64 Linux'
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+  check:
+    name: Check and test (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x86-64 Linux
+            runner: ubuntu-24.04
+          - name: aarch64 Linux
+            runner: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.151
@@ -85,10 +118,8 @@ jobs:
         with:
           prefix-key: v1-rust
           cache-workspace-crates: true
-      - run: cargo fmt --all -- --check
       - run: cargo check --locked --workspace --all-targets --all-features
-      - run: cargo nextest run --locked --workspace --all-features --all-targets --no-tests=fail
-      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: cargo nextest run --locked --workspace --all-features --all-targets --no-fail-fast --no-tests=fail
 
   release-check:
     name: Release check (${{ matrix.name }})
@@ -212,7 +243,7 @@ jobs:
       # Region coverage keeps untaken branches visible. The 95% workspace
       # figure is a reported goal; changed source paths use the blocking ratchet below.
       - run: cargo llvm-cov clean --locked --workspace
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --no-report nextest --no-tests=fail
+      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --no-report nextest --no-fail-fast --no-tests=fail
       - run: cargo llvm-cov report --locked --workspace --lcov --output-path lcov.info
       - uses: actions/upload-artifact@v4
         if: always()

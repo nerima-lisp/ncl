@@ -83,10 +83,11 @@ class FakeRunner:
 
 
 class MicroBenchTests(unittest.TestCase):
-    def test_manifest_contains_nine_nonempty_micro_cases(self):
+    def test_manifest_contains_ten_nonempty_micro_cases(self):
         expected = {
             "float-loop",
             "fixnum-loop",
+            "car-access",
             "clos-dispatch",
             "structure-access",
             "array-access",
@@ -96,10 +97,11 @@ class MicroBenchTests(unittest.TestCase):
             "key-call",
         }
         self.assertEqual({case.name for case in micro.MICRO_CASES}, expected)
-        self.assertEqual(len(micro.MICRO_CASES), 9)
+        self.assertEqual(len(micro.MICRO_CASES), 10)
         workload_forms = {
             "float-loop": "(float index 1.0d0)",
             "fixnum-loop": "(incf sum index)",
+            "car-access": "(incf sum (car cell))",
             "clos-dispatch": "(defgeneric micro-dispatch",
             "structure-access": "(micro-record-left record)",
             "array-access": "(aref array",
@@ -150,6 +152,7 @@ class MicroBenchTests(unittest.TestCase):
             {
                 "float-loop": 22,
                 "fixnum-loop": 45,
+                "car-access": 410,
                 "clos-dispatch": 20,
                 "structure-access": 400,
                 "array-access": 10,
@@ -249,7 +252,7 @@ class MicroBenchTests(unittest.TestCase):
             )
 
         self.assertEqual(report["status"], "partial")
-        self.assertEqual(len(report["cases"]), 9)
+        self.assertEqual(len(report["cases"]), 10)
         self.assertEqual(
             report["protocol"]["pair_order"],
             [["ncl", "sbcl"], ["sbcl", "ncl"], ["ncl", "sbcl"], ["sbcl", "ncl"], ["ncl", "sbcl"]],

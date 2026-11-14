@@ -32,6 +32,7 @@ class MicroCase:
 MICRO_CASES = (
     MicroCase("float-loop", "float-loop.lisp", DEFAULT_ITERATIONS, lambda n: n * (n - 1) // 4),
     MicroCase("fixnum-loop", "fixnum-loop.lisp", DEFAULT_ITERATIONS, lambda n: n * (n - 1) // 2),
+    MicroCase("car-access", "car-access.lisp", DEFAULT_ITERATIONS, lambda n: 41 * n),
     MicroCase("clos-dispatch", "clos-dispatch.lisp", DEFAULT_ITERATIONS, lambda n: 2 * n),
     MicroCase("structure-access", "structure-access.lisp", DEFAULT_ITERATIONS, lambda n: 40 * n),
     MicroCase("array-access", "array-access.lisp", DEFAULT_ITERATIONS, lambda n: n),

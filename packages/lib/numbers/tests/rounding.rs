@@ -230,7 +230,7 @@ fn rounding_preserves_i128_min_without_negation_overflow() {
 }
 
 #[test]
-fn rounding_reports_unrepresentable_i128_min_negation() {
+fn rounding_promotes_i128_min_negation_to_bignum() {
     let (runtime, mut ctx) = setup();
     let min = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, i128::MIN)
         .unwrap()
@@ -238,10 +238,20 @@ fn rounding_reports_unrepresentable_i128_min_negation() {
     let minus_one = Word::fixnum(-1);
 
     for name in ["FLOOR", "CEILING", "TRUNCATE", "ROUND"] {
+        let result = call(&runtime, &mut ctx, name, &[min, minus_one]).unwrap();
+        let bignum = match classify_object(&ctx, result) {
+            ObjectRef::Bignum(value) => ncl_object::Bignum::from_word(value),
+            other => panic!("expected bignum quotient, got {other:?}"),
+        };
         assert_eq!(
-            call(&runtime, &mut ctx, name, &[min, minus_one]),
-            Err(ObjectError::TypeError),
-            "{name} result",
+            ncl_object::bignum_limbs(&ctx, bignum).unwrap(),
+            [0, 0, 0, 0x8000_0000],
+            "{name} quotient magnitude",
         );
+        assert!(
+            !ncl_object::bignum_sign(&ctx, bignum).unwrap(),
+            "{name} quotient sign"
+        );
+        assert_eq!(integer(&ctx, ctx.values()[1]), 0, "{name} remainder");
     }
 }

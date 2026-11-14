@@ -4,17 +4,33 @@ use ncl_object::{BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContex
 use std::cmp::Ordering;
 
 mod basic;
+mod big_integer;
 mod comparison;
 mod core;
+mod integer;
+mod number;
 mod predicates;
 
 pub use basic::*;
 pub use comparison::*;
-use core::{
-    Number, add_pair, args_numbers, bool_word, div_pair, integer, mul_pair, number, ratio,
-    sub_pair, word,
-};
+use core::{add_pair, div_pair, mul_pair, sub_pair};
+pub use integer::Integer;
+#[cfg(test)]
+use number::integer;
+use number::{Number, args_numbers, bool_word, integer_value, integer_word, number, ratio, word};
 pub use predicates::*;
+
+pub fn arbitrary_integer(ctx: &ThreadContext, value: Word) -> Result<Integer, ObjectError> {
+    integer_value(ctx, value)
+}
+
+pub fn arbitrary_integer_word(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: Integer,
+) -> Result<Word, ObjectError> {
+    integer_word(ctx, runtime, value)
+}
 
 /// The exact-integer/rational `expt` fast path, shared with `transcendental`.
 pub use core::integer_expt;

@@ -8,6 +8,8 @@ use ncl_object::{
 use ncl_sys::RootSlot;
 use std::cell::Cell;
 
+use crate::arithmetic::{Integer, arbitrary_integer, arbitrary_integer_word};
+
 fn with_rooted_word<T>(
     ctx: &mut ThreadContext,
     value: &mut Word,
@@ -24,11 +26,11 @@ fn with_rooted_word<T>(
 }
 
 fn integer_to_f64(value: i128) -> f64 {
-    let magnitude = value.unsigned_abs();
-    let limb =
-        |shift| f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).unwrap_or(0));
-    let result =
-        limb(96) * 2_f64.powi(96) + limb(64) * 2_f64.powi(64) + limb(32) * 2_f64.powi(32) + limb(0);
+    let bytes = value.unsigned_abs().to_le_bytes();
+    let mut result = 0.0_f64;
+    for limb_bytes in bytes.as_chunks::<4>().0.iter().rev() {
+        result = result.mul_add(4_294_967_296.0, f64::from(u32::from_le_bytes(*limb_bytes)));
+    }
     if value.is_negative() { -result } else { result }
 }
 
@@ -63,9 +65,10 @@ fn float_to_i128(value: f64) -> Option<i128> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Number {
     Integer(i128),
+    BigInteger(Integer),
     Ratio(i128, i128),
     Float(f64),
 }
@@ -140,7 +143,12 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
 
 fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectError> {
     match classify_object(ctx, word) {
-        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => Ok(Number::Integer(integer(ctx, word)?)),
+        ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => {
+            let value = arbitrary_integer(ctx, word)?;
+            Ok(value
+                .to_i128()
+                .map_or(Number::BigInteger(value), Number::Integer))
+        }
         ObjectRef::Ratio(value) => {
             let object = ncl_object::Ratio::from_word(value);
             ratio(
@@ -157,12 +165,19 @@ fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectError> {
     }
 }
 
-fn as_float(value: Number) -> f64 {
+fn as_float(value: &Number) -> f64 {
     match value {
-        Number::Integer(value) => integer_to_f64(value),
-        Number::Ratio(n, d) => integer_to_f64(n) / integer_to_f64(d),
-        Number::Float(value) => value,
+        Number::Integer(value) => integer_to_f64(*value),
+        Number::BigInteger(value) => value.to_f64(),
+        Number::Ratio(n, d) => integer_to_f64(*n) / integer_to_f64(*d),
+        Number::Float(value) => *value,
     }
+}
+
+fn integer_number(value: Integer) -> Number {
+    value
+        .to_i128()
+        .map_or(Number::BigInteger(value), Number::Integer)
 }
 
 fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<Word, ObjectError> {
@@ -177,11 +192,14 @@ fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<Wor
                 || make_bignum_from_i128(ctx, runtime, value).map(Into::into),
                 Ok,
             ),
+        Number::BigInteger(value) => arbitrary_integer_word(ctx, runtime, value),
         Number::Ratio(numerator, denominator) => {
             let mut numerator = word(ctx, runtime, Number::Integer(numerator))?;
             with_rooted_word(ctx, &mut numerator, |ctx, numerator| {
-                let denominator = word(ctx, runtime, Number::Integer(denominator))?;
-                make_ratio(ctx, runtime, *numerator, denominator).map(Into::into)
+                let mut denominator = word(ctx, runtime, Number::Integer(denominator))?;
+                with_rooted_word(ctx, &mut denominator, |ctx, denominator| {
+                    make_ratio(ctx, runtime, *numerator, *denominator).map(Into::into)
+                })
             })
         }
         Number::Float(value) => make_double(ctx, runtime, value).map(Into::into),
@@ -263,19 +281,66 @@ fn quotient(numerator: i128, denominator: i128, mode: u8) -> Option<i128> {
 }
 
 fn exact_round(
-    value: Number,
-    divisor: Number,
+    value: &Number,
+    divisor: &Number,
     mode: u8,
 ) -> Result<Option<(Number, Number)>, ObjectError> {
+    let value_integer = match value {
+        Number::Integer(value) => Some(Integer::from_i128(*value)),
+        Number::BigInteger(value) => Some(value.clone()),
+        Number::Ratio(_, _) | Number::Float(_) => None,
+    };
+    let divisor_integer = match divisor {
+        Number::Integer(value) => Some(Integer::from_i128(*value)),
+        Number::BigInteger(value) => Some(value.clone()),
+        Number::Ratio(_, _) | Number::Float(_) => None,
+    };
+    if let (Some(value), Some(divisor)) = (value_integer, divisor_integer) {
+        if divisor.is_zero() {
+            return Ok(None);
+        }
+        let (mut quotient, mut remainder) = value
+            .div_trunc_rem(&divisor)
+            .ok_or(ObjectError::TypeError)?;
+        if mode == 0 {
+            (quotient, remainder) = value
+                .div_floor_rem(&divisor)
+                .ok_or(ObjectError::TypeError)?;
+        } else if mode == 1 {
+            (quotient, remainder) = value.div_ceil_rem(&divisor).ok_or(ObjectError::TypeError)?;
+        } else if mode == 3 {
+            let twice_remainder = remainder
+                .abs()
+                .mul(&Integer::from_i128(2))
+                .ok_or(ObjectError::TypeError)?;
+            let divisor_magnitude = divisor.abs();
+            if twice_remainder.cmp(&divisor_magnitude).is_gt()
+                || (twice_remainder.cmp(&divisor_magnitude).is_eq() && !quotient.is_even())
+            {
+                if value.is_negative() == divisor.is_negative() {
+                    quotient = quotient
+                        .add(&Integer::from_i128(1))
+                        .ok_or(ObjectError::TypeError)?;
+                    remainder = remainder.sub(&divisor).ok_or(ObjectError::TypeError)?;
+                } else {
+                    quotient = quotient
+                        .sub(&Integer::from_i128(1))
+                        .ok_or(ObjectError::TypeError)?;
+                    remainder = remainder.add(&divisor).ok_or(ObjectError::TypeError)?;
+                }
+            }
+        }
+        return Ok(Some((integer_number(quotient), integer_number(remainder))));
+    }
     let (value_n, value_d) = match value {
-        Number::Integer(value) => (value, 1),
-        Number::Ratio(n, d) => (n, d),
-        Number::Float(_) => return Ok(None),
+        Number::Integer(value) => (*value, 1),
+        Number::BigInteger(_) | Number::Float(_) => return Ok(None),
+        Number::Ratio(n, d) => (*n, *d),
     };
     let (divisor_n, divisor_d) = match divisor {
-        Number::Integer(value) => (value, 1),
-        Number::Ratio(n, d) => (n, d),
-        Number::Float(_) => return Ok(None),
+        Number::Integer(value) => (*value, 1),
+        Number::BigInteger(_) | Number::Float(_) => return Ok(None),
+        Number::Ratio(n, d) => (*n, *d),
     };
     if divisor_n == 0 {
         return Ok(None);
@@ -348,23 +413,23 @@ fn round(
         Some(value) => number(ctx, value)?,
         None => Number::Integer(1),
     };
-    let (quotient, remainder) = if let Some(result) = exact_round(value, divisor, mode)? {
+    let (quotient, remainder) = if let Some(result) = exact_round(&value, &divisor, mode)? {
         result
     } else {
-        let divisor = as_float(divisor);
+        let divisor = as_float(&divisor);
         if divisor == 0.0 {
             return Err(ObjectError::TypeError);
         }
-        let quotient = float_quotient(as_float(value) / divisor, mode);
+        let quotient = float_quotient(as_float(&value) / divisor, mode);
         (
             Number::Float(quotient),
-            Number::Float(as_float(value) - quotient * divisor),
+            Number::Float(as_float(&value) - quotient * divisor),
         )
     };
     let mut remainder = word(ctx, runtime, remainder)?;
     with_rooted_word(ctx, &mut remainder, |ctx, remainder| {
         let result = match (float_result, quotient) {
-            (true, quotient) => word(ctx, runtime, Number::Float(as_float(quotient)))?,
+            (true, quotient) => word(ctx, runtime, Number::Float(as_float(&quotient)))?,
             (false, Number::Float(quotient)) => float_integer_word(ctx, runtime, quotient)?,
             (false, quotient) => word(ctx, runtime, quotient)?,
         };

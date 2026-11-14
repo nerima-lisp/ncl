@@ -15,6 +15,8 @@ use ncl_object::{
 
 use ncl_object::MultipleValues;
 
+use crate::arithmetic::{arbitrary_integer, arbitrary_integer_word};
+
 fn signed_magnitude(magnitude: u128, negative: bool) -> Result<i128, ObjectError> {
     if negative {
         if magnitude == 1_u128 << 127 {
@@ -283,18 +285,10 @@ pub fn ash(
     let [value, count] = args else {
         return Err(ObjectError::TypeError);
     };
-    let value = integer(ctx, *value)?;
-    let count = integer(ctx, *count)?;
-    let result = if count >= 0 {
-        value
-            .checked_shl(u32::try_from(count).map_err(|_| ObjectError::Layout)?)
-            .ok_or(ObjectError::Layout)?
-    } else {
-        value
-            .checked_shr(u32::try_from(count.unsigned_abs()).map_err(|_| ObjectError::Layout)?)
-            .ok_or(ObjectError::Layout)?
-    };
-    integer_word(ctx, runtime, result)
+    let value = arbitrary_integer(ctx, *value)?;
+    let count = arbitrary_integer(ctx, *count)?;
+    let result = value.ash_by(&count).ok_or(ObjectError::Layout)?;
+    arbitrary_integer_word(ctx, runtime, result)
 }
 
 /// Encode a byte specification as `(position << 32) | size`.

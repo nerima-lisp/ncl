@@ -494,7 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn cons_accessors_spill_values_that_survive_the_runtime_slow_path() {
+    fn cons_accessors_spill_operands_and_values_across_the_runtime_slow_path() {
         for (index, prim) in [Prim::Car, Prim::Cdr].into_iter().enumerate() {
             let mut builder = FunctionBuilder::new(
                 FunctionId(u32::try_from(index).expect("function id")),
@@ -533,6 +533,18 @@ mod tests {
             );
 
             let allocation = allocate(&builder.finish(), AllocationTarget::AArch64);
+            let Some(datum_interval) = allocation
+                .intervals
+                .iter()
+                .find(|interval| interval.value == ValueId(0))
+            else {
+                panic!("datum interval");
+            };
+            assert!(datum_interval.crosses_call);
+            assert!(matches!(
+                allocation.location(ValueId(0)),
+                Some(Location::Spill(_))
+            ));
             let Some(interval) = allocation
                 .intervals
                 .iter()

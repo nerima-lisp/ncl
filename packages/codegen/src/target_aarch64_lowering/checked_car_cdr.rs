@@ -251,3 +251,232 @@ fn emit_type_error_signal(
         },
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::{AbiError, AllocationTarget, ContextField, RuntimeAbi};
+    use ncl_ir::{FunctionBuilder, FunctionId, OpKind, Param, Terminator, Ty};
+
+    #[derive(Clone, Copy, Default)]
+    struct TestAbi {
+        missing_signal_entry: bool,
+        missing_list_constant: bool,
+    }
+
+    impl RuntimeAbi for TestAbi {
+        fn builtin_address(
+            &self,
+            _identifier: ncl_object::BuiltinIdentifier,
+        ) -> Result<u64, AbiError> {
+            Ok(0x1000)
+        }
+
+        fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
+            let layout = ncl_sys::thread_layout();
+            let offset = match field {
+                ContextField::TlabBump => layout.tlab_bump,
+                ContextField::TlabLimit => layout.tlab_limit,
+                ContextField::SafepointRequest => layout.safepoint_request,
+                ContextField::Pending => layout.pending,
+                ContextField::MultipleValueCount => layout.mv_count,
+                ContextField::MultipleValueArea => layout.mv,
+                ContextField::Handler => layout.handler,
+                ContextField::Cleanup => layout.cleanup,
+                ContextField::Catch => layout.catch,
+                ContextField::RuntimeErrorFlags => layout.runtime_error_flags,
+            };
+            i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
+        }
+
+        fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
+            if self.missing_signal_entry && function == RuntimeFunction::SignalTypeError {
+                return Err(AbiError::UnsupportedRuntimeFunction(function));
+            }
+            Ok(0x1000)
+        }
+
+        fn constant_word(&self, name: &str) -> Option<i64> {
+            (name == "type-error-expected:LIST" && !self.missing_list_constant).then_some(0)
+        }
+    }
+
+    fn lower_for_test(
+        prim: Prim,
+        args: &[ValueId],
+        with_result: bool,
+        source_origin: Option<DebugLocationId>,
+        abi: &dyn RuntimeAbi,
+    ) -> Result<(Vec<u8>, SafepointSite), CodegenError> {
+        let params = if args.is_empty() {
+            Vec::new()
+        } else {
+            vec![Param {
+                name: "datum".into(),
+                ty: Ty::Word,
+            }]
+        };
+        let mut builder = FunctionBuilder::new(
+            FunctionId(1200),
+            "checked-car-cdr-test",
+            params,
+            Vec::new(),
+        );
+        let result = with_result.then(|| {
+            builder
+                .push_op(
+                    OpKind::Prim {
+                        op: prim.clone(),
+                        args: vec![ValueId(0)],
+                        condition: None,
+                    },
+                    &[Ty::Word],
+                )
+                .expect("allocate a result value")[0]
+        });
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .expect("terminate test function");
+        let function = builder.finish();
+        let allocation = crate::allocate(&function, AllocationTarget::AArch64);
+        let labels = HashMap::new();
+        let context = CallCheckContext {
+            function: &function,
+            block: ncl_ir::BlockId(0),
+            body_bytes: 0,
+            labels: &labels,
+        };
+        let mut assembler = Assembler::new();
+        let site = lower(
+            &mut assembler,
+            CarCdrOperation {
+                prim: &prim,
+                args,
+                result,
+                source_origin,
+            },
+            &allocation,
+            abi,
+            &context,
+        )?;
+        let bytes = assembler
+            .finish()
+            .map_err(|error| CodegenError::Encode(error.to_string()))?
+            .bytes;
+        Ok((bytes, site))
+    }
+
+    fn encode(instructions: impl IntoIterator<Item = Inst>) -> Vec<u8> {
+        let mut assembler = Assembler::new();
+        for instruction in instructions {
+            assembler.emit(&instruction).expect("encode expected instruction");
+        }
+        assembler.finish().expect("finish expected instructions").bytes
+    }
+
+    fn assert_contains(code: &[u8], expected: &[u8], message: &str) {
+        assert!(
+            code.windows(expected.len()).any(|window| window == expected),
+            "{message}: expected {expected:02x?} in {code:02x?}"
+        );
+    }
+
+    #[test]
+    fn car_and_cdr_lowering_load_their_cons_fields() {
+        for (prim, offset) in [(Prim::Car, 0), (Prim::Cdr, 8)] {
+            let (code, _) = lower_for_test(
+                prim,
+                &[ValueId(0)],
+                true,
+                None,
+                &TestAbi::default(),
+            )
+            .expect("lower checked cons access");
+            let expected = encode([Inst::Ldr {
+                rt: Reg(16),
+                mem: MemOperand::Unscaled {
+                    base: RegOrSp::Reg(Reg(16)),
+                    offset,
+                },
+            }]);
+            assert_contains(&code, &expected, "lowering emits the selected cons field load");
+        }
+    }
+
+    #[test]
+    fn lowering_handles_no_result_and_encodes_source_origin() {
+        for (source_origin, encoded_origin) in [
+            (Some(DebugLocationId(73)), 73_u64),
+            (None, u64::MAX),
+        ] {
+            let (code, _) = lower_for_test(
+                Prim::Car,
+                &[ValueId(0)],
+                false,
+                source_origin,
+                &TestAbi::default(),
+            )
+            .expect("lower checked cons access without a result");
+            let expected = encode(ncl_asm_aarch64::mov_imm64(Reg(3), encoded_origin));
+            assert_contains(&code, &expected, "signal call carries the source origin");
+        }
+    }
+
+    #[test]
+    fn malformed_operand_arity_returns_the_specific_error() {
+        let error = lower_for_test(
+            Prim::Car,
+            &[],
+            false,
+            None,
+            &TestAbi::default(),
+        )
+        .expect_err("CAR requires one operand");
+        assert_eq!(
+            error,
+            CodegenError::Unsupported("CAR or CDR requires one operand".into())
+        );
+    }
+
+    #[test]
+    fn missing_type_error_signal_entry_is_reported() {
+        let error = lower_for_test(
+            Prim::Car,
+            &[ValueId(0)],
+            false,
+            None,
+            &TestAbi {
+                missing_signal_entry: true,
+                missing_list_constant: false,
+            },
+        )
+        .expect_err("missing signal entry must fail lowering");
+        assert_eq!(
+            error,
+            CodegenError::Unsupported(
+                AbiError::UnsupportedRuntimeFunction(RuntimeFunction::SignalTypeError).to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn missing_list_constant_is_reported() {
+        let error = lower_for_test(
+            Prim::Cdr,
+            &[ValueId(0)],
+            false,
+            None,
+            &TestAbi {
+                missing_signal_entry: false,
+                missing_list_constant: true,
+            },
+        )
+        .expect_err("missing LIST type constant must fail lowering");
+        assert_eq!(
+            error,
+            CodegenError::Unsupported("LIST type-error constant is unavailable".into())
+        );
+    }
+}

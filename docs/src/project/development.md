@@ -85,6 +85,8 @@ cargo test --locked --workspace --all-features --all-targets
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 ~~~
 
+The root `Cargo.toml` sets `opt-level = 1` in both `[profile.dev]` and `[profile.test]` without changing debug assertions or overflow checks. A separate measurement found that one ANSI builtin CLI e2e in `tests/e2enum.rs` fell from 382.94 seconds to 13.33 seconds, and dev `ncl --eval '(+ 1 2)'` startup fell from 3.17 seconds to 0.16 seconds. Cold compile increased from 14.90 seconds to 33.25 seconds for tests and from 14.84 seconds to 32.50 seconds for dev. In the same comparison, `opt-level = 2` increased compile time without further reducing the ANSI test runtime or dev startup time. The Coverage job sets `CARGO_PROFILE_DEV_OPT_LEVEL=0` and `CARGO_PROFILE_TEST_OPT_LEVEL=0` so coverage runs at opt-level 0 for both profiles and the region-count ratchet compares runs with that setting.
+
 Use `nix develop path:.` when the Rust tools are not installed locally or when
 you want the same toolchain and supporting programs used by the project gates.
 

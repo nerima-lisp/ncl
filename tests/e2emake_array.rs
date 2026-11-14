@@ -2,23 +2,16 @@
 
 use std::process::{Command, Output};
 
+#[path = "common/mod.rs"]
+mod common;
+
+use common::{CliEvalCase, assert_ncl_eval_cases};
+
 fn eval(source: &str) -> Output {
     Command::new(env!("CARGO_BIN_EXE_ncl"))
         .args(["--eval", source])
         .output()
         .unwrap_or_else(|error| panic!("failed to run {source}: {error}"))
-}
-
-fn assert_eval(source: &str, expected: &str) {
-    let output = eval(source);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success(),
-        "{source} failed with status {:?}: {stderr}",
-        output.status.code()
-    );
-    assert_eq!(stdout.trim(), expected, "{source}");
 }
 
 fn assert_type_error(source: &str) {
@@ -69,9 +62,18 @@ fn make_array_accepts_mod_element_types_from_the_clhs_example() {
         ),
     ];
     assert_eq!(cases.len(), 8);
-    for (source, expected) in cases {
-        assert_eval(source, expected);
-    }
+    let batch = cases
+        .iter()
+        .enumerate()
+        .map(|(index, (source, expected))| {
+            CliEvalCase::new(
+                format!("mod element type case {index}: {source}"),
+                *source,
+                *expected,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_ncl_eval_cases(&batch);
 }
 
 #[test]
@@ -131,9 +133,18 @@ fn make_array_accepts_integer_interval_designators() {
         ),
     ];
     assert_eq!(cases.len(), 13);
-    for (source, expected) in cases {
-        assert_eval(source, expected);
-    }
+    let batch = cases
+        .iter()
+        .enumerate()
+        .map(|(index, (source, expected))| {
+            CliEvalCase::new(
+                format!("integer interval case {index}: {source}"),
+                *source,
+                *expected,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_ncl_eval_cases(&batch);
 }
 
 #[test]

@@ -4,6 +4,11 @@
 
 use std::process::Command;
 
+#[path = "common/mod.rs"]
+mod common;
+
+use common::{CliEvalCase, assert_ncl_eval_cases};
+
 fn eval(source: &str) -> (bool, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_ncl"))
         .args(["--eval", source])
@@ -53,11 +58,18 @@ fn types_and_array_builtins_run_through_compiled_code() {
         ),
     ];
     assert_eq!(cases.len(), 22);
-    for (source, expected) in cases {
-        let (success, actual) = eval(source);
-        assert!(success, "{source} failed");
-        assert_eq!(actual, expected, "{source}");
-    }
+    let batch = cases
+        .iter()
+        .enumerate()
+        .map(|(index, (source, expected))| {
+            CliEvalCase::new(
+                format!("type and array case {index}: {source}"),
+                *source,
+                *expected,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_ncl_eval_cases(&batch);
 }
 
 #[test]

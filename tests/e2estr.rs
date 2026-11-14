@@ -9,7 +9,7 @@
 #[path = "common/mod.rs"]
 mod common;
 
-use common::run_ncl;
+use common::{CliEvalCase, assert_ncl_eval_cases, run_ncl};
 
 struct BuiltinEntry {
     builtin: &'static str,
@@ -370,29 +370,23 @@ fn cases() -> Vec<BuiltinEntry> {
 fn all_registered_string_builtins_work_through_compiled_code() {
     let cases = cases();
     assert_eq!(cases.len(), 68);
-    for case in cases {
-        let output = run_ncl(case.source);
-        assert!(
-            output.status.success(),
-            "{}: {} exited {:?}: {}",
-            case.builtin,
-            case.source,
-            output.status.code(),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout).trim(),
-            case.expected,
-            "{}: {}",
-            case.builtin,
-            case.source
-        );
-    }
+    let batch = cases
+        .iter()
+        .enumerate()
+        .map(|(index, case)| {
+            CliEvalCase::new(
+                format!("{}#{index}", case.builtin),
+                case.source,
+                case.expected,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_ncl_eval_cases(&batch);
 }
 
 #[test]
 fn string_comparisons_honor_bounds_and_return_original_mismatch_indices() {
-    for (source, expected) in [
+    let cases = [
         (
             r#"(string-lessp "012AAAA789" "01aaab6" :start1 3 :end1 7 :start2 2 :end2 6)"#,
             "6",
@@ -408,20 +402,20 @@ fn string_comparisons_honor_bounds_and_return_original_mismatch_indices() {
         (r#"(string-not-greaterp "abc" "abcd")"#, "3"),
         (r#"(string-not-greaterp "abc" "abd")"#, "2"),
         (r#"(string-not-lessp "abd" "abc")"#, "2"),
-    ] {
-        let output = run_ncl(source);
-        assert!(
-            output.status.success(),
-            "{source} exited {:?}: {}",
-            output.status.code(),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout).trim(),
-            expected,
-            "{source}"
-        );
-    }
+    ];
+    assert_eq!(cases.len(), 6);
+    let batch = cases
+        .iter()
+        .enumerate()
+        .map(|(index, (source, expected))| {
+            CliEvalCase::new(
+                format!("string comparison {index}: {source}"),
+                *source,
+                *expected,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_ncl_eval_cases(&batch);
 }
 
 #[test]

@@ -71,7 +71,6 @@ fn install_propagates_missing_single_slot_classes() -> Result<(), ObjectError> {
         "CELL-ERROR",
         "UNBOUND-VARIABLE",
         "UNDEFINED-FUNCTION",
-        "UNBOUND-SLOT",
     ] {
         crate::class::install_class(&mut ctx, &runtime, name)?;
     }
@@ -82,6 +81,8 @@ fn install_propagates_missing_single_slot_classes() -> Result<(), ObjectError> {
     crate::class::install_class(&mut ctx, &runtime, "STREAM-ERROR")?;
     assert_eq!(install(&runtime, &mut ctx), Err(ObjectError::Layout));
     crate::class::install_class(&mut ctx, &runtime, "FILE-ERROR")?;
+    assert_eq!(install(&runtime, &mut ctx), Err(ObjectError::Layout));
+    crate::class::install_class(&mut ctx, &runtime, "UNBOUND-SLOT")?;
     install(&runtime, &mut ctx)?;
 
     for (class_name, keyword_name) in [
@@ -103,5 +104,26 @@ fn install_propagates_missing_single_slot_classes() -> Result<(), ObjectError> {
             Some(ncl_object::Word::NIL)
         );
     }
+
+    let unbound_slot = runtime
+        .class(&mut ctx, "UNBOUND-SLOT")
+        .ok_or(ObjectError::Layout)?;
+    let unbound_slot = HeapRootedWord::new(&ctx, unbound_slot)?;
+    let specs = crate::slots::slot_specs(&ctx, unbound_slot.get())?;
+    assert_eq!(specs.len(), 4);
+    let name = crate::slots::keyword(&mut ctx, &runtime, "NAME")?;
+    let name = HeapRootedWord::new(&ctx, name)?;
+    let instance = crate::slots::keyword(&mut ctx, &runtime, "INSTANCE")?;
+    let instance = HeapRootedWord::new(&ctx, instance)?;
+    assert_eq!(specs.get(0).map(HeapRootedWord::get), Some(name.get()));
+    assert_eq!(
+        specs.get(1).map(HeapRootedWord::get),
+        Some(ncl_object::Word::NIL)
+    );
+    assert_eq!(specs.get(2).map(HeapRootedWord::get), Some(instance.get()));
+    assert_eq!(
+        specs.get(3).map(HeapRootedWord::get),
+        Some(ncl_object::Word::NIL)
+    );
     Ok(())
 }

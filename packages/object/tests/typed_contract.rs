@@ -34,6 +34,73 @@ fn error_kind_preserves_existing_object_error_values() {
         ObjectError::Storage(StorageCondition::ThreadNotRegistered).kind(),
         ObjectErrorKind::Storage(StorageCondition::ThreadNotRegistered)
     );
+    assert_eq!(ObjectError::Layout.kind(), ObjectErrorKind::Layout);
+    assert_eq!(ObjectError::Unbound.kind(), ObjectErrorKind::Unbound);
+    assert_eq!(
+        ObjectError::UndefinedFunction.kind(),
+        ObjectErrorKind::UndefinedFunction
+    );
+    assert_eq!(
+        ObjectError::NonLocalExit.kind(),
+        ObjectErrorKind::NonLocalExit
+    );
+    assert_eq!(
+        ObjectError::RootStackCorrupted.kind(),
+        ObjectErrorKind::RootStackCorrupted
+    );
+    assert_eq!(
+        ObjectError::Unsupported.kind(),
+        ObjectErrorKind::Unsupported
+    );
+    assert_eq!(
+        ObjectError::PackageConflict.kind(),
+        ObjectErrorKind::PackageConflict
+    );
+    assert_eq!(
+        ObjectError::ControlError.kind(),
+        ObjectErrorKind::ControlError
+    );
+}
+
+#[test]
+fn object_type_names_match_common_lisp_type_names() {
+    let cases = [
+        (ObjectType::Fixnum, "fixnum"),
+        (ObjectType::Character, "character"),
+        (ObjectType::Cons, "cons"),
+        (ObjectType::Symbol, "symbol"),
+        (ObjectType::String, "string"),
+        (ObjectType::SimpleVector, "simple-vector"),
+        (ObjectType::SpecializedArray, "specialized-array"),
+        (ObjectType::Array, "array"),
+        (ObjectType::HashTable, "hash-table"),
+        (ObjectType::Function, "function"),
+        (ObjectType::Closure, "closure"),
+        (ObjectType::Instance, "instance"),
+        (ObjectType::Structure, "structure-object"),
+        (ObjectType::Bignum, "bignum"),
+        (ObjectType::Ratio, "ratio"),
+        (ObjectType::DoubleFloat, "double-float"),
+        (ObjectType::Complex, "complex"),
+        (ObjectType::Package, "package"),
+        (ObjectType::Readtable, "readtable"),
+        (ObjectType::Stream, "stream"),
+        (ObjectType::Code, "code"),
+    ];
+
+    for (object_type, expected_name) in cases {
+        assert_eq!(object_type.name(), expected_name);
+    }
+}
+
+#[test]
+fn type_error_display_names_the_expected_type_and_datum() {
+    let error = TypeError {
+        datum: Word::fixnum(3),
+        expected: ObjectType::Character,
+    };
+
+    assert_eq!(error.to_string(), "expected Character, got Fixnum(3)");
 }
 
 #[test]

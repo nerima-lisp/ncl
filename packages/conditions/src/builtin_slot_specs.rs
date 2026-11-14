@@ -5,22 +5,25 @@ use ncl_object::{Local, ObjectError, Runtime, Scope, ThreadContext, Word};
 
 use crate::slots::{SlotSpec, keyword, set_slot_specs};
 
-fn install_single_slot(
+fn install_slots(
     runtime: &Runtime,
     scope: &mut Scope<'_>,
     class_name: &str,
-    initarg_name: &str,
+    initarg_names: &[&str],
 ) -> Result<(), ObjectError> {
-    let initarg_word = keyword(scope.context_mut(), runtime, initarg_name)?;
-    let initarg = scope.root(Local::<Word>::from_word(initarg_word));
+    let mut slots = Vec::with_capacity(initarg_names.len());
+    for initarg_name in initarg_names {
+        let initarg_word = keyword(scope.context_mut(), runtime, initarg_name)?;
+        let initarg = scope.root(Local::<Word>::from_word(initarg_word));
+        slots.push(SlotSpec {
+            initarg: scope.get(initarg).as_word(),
+            initform: Word::NIL,
+        });
+    }
     let class = runtime
         .class(scope.context_mut(), class_name)
         .ok_or(ObjectError::Layout)?;
-    let slot = [SlotSpec {
-        initarg: scope.get(initarg).as_word(),
-        initform: Word::NIL,
-    }];
-    set_slot_specs(scope.context_mut(), runtime, class, &slot)
+    set_slot_specs(scope.context_mut(), runtime, class, &slots)
 }
 
 /// Install slot-initarg metadata for the handful of built-in condition
@@ -101,26 +104,18 @@ pub fn install(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectE
         set_slot_specs(scope.context_mut(), runtime, class, &arithmetic_error)?;
     }
 
-    install_single_slot(runtime, &mut scope, "PACKAGE-ERROR", "PACKAGE")?;
-    install_single_slot(runtime, &mut scope, "STREAM-ERROR", "STREAM")?;
-    install_single_slot(runtime, &mut scope, "FILE-ERROR", "PATHNAME")?;
+    install_slots(runtime, &mut scope, "PACKAGE-ERROR", &["PACKAGE"])?;
+    install_slots(runtime, &mut scope, "STREAM-ERROR", &["STREAM"])?;
+    install_slots(runtime, &mut scope, "FILE-ERROR", &["PATHNAME"])?;
 
-    let name_word = keyword(scope.context_mut(), runtime, "NAME")?;
-    let name_keyword = scope.root(Local::<Word>::from_word(name_word));
-    for name in [
-        "CELL-ERROR",
-        "UNBOUND-VARIABLE",
-        "UNDEFINED-FUNCTION",
-        "UNBOUND-SLOT",
+    // check-added-lines: allow(index) array literal, not indexing
+    for (name, initarg_names) in [
+        ("CELL-ERROR", &["NAME"][..]),
+        ("UNBOUND-VARIABLE", &["NAME"][..]),
+        ("UNDEFINED-FUNCTION", &["NAME"][..]),
+        ("UNBOUND-SLOT", &["NAME", "INSTANCE"][..]),
     ] {
-        let class = runtime
-            .class(scope.context_mut(), name)
-            .ok_or(ObjectError::Layout)?;
-        let cell_error = [SlotSpec {
-            initarg: scope.get(name_keyword).as_word(),
-            initform: Word::NIL,
-        }];
-        set_slot_specs(scope.context_mut(), runtime, class, &cell_error)?;
+        install_slots(runtime, &mut scope, name, initarg_names)?;
     }
     Ok(())
 }

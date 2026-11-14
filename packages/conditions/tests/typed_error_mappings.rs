@@ -5,10 +5,11 @@ use std::error::Error;
 use ncl_conditions::{ConditionIdentifier, condition_class_of, condition_from_lisp_error};
 use ncl_object::typed::ConditionErrorData;
 use ncl_object::{
-    ArithmeticError, CellError, FileError, HeapRootedWord, HeapRootedWords, Instance, LispError,
-    Package, PackageError, ProgramError, Runtime, StreamError, ThreadContext, Word, make_cons,
-    make_string, slot_ref,
+    ArithmeticError, CellError, ControlError, FileError, HeapRootedWord, HeapRootedWords, Instance,
+    LispError, ObjectError, ObjectType, Package, PackageError, ProgramError, Runtime, StreamError,
+    ThreadContext, TypeError, Word, make_cons, make_string, slot_ref,
 };
+use ncl_sys::StorageCondition;
 
 fn setup() -> Result<(Runtime, ThreadContext), ncl_object::ObjectError> {
     let runtime = Runtime::new()?;
@@ -159,6 +160,86 @@ fn arithmetic_error_maps_operation_and_operands() -> Result<(), Box<dyn Error>> 
 }
 
 #[test]
+fn legacy_lisp_errors_map_to_their_condition_classes() -> Result<(), Box<dyn Error>> {
+    let (runtime, mut ctx) = setup()?;
+    let cases = [
+        (
+            LispError::ProgramError(ProgramError::UnknownKeyword),
+            ConditionIdentifier::ProgramError,
+        ),
+        (
+            LispError::ArithmeticError(ArithmeticError::DivisionByZero),
+            ConditionIdentifier::DivisionByZero,
+        ),
+        (
+            LispError::ArithmeticError(ArithmeticError::InvalidOperation),
+            ConditionIdentifier::ArithmeticError,
+        ),
+        (
+            LispError::ControlError(ControlError::Throw),
+            ConditionIdentifier::ControlError,
+        ),
+        (
+            LispError::PackageError(PackageError::Locked),
+            ConditionIdentifier::PackageError,
+        ),
+        (
+            LispError::StreamError(StreamError::Closed),
+            ConditionIdentifier::StreamError,
+        ),
+        (LispError::EndOfFile, ConditionIdentifier::EndOfFile),
+        (
+            LispError::FileError(FileError::NotFound),
+            ConditionIdentifier::FileError,
+        ),
+        (
+            LispError::Object(ObjectError::Storage(StorageCondition::ThreadNotRegistered)),
+            ConditionIdentifier::StorageCondition,
+        ),
+        (
+            LispError::Object(ObjectError::Unsupported),
+            ConditionIdentifier::Error,
+        ),
+    ];
+
+    for (error, expected_class) in cases {
+        let condition = condition_from_lisp_error(&mut ctx, &runtime, error)?;
+        assert_mapping(&mut ctx, &runtime, condition, expected_class, &[])?;
+    }
+
+    let datum = Word::fixnum(65);
+    let expected_type = intern(&mut ctx, &runtime, "COMMON-LISP", "CHARACTER")?;
+    let condition = condition_from_lisp_error(
+        &mut ctx,
+        &runtime,
+        LispError::from(TypeError {
+            datum,
+            expected: ObjectType::Character,
+        }),
+    )?;
+    assert_mapping(
+        &mut ctx,
+        &runtime,
+        condition,
+        ConditionIdentifier::TypeError,
+        &[datum, expected_type.get()],
+    )?;
+
+    let condition = condition_from_lisp_error(
+        &mut ctx,
+        &runtime,
+        LispError::Object(ObjectError::TypeError),
+    )?;
+    assert_mapping(
+        &mut ctx,
+        &runtime,
+        condition,
+        ConditionIdentifier::TypeError,
+        &[Word::NIL, Word::NIL],
+    )
+}
+
+#[test]
 fn package_error_maps_the_affected_package() -> Result<(), Box<dyn Error>> {
     let (runtime, mut ctx) = setup()?;
     let package = runtime.ensure_package(&mut ctx, "NCL-TEST")?;
@@ -273,7 +354,7 @@ fn file_error_maps_the_affected_pathname_designator() -> Result<(), Box<dyn Erro
 }
 
 #[test]
-fn cell_errors_map_the_class_and_name_slot() -> Result<(), Box<dyn Error>> {
+fn cell_errors_map_the_class_and_standard_slots() -> Result<(), Box<dyn Error>> {
     let (runtime, mut ctx) = setup()?;
     let variable_name = intern(&mut ctx, &runtime, "NCL-TEST", "MISSING-VARIABLE")?;
     let variable_condition = condition_from_lisp_error(
@@ -305,6 +386,24 @@ fn cell_errors_map_the_class_and_name_slot() -> Result<(), Box<dyn Error>> {
         function_condition,
         ConditionIdentifier::UndefinedFunction,
         &[function_name.get()],
+    )?;
+
+    let slot_name = intern(&mut ctx, &runtime, "NCL-TEST", "UNBOUND-SLOT")?;
+    let instance = Word::fixnum(17);
+    let slot_condition = condition_from_lisp_error(
+        &mut ctx,
+        &runtime,
+        LispError::CellError(CellError::UnboundSlot {
+            name: slot_name.get(),
+            instance,
+        }),
+    )?;
+    assert_mapping(
+        &mut ctx,
+        &runtime,
+        slot_condition,
+        ConditionIdentifier::UnboundSlot,
+        &[slot_name.get(), instance],
     )
 }
 

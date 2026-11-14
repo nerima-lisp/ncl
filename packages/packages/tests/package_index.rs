@@ -98,12 +98,16 @@ fn equal_but_distinct_nicknames_keep_the_index_until_the_last_is_removed() {
     let second_token = push_root(&mut ctx, &mut second);
     assert_ne!(first, second);
 
-    assert!(Package::from_word(package)
-        .add_nickname(&mut ctx, &runtime, first)
-        .unwrap_or_else(|error| panic!("first nickname: {error:?}")));
-    assert!(Package::from_word(package)
-        .add_nickname(&mut ctx, &runtime, second)
-        .unwrap_or_else(|error| panic!("equal nickname: {error:?}")));
+    assert!(
+        Package::from_word(package)
+            .add_nickname(&mut ctx, &runtime, first)
+            .unwrap_or_else(|error| panic!("first nickname: {error:?}"))
+    );
+    assert!(
+        Package::from_word(package)
+            .add_nickname(&mut ctx, &runtime, second)
+            .unwrap_or_else(|error| panic!("equal nickname: {error:?}"))
+    );
     assert_eq!(runtime.find_package(&ctx, "DUP"), Some(package));
     let mut different = string(&mut ctx, &runtime, "DUQ");
     let different_token = push_root(&mut ctx, &mut different);

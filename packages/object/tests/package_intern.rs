@@ -44,17 +44,14 @@ fn intern_reuses_internal_symbols_across_string_hash_collisions() {
     assert_ne!(different_length, first);
     assert_ne!(different_length, collision);
 
-    let mut key = make_string(&mut ctx, &runtime, &['A'])
-        .unwrap_or_else(|error| panic!("key: {error:?}"));
+    let mut key =
+        make_string(&mut ctx, &runtime, &['A']).unwrap_or_else(|error| panic!("key: {error:?}"));
     let key_token = push_root(&mut ctx, &mut key);
     let internal = HashTable::from_word(
         get(&ctx, package, widetag::PACKAGE, INTERNAL)
             .unwrap_or_else(|error| panic!("internal table: {error:?}")),
     );
-    assert_eq!(
-        internal.remove(&mut ctx, &runtime, key),
-        Ok(Some(first))
-    );
+    assert_eq!(internal.remove(&mut ctx, &runtime, key), Ok(Some(first)));
     let (same_collision, status) = Package::from_word(package)
         .intern(&mut ctx, &runtime, "I")
         .unwrap_or_else(|error| panic!("lookup after removal: {error:?}"));

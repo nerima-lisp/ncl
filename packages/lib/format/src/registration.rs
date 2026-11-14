@@ -104,7 +104,6 @@ fn format_builtin(
                         PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity => {
                             ObjectError::TypeError
                         }
-                        _ => ObjectError::TypeError, // check-added-lines: allow(wildcard) non-exhaustive error mapping
                     })?;
                 }
                 Ok(Word::NIL)
@@ -149,7 +148,9 @@ const fn format_error_to_object_error(error: &FormatError) -> ObjectError {
         | FormatErrorKind::InvalidParameter
         | FormatErrorKind::InvalidDirectiveUse
         | FormatErrorKind::ImproperList
-        | FormatErrorKind::Print(_) => ObjectError::TypeError,
+        | FormatErrorKind::Print(
+            PrintError::Sink(_) | PrintError::NotReadable | PrintError::Circularity,
+        ) => ObjectError::TypeError,
     }
 }
 

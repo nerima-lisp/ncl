@@ -303,7 +303,7 @@ fn unintern_clears_home_and_shadowing_but_not_inherited() {
 }
 
 #[test]
-fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
+fn package_use_export_shadow_and_unexport_are_idempotent() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("test failure: {error:?}"));
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)
@@ -381,7 +381,17 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
             .unexport(&mut ctx, &runtime, name)
             .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
+}
 
+#[test]
+fn nickname_registration_updates_index_and_is_idempotent() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    let base = Package::new(&mut ctx, &runtime, "BASE")
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"))
+        .as_word();
     let mut nickname = string(&mut ctx, &runtime, "B");
     let nickname_token = ncl_object::push_root(&mut ctx, &mut nickname);
     Package::from_word(base)

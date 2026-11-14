@@ -1,7 +1,7 @@
 //! Integration tests for package registry extension and conflict behavior.
 
 use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, make_cons, make_string};
-use ncl_packages::RuntimePackageOperations;
+use ncl_packages::{PackageOperations, RuntimePackageOperations};
 
 #[test]
 fn common_lisp_nickname_collision_is_rejected_without_overwriting() -> Result<(), ObjectError> {
@@ -29,6 +29,51 @@ fn common_lisp_nickname_collision_is_rejected_without_overwriting() -> Result<()
     );
     assert_eq!(runtime.find_package(&ctx, "CL"), Some(cl_owner));
     assert_eq!(runtime.find_package(&ctx, "COMMON-LISP"), None);
+    Ok(())
+}
+
+#[test]
+fn ensure_package_does_not_resolve_a_canonical_name_to_its_nickname_owner()
+-> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+
+    let mut common_lisp = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::Layout)?;
+    let common_lisp_token = ncl_object::push_root(&mut ctx, &mut common_lisp);
+    let mut primary_name = Package::from_word(common_lisp).name(&ctx)?;
+    let primary_name_token = ncl_object::push_root(&mut ctx, &mut primary_name);
+    assert!(runtime.unregister_package_name(&mut ctx, primary_name)?);
+
+    let mut nickname_owner = runtime.ensure_package(&mut ctx, "N25-CANONICAL-NICKNAME-OWNER")?;
+    let nickname_owner_token = ncl_object::push_root(&mut ctx, &mut nickname_owner);
+    let nickname = make_string(
+        &mut ctx,
+        &runtime,
+        &"COMMON-LISP".chars().collect::<Vec<_>>(),
+    )?;
+    assert!(Package::from_word(nickname_owner).add_nickname(&mut ctx, &runtime, nickname)?);
+
+    assert_eq!(
+        runtime.find_package(&ctx, "COMMON-LISP"),
+        Some(nickname_owner)
+    );
+    assert_eq!(runtime.find_package(&ctx, "CL"), Some(common_lisp));
+    assert_eq!(
+        runtime.ensure_package(&mut ctx, "COMMON-LISP"),
+        Err(ObjectError::PackageConflict)
+    );
+    assert_eq!(
+        runtime.find_package(&ctx, "COMMON-LISP"),
+        Some(nickname_owner)
+    );
+    assert_eq!(runtime.find_package(&ctx, "CL"), Some(common_lisp));
+
+    assert!(ncl_object::pop_root(&mut ctx, nickname_owner_token));
+    assert!(ncl_object::pop_root(&mut ctx, primary_name_token));
+    assert!(ncl_object::pop_root(&mut ctx, common_lisp_token));
     Ok(())
 }
 

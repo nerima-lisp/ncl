@@ -176,6 +176,30 @@ fn conflicting_registered_nickname_leaves_the_original_owner_unchanged() {
 }
 
 #[test]
+fn registered_package_rejects_non_string_nickname_without_mutation() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let mut package = runtime
+        .ensure_package(&mut ctx, "NICKNAME-TYPE-CHECK")
+        .unwrap_or_else(|error| panic!("package: {error:?}"));
+    let package_token = push_root(&mut ctx, &mut package);
+
+    assert_eq!(
+        Package::from_word(package).add_nickname(&mut ctx, &runtime, Word::fixnum(25)),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(Package::from_word(package).nicknames(&ctx), Ok(Word::NIL));
+    assert_eq!(
+        runtime.find_package(&ctx, "NICKNAME-TYPE-CHECK"),
+        Some(package)
+    );
+
+    assert!(pop_root(&mut ctx, package_token));
+}
+
+#[test]
 fn try_from_word_rejects_non_package_values() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
     let mut ctx = ThreadContext::new();

@@ -150,7 +150,7 @@ D-07 removes placeholder crates from the workspace until an owning lane needs th
 
 ## Migration order
 
-The migration rows follow section 7 of the NCL run specification. A lane is an independently owned work unit with crate and path assignments and prerequisites. Wave 1 covers blockers and enabling work; Wave 2 covers CLHS chapter work. L0-2 freezes contracts before these waves. Wave 1 lanes may run in parallel where their prerequisites allow. L1-4 waits until L1-10 has moved the object features and established the kernel boundary; L1-10 uses move-only commits for that split. `L*` and `L2-ch*` are lane identifiers from the run plan.
+The table below defines the migration order, crate ownership, and prerequisites. A lane is an independently owned work unit with crate and path assignments. Wave 1 covers blockers and enabling work; Wave 2 covers CLHS chapter work. L0-2 freezes contracts before these waves. Wave 1 lanes may run in parallel where their prerequisites allow. L1-4 waits until L1-10 has moved the object features and established the kernel boundary; L1-10 uses move-only commits for that split. `L*` and `L2-ch*` identify lane groups in this table.
 
 | Order | Lane | Crate ownership and migration | Prerequisite |
 | --- | --- | --- | --- |
@@ -179,7 +179,7 @@ The migration rows follow section 7 of the NCL run specification. A lane is an i
 | Wave 2 | L2-ch19/20 | pathnames and OS | Wave 1 |
 | Wave 2 | L2-ch24/25 | runtime environment and ncl-environment | Wave 1 |
 
-Give each crate and shared path one lane owner at a time. Keep root Cargo.toml with its existing FR-011 owner. Before closing a lane, record its functional-requirement evidence (FR), verification-layer results (V), conformance scoreboard diff, Rust quality checks (J), and confirmation that it added no `#[allow]` attributes. Run no more than 16 lanes concurrently. The lane rows above follow the section 7 plan.
+Give each crate and shared path one lane owner at a time. Keep root Cargo.toml with its existing FR-011 owner. Before closing a lane, record evidence for functional requirements and verification layers, the conformance scoreboard diff, Rust quality-check results, and confirmation that it added no `#[allow]` attributes. Run no more than 16 lanes concurrently.
 
 Decision D-08 requires each feature lane to start with one behavior-neutral, move-only commit. Record the selected test names and count before the move; run the same selection across source and destination crates after the move. The selection must be non-empty when the source had tests, names and count must match, and all selected tests must pass. Put behavior changes in a later commit. L1-10 applies this procedure to each moved object feature.
 

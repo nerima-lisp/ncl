@@ -64,24 +64,111 @@ fn removing_primary_name_nickname_keeps_primary_lookup() {
         .ensure_package(&mut ctx, "PRIMARY-NAME")
         .unwrap_or_else(|error| panic!("package: {error:?}"));
     let package_token = push_root(&mut ctx, &mut package);
-    let mut name = Package::from_word(package)
-        .name(&ctx)
-        .unwrap_or_else(|error| panic!("package name: {error:?}"));
-    let name_token = push_root(&mut ctx, &mut name);
+    let mut nickname = string(&mut ctx, &runtime, "PRIMARY-NAME");
+    let nickname_token = push_root(&mut ctx, &mut nickname);
     assert!(
         Package::from_word(package)
-            .add_nickname(&mut ctx, &runtime, name)
+            .add_nickname(&mut ctx, &runtime, nickname)
             .unwrap_or_else(|error| panic!("add nickname: {error:?}"))
     );
     assert_eq!(runtime.find_package(&ctx, "PRIMARY-NAME"), Some(package));
     assert!(
         Package::from_word(package)
-            .remove_nickname(&mut ctx, &runtime, name)
+            .remove_nickname(&mut ctx, &runtime, nickname)
             .unwrap_or_else(|error| panic!("remove nickname: {error:?}"))
     );
     assert_eq!(runtime.find_package(&ctx, "PRIMARY-NAME"), Some(package));
-    assert!(pop_root(&mut ctx, name_token));
+    assert!(pop_root(&mut ctx, nickname_token));
     assert!(pop_root(&mut ctx, package_token));
+}
+
+#[test]
+fn equal_but_distinct_nicknames_keep_the_index_until_the_last_is_removed() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let mut package = runtime
+        .ensure_package(&mut ctx, "DUPLICATE-NICKNAMES")
+        .unwrap_or_else(|error| panic!("package: {error:?}"));
+    let package_token = push_root(&mut ctx, &mut package);
+    let mut first = string(&mut ctx, &runtime, "DUP");
+    let first_token = push_root(&mut ctx, &mut first);
+    let mut second = string(&mut ctx, &runtime, "DUP");
+    let second_token = push_root(&mut ctx, &mut second);
+    assert_ne!(first, second);
+
+    assert!(Package::from_word(package)
+        .add_nickname(&mut ctx, &runtime, first)
+        .unwrap_or_else(|error| panic!("first nickname: {error:?}")));
+    assert!(Package::from_word(package)
+        .add_nickname(&mut ctx, &runtime, second)
+        .unwrap_or_else(|error| panic!("equal nickname: {error:?}")));
+    assert_eq!(runtime.find_package(&ctx, "DUP"), Some(package));
+    let mut different = string(&mut ctx, &runtime, "DUQ");
+    let different_token = push_root(&mut ctx, &mut different);
+    let mut different_length = string(&mut ctx, &runtime, "LONGER");
+    let different_length_token = push_root(&mut ctx, &mut different_length);
+    assert_eq!(
+        Package::from_word(package).remove_nickname(&mut ctx, &runtime, different),
+        Ok(false)
+    );
+    assert_eq!(
+        Package::from_word(package).remove_nickname(&mut ctx, &runtime, different_length),
+        Ok(false)
+    );
+    assert_eq!(runtime.find_package(&ctx, "DUP"), Some(package));
+
+    assert_eq!(
+        Package::from_word(package).remove_nickname(&mut ctx, &runtime, first),
+        Ok(true)
+    );
+    assert_eq!(runtime.find_package(&ctx, "DUP"), Some(package));
+    assert_eq!(
+        Package::from_word(package).remove_nickname(&mut ctx, &runtime, second),
+        Ok(true)
+    );
+    assert_eq!(runtime.find_package(&ctx, "DUP"), None);
+
+    assert!(pop_root(&mut ctx, different_length_token));
+    assert!(pop_root(&mut ctx, different_token));
+    assert!(pop_root(&mut ctx, second_token));
+    assert!(pop_root(&mut ctx, first_token));
+    assert!(pop_root(&mut ctx, package_token));
+}
+
+#[test]
+fn conflicting_registered_nickname_leaves_the_original_owner_unchanged() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let mut owner = runtime
+        .ensure_package(&mut ctx, "NICKNAME-OWNER")
+        .unwrap_or_else(|error| panic!("owner: {error:?}"));
+    let owner_token = push_root(&mut ctx, &mut owner);
+    let mut other = runtime
+        .ensure_package(&mut ctx, "NICKNAME-OTHER")
+        .unwrap_or_else(|error| panic!("other: {error:?}"));
+    let other_token = push_root(&mut ctx, &mut other);
+    let mut nickname = string(&mut ctx, &runtime, "NICKNAME-OWNER");
+    let nickname_token = push_root(&mut ctx, &mut nickname);
+
+    assert_eq!(
+        Package::from_word(other).add_nickname(&mut ctx, &runtime, nickname),
+        Err(ObjectError::PackageConflict)
+    );
+    assert_eq!(
+        Package::from_word(other)
+            .nicknames(&ctx)
+            .unwrap_or_else(|error| panic!("nicknames: {error:?}")),
+        Word::NIL
+    );
+    assert_eq!(runtime.find_package(&ctx, "NICKNAME-OWNER"), Some(owner));
+
+    assert!(pop_root(&mut ctx, nickname_token));
+    assert!(pop_root(&mut ctx, other_token));
+    assert!(pop_root(&mut ctx, owner_token));
 }
 
 #[test]

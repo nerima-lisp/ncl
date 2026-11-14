@@ -16,8 +16,9 @@ pub const fn is_call(kind: &OpKind) -> bool {
             | OpKind::EnterHandler { .. }
             | OpKind::LeaveHandler { .. }
             | OpKind::StoreField { .. }
+            // CAR/CDR call the runtime only on their type-error slow path.
             | OpKind::Prim {
-                op: Prim::Rplaca | Prim::Rplacd | Prim::Aset,
+                op: Prim::Car | Prim::Cdr | Prim::Rplaca | Prim::Rplacd | Prim::Aset,
                 ..
             }
     )

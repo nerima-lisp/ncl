@@ -352,8 +352,8 @@ fn operands_of_terminator(terminator: &Terminator, out: &mut Vec<ValueId>) {
 mod tests {
     use super::{AllocationTarget, Location, allocate};
     use ncl_ir::{
-        Constant, FunctionBuilder, FunctionId, HandlerKind, HandlerRegion, OpKind, Terminator, Ty,
-        ValueId,
+        Constant, FunctionBuilder, FunctionId, HandlerKind, HandlerRegion, OpKind, Param, Prim,
+        Terminator, Ty, ValueId,
     };
 
     #[test]
@@ -488,6 +488,61 @@ mod tests {
             let allocation = allocate(&function, target);
             assert!(matches!(
                 allocation.location(ValueId(1)),
+                Some(Location::Spill(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn cons_accessors_spill_values_that_survive_the_runtime_slow_path() {
+        for (index, prim) in [Prim::Car, Prim::Cdr].into_iter().enumerate() {
+            let mut builder = FunctionBuilder::new(
+                FunctionId(u32::try_from(index).expect("function id")),
+                "cons-accessor-live-value",
+                vec![Param {
+                    name: "object".into(),
+                    ty: Ty::Word,
+                }],
+                vec![Ty::Word],
+            );
+            let live_constant = builder.add_constant(Constant::Fixnum(17));
+            let live = builder
+                .push_op(
+                    OpKind::Const {
+                        result: live_constant,
+                    },
+                    &[Ty::Word],
+                )
+                .expect("live value")[0];
+            assert!(
+                builder
+                    .push_op(
+                        OpKind::Prim {
+                            op: prim,
+                            args: vec![ValueId(0)],
+                            condition: None,
+                        },
+                        &[Ty::Word],
+                    )
+                    .is_ok()
+            );
+            assert!(
+                builder
+                    .terminate(Terminator::Return { values: vec![live] })
+                    .is_ok()
+            );
+
+            let allocation = allocate(&builder.finish(), AllocationTarget::AArch64);
+            let Some(interval) = allocation
+                .intervals
+                .iter()
+                .find(|interval| interval.value == live)
+            else {
+                panic!("live value interval");
+            };
+            assert!(interval.crosses_call);
+            assert!(matches!(
+                allocation.location(live),
                 Some(Location::Spill(_))
             ));
         }

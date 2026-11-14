@@ -146,16 +146,7 @@ fn emit_cons_tag_guard(
             amount: 32,
         },
     )?;
-    emit(
-        assembler,
-        Inst::AddExt {
-            rd: RegOrSp::Reg(Reg(17)),
-            rn: RegOrSp::Reg(Reg(31)),
-            rm: Reg(17),
-            extend: ncl_asm_aarch64::Extend::Sxtw,
-            shift: 0,
-        },
-    )?;
+    // Subtracting one makes a zero upper word negative for the combined sign check.
     emit(
         assembler,
         Inst::SubImm {

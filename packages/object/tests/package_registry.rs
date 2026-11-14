@@ -80,3 +80,100 @@ fn registration_and_owner_checked_removal_keep_the_index_consistent() {
     assert!(pop_root(&mut ctx, other_token));
     assert!(pop_root(&mut ctx, owner_token));
 }
+
+#[test]
+fn sorted_index_keeps_neighbors_after_middle_name_removal_and_reinsertion() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+
+    let mut alpha_owner = Package::new(&mut ctx, &runtime, "SORTED-OWNER-A")
+        .unwrap_or_else(|error| panic!("alpha owner: {error:?}"))
+        .as_word();
+    let alpha_root = push_root(&mut ctx, &mut alpha_owner);
+    let mut middle_owner = Package::new(&mut ctx, &runtime, "SORTED-OWNER-M")
+        .unwrap_or_else(|error| panic!("middle owner: {error:?}"))
+        .as_word();
+    let middle_root = push_root(&mut ctx, &mut middle_owner);
+    let mut zulu_owner = Package::new(&mut ctx, &runtime, "SORTED-OWNER-Z")
+        .unwrap_or_else(|error| panic!("zulu owner: {error:?}"))
+        .as_word();
+    let zulu_root = push_root(&mut ctx, &mut zulu_owner);
+
+    for (name, owner) in [
+        ("SORTED-Z", zulu_owner),
+        ("SORTED-A", alpha_owner),
+        ("SORTED-M", middle_owner),
+    ] {
+        let name = string(&mut ctx, &runtime, name);
+        assert_eq!(runtime.register_package_name(&mut ctx, owner, name), Ok(()));
+    }
+
+    assert_eq!(runtime.find_package(&ctx, "SORTED-Z"), Some(zulu_owner));
+    assert_eq!(runtime.find_package(&ctx, "SORTED-A"), Some(alpha_owner));
+    assert_eq!(runtime.find_package(&ctx, "SORTED-M"), Some(middle_owner));
+
+    let middle_name = string(&mut ctx, &runtime, "SORTED-M");
+    assert_eq!(
+        runtime.unregister_package_name_for_package(&mut ctx, middle_owner, middle_name),
+        Ok(true)
+    );
+    assert_eq!(runtime.find_package(&ctx, "SORTED-M"), None);
+    assert_eq!(runtime.find_package(&ctx, "SORTED-A"), Some(alpha_owner));
+    assert_eq!(runtime.find_package(&ctx, "SORTED-Z"), Some(zulu_owner));
+
+    let mut recreated = runtime
+        .ensure_package(&mut ctx, "SORTED-M")
+        .unwrap_or_else(|error| panic!("recreated package: {error:?}"));
+    let recreated_token = push_root(&mut ctx, &mut recreated);
+    assert_ne!(recreated, middle_owner);
+    assert_eq!(runtime.find_package(&ctx, "SORTED-M"), Some(recreated));
+    assert_eq!(runtime.find_package(&ctx, "SORTED-A"), Some(alpha_owner));
+    assert_eq!(runtime.find_package(&ctx, "SORTED-Z"), Some(zulu_owner));
+
+    assert!(pop_root(&mut ctx, recreated_token));
+    assert!(pop_root(&mut ctx, zulu_root));
+    assert!(pop_root(&mut ctx, middle_root));
+    assert!(pop_root(&mut ctx, alpha_root));
+}
+
+#[test]
+fn ensure_package_restores_a_removed_standard_nickname_registration() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let common_lisp = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .unwrap_or_else(|| panic!("COMMON-LISP package was not found"));
+    let nickname = string(&mut ctx, &runtime, "CL");
+
+    assert_eq!(
+        runtime.unregister_package_name(&mut ctx, nickname),
+        Ok(true)
+    );
+    assert_eq!(runtime.find_package(&ctx, "CL"), None);
+    assert_eq!(runtime.ensure_package(&mut ctx, "CL"), Ok(common_lisp));
+    assert_eq!(runtime.find_package(&ctx, "CL"), Some(common_lisp));
+}
+
+#[test]
+fn non_string_package_name_is_rejected_without_changing_the_registry() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let package = runtime
+        .ensure_package(&mut ctx, "INDEX-NONSTRING-NAME")
+        .unwrap_or_else(|error| panic!("package: {error:?}"));
+
+    assert_eq!(
+        runtime.register_package_name(&mut ctx, package, Word::fixnum(42)),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.find_package(&ctx, "INDEX-NONSTRING-NAME"),
+        Some(package)
+    );
+}

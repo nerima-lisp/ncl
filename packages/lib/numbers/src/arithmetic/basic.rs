@@ -1,63 +1,54 @@
 use super::{
-    Number, ObjectError, Runtime, ThreadContext, Word, add_pair, args_numbers, div_pair, mul_pair,
-    number, ratio, sub_pair, word,
+    Integer, Number, ObjectError, Runtime, ThreadContext, Word, add_pair, args_numbers, div_pair,
+    mul_pair, number, ratio, sub_pair, word,
 };
 use ncl_object::{ArithmeticError, LispError};
 
 pub fn add(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
-    let value = ns.into_iter().try_fold(Number::Integer(0), |value, next| {
-        checked_integer_pair(value, next, i128::checked_add)?;
-        add_pair(value, next)
-    })?;
+    let value = ns.into_iter().try_fold(Number::Integer(0), add_pair)?;
     word(ctx, runtime, value)
 }
 pub fn sub(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
-    let first = *ns.first().ok_or(ObjectError::TypeError)?;
+    let first = ns.first().cloned().ok_or(ObjectError::TypeError)?;
     let value = if ns.len() == 1 {
-        checked_integer_pair(Number::Integer(0), first, i128::checked_sub)?;
-        sub_pair(Number::Integer(0), first)?
+        match first {
+            Number::Integer(value) => Number::from_integer(Integer::from_i128(value).negate()),
+            Number::BigInteger(value) => Number::from_integer(value.negate()),
+            value => sub_pair(Number::Integer(0), value)?,
+        }
     } else {
-        ns.iter().copied().skip(1).try_fold(first, |value, next| {
-            checked_integer_pair(value, next, i128::checked_sub)?;
-            sub_pair(value, next)
-        })?
+        ns.iter().skip(1).cloned().try_fold(first, sub_pair)?
     };
     word(ctx, runtime, value)
 }
 pub fn mul(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
-    let value = ns.into_iter().try_fold(Number::Integer(1), |value, next| {
-        checked_integer_pair(value, next, i128::checked_mul)?;
-        mul_pair(value, next)
-    })?;
+    let value = ns.into_iter().try_fold(Number::Integer(1), mul_pair)?;
     word(ctx, runtime, value)
 }
 pub fn div(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
-    let first = *ns.first().ok_or(ObjectError::TypeError)?;
-    if ns.iter().skip(1).any(|value| is_zero(*value)) || (ns.len() == 1 && is_zero(first)) {
+    let first = ns.first().cloned().ok_or(ObjectError::TypeError)?;
+    if ns.iter().skip(1).any(is_zero) || (ns.len() == 1 && is_zero(&first)) {
         ctx.set_pending_lisp_error(LispError::ArithmeticError(ArithmeticError::DivisionByZero));
         return Err(ObjectError::TypeError);
     }
     let value = if ns.len() == 1 {
-        checked_integer_pair(Number::Integer(1), first, checked_div)?;
         div_pair(Number::Integer(1), first)?
     } else {
-        ns.iter().copied().skip(1).try_fold(first, |value, next| {
-            checked_integer_pair(value, next, checked_div)?;
-            div_pair(value, next)
-        })?
+        ns.iter().skip(1).cloned().try_fold(first, div_pair)?
     };
     word(ctx, runtime, value)
 }
 
-fn is_zero(value: Number) -> bool {
+fn is_zero(value: &Number) -> bool {
     match value {
-        Number::Integer(value) | Number::Ratio(value, _) => value == 0,
-        Number::Float(value) => value == 0.0,
-        Number::Complex(real, imag) => real == 0.0 && imag == 0.0,
+        Number::Integer(value) | Number::Ratio(value, _) => *value == 0,
+        Number::BigInteger(value) => value.is_zero(),
+        Number::Float(value) => *value == 0.0,
+        Number::Complex(real, imag) => *real == 0.0 && *imag == 0.0,
     }
 }
 pub fn one_plus(
@@ -81,27 +72,11 @@ pub fn abs(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     word(ctx, runtime, abs_number(n)?)
 }
 
-const fn checked_div(a: i128, b: i128) -> Option<i128> {
-    a.checked_div(b)
-}
-
-fn checked_integer_pair(
-    a: Number,
-    b: Number,
-    operation: impl FnOnce(i128, i128) -> Option<i128>,
-) -> Result<(), ObjectError> {
-    if let (Number::Integer(a), Number::Integer(b)) = (a, b) {
-        operation(a, b).ok_or(ObjectError::TypeError)?;
-    }
-    Ok(())
-}
-
 pub(super) fn abs_number(value: Number) -> Result<Number, ObjectError> {
     match value {
         Number::Complex(r, i) => Ok(Number::Float(r.hypot(i))),
-        Number::Integer(value) => Ok(Number::Integer(
-            value.checked_abs().ok_or(ObjectError::TypeError)?,
-        )),
+        Number::Integer(value) => Ok(Number::from_integer(Integer::from_i128(value).abs())),
+        Number::BigInteger(value) => Ok(Number::from_integer(value.abs())),
         Number::Ratio(n, d) => {
             ratio(n.checked_abs().ok_or(ObjectError::TypeError)?, d).ok_or(ObjectError::TypeError)
         }
@@ -127,6 +102,7 @@ pub fn signum(
                 }
             }
             Number::Integer(v) => Number::Integer(v.signum()),
+            Number::BigInteger(v) => Number::from_integer(v.signum()),
             Number::Ratio(n, _) => Number::Integer(n.signum()),
             Number::Float(v) => Number::Float(v.signum()),
         },

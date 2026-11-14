@@ -143,7 +143,7 @@ The checker exits zero only when every current manifest edge is allowed, every e
 
 ## Differences from the prior freeze
 
-The 2026-09-24 crate list and adjacency graph are superseded by this target contract. It adds seven feature model crates, splits the combined array and hash-table registration adapter, keeps `ncl-object` as a kernel, and adds `ncl-hir` for Lisp-semantic HIR and its compilation-unit index. It also assigns the signal-recovery trampoline to `ncl-sys` and a type-check-failure signaling entry point to `ncl-runtime`; `docs/src/design/conditions.md` chooses that entry point's API name. The HIR revision does not decide the relation between the HIR type lattice and `ncl-types`.
+This target contract adds five feature model crates: `ncl-arrays`, `ncl-hash-tables`, `ncl-packages`, `ncl-streams`, and `ncl-readtables`. It splits the combined array and hash-table registration adapter, keeps `ncl-object` as a kernel, and adds `ncl-hir` for Lisp-semantic HIR and its compilation-unit index. It also assigns the signal-recovery trampoline to `ncl-sys` and a type-check-failure signaling entry point to `ncl-runtime`; `docs/src/design/conditions.md` chooses that entry point's API name.
 D-07 removes placeholder crates from the workspace until an owning lane needs them. Keep their crate names when they return: ncl-asdf, ncl-uiop, ncl-os, ncl-debug, ncl-profiler, ncl-coverage, and ncl-conformance. Their target rows above assign names and expected edges. L0-6 restores ncl-conformance; L2-ch19/20 restores ncl-os, which L4-3 extends; L4-4 restores ncl-uiop and ncl-asdf; L4-5 restores ncl-debug; L4-6 restores ncl-profiler and ncl-coverage. ncl-environment is the new crate for L2-ch24/25. ncl-introspection is the new crate for L4-5.
 
 ## Migration order

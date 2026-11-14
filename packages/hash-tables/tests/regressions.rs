@@ -4,6 +4,8 @@
 mod equalp;
 #[path = "regressions/weak_entries.rs"]
 mod weak_entries;
+#[path = "regressions/weak_entry_helpers.rs"]
+mod weak_entry_helpers;
 
 use ncl_hash_tables::{HashTable, HashTest, Weakness, new_with_options, sxhash};
 use ncl_object::{ObjectError, Word};
@@ -76,47 +78,6 @@ fn insert_weak_entry(
             .join()
             .unwrap_or_else(|_| panic!("weak-entry worker panicked"))
     })
-}
-
-fn weak_entry_after_gc(
-    weakness: Weakness,
-    keep_key: bool,
-    keep_value: bool,
-    expected_count: usize,
-    expected_value: Word,
-) {
-    let (runtime, mut ctx) = setup();
-    let mut table_word = HashTable::new(&mut ctx, &runtime, HashTest::Eq, weakness)
-        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
-        .as_word();
-    let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
-    let (mut key_root, mut value_root) =
-        insert_weak_entry(&runtime, table_word, weakness, keep_key, keep_value);
-    let key_token = keep_key.then(|| ncl_object::push_root(&mut ctx, &mut key_root));
-    let value_token = keep_value.then(|| ncl_object::push_root(&mut ctx, &mut value_root));
-    assert!(ctx.collect(true).is_ok());
-    let table = HashTable::from_word(table_word);
-    assert_eq!(table.count(&ctx), Ok(expected_count));
-    let lookup = if expected_count == 0 {
-        Word::fixnum(123)
-    } else {
-        key_root
-    };
-    assert_eq!(
-        table.get(&mut ctx, lookup),
-        if expected_count == 0 {
-            Ok(None)
-        } else {
-            Ok(Some(expected_value))
-        }
-    );
-    if let Some(token) = value_token {
-        assert!(ncl_object::pop_root(&mut ctx, token));
-    }
-    if let Some(token) = key_token {
-        assert!(ncl_object::pop_root(&mut ctx, token));
-    }
-    assert!(ncl_object::pop_root(&mut ctx, table_token));
 }
 
 #[test]

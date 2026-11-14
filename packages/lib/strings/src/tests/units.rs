@@ -81,6 +81,12 @@ fn assert_case_result(
     range: &[Word],
 ) {
     let mut scope = ncl_object::Scope::new(ctx);
+    // Range words copied from the caller must survive this helper's collection.
+    let rooted_range = range
+        .iter()
+        .copied()
+        .map(|word| scope.root(ncl_object::Local::<Word>::from_word(word)))
+        .collect::<Vec<_>>();
     scope.context_mut().set_gc_stress(false);
     let input = scope
         .make_string(runtime, source)
@@ -90,7 +96,12 @@ fn assert_case_result(
         .unwrap_or_else(|error| panic!("collect input: {error:?}"));
     let mut args = Vec::with_capacity(range.len() + 1);
     args.push(scope.get(input).as_word());
-    args.extend_from_slice(range);
+    args.extend(
+        rooted_range
+            .iter()
+            .copied()
+            .map(|handle| scope.get(handle).as_word()),
+    );
     scope.context_mut().set_gc_stress(true);
     let result = call_with_gc_stress(runtime, scope.context_mut(), name, &args);
     let result = scope.root::<Word>(ncl_object::Local::from_word(result));

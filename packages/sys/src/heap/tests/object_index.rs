@@ -23,13 +23,16 @@ fn page_object_start_bitmap_uses_word_rank_and_keeps_extent_continuations_uninde
     let base = state.page_range.as_ref().map_or(0, PageRange::base_address);
     assert!(base >= MIN_HEAP_ADDRESS);
 
-    let offsets = [0, 63 * 8, 64 * 8, 511 * 8, 512 * 8, 4095 * 8];
+    let offsets = [4095 * 8, 512 * 8, 511 * 8, 64 * 8, 63 * 8, 0];
     for (index, offset) in offsets.into_iter().enumerate() {
         state.pages[0].add_object_start(offset, index + 10);
     }
     for (index, offset) in offsets.into_iter().enumerate() {
         assert_eq!(state.object_index_at(base + offset), Some(index + 10));
     }
+    state.pages[0].add_object_start(511 * 8, 99);
+    assert_eq!(state.object_index_at(base + 511 * 8), Some(99));
+    assert_eq!(state.object_index_at(base + 512 * 8), Some(11));
     assert_eq!(state.object_index_at(base + 8), None);
     assert_eq!(state.object_index_at(base + 63 * 8 + 1), None);
     assert_eq!(state.object_index_at(base + LOGICAL_PAGE_SIZE), None);

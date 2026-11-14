@@ -1,0 +1,6 @@
+(defun micro-case (iterations)
+  (let ((cell (cons 41 0))
+        (sum 0))
+    (dotimes (index iterations sum)
+      (declare (ignore index))
+      (incf sum (car cell)))))

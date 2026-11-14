@@ -137,9 +137,11 @@ impl PageMetadata {
             .binary_search_by_key(&offset, |(start, _)| *start)
         {
             Ok(position) => {
-                if let Some((_, existing_index)) = self.object_starts.get_mut(position) {
-                    *existing_index = index;
-                }
+                let Some((_, existing_index)) = self.object_starts.get_mut(position) else {
+                    debug_assert!(position < self.object_starts.len());
+                    return;
+                };
+                *existing_index = index;
             }
             Err(position) => self.object_starts.insert(position, (offset, index)),
         }
@@ -152,8 +154,16 @@ impl PageMetadata {
         }
         let mut bitmap = Box::<ObjectStartBitmap>::default();
         for (offset, _) in &self.object_starts {
-            if let Some(word_offset) = ObjectWordIndex::from_byte_offset(*offset) {
-                let _ = bitmap.insert(word_offset);
+            let Some(word_offset) = ObjectWordIndex::from_byte_offset(*offset) else {
+                debug_assert!(
+                    offset.is_multiple_of(std::mem::size_of::<u64>())
+                        && offset / std::mem::size_of::<u64>() < OBJECT_WORDS_PER_PAGE,
+                    "stored object start offset violates page bounds"
+                );
+                return;
+            };
+            if !bitmap.insert(word_offset) {
+                return;
             }
         }
         self.object_start_bitmap = Some(bitmap);

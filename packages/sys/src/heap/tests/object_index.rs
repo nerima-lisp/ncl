@@ -16,6 +16,16 @@ fn page_object_index_rejects_out_of_page_start_offsets() {
     heap.lock_state().pages[0].add_object_start(LOGICAL_PAGE_SIZE, 0);
 }
 
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "object start offset must be word aligned")]
+fn page_object_index_rebuild_rejects_invalid_stored_offsets() {
+    let heap = Heap::new(HeapConfig::default());
+    let mut state = heap.lock_state();
+    state.pages[0].object_starts.push((1, 0));
+    state.pages[0].rebuild_object_start_bitmap();
+}
+
 #[test]
 fn page_object_start_bitmap_uses_word_rank_and_keeps_extent_continuations_unindexed() {
     let heap = Heap::new(HeapConfig::default());

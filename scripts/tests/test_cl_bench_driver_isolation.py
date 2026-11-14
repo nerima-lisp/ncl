@@ -36,6 +36,103 @@ class DriverCommandTests(unittest.TestCase):
         self.assertIn("--userinit", command)
         self.assertLess(command.index("--no-sysinit"), command.index("--eval"))
 
+    def test_benchmark_controls_are_injected_without_loop_payload(self) -> None:
+        with patch.object(driver_supervisor, "_package_bootstrap_forms", return_value=("(defpackage)", ())):
+            form = driver_supervisor._eval_form(
+                mode="run",
+                driver=Path("driver.lisp"),
+                cwd=Path("corpus"),
+                selection=("FIB",),
+                runs=3,
+                minimum_sample_seconds=0.1,
+            )
+
+        self.assertIn("*cl-bench-runs-override* 3", form)
+        self.assertIn("*cl-bench-minimum-sample-seconds* 0.1", form)
+        self.assertNotIn("loop", form.lower())
+
+    def test_cli_passes_runs_floor_and_child_timeout_to_supervisor(self) -> None:
+        with patch.object(driver_supervisor, "run_supervisor", return_value=0) as run:
+            exit_code = driver_supervisor.main([
+                "--engine", "ncl",
+                "--runner", "ncl",
+                "--driver", "driver.lisp",
+                "--cwd", ".",
+                "--runs", "3",
+                "--minimum-sample-seconds", "0.1",
+                "--child-timeout-seconds", "45",
+                "--include-sample-metadata",
+                "FIB",
+            ])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(run.call_args.kwargs["runs"], 3)
+        self.assertEqual(run.call_args.kwargs["minimum_sample_seconds"], 0.1)
+        self.assertEqual(run.call_args.kwargs["child_timeout_seconds"], 45.0)
+        self.assertTrue(run.call_args.kwargs["include_sample_metadata"])
+
+    def test_supervisor_cli_keeps_existing_defaults(self) -> None:
+        with patch.object(driver_supervisor, "run_supervisor", return_value=0) as run:
+            exit_code = driver_supervisor.main([
+                "--engine", "sbcl",
+                "--runner", "sbcl",
+                "--driver", "driver.lisp",
+                "--cwd", ".",
+            ])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIsNone(run.call_args.kwargs["runs"])
+        self.assertEqual(
+            run.call_args.kwargs["minimum_sample_seconds"],
+            driver_supervisor.MINIMUM_SAMPLE_SECONDS,
+        )
+        self.assertEqual(
+            run.call_args.kwargs["child_timeout_seconds"],
+            driver_supervisor.CHILD_TIMEOUT_SECONDS,
+        )
+        self.assertFalse(run.call_args.kwargs["include_sample_metadata"])
+
+    def test_configured_child_timeout_bounds_each_subprocess(self) -> None:
+        class Child:
+            pid = 123
+            returncode = 0
+
+            def communicate(self, *, timeout):
+                self.timeout = timeout
+                return "", ""
+
+        child = Child()
+        with patch.object(driver_supervisor.subprocess, "Popen", return_value=child):
+            result = driver_supervisor._run_child(["runner"], Path("."), timeout=45.0)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(child.timeout, 45.0)
+        self.assertEqual(
+            driver_supervisor._failure_detail(
+                subprocess.CompletedProcess(["runner"], None, "", ""), 45.0
+            ),
+            "child exceeded its 45 second timeout",
+        )
+
+    def test_child_timeout_is_forwarded_only_when_non_default(self) -> None:
+        process = subprocess.CompletedProcess(["runner"], 0, "", "")
+        with patch.object(
+            driver_supervisor, "_run_child", return_value=process
+        ) as run_child:
+            default_result = driver_supervisor._run_child_with_timeout(
+                ["runner"], Path("."), driver_supervisor.CHILD_TIMEOUT_SECONDS
+            )
+            run_child.assert_called_once_with(["runner"], Path("."))
+
+            run_child.reset_mock()
+            custom_result = driver_supervisor._run_child_with_timeout(
+                ["runner"], Path("."), 45.0
+            )
+
+        self.assertIs(default_result, process)
+        self.assertIs(custom_result, process)
+        run_child.assert_called_once_with(["runner"], Path("."), timeout=45.0)
+
 
 @unittest.skipUnless(shutil.which("sbcl"), "SBCL is required for the driver fixture")
 class DriverIsolationTests(unittest.TestCase):
@@ -185,6 +282,7 @@ class DriverIsolationTests(unittest.TestCase):
                         str(DRIVER_DIR / "sbcl-driver.lisp"),
                         "--cwd",
                         str(cwd),
+                        "--include-sample-metadata",
                         *selection,
                     ]
                 )
@@ -205,7 +303,10 @@ class DriverIsolationTests(unittest.TestCase):
         }
         for name, (status, stage) in expected.items():
             row = report["benchmarks"][name]
-            self.assertEqual(set(row), {"status", "stage", "times", "condition"})
+            self.assertEqual(set(row), {
+                "status", "stage", "times", "condition", "wall_time_seconds",
+                "sample_metadata",
+            })
             self.assertEqual(
                 (row["status"], row["stage"]),
                 (status, stage),
@@ -217,6 +318,11 @@ class DriverIsolationTests(unittest.TestCase):
             else:
                 self.assertIsNone(row["condition"])
                 self.assertEqual(len(row["times"]), 1)
+                self.assertEqual(len(row["sample_metadata"]), 1)
+                sample = row["sample_metadata"][0]
+                self.assertIsInstance(sample["duration_seconds"], (int, float))
+                self.assertIsInstance(sample["repetitions"], int)
+                self.assertIsInstance(sample["minimum_duration_met"], bool)
         self.assertEqual(
             report["times"],
             report["benchmarks"]["fixture/later"]["times"]

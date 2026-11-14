@@ -49,6 +49,7 @@ CHECKPOINT_ENV = "NCL_CL_BENCH_CHECKPOINT"
 # 13 source preflights and 65 benchmark workers fit within 78 * 20 = 1,560
 # seconds, leaving 240 seconds of the workflow's 1,800-second budget for setup.
 CHILD_TIMEOUT_SECONDS = 20.0
+MINIMUM_SAMPLE_SECONDS = 0.1
 MAX_BENCHMARK_WORKERS = 4
 # Each pair writes a shared file, but the pairs use different files and can run
 # concurrently with each other.
@@ -66,6 +67,26 @@ def _lisp_string(value: str) -> str:
 
 def _lisp_list(values: tuple[str, ...] | list[str]) -> str:
     return "(list " + " ".join(_lisp_string(value) for value in values) + ")"
+
+
+def _positive_count(value: str) -> int:
+    try:
+        count = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if count < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return count
+
+
+def _positive_finite_float(value: str) -> float:
+    try:
+        number = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive finite number") from error
+    if not math.isfinite(number) or number <= 0:
+        raise argparse.ArgumentTypeError("must be a positive finite number")
+    return number
 
 
 def _extract_lisp_form(source: str, start: int) -> str:
@@ -230,6 +251,8 @@ def _eval_form(
     selection: tuple[str, ...],
     skip_files: tuple[str, ...] = (),
     preflight_file: str | None = None,
+    runs: int | None = None,
+    minimum_sample_seconds: float = MINIMUM_SAMPLE_SECONDS,
 ) -> str:
     assignments = [
         f"common-lisp-user::*cl-bench-driver-mode* :{mode}",
@@ -238,6 +261,10 @@ def _eval_form(
         "common-lisp-user::*cl-bench-skip-files* " + _lisp_list(skip_files),
         "common-lisp-user::*cl-bench-preflight-file* "
         + (_lisp_string(preflight_file) if preflight_file else "nil"),
+        "common-lisp-user::*cl-bench-runs-override* "
+        + (str(runs) if runs is not None else "nil"),
+        "common-lisp-user::*cl-bench-minimum-sample-seconds* "
+        + repr(minimum_sample_seconds),
     ]
     variables = (
         "*cl-bench-driver-mode*",
@@ -245,6 +272,8 @@ def _eval_form(
         "*cl-bench-source-files*",
         "*cl-bench-skip-files*",
         "*cl-bench-preflight-file*",
+        "*cl-bench-runs-override*",
+        "*cl-bench-minimum-sample-seconds*",
     )
     declarations = " ".join(
         f"(defvar common-lisp-user::{name})" for name in variables
@@ -277,6 +306,8 @@ def _command(
     selection: tuple[str, ...],
     skip_files: tuple[str, ...] = (),
     preflight_file: str | None = None,
+    runs: int | None = None,
+    minimum_sample_seconds: float = MINIMUM_SAMPLE_SECONDS,
 ) -> list[str]:
     form = _eval_form(
         mode="preflight" if preflight_file is not None else "run",
@@ -285,6 +316,8 @@ def _command(
         selection=selection,
         skip_files=skip_files,
         preflight_file=preflight_file,
+        runs=runs,
+        minimum_sample_seconds=minimum_sample_seconds,
     )
     if engine == "ncl":
         return [runner, f"--optimization={mode}", "--eval", form]
@@ -334,10 +367,21 @@ def _run_child(
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
-def _failure_detail(process: subprocess.CompletedProcess[str]) -> str:
+def _run_child_with_timeout(
+    command: list[str], cwd: Path, timeout_seconds: float,
+) -> subprocess.CompletedProcess[str]:
+    if timeout_seconds == CHILD_TIMEOUT_SECONDS:
+        return _run_child(command, cwd)
+    return _run_child(command, cwd, timeout=timeout_seconds)
+
+
+def _failure_detail(
+    process: subprocess.CompletedProcess[str],
+    timeout_seconds: float = CHILD_TIMEOUT_SECONDS,
+) -> str:
     detail = _without_stage_markers(process.stderr or process.stdout).strip()
     if process.returncode is None:
-        timeout = f"child exceeded its {CHILD_TIMEOUT_SECONDS:g} second timeout"
+        timeout = f"child exceeded its {timeout_seconds:g} second timeout"
         return f"{timeout}: {detail[-4000:]}" if detail else timeout
     if detail:
         return detail[-4000:]
@@ -394,6 +438,10 @@ def run_supervisor(
     driver: Path,
     selection: tuple[str, ...],
     cwd: Path,
+    runs: int | None = None,
+    minimum_sample_seconds: float = MINIMUM_SAMPLE_SECONDS,
+    child_timeout_seconds: float = CHILD_TIMEOUT_SECONDS,
+    include_sample_metadata: bool = False,
 ) -> int:
     checkpoint_path = os.environ.get(CHECKPOINT_ENV)
     if checkpoint_path is None:
@@ -405,6 +453,10 @@ def run_supervisor(
             selection=selection,
             cwd=cwd,
             checkpoint=None,
+            runs=runs,
+            minimum_sample_seconds=minimum_sample_seconds,
+            child_timeout_seconds=child_timeout_seconds,
+            include_sample_metadata=include_sample_metadata,
         )
     with Path(checkpoint_path).open("x", encoding="utf-8") as checkpoint:
         return _run_supervisor(
@@ -415,6 +467,10 @@ def run_supervisor(
             selection=selection,
             cwd=cwd,
             checkpoint=checkpoint,
+            runs=runs,
+            minimum_sample_seconds=minimum_sample_seconds,
+            child_timeout_seconds=child_timeout_seconds,
+            include_sample_metadata=include_sample_metadata,
         )
 
 
@@ -427,6 +483,10 @@ def _run_supervisor(
     selection: tuple[str, ...],
     cwd: Path,
     checkpoint: Any,
+    runs: int | None = None,
+    minimum_sample_seconds: float = MINIMUM_SAMPLE_SECONDS,
+    child_timeout_seconds: float = CHILD_TIMEOUT_SECONDS,
+    include_sample_metadata: bool = False,
 ) -> int:
     failures: dict[str, str] = {}
     timed_out_sources: set[str] = set()
@@ -449,12 +509,14 @@ def _run_supervisor(
             selection=selection,
             skip_files=tuple(failures),
             preflight_file=source,
+            runs=runs,
+            minimum_sample_seconds=minimum_sample_seconds,
         )
         child_started = time.monotonic()
-        process = _run_child(command, cwd)
+        process = _run_child_with_timeout(command, cwd, child_timeout_seconds)
         preflight_wall_times[source] = time.monotonic() - child_started
         if process.returncode != 0:
-            failures[source] = _failure_detail(process)
+            failures[source] = _failure_detail(process, child_timeout_seconds)
             if process.returncode is None:
                 timed_out_sources.add(source)
 
@@ -470,16 +532,21 @@ def _run_supervisor(
         preflight_wall_times=preflight_wall_times,
         cwd=cwd,
         checkpoint=checkpoint,
+        runs=runs,
+        minimum_sample_seconds=minimum_sample_seconds,
+        child_timeout_seconds=child_timeout_seconds,
+        include_sample_metadata=include_sample_metadata,
     )
+    row_fields = ["status", "stage", "times", "condition", "wall_time_seconds"]
+    if include_sample_metadata:
+        row_fields.append("sample_metadata")
     result = {
         "status": result["status"],
         "times": result["times"],
         "benchmarks": {
             name: {
                 key: row.get(key)
-                for key in (
-                    "status", "stage", "times", "condition", "wall_time_seconds"
-                )
+                for key in row_fields
             }
             for name, row in result["benchmarks"].items()
         },
@@ -496,9 +563,10 @@ def _write_checkpoint_record(checkpoint: Any, record: dict[str, Any]) -> None:
 def _write_checkpoint_row(
     checkpoint: Any, name: str, benchmark: dict[str, Any]
 ) -> None:
-    if set(benchmark) != {
-        "status", "stage", "times", "condition", "wall_time_seconds"
-    }:
+    if set(benchmark) not in (
+        {"status", "stage", "times", "condition", "wall_time_seconds"},
+        {"status", "stage", "times", "condition", "wall_time_seconds", "sample_metadata"},
+    ):
         raise ValueError(f"invalid checkpoint row shape for {name}")
     status = benchmark["status"]
     stage = benchmark["stage"]
@@ -544,6 +612,28 @@ def _write_checkpoint_row(
         raise ValueError(f"invalid {status} checkpoint row for {name}")
     if status == "disabled" and times:
         raise ValueError(f"invalid disabled checkpoint row for {name}")
+    if "sample_metadata" in benchmark:
+        sample_metadata = benchmark["sample_metadata"]
+        if not isinstance(sample_metadata, list) or (
+            sample_metadata and len(sample_metadata) != len(times)
+        ):
+            raise ValueError(f"invalid checkpoint sample metadata for {name}")
+        for sample in sample_metadata:
+            if not isinstance(sample, dict) or set(sample) != {
+                "repetitions", "duration_seconds", "minimum_duration_met"
+            }:
+                raise ValueError(f"invalid checkpoint sample metadata for {name}")
+            if (
+                isinstance(sample["repetitions"], bool)
+                or not isinstance(sample["repetitions"], int)
+                or sample["repetitions"] < 1
+                or isinstance(sample["duration_seconds"], bool)
+                or not isinstance(sample["duration_seconds"], (int, float))
+                or not math.isfinite(float(sample["duration_seconds"]))
+                or sample["duration_seconds"] <= 0
+                or not isinstance(sample["minimum_duration_met"], bool)
+            ):
+                raise ValueError(f"invalid checkpoint sample metadata for {name}")
     _write_checkpoint_record(
         checkpoint,
         {"type": "row", "name": name, "benchmark": benchmark},
@@ -562,6 +652,7 @@ def _worker_failure_row(
     name: str,
     process: subprocess.CompletedProcess[str],
     wall_time_seconds: float,
+    timeout_seconds: float = CHILD_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     markers = re.findall(
         r"^CL-BENCH-STAGE (load|register|execute|finish) (.+)$",
@@ -570,13 +661,14 @@ def _worker_failure_row(
     )
     stage = markers[-1][0] if markers else "load"
     timed_out = process.returncode is None
-    condition = _without_stage_markers(_failure_detail(process))
+    condition = _without_stage_markers(_failure_detail(process, timeout_seconds))
     return {
         "status": "timeout" if timed_out else "failed",
         "stage": stage,
         "times": [],
         "condition": condition,
         "wall_time_seconds": wall_time_seconds,
+        "sample_metadata": [],
     }
 
 
@@ -593,6 +685,7 @@ def _worker_exception_row(
         "times": [],
         "condition": detail,
         "wall_time_seconds": wall_time_seconds,
+        "sample_metadata": [],
     }
 
 
@@ -656,6 +749,10 @@ def _run_benchmark_workers(
     preflight_wall_times: dict[str, float],
     cwd: Path,
     checkpoint: Any = None,
+    runs: int | None = None,
+    minimum_sample_seconds: float = MINIMUM_SAMPLE_SECONDS,
+    child_timeout_seconds: float = CHILD_TIMEOUT_SECONDS,
+    include_sample_metadata: bool = False,
 ) -> dict[str, Any]:
     benchmarks: dict[str, dict[str, Any]] = {}
     commands: dict[str, list[str]] = {}
@@ -676,15 +773,22 @@ def _run_benchmark_workers(
             None,
         )
         if owner is not None:
-            benchmarks[name] = {
+            benchmark = {
                 "status": "timeout" if owner in timed_out_sources else "failed",
                 "stage": "load",
                 "times": [],
                 "condition": failures[owner],
                 "wall_time_seconds": preflight_wall_times[owner],
             }
+            if include_sample_metadata:
+                benchmark["sample_metadata"] = []
+            benchmarks[name] = benchmark
             if checkpoint is not None:
-                _write_checkpoint_row(checkpoint, name, benchmarks[name])
+                _write_checkpoint_row(
+                    checkpoint,
+                    name,
+                    {key: value for key, value in benchmark.items() if key != "sample_metadata"},
+                )
             continue
         commands[name] = _command(
             engine=engine,
@@ -694,6 +798,8 @@ def _run_benchmark_workers(
             cwd=cwd,
             selection=(name,),
             skip_files=tuple(failures),
+            runs=runs,
+            minimum_sample_seconds=minimum_sample_seconds,
         )
 
     def run_benchmark(
@@ -707,11 +813,15 @@ def _run_benchmark_workers(
                 with serialized_benchmark_locks[group]:
                     child_started = time.monotonic()
                     child_started_at[name] = child_started
-                    process = _run_child(commands[name], cwd)
+                    process = _run_child_with_timeout(
+                        commands[name], cwd, child_timeout_seconds
+                    )
             else:
                 child_started = time.monotonic()
                 child_started_at[name] = child_started
-                process = _run_child(commands[name], cwd)
+                process = _run_child_with_timeout(
+                    commands[name], cwd, child_timeout_seconds
+                )
             wall_time_seconds = time.monotonic() - child_started
             child_wall_times[name] = wall_time_seconds
             child_result = _json_result(process.stdout)
@@ -721,9 +831,13 @@ def _run_benchmark_workers(
                 None,
             )
             if process.returncode is None:
-                row = _worker_failure_row(name, process, wall_time_seconds)
+                row = _worker_failure_row(
+                    name, process, wall_time_seconds, child_timeout_seconds
+                )
             elif row is None:
-                row = _worker_failure_row(name, process, wall_time_seconds)
+                row = _worker_failure_row(
+                    name, process, wall_time_seconds, child_timeout_seconds
+                )
                 if process.returncode == 0:
                     row["stage"] = "register"
                     row["condition"] = "benchmark was not registered"
@@ -736,11 +850,13 @@ def _run_benchmark_workers(
                     print(
                         f"cl-bench warning: {name} emitted a valid passing row "
                         f"but its driver exited {process.returncode}: "
-                        f"{_failure_detail(process)}",
+                        f"{_failure_detail(process, child_timeout_seconds)}",
                         file=sys.stderr,
                     )
                 else:
-                    row = _worker_failure_row(name, process, wall_time_seconds)
+                    row = _worker_failure_row(
+                        name, process, wall_time_seconds, child_timeout_seconds
+                    )
             benchmark = {
                 "status": row.get("status", "failed"),
                 "stage": row.get("stage", "register"),
@@ -748,6 +864,8 @@ def _run_benchmark_workers(
                 "condition": row.get("condition"),
                 "wall_time_seconds": wall_time_seconds,
             }
+            if include_sample_metadata:
+                benchmark["sample_metadata"] = row.get("sample_metadata", [])
             if benchmark["status"] == "failed" and not benchmark["condition"]:
                 benchmark["condition"] = "driver reported failure without a condition"
             return name, benchmark, process
@@ -757,7 +875,10 @@ def _run_benchmark_workers(
             elif wall_time_seconds is None:
                 wall_time_seconds = time.monotonic() - child_started
             child_wall_times[name] = wall_time_seconds
-            return name, _worker_exception_row(error, wall_time_seconds), None
+            row = _worker_exception_row(error, wall_time_seconds)
+            if not include_sample_metadata:
+                row.pop("sample_metadata", None)
+            return name, row, None
 
     completed_rows: dict[str, dict[str, Any]] = {}
     completed_processes: dict[str, subprocess.CompletedProcess[str]] = {}
@@ -776,14 +897,24 @@ def _run_benchmark_workers(
                     started_at = child_started_at.get(name, submitted_at[name])
                     wall_time_seconds = time.monotonic() - started_at
                 row = _worker_exception_row(error, wall_time_seconds)
+                if not include_sample_metadata:
+                    row.pop("sample_metadata", None)
                 completed_rows[name] = row
                 if checkpoint is not None:
-                    _write_checkpoint_row(checkpoint, name, row)
+                    _write_checkpoint_row(
+                        checkpoint,
+                        name,
+                        {key: value for key, value in row.items() if key != "sample_metadata"},
+                    )
                 continue
             completed_rows[name] = row
             completed_processes[name] = process
             if checkpoint is not None:
-                _write_checkpoint_row(checkpoint, name, row)
+                _write_checkpoint_row(
+                    checkpoint,
+                    name,
+                    {key: value for key, value in row.items() if key != "sample_metadata"},
+                )
 
     for name in selected_rows:
         process = completed_processes.get(name)
@@ -869,6 +1000,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", choices=("default", "off"), default="default")
     parser.add_argument("--driver", type=Path, required=True)
     parser.add_argument("--cwd", type=Path, default=Path.cwd())
+    parser.add_argument("--runs", type=_positive_count)
+    parser.add_argument(
+        "--minimum-sample-seconds",
+        type=_positive_finite_float,
+        default=MINIMUM_SAMPLE_SECONDS,
+    )
+    parser.add_argument(
+        "--child-timeout-seconds",
+        type=_positive_finite_float,
+        default=CHILD_TIMEOUT_SECONDS,
+    )
+    parser.add_argument("--include-sample-metadata", action="store_true")
     parser.add_argument("benchmarks", nargs="*")
     args = parser.parse_args(argv)
     return run_supervisor(
@@ -878,6 +1021,10 @@ def main(argv: list[str] | None = None) -> int:
         driver=args.driver.resolve(),
         selection=tuple(args.benchmarks),
         cwd=args.cwd.resolve(),
+        runs=args.runs,
+        minimum_sample_seconds=args.minimum_sample_seconds,
+        child_timeout_seconds=args.child_timeout_seconds,
+        include_sample_metadata=args.include_sample_metadata,
     )
 
 

@@ -34,7 +34,10 @@
 
 (defmacro defbench (name &rest options)
   (let ((function (getf options :function))
-        (runs (or (getf options :runs) 1))
+        (runs (or (and (boundp 'common-lisp-user::*cl-bench-runs-override*)
+                       common-lisp-user::*cl-bench-runs-override*)
+                  (getf options :runs)
+                  1))
         (setup (getf options :setup))
         (display-name (or (getf options :short) `(quote ,name)))
         (row-name (gensym "ROW-NAME")))
@@ -107,7 +110,15 @@
              (if (fifth result)
                  (write-json-string (fifth result) stream)
                  (write-string "null" stream))
-             (write-char #\} stream))
+             (write-string ",\"sample_metadata\":[" stream)
+             (loop for sample in (seventh result)
+                   for first-sample = t then nil
+                   do (unless first-sample (write-char #\, stream))
+                      (format stream "{\"repetitions\":~D,\"duration_seconds\":~A"
+                              (first sample) (second sample))
+                      (format stream ",\"minimum_duration_met\":~A}"
+                              (if (third sample) "true" "false")))
+             (write-string "]}" stream))
     (write-string "}}" stream)
     (terpri stream)
     (finish-output stream)))
@@ -164,14 +175,19 @@
          (function (second benchmark))
          (runs (third benchmark))
          (setup (fourth benchmark))
+         (minimum-sample-seconds
+           (if (boundp 'common-lisp-user::*cl-bench-minimum-sample-seconds*)
+               common-lisp-user::*cl-bench-minimum-sample-seconds*
+               0.0))
          (function-text (benchmark-function-text function))
          (samples nil)
+         (sample-metadata nil)
          (failure nil))
     (if (member name *disabled-benchmarks* :test #'string-equal)
         (progn
           (emit-stage-marker "finish" name)
           (list name :disabled :finish nil
-                "disabled on this implementation" function-text))
+                "disabled on this implementation" function-text nil))
         (progn
           (emit-stage-marker "execute" name)
           (dotimes (run runs)
@@ -180,10 +196,24 @@
                   (progn
                     (when setup (funcall setup))
                     (benchmark-gc)
-                    (let ((start (get-internal-real-time)))
-                      (funcall function)
-                      (push (elapsed-seconds start (get-internal-real-time))
-                            samples)))
+                    (let ((start (get-internal-real-time))
+                          (batch 1)
+                          (repetitions 0)
+                          (elapsed 0.0))
+                      (do ()
+                          ((and (> repetitions 0)
+                                (or (not (> minimum-sample-seconds 0))
+                                    (>= elapsed minimum-sample-seconds)))
+                           (push (/ elapsed (float repetitions)) samples)
+                           (push (list repetitions elapsed
+                                       (>= elapsed minimum-sample-seconds))
+                                 sample-metadata))
+                        (dotimes (iteration batch)
+                          (funcall function))
+                        (incf repetitions batch)
+                        (setf elapsed
+                              (elapsed-seconds start (get-internal-real-time))
+                              batch repetitions))))
                 (error (condition)
                   (setf failure (princ-to-string condition))))))
           (unless failure
@@ -193,7 +223,8 @@
                 (if failure :execute :finish)
                 (nreverse samples)
                 failure
-                function-text)))))
+                function-text
+                (nreverse sample-metadata))))))
 
 (defun bench-run ()
   (setf *results* nil)

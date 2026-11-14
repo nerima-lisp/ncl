@@ -93,6 +93,40 @@ def _normalize_times(
     return times, None
 
 
+def _normalize_sample_metadata(value: Any, *, expected_count: int) -> tuple[list[dict[str, Any]], str | None]:
+    if not isinstance(value, list):
+        return [], "sample_metadata must be an array"
+    if len(value) > MAX_BENCHMARK_TIMES:
+        return [], "sample_metadata exceeds the sample limit"
+    if value and len(value) != expected_count:
+        return [], "sample_metadata count differs from times"
+    normalized: list[dict[str, Any]] = []
+    for sample in value:
+        if not isinstance(sample, dict) or set(sample) != {
+            "repetitions", "duration_seconds", "minimum_duration_met"
+        }:
+            return [], "sample_metadata entry has an unexpected shape"
+        repetitions = sample["repetitions"]
+        duration = sample["duration_seconds"]
+        minimum_met = sample["minimum_duration_met"]
+        if (
+            isinstance(repetitions, bool)
+            or not isinstance(repetitions, int)
+            or repetitions < 1
+        ):
+            return [], "sample_metadata repetitions must be a positive integer"
+        if not _finite_number(duration) or duration <= 0:
+            return [], "sample_metadata duration_seconds must be a finite positive number"
+        if not isinstance(minimum_met, bool):
+            return [], "sample_metadata minimum_duration_met must be a boolean"
+        normalized.append({
+            "repetitions": repetitions,
+            "duration_seconds": float(duration),
+            "minimum_duration_met": minimum_met,
+        })
+    return normalized, None
+
+
 def _failed_benchmark(
     error: str,
     *,
@@ -105,6 +139,7 @@ def _failed_benchmark(
         "status": "failed",
         "stage": stage,
         "times": times or [],
+        "sample_metadata": [],
         "condition": _safe_error(condition) or diagnostic,
         "error": diagnostic,
         "reason": None,
@@ -120,7 +155,14 @@ def _benchmark_record(value: Any, *, name: str) -> dict[str, Any]:
     condition = _safe_error(raw_condition) if isinstance(raw_condition, str) else None
     expected_keys = {"status", "stage", "times", "condition"}
     keys_with_wall_time = expected_keys | {"wall_time_seconds"}
-    if set(value) not in (expected_keys, keys_with_wall_time):
+    keys_with_sample_metadata = expected_keys | {"sample_metadata"}
+    keys_with_both = expected_keys | {"wall_time_seconds", "sample_metadata"}
+    if set(value) not in (
+        expected_keys,
+        keys_with_wall_time,
+        keys_with_sample_metadata,
+        keys_with_both,
+    ):
         return _failed_benchmark(
             "benchmark record has an unexpected shape",
             stage=stage,
@@ -159,6 +201,31 @@ def _benchmark_record(value: Any, *, name: str) -> dict[str, Any]:
     if time_error:
         return _failed_benchmark(
             time_error,
+            stage=stage,
+            condition=condition,
+            times=times,
+        )
+    sample_metadata, metadata_error = _normalize_sample_metadata(
+        value.get("sample_metadata", []), expected_count=len(times)
+    )
+    if metadata_error:
+        return _failed_benchmark(
+            metadata_error,
+            stage=stage,
+            condition=condition,
+            times=times,
+        )
+    if sample_metadata and any(
+        not math.isclose(
+            float(time_value),
+            sample["duration_seconds"] / sample["repetitions"],
+            rel_tol=1e-6,
+            abs_tol=1e-12,
+        )
+        for time_value, sample in zip(times, sample_metadata)
+    ):
+        return _failed_benchmark(
+            "normalized time differs from duration_seconds divided by repetitions",
             stage=stage,
             condition=condition,
             times=times,
@@ -203,6 +270,7 @@ def _benchmark_record(value: Any, *, name: str) -> dict[str, Any]:
         "status": status,
         "stage": stage,
         "times": times,
+        "sample_metadata": sample_metadata,
         "condition": condition,
         "error": error,
         "reason": reason,

@@ -185,6 +185,11 @@ fn common_lisp_user_inherits_common_lisp_symbols_under_gc_stress() {
             .unwrap_or_else(|error| panic!("user intern {name}: {error:?}"));
         assert_eq!(user_symbol, common_symbol);
         assert_eq!(user_status, FindStatus::Inherited);
+        let (reinterned_symbol, reinterned_status) = Package::from_word(user_word)
+            .intern(&mut ctx, &runtime, name)
+            .unwrap_or_else(|error| panic!("user reintern {name}: {error:?}"));
+        assert_eq!(reinterned_symbol, common_symbol);
+        assert_eq!(reinterned_status, FindStatus::Inherited);
         let lookup_name = string(&mut ctx, &runtime, name);
         assert_eq!(
             Package::from_word(user_word).find_symbol(&mut ctx, lookup_name),
@@ -377,7 +382,8 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
             .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
 
-    let nickname = string(&mut ctx, &runtime, "B");
+    let mut nickname = string(&mut ctx, &runtime, "B");
+    let nickname_token = ncl_object::push_root(&mut ctx, &mut nickname);
     Package::from_word(base)
         .add_nickname(&mut ctx, &runtime, nickname)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
@@ -394,7 +400,22 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
         .add_nickname(&mut ctx, &runtime, nickname)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_eq!(runtime.find_package(&ctx, "B"), Some(registered));
+    assert_eq!(
+        Package::from_word(registered).remove_nickname(&mut ctx, &runtime, nickname),
+        Ok(true)
+    );
+    assert_eq!(runtime.find_package(&ctx, "B"), None);
+    let mut replacement = runtime
+        .ensure_package(&mut ctx, "REGISTERED-REPLACEMENT")
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    let replacement_token = ncl_object::push_root(&mut ctx, &mut replacement);
+    Package::from_word(replacement)
+        .add_nickname(&mut ctx, &runtime, nickname)
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    assert_eq!(runtime.find_package(&ctx, "B"), Some(replacement));
+    assert!(ncl_object::pop_root(&mut ctx, replacement_token));
     assert!(ncl_object::pop_root(&mut ctx, token));
+    assert!(ncl_object::pop_root(&mut ctx, nickname_token));
 }
 
 #[test]
@@ -429,16 +450,38 @@ fn package_nickname_intern_and_import_update_metadata() {
         .unwrap_or_else(|error| panic!("intern: {error:?}"));
     assert_eq!(status, FindStatus::Internal);
     assert_eq!(symbol_package(&ctx, interned), Ok(package.as_word()));
+    let (reinterned, reinterned_status) = package
+        .intern(&mut ctx, &runtime, "INTERNED")
+        .unwrap_or_else(|error| panic!("reintern: {error:?}"));
+    assert_eq!(reinterned, interned);
+    assert_eq!(reinterned_status, FindStatus::Internal);
+    let (unicode_symbol, unicode_status) = package
+        .intern(&mut ctx, &runtime, "λ-名前")
+        .unwrap_or_else(|error| panic!("unicode intern: {error:?}"));
+    assert_eq!(unicode_status, FindStatus::Internal);
+    let (reinterned_unicode, reinterned_unicode_status) = package
+        .intern(&mut ctx, &runtime, "λ-名前")
+        .unwrap_or_else(|error| panic!("unicode reintern: {error:?}"));
+    assert_eq!(reinterned_unicode, unicode_symbol);
+    assert_eq!(reinterned_unicode_status, FindStatus::Internal);
 
-    let nickname = string(&mut ctx, &runtime, "META");
+    let mut nickname = string(&mut ctx, &runtime, "META");
+    let nickname_token = push_root(&mut ctx, &mut nickname);
     assert_eq!(package.add_nickname(&mut ctx, &runtime, nickname), Ok(true));
     let nicknames = package
         .nicknames(&ctx)
         .unwrap_or_else(|error| panic!("nicknames: {error:?}"));
     assert_eq!(ncl_object::car(&ctx, nicknames), Ok(nickname));
-    assert_eq!(package.remove_nickname(&mut ctx, nickname), Ok(true));
-    assert_eq!(package.remove_nickname(&mut ctx, nickname), Ok(false));
+    assert_eq!(
+        package.remove_nickname(&mut ctx, &runtime, nickname),
+        Ok(true)
+    );
+    assert_eq!(
+        package.remove_nickname(&mut ctx, &runtime, nickname),
+        Ok(false)
+    );
     assert_eq!(package.nicknames(&ctx), Ok(Word::NIL));
+    assert!(pop_root(&mut ctx, nickname_token));
 
     let other_target = Package::new(&mut ctx, &runtime, "LOCAL-OTHER")
         .unwrap_or_else(|error| panic!("other target: {error:?}"));

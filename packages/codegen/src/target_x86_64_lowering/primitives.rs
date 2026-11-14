@@ -343,11 +343,16 @@ pub(super) fn lower_checked_car_cdr(
 }
 
 #[cfg(test)]
+#[path = "checked_car_cdr_tests.rs"]
+mod checked_car_cdr_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::tests_x86_64_fixture::X86_64FixtureAbi;
+    use ncl_ir::ValueId;
 
-    fn empty_slots() -> ValueSlots {
+    pub(super) fn empty_slots() -> ValueSlots {
         let function = ncl_ir::FunctionBuilder::new(
             ncl_ir::FunctionId(120),
             "malformed-primitive",
@@ -389,4 +394,5 @@ mod tests {
             Err(CodegenError::Unsupported(message)) if message == "aset has no value operand"
         ));
     }
+
 }

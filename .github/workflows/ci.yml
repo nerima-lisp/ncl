@@ -227,6 +227,9 @@ jobs:
     name: Coverage report
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      CARGO_PROFILE_DEV_OPT_LEVEL: "0"
+      CARGO_PROFILE_TEST_OPT_LEVEL: "0"
     steps:
       - uses: actions/checkout@v4
         with:

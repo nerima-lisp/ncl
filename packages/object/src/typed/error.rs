@@ -93,11 +93,62 @@ pub enum LispError {
     EndOfFile,
     FileError(FileError),
     Condition(ConditionErrorData),
+    FormatError(FormatErrorData),
     SimpleError {
         format_control: Word,
         format_arguments: Word,
     },
     Object(ObjectError),
+}
+
+/// The typed cause of a FORMAT operation failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FormatErrorCause {
+    Parse(FormatParseError),
+    MissingArgument,
+    WrongArgumentType,
+    InvalidParameter,
+    InvalidDirectiveUse,
+    ImproperList,
+    Print(FormatPrintError),
+}
+
+/// Parser failure details retained from a malformed FORMAT control string.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FormatParseError {
+    UnterminatedDirective,
+    InvalidParameter,
+    MissingDirective,
+    UnknownDirective,
+    UnexpectedTerminator,
+    UnterminatedConstruct { expected: char },
+    UnterminatedFunctionName,
+}
+
+/// Printer failure details retained by the FORMAT adapter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FormatPrintError {
+    Object(ObjectError),
+    Sink,
+    NotReadable,
+    Circularity,
+}
+
+/// FORMAT diagnostic data accompanying its standard `SIMPLE-ERROR` slots.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FormatErrorData {
+    /// The typed parser, argument, directive, or printer failure.
+    pub cause: FormatErrorCause,
+    /// Character offset in the original FORMAT control string.
+    pub position: usize,
+    /// The directive character when the failing operation has one.
+    pub directive: Option<char>,
+    /// The original FORMAT control designator for `:format-control`.
+    pub format_control: Word,
+    /// The original argument list for `:format-arguments`.
+    pub format_arguments: Word,
+    /// The destination stream, when FORMAT targets a stream.
+    pub stream: Option<Word>,
 }
 
 /// Standard condition slots retained at the bounded-context boundary.

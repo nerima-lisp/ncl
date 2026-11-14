@@ -28,6 +28,7 @@ from optimization_baseline_records import (
 from optimization_baseline_scoring import (
     _median_for_benchmark, _report_status, _run_is_clean, _score_runs,
 )
+from bench.timing import MINIMUM_SAMPLE_SECONDS, measurement_metadata
 
 
 def _positive_count(value: str) -> int:
@@ -271,7 +272,14 @@ def run_baseline(
     sbcl_command = _sbcl_command(sbcl, benchmark_names, cwd=source)
     warmup_rounds = _round_schedule(warmups, warmups)
     measurement_rounds = _round_schedule(pairs, sbcl_samples)
+    measurement: dict[str, Any] | None = None
     for phase, rounds in (("warmup", warmup_rounds), ("measurement", measurement_rounds)):
+        if phase == "measurement":
+            measurement = measurement_metadata(
+                SBCL_VERSION,
+                ncl_sha=revision["commit"],
+                minimum_sample_seconds=None,
+            )
         for round_items in rounds:
             for item in round_items:
                 if item["engine"] == "ncl":
@@ -306,6 +314,7 @@ def run_baseline(
         "schema_version": 1,
         "status": "pending",
         "measured_on": date.today().isoformat(),
+        "measurement": measurement,
         "platform": {
             "system": platform.system(),
             "release": platform.release(),
@@ -328,6 +337,15 @@ def run_baseline(
             "measurement_round_order": measurement_rounds,
             "sbcl_warmups": warmups,
             "sbcl_samples": sbcl_samples,
+            "inner_repetitions_per_sample": 1,
+            "minimum_sample_duration_policy": {
+                "target_seconds": MINIMUM_SAMPLE_SECONDS,
+                "met": False,
+                "reason": (
+                    "the fixed CL-Bench driver times one benchmark call per sample and "
+                    "exposes no repeat-count setting"
+                ),
+            },
             "command_timeout_seconds": scoreboard.DEFAULT_COMMAND_TIMEOUT,
             "benchmarks": list(benchmark_names),
         },

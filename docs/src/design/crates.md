@@ -179,7 +179,7 @@ The table below defines the migration order, crate ownership, and prerequisites.
 | Wave 2 | L2-ch19/20 | pathnames and OS | Wave 1 |
 | Wave 2 | L2-ch24/25 | runtime environment and ncl-environment | Wave 1 |
 
-Give each crate and shared path one lane owner at a time. Keep root Cargo.toml with its existing FR-011 owner. Before closing a lane, record evidence for functional requirements and verification layers, the conformance scoreboard diff, Rust quality-check results, and confirmation that it added no `#[allow]` attributes. Run no more than 16 lanes concurrently.
+Give each crate and shared path one lane owner at a time. Keep root Cargo.toml with its existing FR-011 owner. Before closing a lane, record evidence for functional requirements and verification layers, Rust quality-check results, and confirmation that it added no `#[allow]` attributes. Record the latest completed conformance scoreboard diff as optional measurement evidence; its absence or result does not block lane closure. Run no more than 16 lanes concurrently.
 
 Decision D-08 requires each feature lane to start with one behavior-neutral, move-only commit. Record the selected test names and count before the move; run the same selection across source and destination crates after the move. The selection must be non-empty when the source had tests, names and count must match, and all selected tests must pass. Put behavior changes in a later commit. L1-10 applies this procedure to each moved object feature.
 

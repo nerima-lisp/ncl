@@ -36,7 +36,7 @@ The eight public SB package tables contain 698 symbols on macOS arm64 and 731 on
 
 | Criterion | Target | Verification |
 |---|---|---|
-| ansi-test | NCL passes every test passed by SBCL 2.6.0 on the same day and machine. | P0b records SBCL's passing test names and compares NCL under the same conditions. The baseline has 21,768 of 21,942 tests passing; the gate uses the test-name set. |
+| ansi-test | NCL passes every test passed by SBCL 2.6.0 on the same day and machine. | P0b records SBCL's passing test names and compares NCL under the same conditions. The baseline has 21,768 of 21,942 tests passing. The ANSI criterion compares test-name sets. The conformance scoreboard runs on its configured schedule or by manual dispatch, not on main pushes; it measures conformance and does not gate CI or lane closure. |
 | cl-bench | Geometric mean at most SBCL's; each of the 65 benchmarks within 1.5 times SBCL's time. | Measure SBCL and NCL on the same day and machine. |
 | Startup time | Median at most 17.331 ms. | Measure startup with empty input. |
 | Executable size | At most 82,501,760 bytes. | Measure the release executable. |

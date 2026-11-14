@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from statistics import median
 from typing import Any, Mapping
 
 
@@ -38,17 +39,38 @@ def _measurement_cells(report: Mapping[str, Any]) -> tuple[str, str, str, str]:
     )
 
 
-def _repetition_counts(samples: Any) -> str:
+def _repetition_values(samples: Any) -> tuple[list[int | float], int]:
     if not isinstance(samples, (list, tuple)) or not samples:
-        return "n/a"
-    return ",".join(
-        _cell(sample.get("repetitions"))
-        if isinstance(sample, Mapping) and sample.get("status") == "passed"
-        else _cell(sample)
-        if isinstance(sample, int) and not isinstance(sample, bool)
-        else "fail"
-        for sample in samples
-    )
+        return [], 0
+    values = []
+    unavailable = 0
+    for sample in samples:
+        if isinstance(sample, Mapping):
+            if sample.get("status") not in (None, "passed"):
+                unavailable += 1
+                continue
+            value = sample.get("repetitions")
+        else:
+            value = sample
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            values.append(value)
+        else:
+            unavailable += 1
+    return values, unavailable
+
+
+def _repetition_summary(samples: Any) -> str:
+    values, unavailable = _repetition_values(samples)
+    if not values:
+        return f"n=0; unavailable={unavailable}" if unavailable else "n/a"
+    summary = f"median={_cell(median(values))}"
+    low, high = min(values), max(values)
+    if low != high:
+        summary += f"; range={_cell(low)}–{_cell(high)}"
+    summary += f"; n={len(values)}"
+    if unavailable:
+        summary += f"; unavailable={unavailable}"
+    return summary
 
 
 def _sample_status(samples: Any, label: str, fallback: Any = None) -> str:
@@ -73,16 +95,25 @@ def _sample_status(samples: Any, label: str, fallback: Any = None) -> str:
     return "passed"
 
 
-def _compile_repetitions_by_file(metrics: Mapping[str, Any]) -> str:
+def _failure_reason(value: Any) -> str:
+    lines = [line.strip() for line in str(value).splitlines() if line.strip()]
+    reason = lines[0] if lines else "unknown failure"
+    if len(reason) > 160:
+        reason = reason[:157].rstrip() + "..."
+    return reason
+
+
+def _compile_repetitions_summary(metrics: Mapping[str, Any]) -> str:
     rows = metrics.get("files", [])
     if not isinstance(rows, (list, tuple)) or not rows:
         return "n/a"
-    return "; ".join(
-        f"{row.get('suite')}/{row.get('file')}: "
-        f"{_repetition_counts(row.get('compile_repetitions_samples', []))}"
+    samples = [
+        sample
         for row in rows
         if isinstance(row, Mapping)
-    ) or "n/a"
+        for sample in row.get("compile_repetitions_samples", [])
+    ]
+    return f"{_repetition_summary(samples)}; files={len(rows)}"
 
 
 def _compile_status(row: Mapping[str, Any], runtime: str) -> str:
@@ -91,7 +122,7 @@ def _compile_status(row: Mapping[str, Any], runtime: str) -> str:
         return "passed"
     reasons = row.get("failure_reasons", [])
     if isinstance(reasons, (list, tuple)):
-        reasons = list(dict.fromkeys(str(reason) for reason in reasons if reason))
+        reasons = list(dict.fromkeys(_failure_reason(reason) for reason in reasons if reason))
     else:
         reasons = []
     if reasons:
@@ -115,10 +146,10 @@ def _cl_bench_failure(report: Mapping[str, Any], name: str, mode: str | None, la
         if status == "disabled":
             reason = record.get("reason") or record.get("condition")
             if reason:
-                disabled.append(str(reason))
+                disabled.append(_failure_reason(reason))
         elif status != "passed":
             reason = record.get("error") or record.get("condition") or f"status {status}"
-            errors.append(str(reason))
+            errors.append(_failure_reason(reason))
     errors = list(dict.fromkeys(errors))
     disabled = list(dict.fromkeys(disabled))
     if errors:
@@ -152,42 +183,54 @@ def _cl_bench_sample_metadata(
 def _cl_bench_repetitions(samples: list[Mapping[str, Any]], fallback: Any) -> str:
     if not samples:
         return _cell(fallback)
-    return ",".join(_cell(sample.get("repetitions")) for sample in samples)
+    return _repetition_summary(samples)
 
 
 def _cl_bench_floor(samples: list[Mapping[str, Any]]) -> str:
     if not samples:
         return "n/a"
     met = sum(sample.get("minimum_duration_met") is True for sample in samples)
-    per_sample = ",".join(
-        "met" if sample.get("minimum_duration_met") is True else "missed"
-        for sample in samples
-    )
-    return f"{per_sample} ({met}/{len(samples)})"
+    return f"{met}/{len(samples)} met; missed={len(samples) - met}"
 
 
 def _cl_bench_load(samples: list[Mapping[str, Any]]) -> tuple[str, bool]:
-    values = []
     high = False
+    summaries = []
+    labels = ("1m", "5m", "15m")
     for sample in samples:
         start = sample.get("load_average_process_start")
         end = sample.get("load_average_process_end")
         valid_start = isinstance(start, (list, tuple)) and len(start) == 3
         valid_end = isinstance(end, (list, tuple)) and len(end) == 3
-        if not valid_start and not valid_end:
-            values.append("n/a")
-            continue
-        start_text = "/".join(_cell(value) for value in start) if valid_start else "n/a"
-        end_text = "/".join(_cell(value) for value in end) if valid_end else "n/a"
-        rendered = f"start {start_text}; end {end_text}"
         is_high = any(
             isinstance(load[0], (int, float)) and load[0] > 80
             for load, valid in ((start, valid_start), (end, valid_end))
             if valid
         )
         high = high or is_high
-        values.append(rendered)
-    return "; ".join(values) if values else "n/a", high
+    for phase, key in (("start", "load_average_process_start"), ("end", "load_average_process_end")):
+        phase_values = [
+            sample.get(key)
+            for sample in samples
+            if isinstance(sample.get(key), (list, tuple))
+            and len(sample.get(key)) == 3
+        ]
+        cells = []
+        for index, label in enumerate(labels):
+            loads = [
+                load[index]
+                for load in phase_values
+                if isinstance(load[index], (int, float)) and not isinstance(load[index], bool)
+            ]
+            if not loads:
+                cells.append(f"{label} n/a")
+                continue
+            value = _cell(median(loads))
+            low, high_value = min(loads), max(loads)
+            spread = f"[{_cell(low)}–{_cell(high_value)}]" if low != high_value else ""
+            cells.append(f"{label} {value}{spread}")
+        summaries.append(f"{phase} " + ", ".join(cells))
+    return "; ".join(summaries) if samples else "n/a", high
 
 
 def _cl_bench_noise_inconclusive(
@@ -221,7 +264,7 @@ def render_cl_bench_table(report: Mapping[str, Any]) -> str:
         else "n/a"
     )
     lines = [
-        f"| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | NCL/SBCL ratio | Noise | Calls per timing sample | {target}s floor | Process-start/end load average (1/5/15m) | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
+        f"| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | NCL/SBCL ratio | Noise | Repetitions (median/range; n) | {target}s floor met | Process load (start/end median [range], 1/5/15m) | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
         "|---|---|---|---:|---:|---:|---:|---|---:|---|---|---|---|---|---|",
     ]
     implementations = (
@@ -261,17 +304,28 @@ def render_micro_table(report: Mapping[str, Any]) -> str:
     cases = report.get("cases", {})
     ncl_sha, sbcl_version, host, load_average = _measurement_cells(report)
     lines = [
-        "| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | Matched pairs | Pair median Δ NCL−SBCL (s) | Wins NCL/SBCL/tie | Noise | NCL/SBCL repetitions per sample | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---|---|---|---|---|---|",
+        "| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | Median NCL/SBCL ratio | Matched pairs | Pair median Δ NCL−SBCL (s) | Wins NCL/SBCL/tie | Noise | Repetitions NCL/SBCL (median/range; n) | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|---|",
     ]
     for name, case in cases.items():
         pair = case.get("paired_comparison", {})
         pair_count = f"{pair.get('sample_count', 'n/a')}/{pair.get('expected_sample_count', 'n/a')}"
         wins = f"{pair.get('ncl_wins', 'n/a')}/{pair.get('sbcl_wins', 'n/a')}/{pair.get('ties', 'n/a')}"
         engines = case.get("engines", {})
-        repetitions = "/".join(
-            _repetition_counts(engines.get(engine, {}).get("samples", []))
+        repetitions = " / ".join(
+            _repetition_summary(engines.get(engine, {}).get("samples", []))
             for engine in ("ncl", "sbcl")
+        )
+        ncl_median = engines.get("ncl", {}).get("median_seconds")
+        sbcl_median = engines.get("sbcl", {}).get("median_seconds")
+        ratio = (
+            ncl_median / sbcl_median
+            if isinstance(ncl_median, (int, float))
+            and not isinstance(ncl_median, bool)
+            and isinstance(sbcl_median, (int, float))
+            and not isinstance(sbcl_median, bool)
+            and sbcl_median > 0
+            else None
         )
         for engine in ("ncl", "sbcl"):
             stats = engines.get(engine, {})
@@ -279,6 +333,7 @@ def render_micro_table(report: Mapping[str, Any]) -> str:
             lines.append(
                 f"| {_cell(name)} | {engine.upper()} | {_cell(status)} | {_cell(stats.get('sample_count'))} "
                 f"| {_cell(stats.get('median_seconds'))} | {_cell(stats.get('range_seconds'))} "
+                f"| {_cell(ratio)} "
                 f"| {pair_count} | {_cell(pair.get('median_delta_seconds'))} | {wins} "
                 f"| {_noise_label(pair.get('noise_below'))} | {repetitions} "
                 f"| {ncl_sha} | {sbcl_version} | {host} | {load_average} |"
@@ -286,11 +341,13 @@ def render_micro_table(report: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def render_compile_table(report: Mapping[str, Any]) -> str:
+def render_compile_table(
+    report: Mapping[str, Any], file_filter: set[str] | None = None
+) -> str:
     runtimes = report.get("runtimes", {})
     ncl_sha, sbcl_version, host, load_average = _measurement_cells(report)
     lines = [
-        "| Runtime | Compile samples | Total median (s) | Total minimum (s) | Total range (s) | NCL/SBCL ratio | Noise | Startup samples | Startup median (s) | Startup range (s) | Compiled files | Lines/s | Peak RSS (bytes) | RSS samples | Binary size (bytes) | Repetitions by file/sample | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
+        "| Runtime | Compile samples | Total median (s) | Total minimum (s) | Total range (s) | NCL/SBCL ratio | Noise | Startup samples | Startup median (s) | Startup range (s) | Compiled files | Lines/s | Peak RSS (bytes) | RSS samples | Binary size (bytes) | Repetitions summary | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
         "|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|",
     ]
     total_comparison = report.get("total_comparison", {})
@@ -306,12 +363,12 @@ def render_compile_table(report: Mapping[str, Any]) -> str:
             f"| {_cell(startup.get('range_seconds'))} | {_cell(metrics.get('compiled_file_count'))} "
             f"| {_cell(metrics.get('lines_per_second'))} | {_cell(metrics.get('peak_rss_bytes'))} "
             f"| {_cell(metrics.get('peak_rss_sample_count'))}/{_cell(metrics.get('peak_rss_expected_sample_count'))} "
-            f"| {_cell(metrics.get('binary_size_bytes'))} | {_compile_repetitions_by_file(metrics)} "
+            f"| {_cell(metrics.get('binary_size_bytes'))} | {_compile_repetitions_summary(metrics)} "
             f"| {ncl_sha} | {sbcl_version} | {host} | {load_average} |"
         )
     lines.extend([
         "",
-        "| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | NCL/SBCL ratio | Noise | NCL/SBCL repetitions per sample | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
+        "| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | NCL/SBCL ratio | Noise | Repetitions NCL/SBCL (median/range; n) | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
         "|---|---|---|---:|---:|---:|---:|---|---|---|---|---|---|",
     ])
     comparisons = report.get("case_comparisons", {})
@@ -319,15 +376,19 @@ def render_compile_table(report: Mapping[str, Any]) -> str:
     for runtime, metrics in runtimes.items():
         for row in metrics.get("files", []):
             label = f"{row.get('suite')}/{row.get('file')}"
+            if file_filter is not None and label not in file_filter:
+                continue
             file_rows.setdefault(label, {})[runtime] = row
     for runtime, metrics in runtimes.items():
         for row in metrics.get("files", []):
             label = f"{row.get('suite')}/{row.get('file')}"
+            if file_filter is not None and label not in file_filter:
+                continue
             comparison = comparisons.get(label, {})
             ratio = comparison.get("ratio") if runtime == "ncl" else None
             pair_rows = file_rows.get(label, {})
-            repetitions = "/".join(
-                _repetition_counts(pair_rows.get(engine, {}).get("compile_repetitions_samples", []))
+            repetitions = " / ".join(
+                _repetition_summary(pair_rows.get(engine, {}).get("compile_repetitions_samples", []))
                 for engine in ("ncl", "sbcl")
             )
             status = _compile_status(row, runtime)

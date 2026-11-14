@@ -16,6 +16,7 @@ import tempfile
 from typing import Any, Callable, Sequence
 
 from ..statistics import compare_statistics, sample_statistics
+from ..timing import MINIMUM_SAMPLE_SECONDS, measurement_metadata
 from .fetch import CorpusError, SourceFile, fetch_corpus
 from .report import aggregate_file_samples as _aggregate_file_samples
 from .report import pass_profile as _parse_pass_profile
@@ -28,7 +29,10 @@ SBCL_VERSION = "2.6.10"
 DEFAULT_SAMPLE_RUNS = 5
 MAX_SOURCE_BYTES = 32 * 1024 * 1024
 MAX_DIAGNOSTIC_CHARS = 4_000
-_TIME_MARKER = re.compile(r"^__NCL_BENCH_RESULT__\|1\|([0-9]+)\|([0-9]+)$", re.MULTILINE)
+_TIME_MARKER = re.compile(
+    r"^__NCL_BENCH_RESULT__\|2\|([0-9]+)\|([0-9]+)\|([0-9]+)$",
+    re.MULTILINE,
+)
 
 
 class BenchmarkError(RuntimeError):
@@ -174,11 +178,19 @@ def _lisp_string(value: str) -> str:
 def _write_compile_driver(path: Path, source: Path) -> None:
     source_literal = _lisp_string(str(source))
     content = (
-        "(let ((started (get-internal-real-time)))\n"
-        f"  (compile-file #P{source_literal})\n"
-        "  (format t \"~&__NCL_BENCH_RESULT__|1|~D|~D~%\"\n"
-        "          internal-time-units-per-second\n"
-        "          (- (get-internal-real-time) started)))\n"
+        "(let* ((minimum-ticks "
+        f"(ceiling (* {MINIMUM_SAMPLE_SECONDS}d0 internal-time-units-per-second)))\n"
+        "       (started (get-internal-real-time))\n"
+        "       (repetitions 0)\n"
+        "       (ticks 0))\n"
+        "  (loop\n"
+        f"    (compile-file #P{source_literal})\n"
+        "    (incf repetitions)\n"
+        "    (setf ticks (- (get-internal-real-time) started))\n"
+        "    (when (>= ticks minimum-ticks)\n"
+        "      (return)))\n"
+        "  (format t \"~&__NCL_BENCH_RESULT__|2|~D|~D|~D~%\"\n"
+        "          internal-time-units-per-second ticks repetitions))\n"
     )
     path.write_text(content, encoding="utf-8", newline="\n")
 
@@ -190,18 +202,34 @@ def _compile_command(executable: str, suite: str, driver: Path, *, profile: bool
     return [executable, "--noinform", "--no-userinit", "--disable-debugger", "--script", str(driver)]
 
 
-def _timed_seconds(stdout: str) -> float | None:
+def _timed_result(stdout: str) -> dict[str, float | int] | None:
     markers = list(_TIME_MARKER.finditer(stdout))
     if len(markers) != 1:
         return None
-    units, ticks = (int(value) for value in markers[0].groups())
-    if units < 1 or ticks < 0:
+    units, ticks, repetitions = (int(value) for value in markers[0].groups())
+    if units < 1 or ticks < 1 or repetitions < 1:
         return None
     try:
-        seconds = ticks / units
+        elapsed_seconds = ticks / units
     except OverflowError:
         return None
-    return seconds if math.isfinite(seconds) else None
+    seconds = elapsed_seconds / repetitions
+    if (
+        not math.isfinite(elapsed_seconds)
+        or not math.isfinite(seconds)
+        or elapsed_seconds < MINIMUM_SAMPLE_SECONDS
+    ):
+        return None
+    return {
+        "seconds": seconds,
+        "elapsed_seconds": elapsed_seconds,
+        "repetitions": repetitions,
+    }
+
+
+def _timed_seconds(stdout: str) -> float | None:
+    result = _timed_result(stdout)
+    return float(result["seconds"]) if result is not None else None
 
 
 def _sample_file(
@@ -216,7 +244,8 @@ def _sample_file(
 ) -> dict[str, Any]:
     _write_compile_driver(driver, source.path)
     process = supervisor(_compile_command(executable, suite, driver, profile=profile), timeout)
-    seconds = _timed_seconds(process["stdout"])
+    timing = _timed_result(process["stdout"])
+    seconds = float(timing["seconds"]) if timing is not None else None
     process_status = process["status"]
     successful = process_status == "passed" and seconds is not None and process["output_truncated"] is False
     diagnostic_paths = (ROOT, source.path.parent, driver.parent, Path.home())
@@ -229,7 +258,7 @@ def _sample_file(
         elif process["output_truncated"] is not False:
             reason = "compile process output was truncated"
         else:
-            reason = "compiler did not emit its internal timing marker"
+            reason = "compiler did not emit a valid timing marker above the minimum duration"
     return {
         "suite": source.suite,
         "version": source.version,
@@ -237,6 +266,8 @@ def _sample_file(
         "line_count": _line_count(source.path),
         "status": "passed" if successful else process_status if process_status != "passed" else "failed",
         "compile_seconds": seconds,
+        "compile_elapsed_seconds": timing["elapsed_seconds"] if successful else None,
+        "compile_repetitions": timing["repetitions"] if successful else None,
         "lines_per_second": _line_count(source.path) / seconds if successful and seconds and seconds > 0 else None,
         "process_wall_seconds": process["wall_seconds"],
         "peak_rss_bytes": process["peak_rss_bytes"],
@@ -296,6 +327,7 @@ def run_benchmark(
     with tempfile.TemporaryDirectory(prefix="ncl-bench-corpus-", dir=cache_root) as temporary:
         work_dir = Path(temporary)
         sources = select_sources(fetcher(cache_root, work_dir), mode)
+        measurement = measurement_metadata(SBCL_VERSION)
         driver = work_dir / "compile-driver.lisp"
         raw_results: dict[str, list[list[dict[str, Any]]]] = {
             "ncl": [[] for _ in sources],
@@ -414,7 +446,10 @@ def run_benchmark(
             "schema_version": 1,
             "status": "complete" if complete else "partial",
             "mode": mode,
+            "measurement": measurement,
             "sample_runs": sample_runs,
+            "minimum_sample_seconds": MINIMUM_SAMPLE_SECONDS,
+            "iteration_count_definition": "compile repetitions per source sample",
             "warmup_runs_per_source": 0,
             "startup_warmup_runs": 0,
             "process_topology": "fresh process per compile and startup sample",

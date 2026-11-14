@@ -41,6 +41,14 @@ def aggregate_file_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "compile_seconds_samples": [
             row["compile_seconds"] if row["status"] == "passed" else None for row in samples
         ],
+        "compile_elapsed_seconds_samples": [
+            row.get("compile_elapsed_seconds") if row["status"] == "passed" else None
+            for row in samples
+        ],
+        "compile_repetitions_samples": [
+            row.get("compile_repetitions") if row["status"] == "passed" else None
+            for row in samples
+        ],
         "compile_seconds": median,
         "median_seconds": observed_statistics["median_seconds"],
         "minimum_compile_seconds": min(seconds) if complete else None,

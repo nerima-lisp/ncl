@@ -13,9 +13,10 @@ import conformance_scoreboard as scoreboard
 
 
 class FakeRunner:
-    def __init__(self, *, iterations=100, fail_case=None):
+    def __init__(self, *, iterations=100, repetitions=10, fail_case=None):
         self.calls = []
         self.iterations = iterations
+        self.repetitions = repetitions
         self.fail_case = fail_case
 
     def __call__(self, command, *, cwd, timeout):
@@ -38,7 +39,7 @@ class FakeRunner:
             "case": case,
             "engine": engine,
             "result": micro.MICRO_CASE_BY_NAME[case].expected_result(self.iterations),
-            "ticks": 100,
+            "ticks": 100_000,
             "units_per_second": 1_000_000,
             "allocated_bytes": 100 if engine == "sbcl" else None,
             "allocation_counter": (
@@ -53,7 +54,11 @@ class FakeRunner:
             "disassemble_available": engine == "sbcl",
         }
         return scoreboard.ProcessResult(
-            "passed", 0, micro.RESULT_PREFIX + json.dumps(record) + "\n"
+            "passed",
+            0,
+            micro.RESULT_PREFIX
+            + json.dumps(record)
+            + f"\nMICRO_REPETITIONS {self.repetitions}\n",
         )
 
 
@@ -148,6 +153,9 @@ class MicroBenchTests(unittest.TestCase):
         self.assertNotIn('find-package "NCL-GC"', sbcl_driver)
         self.assertNotIn('find-symbol "GC-COUNT"', sbcl_driver)
         for generated in (ncl_driver, sbcl_driver):
+            self.assertIn("MICRO_REPETITIONS", generated)
+            self.assertIn("minimum-ticks", generated)
+            self.assertIn("(when (>= ticks minimum-ticks)", generated)
             depth = 0
             in_string = False
             escaped = False
@@ -171,7 +179,10 @@ class MicroBenchTests(unittest.TestCase):
 
     def test_suite_preserves_results_allocation_gaps_and_pair_order(self):
         runner = FakeRunner(iterations=100)
-        with patch.object(micro, "_run_command", side_effect=runner):
+        with (
+            patch.dict("os.environ", {"NCL_BENCH_REVISION": "a" * 40}),
+            patch.object(micro, "_run_command", side_effect=runner),
+        ):
             report = micro.run_micro_suite(
                 ncl="ncl",
                 sbcl="sbcl",
@@ -199,7 +210,14 @@ class MicroBenchTests(unittest.TestCase):
             case["engines"]["ncl"]["allocation_reason"],
         )
         self.assertEqual(case["engines"]["sbcl"]["allocation_status"], "measured")
-        self.assertEqual(case["engines"]["sbcl"]["median_allocated_bytes"], 100)
+        self.assertEqual(case["engines"]["sbcl"]["median_allocated_bytes"], 10)
+        self.assertEqual(case["engines"]["sbcl"]["samples"][0]["repetitions"], 10)
+        self.assertEqual(case["engines"]["sbcl"]["samples"][0]["iteration_count"], 1_000)
+        self.assertAlmostEqual(case["engines"]["sbcl"]["samples"][0]["elapsed_seconds"], 0.1)
+        self.assertAlmostEqual(case["engines"]["sbcl"]["median_seconds"], 0.01)
+        self.assertEqual(report["measurement"]["sbcl_version"], "2.6.10")
+        self.assertEqual(report["measurement"]["ncl_sha"], "a" * 40)
+        self.assertEqual(report["protocol"]["minimum_sample_seconds"], micro.MINIMUM_SAMPLE_SECONDS)
         self.assertEqual(case["output_parity"]["status"], "passed")
         self.assertEqual(case["codegen_inspection"]["status"], "unsupported")
         self.assertEqual(
@@ -271,17 +289,26 @@ class MicroBenchTests(unittest.TestCase):
             "gc_count_after": None,
             "disassemble_available": False,
         }
+        output = micro.RESULT_PREFIX + json.dumps(record) + "\nMICRO_REPETITIONS 1"
         with self.assertRaisesRegex(ValueError, "time must be positive"):
-            micro._parse_result(micro.RESULT_PREFIX + json.dumps(record), case, "ncl")
-        record["ticks"] = 1
+            micro._parse_result(output, case, "ncl")
+        record["ticks"] = 100_000
         record["allocated_bytes"] = -1
         with self.assertRaisesRegex(ValueError, "non-negative integer"):
-            micro._parse_result(micro.RESULT_PREFIX + json.dumps(record), case, "ncl")
+            micro._parse_result(
+                micro.RESULT_PREFIX + json.dumps(record) + "\nMICRO_REPETITIONS 1",
+                case,
+                "ncl",
+            )
         record["allocated_bytes"] = 1
         record["allocation_counter"] = "unavailable"
         record["allocation_reason"] = "NCL-GC:BYTES-CONSED-SINCE-GC unavailable"
         with self.assertRaisesRegex(ValueError, "without an allocation counter"):
-            micro._parse_result(micro.RESULT_PREFIX + json.dumps(record), case, "ncl")
+            micro._parse_result(
+                micro.RESULT_PREFIX + json.dumps(record) + "\nMICRO_REPETITIONS 1",
+                case,
+                "ncl",
+            )
 
     def test_ncl_bytes_are_invalid_when_gc_epoch_changes(self):
         case = micro.MICRO_CASES[0]
@@ -289,7 +316,7 @@ class MicroBenchTests(unittest.TestCase):
             "case": case.name,
             "engine": "ncl",
             "result": case.expected_result(10),
-            "ticks": 1,
+            "ticks": 100_000,
             "units_per_second": 1_000_000,
             "allocated_bytes": 1,
             "allocation_counter": "NCL-GC:BYTES-CONSED-SINCE-GC",
@@ -299,11 +326,19 @@ class MicroBenchTests(unittest.TestCase):
             "disassemble_available": False,
         }
         with self.assertRaisesRegex(ValueError, "stable GC count snapshots"):
-            micro._parse_result(micro.RESULT_PREFIX + json.dumps(record), case, "ncl", iterations=10)
+            micro._parse_result(
+                micro.RESULT_PREFIX + json.dumps(record) + "\nMICRO_REPETITIONS 1",
+                case,
+                "ncl",
+                iterations=10,
+            )
         record["allocated_bytes"] = None
         record["allocation_reason"] = "GC occurred during sample"
         parsed = micro._parse_result(
-            micro.RESULT_PREFIX + json.dumps(record), case, "ncl", iterations=10
+            micro.RESULT_PREFIX + json.dumps(record) + "\nMICRO_REPETITIONS 1",
+            case,
+            "ncl",
+            iterations=10,
         )
         self.assertIsNone(parsed["allocated_bytes"])
         self.assertEqual(parsed["allocation_reason"], "GC occurred during sample")

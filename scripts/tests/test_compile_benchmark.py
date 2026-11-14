@@ -90,7 +90,7 @@ class FakeHarness:
         if args[-1:] == ["--version"]:
             base["stdout"] = "ncl 0.1.0\n" if executable in {"ncl", "ncl-profiler"} else "SBCL 2.6.10\n"
         elif "--script" in args:
-            base["stdout"] = "__NCL_BENCH_RESULT__|1|100|50\n"
+            base["stdout"] = "__NCL_BENCH_RESULT__|2|100|50|1\n"
             if "--opt-diagnostics" in args and self.include_profile_diagnostics:
                 base["stderr"] = (
                     'ncl-opt iteration=1 function="entry" pass="sccp" '
@@ -368,9 +368,9 @@ class CompileBenchmarkTests(unittest.TestCase):
             self.assertIn("get-internal-real-time", content)
             self.assertIn("compile-file #P", content)
             self.assertIn('lisp\\"file.lisp', content)
-            self.assertEqual(_timed_seconds("__NCL_BENCH_RESULT__|1|100|25\n"), 0.25)
+            self.assertEqual(_timed_seconds("__NCL_BENCH_RESULT__|2|100|50|2\n"), 0.25)
             self.assertIsNone(_timed_seconds("no timer marker"))
-            self.assertIsNone(_timed_seconds("__NCL_BENCH_RESULT__|1|100|25\n__NCL_BENCH_RESULT__|1|100|25\n"))
+            self.assertIsNone(_timed_seconds("__NCL_BENCH_RESULT__|2|100|50|2\n__NCL_BENCH_RESULT__|2|100|50|2\n"))
             self.assertEqual(driver_source.label, "synthetic/lisp\"file.lisp")
 
     def test_pass_profile_summarizes_time_and_allocation_fields(self):
@@ -395,7 +395,10 @@ class CompileBenchmarkTests(unittest.TestCase):
 
     def test_runner_emits_compile_time_throughput_rss_and_pass_profile(self):
         harness = FakeHarness()
-        with tempfile.TemporaryDirectory() as temporary:
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.dict("os.environ", {"NCL_BENCH_REVISION": "a" * 40}),
+        ):
             root = Path(temporary)
             executables = {}
             for name in ("ncl", "sbcl"):
@@ -464,6 +467,8 @@ class CompileBenchmarkTests(unittest.TestCase):
         self.assertEqual(sum(row["phase"] == "compile" for row in report["run_order"]), 25)
         self.assertEqual(sum(row["phase"] == "startup" for row in report["run_order"]), 5)
         self.assertEqual(report["corpus_file_count"], 5)
+        self.assertEqual(report["measurement"]["ncl_sha"], "a" * 40)
+        self.assertEqual(report["measurement"]["sbcl_version"], "2.6.10")
         ncl = report["runtimes"]["ncl"]
         self.assertEqual(ncl["compiled_file_count"], 5)
         self.assertAlmostEqual(ncl["total_compile_seconds"], 2.5)
@@ -477,6 +482,7 @@ class CompileBenchmarkTests(unittest.TestCase):
         self.assertEqual(ncl["binary_size_bytes"], len("#!/bin/sh\nexit 0\n"))
         self.assertEqual(len(ncl["files"][0]["compile_seconds_samples"]), 5)
         self.assertEqual(ncl["files"][0]["sample_count"], 5)
+        self.assertEqual(ncl["files"][0]["compile_repetitions_samples"], [1] * 5)
         self.assertEqual(len(ncl["startup"]["samples"]), 5)
         self.assertEqual(ncl["startup"]["minimum_seconds"], 0.25)
         first_file = ncl["files"][0]

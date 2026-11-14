@@ -21,60 +21,193 @@ def _noise_label(value: Any) -> str:
     return "n/a"
 
 
+def _measurement_cells(report: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    metadata = report.get("measurement", {})
+    if not isinstance(metadata, Mapping):
+        metadata = {}
+    load = metadata.get("load_average")
+    if isinstance(load, (list, tuple)) and len(load) == 3:
+        load_average = "/".join(_cell(value) for value in load)
+    else:
+        load_average = "n/a"
+    return (
+        _cell(metadata.get("ncl_sha")),
+        _cell(metadata.get("sbcl_version")),
+        _cell(metadata.get("host")),
+        load_average,
+    )
+
+
+def _repetition_counts(samples: Any) -> str:
+    if not isinstance(samples, (list, tuple)) or not samples:
+        return "n/a"
+    return ",".join(
+        _cell(sample.get("repetitions"))
+        if isinstance(sample, Mapping) and sample.get("status") == "passed"
+        else _cell(sample)
+        if isinstance(sample, int) and not isinstance(sample, bool)
+        else "fail"
+        for sample in samples
+    )
+
+
+def _sample_status(samples: Any, label: str, fallback: Any = None) -> str:
+    if not isinstance(samples, (list, tuple)) or not samples:
+        return _cell(fallback)
+    failures = []
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            failures.append("invalid sample record")
+        elif sample.get("status") != "passed":
+            status = sample.get("status", "unknown")
+            reason = sample.get("reason") or sample.get("error")
+            failures.append(
+                str(reason)
+                if status == "failed" and reason
+                else f"{status}: {reason}"
+                if reason
+                else str(status)
+            )
+    if failures:
+        return f"{label} fail: {'; '.join(dict.fromkeys(failures))}"
+    return "passed"
+
+
+def _compile_repetitions_by_file(metrics: Mapping[str, Any]) -> str:
+    rows = metrics.get("files", [])
+    if not isinstance(rows, (list, tuple)) or not rows:
+        return "n/a"
+    return "; ".join(
+        f"{row.get('suite')}/{row.get('file')}: "
+        f"{_repetition_counts(row.get('compile_repetitions_samples', []))}"
+        for row in rows
+        if isinstance(row, Mapping)
+    ) or "n/a"
+
+
+def _compile_status(row: Mapping[str, Any], runtime: str) -> str:
+    status = row.get("status", "unknown")
+    if status == "passed":
+        return "passed"
+    reasons = row.get("failure_reasons", [])
+    if isinstance(reasons, (list, tuple)):
+        reasons = list(dict.fromkeys(str(reason) for reason in reasons if reason))
+    else:
+        reasons = []
+    if reasons:
+        return f"{runtime.upper()} {status}: {'; '.join(reasons)}"
+    return f"{runtime.upper()} {status}"
+
+
+def _cl_bench_failure(report: Mapping[str, Any], name: str, mode: str | None, label: str) -> str:
+    errors = []
+    disabled = []
+    for run in report.get("runs", []):
+        if not isinstance(run, Mapping) or run.get("phase") != "measurement":
+            continue
+        if run.get("mode") != mode:
+            continue
+        benchmarks = run.get("benchmarks", {})
+        record = benchmarks.get(name, {}) if isinstance(benchmarks, Mapping) else {}
+        if not isinstance(record, Mapping):
+            continue
+        status = record.get("status")
+        if status == "disabled":
+            reason = record.get("reason") or record.get("condition")
+            if reason:
+                disabled.append(str(reason))
+        elif status != "passed":
+            reason = record.get("error") or record.get("condition") or f"status {status}"
+            errors.append(str(reason))
+    errors = list(dict.fromkeys(errors))
+    disabled = list(dict.fromkeys(disabled))
+    if errors:
+        return f"{label} fail: {'; '.join(errors)}"
+    if disabled:
+        return f"disabled: {'; '.join(disabled)}"
+    return "passed"
+
+
 def render_cl_bench_table(report: Mapping[str, Any]) -> str:
     scores = report.get("scores", {})
     stats_by_runtime = scores.get("benchmark_statistics_seconds", {})
     ratios = scores.get("benchmark_ncl_over_sbcl_ratio", {})
     comparisons = scores.get("benchmark_comparisons", {})
     names = list(stats_by_runtime.get("ncl_off", {}))
+    ncl_sha, sbcl_version, host, load_average = _measurement_cells(report)
+    protocol = report.get("protocol", {})
+    repetitions = protocol.get("inner_repetitions_per_sample", "n/a")
+    minimum_policy = protocol.get("minimum_sample_duration_policy", {})
+    if isinstance(minimum_policy, Mapping) and minimum_policy.get("met") is False:
+        minimum_status = "not enforced"
+    else:
+        minimum_status = _cell(minimum_policy.get("target_seconds")) if isinstance(
+            minimum_policy, Mapping
+        ) else "n/a"
     lines = [
-        "| Case | Implementation | Samples | Median (s) | Range (s) | NCL/SBCL ratio | Noise |",
-        "|---|---|---:|---:|---:|---:|---|",
+        "| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | NCL/SBCL ratio | Noise | Calls per timing sample | 0.1s minimum | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
+        "|---|---|---|---:|---:|---:|---:|---|---:|---|---|---|---|---|",
     ]
     implementations = (
-        ("ncl_off", "NCL off", "off_over_sbcl"),
-        ("ncl_default", "NCL default", "default_over_sbcl"),
-        ("sbcl", "SBCL", None),
+        ("ncl_off", "NCL off", "off_over_sbcl", "off"),
+        ("ncl_default", "NCL default", "default_over_sbcl", "default"),
+        ("sbcl", "SBCL", None, None),
     )
     for name in names:
-        for runtime, label, mode in implementations:
+        for runtime, label, comparison_mode, run_mode in implementations:
             stats = stats_by_runtime.get(runtime, {}).get(name, {})
-            comparison = comparisons.get(name, {}).get(mode, {}) if mode else {}
-            ratio = ratios.get(mode, {}).get(name) if mode else None
+            comparison = comparisons.get(name, {}).get(comparison_mode, {}) if comparison_mode else {}
+            ratio = ratios.get(comparison_mode, {}).get(name) if comparison_mode else None
+            result = _cl_bench_failure(report, name, run_mode, label)
+            sample_count = stats.get("sample_count")
+            if result == "passed" and sample_count == 0:
+                result = f"{label} fail: no positive timed samples"
+            elif result == "passed" and sample_count is None:
+                result = "n/a"
             lines.append(
-                f"| {_cell(name)} | {label} | {_cell(stats.get('sample_count'))} "
+                f"| {_cell(name)} | {label} | {_cell(result)} | {_cell(stats.get('sample_count'))} "
                 f"| {_cell(stats.get('median_seconds'))} | {_cell(stats.get('range_seconds'))} "
-                f"| {_cell(ratio)} | {_noise_label(comparison.get('noise_below')) if mode else 'n/a'} |"
+                f"| {_cell(ratio)} | {_noise_label(comparison.get('noise_below')) if comparison_mode else 'n/a'} "
+                f"| {_cell(repetitions)} | {minimum_status} | {ncl_sha} | {sbcl_version} | {host} | {load_average} |"
             )
     return "\n".join(lines)
 
 
 def render_micro_table(report: Mapping[str, Any]) -> str:
     cases = report.get("cases", {})
+    ncl_sha, sbcl_version, host, load_average = _measurement_cells(report)
     lines = [
-        "| Case | Implementation | Samples | Median (s) | Range (s) | Matched pairs | Pair median Δ NCL−SBCL (s) | Wins NCL/SBCL/tie | Noise |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---|",
+        "| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | Matched pairs | Pair median Δ NCL−SBCL (s) | Wins NCL/SBCL/tie | Noise | NCL/SBCL repetitions per sample | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---|---|---|---|---|---|",
     ]
     for name, case in cases.items():
         pair = case.get("paired_comparison", {})
         pair_count = f"{pair.get('sample_count', 'n/a')}/{pair.get('expected_sample_count', 'n/a')}"
         wins = f"{pair.get('ncl_wins', 'n/a')}/{pair.get('sbcl_wins', 'n/a')}/{pair.get('ties', 'n/a')}"
+        engines = case.get("engines", {})
+        repetitions = "/".join(
+            _repetition_counts(engines.get(engine, {}).get("samples", []))
+            for engine in ("ncl", "sbcl")
+        )
         for engine in ("ncl", "sbcl"):
-            stats = case.get("engines", {}).get(engine, {})
+            stats = engines.get(engine, {})
+            status = _sample_status(stats.get("samples", []), engine.upper(), stats.get("status"))
             lines.append(
-                f"| {_cell(name)} | {engine.upper()} | {_cell(stats.get('sample_count'))} "
+                f"| {_cell(name)} | {engine.upper()} | {_cell(status)} | {_cell(stats.get('sample_count'))} "
                 f"| {_cell(stats.get('median_seconds'))} | {_cell(stats.get('range_seconds'))} "
                 f"| {pair_count} | {_cell(pair.get('median_delta_seconds'))} | {wins} "
-                f"| {_noise_label(pair.get('noise_below'))} |"
+                f"| {_noise_label(pair.get('noise_below'))} | {repetitions} "
+                f"| {ncl_sha} | {sbcl_version} | {host} | {load_average} |"
             )
     return "\n".join(lines)
 
 
 def render_compile_table(report: Mapping[str, Any]) -> str:
     runtimes = report.get("runtimes", {})
+    ncl_sha, sbcl_version, host, load_average = _measurement_cells(report)
     lines = [
-        "| Runtime | Compile samples | Total median (s) | Total minimum (s) | Total range (s) | NCL/SBCL ratio | Noise | Startup samples | Startup median (s) | Startup range (s) | Compiled files | Lines/s | Peak RSS (bytes) | RSS samples | Binary size (bytes) |",
-        "|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Runtime | Compile samples | Total median (s) | Total minimum (s) | Total range (s) | NCL/SBCL ratio | Noise | Startup samples | Startup median (s) | Startup range (s) | Compiled files | Lines/s | Peak RSS (bytes) | RSS samples | Binary size (bytes) | Repetitions by file/sample | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
+        "|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|",
     ]
     total_comparison = report.get("total_comparison", {})
     for runtime, metrics in runtimes.items():
@@ -89,23 +222,36 @@ def render_compile_table(report: Mapping[str, Any]) -> str:
             f"| {_cell(startup.get('range_seconds'))} | {_cell(metrics.get('compiled_file_count'))} "
             f"| {_cell(metrics.get('lines_per_second'))} | {_cell(metrics.get('peak_rss_bytes'))} "
             f"| {_cell(metrics.get('peak_rss_sample_count'))}/{_cell(metrics.get('peak_rss_expected_sample_count'))} "
-            f"| {_cell(metrics.get('binary_size_bytes'))} |"
+            f"| {_cell(metrics.get('binary_size_bytes'))} | {_compile_repetitions_by_file(metrics)} "
+            f"| {ncl_sha} | {sbcl_version} | {host} | {load_average} |"
         )
     lines.extend([
         "",
-        "| Case | Implementation | Samples | Median (s) | Range (s) | NCL/SBCL ratio | Noise |",
-        "|---|---|---:|---:|---:|---:|---|",
+        "| Case | Implementation | Status / failure reason | Samples | Median (s) | Range (s) | NCL/SBCL ratio | Noise | NCL/SBCL repetitions per sample | NCL SHA | SBCL version | Host | Load average (1/5/15m) |",
+        "|---|---|---|---:|---:|---:|---:|---|---|---|---|---|---|",
     ])
     comparisons = report.get("case_comparisons", {})
+    file_rows = {}
+    for runtime, metrics in runtimes.items():
+        for row in metrics.get("files", []):
+            label = f"{row.get('suite')}/{row.get('file')}"
+            file_rows.setdefault(label, {})[runtime] = row
     for runtime, metrics in runtimes.items():
         for row in metrics.get("files", []):
             label = f"{row.get('suite')}/{row.get('file')}"
             comparison = comparisons.get(label, {})
             ratio = comparison.get("ratio") if runtime == "ncl" else None
+            pair_rows = file_rows.get(label, {})
+            repetitions = "/".join(
+                _repetition_counts(pair_rows.get(engine, {}).get("compile_repetitions_samples", []))
+                for engine in ("ncl", "sbcl")
+            )
+            status = _compile_status(row, runtime)
             lines.append(
-                f"| {_cell(label)} | {runtime.upper()} | {_cell(row.get('sample_count'))} "
+                f"| {_cell(label)} | {runtime.upper()} | {_cell(status)} | {_cell(row.get('sample_count'))} "
                 f"| {_cell(row.get('median_seconds'))} | {_cell(row.get('range_seconds'))} "
-                f"| {_cell(ratio)} | {_noise_label(comparison.get('noise_below')) if runtime == 'ncl' else 'n/a'} |"
+                f"| {_cell(ratio)} | {_noise_label(comparison.get('noise_below')) if runtime == 'ncl' else 'n/a'} "
+                f"| {repetitions} | {ncl_sha} | {sbcl_version} | {host} | {load_average} |"
             )
     return "\n".join(lines)
 

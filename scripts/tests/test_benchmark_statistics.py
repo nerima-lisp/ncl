@@ -13,6 +13,7 @@ from bench.statistics import compare_statistics, paired_statistics, sample_stati
 from micro_bench import _summarize_engine
 from optimization_baseline_scoring import _score_runs
 from performance_summary import (
+    _measurement_cells,
     render_ab_comparison,
     render_cl_bench_table,
     render_compile_table,
@@ -161,6 +162,76 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         self.assertEqual(scores["benchmark_comparisons"]["FIB"]["off_over_sbcl"]["noise_basis"], "ratio")
         self.assertIn("below noise", render_cl_bench_table({"scores": scores}))
 
+    def test_cl_bench_table_renders_metadata_fixed_call_count_and_failures(self):
+        table = render_cl_bench_table({
+            "measurement": {
+                "ncl_sha": "a" * 40,
+                "sbcl_version": "2.6.10",
+                "host": "Linux x86_64",
+                "load_average": [1.0, 2.0, 3.0],
+            },
+            "protocol": {
+                "inner_repetitions_per_sample": 1,
+                "minimum_sample_duration_policy": {
+                    "target_seconds": 0.1,
+                    "met": False,
+                    "reason": "fixed one-call driver",
+                },
+            },
+            "runs": [
+                {
+                    "phase": "measurement",
+                    "mode": "off",
+                    "benchmarks": {
+                        "FIB": {
+                            "status": "failed",
+                            "error": "TypeError: invalid argument",
+                        },
+                    },
+                },
+                {
+                    "phase": "measurement",
+                    "mode": "default",
+                    "benchmarks": {"FIB": {"status": "passed"}},
+                },
+                {
+                    "phase": "measurement",
+                    "benchmarks": {"FIB": {"status": "passed"}},
+                },
+            ],
+            "scores": {
+                "benchmark_statistics_seconds": {
+                    "ncl_off": {"FIB": {"sample_count": 0}},
+                    "ncl_default": {"FIB": {"sample_count": 0}},
+                    "sbcl": {"FIB": {"sample_count": 0}},
+                },
+                "benchmark_ncl_over_sbcl_ratio": {
+                    "off_over_sbcl": {"FIB": None},
+                    "default_over_sbcl": {"FIB": None},
+                },
+                "benchmark_comparisons": {
+                    "FIB": {
+                        "off_over_sbcl": {"noise_below": None},
+                        "default_over_sbcl": {"noise_below": None},
+                    },
+                },
+            },
+        })
+
+        self.assertIn("NCL off fail: TypeError: invalid argument", table)
+        self.assertIn("NCL default fail: no positive timed samples", table)
+        self.assertIn("SBCL fail: no positive timed samples", table)
+        self.assertIn("1 | not enforced", table)
+        self.assertIn("a" * 40, table)
+        self.assertIn("2.6.10", table)
+        self.assertIn("Linux x86_64", table)
+        self.assertIn("1/2/3", table)
+
+    def test_measurement_cells_tolerate_null_and_non_mapping_values(self):
+        missing = ("n/a", "n/a", "n/a", "n/a")
+        self.assertEqual(_measurement_cells({"measurement": None}), missing)
+        self.assertEqual(_measurement_cells({"measurement": ["invalid"]}), missing)
+
     def test_compile_file_aggregation_reports_successful_sample_range(self):
         rows = [
             {
@@ -170,6 +241,8 @@ class BenchmarkStatisticsTests(unittest.TestCase):
                 "line_count": 2,
                 "status": "passed",
                 "compile_seconds": seconds,
+                "compile_elapsed_seconds": seconds * 2,
+                "compile_repetitions": 2,
                 "reason": None,
                 "peak_rss_bytes": 128,
                 "process_wall_seconds": seconds,
@@ -183,6 +256,8 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         self.assertEqual(summary["expected_sample_count"], 3)
         self.assertEqual(summary["median_seconds"], 0.3)
         self.assertAlmostEqual(summary["range_seconds"], 0.2)
+        self.assertEqual(summary["compile_elapsed_seconds_samples"], [0.4, 0.8, 0.6])
+        self.assertEqual(summary["compile_repetitions_samples"], [2, 2, 2])
 
     def test_micro_table_marks_a_pair_effect_within_noise(self):
         table = render_micro_table({
@@ -209,6 +284,38 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         self.assertIn("-0.02", table)
         self.assertIn("5/5", table)
         self.assertIn("3/2/0", table)
+
+    def test_micro_table_renders_measurement_metadata_and_inner_repetitions(self):
+        table = render_micro_table({
+            "measurement": {
+                "ncl_sha": "abc123",
+                "sbcl_version": "2.6.10",
+                "host": "Linux x86_64",
+                "load_average": [1.0, 2.0, 3.0],
+            },
+            "cases": {
+                "fixture": {
+                    "engines": {
+                        "ncl": {"samples": [
+                            {"status": "passed", "repetitions": 2},
+                            {"status": "failed", "reason": "unsupported function"},
+                        ]},
+                        "sbcl": {"samples": [
+                            {"status": "passed", "repetitions": 4},
+                            {"status": "passed", "repetitions": 5},
+                        ]},
+                    },
+                    "paired_comparison": {},
+                },
+            },
+        })
+
+        self.assertIn("2,fail/4,5", table)
+        self.assertIn("abc123", table)
+        self.assertIn("2.6.10", table)
+        self.assertIn("Linux x86_64", table)
+        self.assertIn("1/2/3", table)
+        self.assertIn("NCL fail: unsupported function", table)
 
     def test_micro_table_marks_a_complete_pair_effect_above_noise(self):
         table = render_micro_table({
@@ -249,11 +356,28 @@ class BenchmarkStatisticsTests(unittest.TestCase):
                     "binary_size_bytes": 2048,
                     "startup": {"sample_count": 5, "median_seconds": 0.1, "range_seconds": 0.02},
                     "files": [{
-                        "suite": "synthetic", "file": "case.lisp", "sample_count": 5,
+                        "suite": "synthetic", "file": "case.lisp", "status": "passed", "sample_count": 5,
                         "median_seconds": 0.4, "range_seconds": 0.08,
+                        "compile_repetitions_samples": [2, 3],
+                    }, {
+                        "suite": "synthetic", "file": "broken.lisp", "status": "failed",
+                        "sample_count": 0, "failure_reasons": ["source rejected"],
+                        "compile_repetitions_samples": [None],
                     }],
                 },
-                "sbcl": {"files": []},
+                "sbcl": {"files": [{
+                    "suite": "synthetic", "file": "case.lisp", "status": "passed",
+                    "compile_repetitions_samples": [6, 7],
+                }, {
+                    "suite": "synthetic", "file": "broken.lisp", "status": "passed",
+                    "compile_repetitions_samples": [1],
+                }]},
+            },
+            "measurement": {
+                "ncl_sha": "abc123",
+                "sbcl_version": "2.6.10",
+                "host": "Linux x86_64",
+                "load_average": [1.0, 2.0, 3.0],
             },
             "case_comparisons": {
                 "synthetic/case.lisp": {"ratio": 1.0, "noise_below": True},
@@ -265,6 +389,14 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         self.assertIn("synthetic/case.lisp", table)
         self.assertIn("0.08", table)
         self.assertIn("below noise", table)
+        self.assertIn("abc123", table)
+        self.assertIn("2.6.10", table)
+        self.assertIn("Linux x86_64", table)
+        self.assertIn("1/2/3", table)
+        self.assertIn("2,3/6,7", table)
+        self.assertIn("synthetic/case.lisp: 2,3", table)
+        self.assertIn("synthetic/case.lisp: 6,7", table)
+        self.assertIn("NCL failed: source rejected", table)
 
     def test_ab_scoring_reports_per_file_spread_and_noise(self):
         samples = [10.0, 10.02, 9.98, 10.01, 9.99]

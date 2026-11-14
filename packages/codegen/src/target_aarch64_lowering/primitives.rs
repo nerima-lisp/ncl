@@ -261,25 +261,10 @@ pub(super) fn lower_prim(
             emit_lisp_boolean(assembler, Cond::Le)?;
         }
         Prim::Car | Prim::Cdr => {
-            let offset = if matches!(prim, Prim::Cdr) { 8 } else { 0 };
-            emit(
-                assembler,
-                Inst::AndImm {
-                    rd: Reg(16),
-                    rn: Reg(16),
-                    imm: !ncl_sys::LOWTAG_MASK,
-                },
-            )?;
-            emit(
-                assembler,
-                Inst::Ldr {
-                    rt: Reg(16),
-                    mem: MemOperand::Unscaled {
-                        base: RegOrSp::Reg(Reg(16)),
-                        offset,
-                    },
-                },
-            )?;
+            // check-added-lines: allow(unsupported) keep unchecked CAR/CDR lowering unreachable
+            return Err(CodegenError::Unsupported(
+                "CAR and CDR require checked primitive lowering".into(),
+            ));
         }
         Prim::Svref | Prim::Aref => {
             let Some(index) = args.get(1).copied() else {

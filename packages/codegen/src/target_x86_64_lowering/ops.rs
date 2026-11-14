@@ -7,7 +7,7 @@ use crate::isa_x86_64::THREAD_CONTEXT;
 use crate::machine_verify::SafepointSite;
 use crate::{CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Label, Mem};
-use ncl_ir::{BlockId, BlockParam, Compare, Function, Op, OpKind, ValueId};
+use ncl_ir::{BlockId, BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 use std::collections::HashMap;
 
 fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i64, CodegenError> {
@@ -206,8 +206,23 @@ pub fn lower_op(
                 store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
             }
         }
-        OpKind::Prim { op, args, .. } => {
-            super::primitives::lower_prim(assembler, op, args, result, slots, abi)?;
+        OpKind::Prim { op: prim, args, .. } => {
+            if matches!(prim, Prim::Car | Prim::Cdr) {
+                call_pc = Some(super::primitives::lower_checked_car_cdr(
+                    assembler,
+                    super::primitives::CheckedCarCdr {
+                        prim,
+                        args,
+                        result,
+                        source_origin: op.loc,
+                    },
+                    slots,
+                    abi,
+                    &check_context,
+                )?);
+            } else {
+                super::primitives::lower_prim(assembler, prim, args, result, slots, abi)?;
+            }
         }
         OpKind::Compare { op, left, right } => {
             load_slot(assembler, slots, *left, FUNCTION_OBJECT)?;

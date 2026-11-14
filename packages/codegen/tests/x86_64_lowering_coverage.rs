@@ -382,26 +382,45 @@ fn x86_64_cons_primitives_use_their_field_offsets() {
         let allocation = allocate(&function, AllocationTarget::X86_64);
         let compiled = compile_function_x86_64(&function, &WriteBarrierFixtureAbi)
             .expect("cons primitive lowers");
-        let expected = if is_load {
-            encode([
-                load_value_into_register(&function, &allocation, ValueId(0), Reg::R10),
-                Inst::BinRI(BinOp::And, Reg::R10, -8),
-                Inst::MovRM(Reg::R10, Mem::base(Reg::R10, offset)),
-                store_register_into_value(&function, &allocation, result, Reg::R10),
-            ])
+        if is_load {
+            assert_contains(
+                &compiled.code,
+                &encode([load_value_into_register(
+                    &function,
+                    &allocation,
+                    ValueId(0),
+                    Reg::R10,
+                )]),
+                "cons load must read its operand",
+            );
+            assert_contains(
+                &compiled.code,
+                &encode([Inst::CmpRI(Reg::R10, 1)]),
+                "cons load must recognize NIL",
+            );
+            assert_contains(
+                &compiled.code,
+                &[0x49, 0x83, 0xfb, 0x00, 0x0f, 0x8c],
+                "cons load must combine tag and character guards in one compare and branch",
+            );
+            assert_contains(
+                &compiled.code,
+                &encode([Inst::MovRM(Reg::R10, Mem::base(Reg::R10, offset))]),
+                &format!("{primitive:?} must access byte offset {offset}"),
+            );
         } else {
-            encode([
+            let expected = encode([
                 load_value_into_register(&function, &allocation, ValueId(0), Reg::R10),
                 load_value_into_register(&function, &allocation, ValueId(1), Reg::R11),
                 Inst::BinRI(BinOp::And, Reg::R10, -8),
                 Inst::MovMR(Mem::base(Reg::R10, offset), Reg::R11),
-            ])
-        };
-        assert_contains(
-            &compiled.code,
-            &expected,
-            &format!("{primitive:?} must access byte offset {offset}"),
-        );
+            ]);
+            assert_contains(
+                &compiled.code,
+                &expected,
+                &format!("{primitive:?} must access byte offset {offset}"),
+            );
+        }
     }
 }
 

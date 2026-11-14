@@ -236,8 +236,13 @@ impl RuntimeAbi for BuiltinAbi {
                 Ok(checked_calls::leave_unwind_protect as *const () as usize as u64)
             }
             RuntimeFunction::SafepointSlow => Ok(safepoint_slow as *const () as usize as u64),
+            RuntimeFunction::SignalTypeError => Ok(0x1000),
             _ => Err(ncl_codegen::AbiError::UnsupportedRuntimeFunction(function)),
         }
+    }
+
+    fn constant_word(&self, name: &str) -> Option<i64> {
+        (name == "type-error-expected:LIST").then_some(0)
     }
 }
 #[test]

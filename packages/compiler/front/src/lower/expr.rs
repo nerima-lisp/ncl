@@ -3,7 +3,7 @@
 #[path = "expr/symbol_cell.rs"]
 mod symbol_cell;
 
-use ncl_ir::{Constant, Convert, FunctionId, OpKind, Ty, ValueId};
+use ncl_ir::{Constant, Convert, FunctionId, OpKind, Prim, Ty, ValueId};
 
 use crate::ast::{EvalSituation, Expr, FunctionDesignator, LambdaExpr, Operator};
 use crate::symbols::SymbolRef;
@@ -240,19 +240,38 @@ impl Context<'_> {
                 || (values.len() == 1
                     && (name.is_common_lisp("1+") || name.is_common_lisp("1-"))
                     && f.env().lookup_function(name).is_none())
-                || (name.name == "CAR" && values.len() == 1)
+                || (name.is_common_lisp("CAR") && values.len() == 1)
+                || (name.is_common_lisp("CDR") && values.len() == 1)
                 || (name.name == "CONS" && values.len() == 2))
         {
             f.safepoint()?;
-            let result = f.one(
-                OpKind::Builtin {
-                    name: name.name.clone(),
-                    args: values,
-                    specialization: None,
-                    specialization_disabled: self.specialization_disabled(),
-                },
-                Ty::Word,
-            )?;
+            let primitive = if name.is_common_lisp("CAR") {
+                Some(Prim::Car)
+            } else if name.is_common_lisp("CDR") {
+                Some(Prim::Cdr)
+            } else {
+                None
+            };
+            let result = if let Some(primitive) = primitive {
+                f.one(
+                    OpKind::Prim {
+                        op: primitive,
+                        args: values,
+                        condition: None,
+                    },
+                    Ty::Word,
+                )?
+            } else {
+                f.one(
+                    OpKind::Builtin {
+                        name: name.name.clone(),
+                        args: values,
+                        specialization: None,
+                        specialization_disabled: self.specialization_disabled(),
+                    },
+                    Ty::Word,
+                )?
+            };
             return self.apply_function_hint(f, operator, result);
         }
         let (callee, closure, named_symbol) = match operator {

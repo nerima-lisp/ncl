@@ -212,17 +212,29 @@ pub fn condition_from_lisp_error(
             format_control,
             format_arguments,
         } => return simple_error_condition(ctx, runtime, format_control, format_arguments),
-        LispError::FormatError(error) => {
-            if let FormatErrorCause::Print(FormatPrintError::Object(error)) = error.cause {
+        LispError::FormatError(error) => match error.cause {
+            FormatErrorCause::Print(FormatPrintError::Object(error)) => {
                 return condition_from_lisp_error(ctx, runtime, LispError::Object(error));
             }
-            return simple_error_condition(
-                ctx,
-                runtime,
-                error.format_control,
-                error.format_arguments,
-            );
-        }
+            FormatErrorCause::Parse(_)
+            | FormatErrorCause::MissingArgument
+            | FormatErrorCause::WrongArgumentType
+            | FormatErrorCause::InvalidParameter
+            | FormatErrorCause::InvalidDirectiveUse
+            | FormatErrorCause::ImproperList
+            | FormatErrorCause::Print(
+                FormatPrintError::Sink
+                | FormatPrintError::NotReadable
+                | FormatPrintError::Circularity,
+            ) => {
+                return simple_error_condition(
+                    ctx,
+                    runtime,
+                    error.format_control,
+                    error.format_arguments,
+                );
+            }
+        },
         LispError::Object(ObjectError::TypeError) => (
             ConditionIdentifier::TypeError,
             words(&[Word::NIL, Word::NIL]),

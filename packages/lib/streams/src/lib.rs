@@ -6,12 +6,15 @@
 pub mod adapters;
 /// Character stream operations.
 pub mod character;
+/// Typed failures from stream operations.
+pub mod error;
 /// File stream operations.
 pub mod file;
 /// Builtin registration.
 pub mod registration;
 pub(crate) mod standard;
 
+pub use error::StreamError;
 /// Typed handle to a stream model object.
 pub use ncl_streams::Stream;
 

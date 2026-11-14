@@ -1,7 +1,8 @@
 //! Conversion of object-layer typed builtin failures into CL conditions.
 
+use ncl_object::typed::ConditionErrorData;
 use ncl_object::{
-    ArithmeticError, CellError, LispError, ObjectError, ObjectType, Package, ProgramError, Runtime,
+    ArithmeticError, CellError, LispError, ObjectError, ObjectType, Package, Runtime,
     ThreadContext, Word, pop_root, push_root,
 };
 
@@ -15,10 +16,6 @@ fn words(values: &[Word]) -> Vec<ConditionSlotValue> {
         .copied()
         .map(ConditionSlotValue::from_word)
         .collect()
-}
-
-fn fixnum(value: usize) -> Word {
-    Word::fixnum(i64::try_from(value).unwrap_or(i64::MAX))
 }
 
 fn type_specifier(
@@ -50,20 +47,80 @@ fn type_error_condition(
     expected: ObjectType,
 ) -> Result<Word, ObjectError> {
     let mut datum = datum;
-    let mut expected_type = type_specifier(ctx, runtime, expected)?;
     let datum_token = push_root(ctx, &mut datum);
-    let expected_token = push_root(ctx, &mut expected_type);
-    let result = make_typed_condition(
-        ctx,
-        runtime,
-        ConditionIdentifier::TypeError,
-        &words(&[datum, expected_type]),
-    )
-    .map(ConditionRecord::as_word)
-    .map_err(object_error);
-    pop_root(ctx, expected_token);
+    let result = match type_specifier(ctx, runtime, expected) {
+        Ok(mut expected_type) => {
+            let expected_token = push_root(ctx, &mut expected_type);
+            let result = condition_with_word_slots(
+                ctx,
+                runtime,
+                ConditionIdentifier::TypeError,
+                &[datum, expected_type],
+            );
+            pop_root(ctx, expected_token);
+            result
+        }
+        Err(error) => Err(error),
+    };
     pop_root(ctx, datum_token);
     result
+}
+
+fn condition_with_word_slots(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    identifier: ConditionIdentifier,
+    slots: &[Word],
+) -> Result<Word, ObjectError> {
+    ncl_object::with_rooted_slice(ctx, slots, |ctx, slots| {
+        make_typed_condition(ctx, runtime, identifier, &words(slots))
+            .map(ConditionRecord::as_word)
+            .map_err(object_error)
+    })
+}
+
+fn condition_from_data(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    error: ConditionErrorData,
+) -> Result<Word, ObjectError> {
+    match error {
+        ConditionErrorData::TypeError {
+            datum,
+            expected_type,
+        } => condition_with_word_slots(
+            ctx,
+            runtime,
+            ConditionIdentifier::TypeError,
+            &[datum, expected_type],
+        ),
+        ConditionErrorData::ArithmeticError {
+            kind,
+            operation,
+            operands,
+        } => {
+            let identifier = match kind {
+                ArithmeticError::DivisionByZero => ConditionIdentifier::DivisionByZero,
+                ArithmeticError::InvalidOperation => ConditionIdentifier::ArithmeticError,
+            };
+            condition_with_word_slots(ctx, runtime, identifier, &[operation, operands])
+        }
+        ConditionErrorData::PackageError { package, .. } => {
+            condition_with_word_slots(ctx, runtime, ConditionIdentifier::PackageError, &[package])
+        }
+        ConditionErrorData::StreamError { stream, .. } => {
+            condition_with_word_slots(ctx, runtime, ConditionIdentifier::StreamError, &[stream])
+        }
+        ConditionErrorData::EndOfFile { stream } => {
+            condition_with_word_slots(ctx, runtime, ConditionIdentifier::EndOfFile, &[stream])
+        }
+        ConditionErrorData::ReaderError { stream } => {
+            condition_with_word_slots(ctx, runtime, ConditionIdentifier::ReaderError, &[stream])
+        }
+        ConditionErrorData::FileError { pathname, .. } => {
+            condition_with_word_slots(ctx, runtime, ConditionIdentifier::FileError, &[pathname])
+        }
+    }
 }
 
 fn simple_error_condition(
@@ -128,21 +185,10 @@ pub fn condition_from_lisp_error(
             ConditionIdentifier::TypeError,
             words(&[datum, type_specifier(ctx, runtime, expected)?]),
         ),
-        LispError::ProgramError(error) => match error {
-            ProgramError::WrongNumberOfArguments { minimum, maximum } => (
-                ConditionIdentifier::ProgramError,
-                words(&[fixnum(minimum), maximum.map_or(Word::NIL, fixnum)]),
-            ),
-            ProgramError::UnknownKeyword | ProgramError::OddKeywordArguments => {
-                (ConditionIdentifier::ProgramError, Vec::new())
-            }
-            _ => (ConditionIdentifier::ProgramError, Vec::new()),
-        },
+        LispError::ProgramError(_) => (ConditionIdentifier::ProgramError, Vec::new()),
         LispError::ArithmeticError(error) => match error {
             ArithmeticError::DivisionByZero => (ConditionIdentifier::DivisionByZero, Vec::new()),
-            ArithmeticError::InvalidOperation | _ => {
-                (ConditionIdentifier::ArithmeticError, Vec::new())
-            }
+            ArithmeticError::InvalidOperation => (ConditionIdentifier::ArithmeticError, Vec::new()),
         },
         LispError::ControlError(_) => (ConditionIdentifier::ControlError, Vec::new()),
         LispError::CellError(error) => (
@@ -150,13 +196,12 @@ pub fn condition_from_lisp_error(
                 CellError::UnboundVariable { .. } => ConditionIdentifier::UnboundVariable,
                 CellError::UndefinedFunction { .. } => ConditionIdentifier::UndefinedFunction,
                 CellError::UnboundSlot => ConditionIdentifier::UnboundSlot,
-                _ => ConditionIdentifier::CellError,
             },
             match error {
                 CellError::UndefinedFunction { name } | CellError::UnboundVariable { name } => {
                     words(&[name])
                 }
-                CellError::UnboundSlot | _ => Vec::new(), // check-added-lines: allow(wildcard) only the name-carrying variants have a slot
+                CellError::UnboundSlot => Vec::new(),
             },
         ),
         LispError::PackageError(_) => (ConditionIdentifier::PackageError, Vec::new()),
@@ -174,7 +219,18 @@ pub fn condition_from_lisp_error(
         LispError::Object(ObjectError::Storage(_)) => {
             (ConditionIdentifier::StorageCondition, Vec::new())
         }
-        LispError::Object(_) | _ => (ConditionIdentifier::Error, Vec::new()),
+        LispError::Condition(error) => return condition_from_data(ctx, runtime, error),
+        LispError::Object(
+            ObjectError::Layout
+            | ObjectError::Unbound
+            | ObjectError::UndefinedFunction
+            | ObjectError::NonLocalExit
+            | ObjectError::RootStackCorrupted
+            // check-added-lines: allow(unsupported) existing error category is mapped, not stubbed
+            | ObjectError::Unsupported
+            | ObjectError::PackageConflict
+            | ObjectError::ControlError,
+        ) => (ConditionIdentifier::Error, Vec::new()),
     };
     make_typed_condition(ctx, runtime, identifier, &slots)
         .map(ConditionRecord::as_word)

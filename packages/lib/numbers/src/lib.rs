@@ -4,6 +4,8 @@ mod arithmetic;
 mod bitops;
 mod complex;
 mod constants;
+/// Typed failures from numeric operations.
+pub mod error;
 mod random;
 mod rational_float;
 mod remainder;
@@ -11,6 +13,7 @@ mod rounding;
 mod transcendental;
 
 pub use arithmetic::eql_words;
+pub use error::NumberError;
 
 use core::cell::Cell;
 use ncl_object::{

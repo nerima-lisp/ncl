@@ -5,10 +5,27 @@ use ncl_object::{Local, ObjectError, Runtime, Scope, ThreadContext, Word};
 
 use crate::slots::{SlotSpec, keyword, set_slot_specs};
 
+fn install_single_slot(
+    runtime: &Runtime,
+    scope: &mut Scope<'_>,
+    class_name: &str,
+    initarg_name: &str,
+) -> Result<(), ObjectError> {
+    let initarg_word = keyword(scope.context_mut(), runtime, initarg_name)?;
+    let initarg = scope.root(Local::<Word>::from_word(initarg_word));
+    let class = runtime
+        .class(scope.context_mut(), class_name)
+        .ok_or(ObjectError::Layout)?;
+    let slot = [SlotSpec {
+        initarg: scope.get(initarg).as_word(),
+        initform: Word::NIL,
+    }];
+    set_slot_specs(scope.context_mut(), runtime, class, &slot)
+}
+
 /// Install slot-initarg metadata for the handful of built-in condition
-/// classes real code constructs by hand (the `simple-condition` family,
-/// `type-error`, and `arithmetic-error`; `cell-error`'s `:name` is inherited
-/// by its own children below).
+/// classes real code constructs by hand. Standard condition slots are installed
+/// on their defining classes so reader and EOF conditions inherit `:stream`.
 ///
 /// # Errors
 /// Returns an object-layer error when a class is not registered or the
@@ -83,6 +100,10 @@ pub fn install(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectE
         ];
         set_slot_specs(scope.context_mut(), runtime, class, &arithmetic_error)?;
     }
+
+    install_single_slot(runtime, &mut scope, "PACKAGE-ERROR", "PACKAGE")?;
+    install_single_slot(runtime, &mut scope, "STREAM-ERROR", "STREAM")?;
+    install_single_slot(runtime, &mut scope, "FILE-ERROR", "PATHNAME")?;
 
     let name_word = keyword(scope.context_mut(), runtime, "NAME")?;
     let name_keyword = scope.root(Local::<Word>::from_word(name_word));

@@ -6,10 +6,13 @@ use ncl_object::{
     ThreadContext, Word, make_string, set_symbol_special, set_symbol_value, with_root,
 };
 
+/// Typed failures from pathname and file operations.
+pub mod error;
 mod filesystem;
 mod logical;
 mod pathname;
 
+pub use error::PathnameError;
 use filesystem::{
     delete_file_builtin, directory_builtin, file_write_date_builtin, pathname_directory_builtin,
     probe_file_builtin, truename_builtin,

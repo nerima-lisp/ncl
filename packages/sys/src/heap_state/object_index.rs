@@ -39,16 +39,16 @@ impl ObjectWordIndex {
 #[derive(Debug)]
 pub(super) struct ObjectStartBitmap {
     bits: [u64; BITMAP_WORDS],
-    word_counts: [u8; BITMAP_WORDS],
-    group_counts: [u16; RANK_GROUPS],
+    word_prefixes: [u16; BITMAP_WORDS],
+    group_prefixes: [u16; RANK_GROUPS],
 }
 
 impl Default for ObjectStartBitmap {
     fn default() -> Self {
         Self {
             bits: [0; BITMAP_WORDS],
-            word_counts: [0; BITMAP_WORDS],
-            group_counts: [0; RANK_GROUPS],
+            word_prefixes: [0; BITMAP_WORDS],
+            group_prefixes: [0; RANK_GROUPS],
         }
     }
 }
@@ -67,24 +67,26 @@ impl ObjectStartBitmap {
         if *bits & bit != 0 {
             return true;
         }
-        let Some(word_count) = self.word_counts.get_mut(bitmap_word) else {
+        let group = bitmap_word / RANK_WORDS;
+        let group_end = ((group + 1) * RANK_WORDS).min(BITMAP_WORDS);
+        let Some(word_prefixes) = self.word_prefixes.get_mut(bitmap_word + 1..group_end) else {
             debug_assert!(
-                bitmap_word < self.word_counts.len(),
-                "object word index exceeds rank word bounds"
+                bitmap_word < group_end && group_end <= self.word_prefixes.len(),
+                "object word index exceeds rank word prefix bounds"
             );
             return false;
         };
-        let group = bitmap_word / RANK_WORDS;
-        let Some(group_count) = self.group_counts.get_mut(group) else {
-            debug_assert!(
-                group < self.group_counts.len(),
-                "object word index exceeds rank group bounds"
-            );
+        let Some(group_prefixes) = self.group_prefixes.get_mut(group + 1..RANK_GROUPS) else {
+            debug_assert!(group < self.group_prefixes.len());
             return false;
         };
         *bits |= bit;
-        *word_count += 1;
-        *group_count += 1;
+        for prefix in word_prefixes {
+            *prefix += 1;
+        }
+        for prefix in group_prefixes {
+            *prefix += 1;
+        }
         true
     }
 
@@ -99,13 +101,8 @@ impl ObjectStartBitmap {
         let bitmap_word = word_offset / BITS_PER_BITMAP_WORD;
         let bit_offset = word_offset % BITS_PER_BITMAP_WORD;
         let group = bitmap_word / RANK_WORDS;
-        let first_word = group * RANK_WORDS;
-        let preceding_groups = self.group_counts.get(..group)?.iter().copied();
-        let preceding_words = self
-            .word_counts
-            .get(first_word..bitmap_word)?
-            .iter()
-            .copied();
+        let preceding_groups = usize::from(*self.group_prefixes.get(group)?);
+        let preceding_words = usize::from(*self.word_prefixes.get(bitmap_word)?);
         let bits = *self.bits.get(bitmap_word)?;
         let bit = 1_u64 << bit_offset;
         if bits & bit == 0 {
@@ -113,11 +110,7 @@ impl ObjectStartBitmap {
         }
         let before_bit = if bit_offset == 0 { 0 } else { bit - 1 };
         let preceding_bits = usize::try_from((bits & before_bit).count_ones()).ok()?;
-        Some(
-            preceding_groups.map(usize::from).sum::<usize>()
-                + preceding_words.map(usize::from).sum::<usize>()
-                + preceding_bits,
-        )
+        Some(preceding_groups + preceding_words + preceding_bits)
     }
 }
 

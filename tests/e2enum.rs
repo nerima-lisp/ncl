@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 #[path = "common/mod.rs"]
 mod common;
 
-use common::run_ncl;
+use common::{CliEvalCase, assert_ncl_eval_cases, run_ncl};
 
 fn assert_eval_with_stress(runtime: &mut ncl_runtime::Runtime, source: &str, expected: &str) {
     runtime.set_gc_stress(true);
@@ -163,29 +163,11 @@ fn every_registered_builtin_is_executed_and_asserts_ansi_output() {
     assert_eq!(PROBES.len(), 104);
     let names = PROBES.iter().map(|probe| probe.0).collect::<BTreeSet<_>>();
     assert_eq!(names.len(), PROBES.len());
-    for probe in PROBES {
-        let source = expression(probe.0);
-        let output = run_ncl(&source);
-        assert_eq!(
-            output.status.code(),
-            Some(0),
-            "{}: stderr={}",
-            probe.0,
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert!(
-            output.stderr.is_empty(),
-            "{}: unexpected stderr: {}",
-            probe.0,
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout).trim_end(),
-            probe.1,
-            "{}: {source}",
-            probe.0
-        );
-    }
+    let cases = PROBES
+        .iter()
+        .map(|probe| CliEvalCase::new(probe.0, expression(probe.0), probe.1))
+        .collect::<Vec<_>>();
+    assert_ncl_eval_cases(&cases);
 }
 
 #[test]
@@ -225,6 +207,22 @@ fn assert_eval(source: &str, expected: &str) {
         expected,
         "{source}"
     );
+}
+
+fn assert_eval_cases(cases: &[(&str, &str)]) {
+    assert!(!cases.is_empty());
+    let batch = cases
+        .iter()
+        .enumerate()
+        .map(|(index, (source, expected))| {
+            CliEvalCase::new(
+                format!("numeric case {index}: {source}"),
+                *source,
+                *expected,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_ncl_eval_cases(&batch);
 }
 
 /// `+`/`-`/`*`/`<` compile a dedicated two-argument fast path
@@ -305,16 +303,16 @@ fn checked_fixnum_nonnumeric_operand_preserves_type_condition() {
 /// complex operand should fall back to the transcendental float path.
 #[test]
 fn expt_is_exact_for_rational_base_and_integer_exponent() {
-    for (source, expected) in [
+    let cases = [
         ("(expt 2 10)", "1024"),
         ("(expt 2 100)", "1267650600228229401496703205376"),
         ("(expt (/ 2 3) 2)", "4/9"),
         ("(expt 2 -2)", "1/4"),
         ("(expt 2 0)", "1"),
         ("(expt 2.0 0.5)", "1.414213562373095"),
-    ] {
-        assert_eval(source, expected);
-    }
+    ];
+    assert_eq!(cases.len(), 6);
+    assert_eval_cases(&cases);
 }
 
 /// Bignum, ratio, and complex literals must compile as constant-table heap
@@ -322,16 +320,16 @@ fn expt_is_exact_for_rational_base_and_integer_exponent() {
 /// (`packages/compiler/front/src/lower/literal.rs`).
 #[test]
 fn bignum_ratio_and_complex_literals_compile() {
-    for (source, expected) in [
+    let cases = [
         ("'12345678901234567890123", "12345678901234567890123"),
         ("(quote 1/3)", "1/3"),
         ("'#c(1 2)", "#C(1 2)"),
         ("(+ 1/3 1)", "4/3"),
         ("(- '12345678901234567890123 1)", "12345678901234567890122"),
         ("(car '(1/3 2/3))", "1/3"),
-    ] {
-        assert_eval(source, expected);
-    }
+    ];
+    assert_eq!(cases.len(), 6);
+    assert_eval_cases(&cases);
 }
 
 /// The same overflow-driven bignum promotions, re-run under `gc_stress` +

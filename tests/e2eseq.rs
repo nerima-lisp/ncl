@@ -1,17 +1,9 @@
 //! End-to-end tests for Common Lisp sequence functions and edge cases.
 
-use std::process::Command;
+#[path = "common/mod.rs"]
+mod common;
 
-fn eval(source: &str) -> (bool, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_ncl"))
-        .args(["--eval", source])
-        .output()
-        .unwrap_or_else(|error| panic!("failed to run {source}: {error}"));
-    (
-        output.status.success(),
-        String::from_utf8_lossy(&output.stdout).trim().to_owned(),
-    )
-}
+use common::{CliEvalCase, assert_ncl_eval_cases};
 
 #[test]
 #[expect(
@@ -122,9 +114,16 @@ fn every_registered_sequence_builtin_runs_through_compiled_code() {
         ("(reduce #'+ '() :initial-value 5)", "5"),
     ];
     assert_eq!(cases.len(), 97);
-    for (source, expected) in cases {
-        let (success, actual) = eval(source);
-        assert!(success, "{source} failed");
-        assert_eq!(actual, expected, "{source}");
-    }
+    let batch = cases
+        .iter()
+        .enumerate()
+        .map(|(index, (source, expected))| {
+            CliEvalCase::new(
+                format!("sequence case {index}: {source}"),
+                *source,
+                *expected,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_ncl_eval_cases(&batch);
 }

@@ -14,6 +14,96 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 const DEFAULT_TIMEOUTS: ChildTimeouts = ChildTimeouts::new(30, Duration::from_secs(300));
+const MAX_EVAL_BATCH_SIZE: usize = 5;
+
+#[derive(Clone, Debug)]
+pub(super) struct CliEvalCase {
+    pub(super) name: String,
+    pub(super) source: String,
+    pub(super) expected: String,
+}
+
+impl CliEvalCase {
+    pub(super) fn new(
+        name: impl Into<String>,
+        source: impl Into<String>,
+        expected: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            source: source.into(),
+            expected: expected.into(),
+        }
+    }
+}
+
+pub(super) fn assert_ncl_eval_cases(cases: &[CliEvalCase]) {
+    assert!(!cases.is_empty(), "an E2E batch must contain cases");
+
+    for (batch_index, batch) in cases.chunks(MAX_EVAL_BATCH_SIZE).enumerate() {
+        let first_case_index = batch_index * MAX_EVAL_BATCH_SIZE;
+        let forms = batch
+            .iter()
+            .enumerate()
+            .map(|(index, case)| {
+                let case_index = first_case_index + index;
+                let label = lisp_string_literal(&format!("{}#{case_index}", case.name));
+                let expected = lisp_string_literal(&case.expected);
+                format!(
+                    "(handler-case \
+                        (let* ((*random-state* (make-random-state nil)) \
+                               (ncl-e2e-batch-value-{case_index} {}) \
+                               (ncl-e2e-batch-printed-{case_index} \
+                                   (format nil \"~S\" ncl-e2e-batch-value-{case_index}))) \
+                          (unless (string= ncl-e2e-batch-printed-{case_index} {expected}) \
+                            (list {label} :mismatch \
+                                  ncl-e2e-batch-printed-{case_index} {expected}))) \
+                      (condition (ncl-e2e-batch-condition-{case_index}) \
+                        (list {label} :condition)))",
+                    case.source
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let source = format!("(remove nil (list {forms}))");
+        let case_names = batch
+            .iter()
+            .map(|case| case.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let output = run_ncl(&source);
+
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "batch {batch_index} ({case_names}) exited with stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "batch {batch_index} ({case_names}) wrote to stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "NIL\n",
+            "batch {batch_index} ({case_names}) returned a mismatched case or wrote to stdout"
+        );
+    }
+}
+
+fn lisp_string_literal(value: &str) -> String {
+    let mut literal = String::with_capacity(value.len() + 2);
+    literal.push('"');
+    for character in value.chars() {
+        if matches!(character, '"' | '\\') {
+            literal.push('\\');
+        }
+        literal.push(character);
+    }
+    literal.push('"');
+    literal
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ChildTimeouts {

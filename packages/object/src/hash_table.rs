@@ -9,7 +9,7 @@ mod entries;
 mod equality;
 mod options;
 mod support;
-use equality::{equal, hash_key};
+use equality::{equal, hash_key, string_equal, string_hash};
 use options::{
     next_capacity_from_value, refresh_forwarded_field, rehash_threshold_value, usize_to_f64,
 };
@@ -186,6 +186,37 @@ impl HashTable {
             let position = usize::try_from(entry).map_err(|_| ObjectError::Layout)?;
             let stored = simple_vector_ref(ctx, kv, position * 2)?;
             if equal(ctx, test, stored, key, 0)? {
+                return Ok(Some(simple_vector_ref(ctx, kv, position * 2 + 1)?));
+            }
+        }
+        Ok(None)
+    }
+    pub(crate) fn get_string(
+        self,
+        ctx: &mut ThreadContext,
+        key: &str,
+    ) -> Result<Option<Word>, ObjectError> {
+        self.rehash_if_needed(ctx)?;
+        if self.test(ctx)? != HashTest::Equal {
+            return Err(ObjectError::Layout);
+        }
+        let (index, kv) = self.storage(ctx)?;
+        let hash = string_hash(key);
+        let capacity = simple_vector_length(ctx, index)?;
+        for step in 0..capacity {
+            let slot = probe(hash, step, capacity);
+            let entry = simple_vector_ref(ctx, index, slot)?
+                .as_fixnum()
+                .ok_or(ObjectError::Layout)?;
+            if entry == EMPTY {
+                return Ok(None);
+            }
+            if entry == TOMBSTONE {
+                continue;
+            }
+            let position = usize::try_from(entry).map_err(|_| ObjectError::Layout)?;
+            let stored = simple_vector_ref(ctx, kv, position * 2)?;
+            if string_equal(ctx, stored, key)? {
                 return Ok(Some(simple_vector_ref(ctx, kv, position * 2 + 1)?));
             }
         }

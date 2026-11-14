@@ -1,6 +1,6 @@
 use crate::{PackageListOperations, PackageOperations};
 use ncl_hash_tables::HashTable;
-use ncl_object::package::{EXTERNAL, INTERNAL, NICKNAMES, SHADOWING, USE_LIST, USED_BY};
+use ncl_object::package::{EXTERNAL, INTERNAL, NAME, NICKNAMES, SHADOWING, USE_LIST, USED_BY};
 use ncl_object::widetag;
 use ncl_object::{
     ObjectError, Package, Runtime, ThreadContext, Word, car, cdr, get, make_cons, make_symbol, put,
@@ -264,7 +264,8 @@ fn nickname_removal_state(
 ) -> Result<(bool, bool), ObjectError> {
     let mut current = get(ctx, package, widetag::PACKAGE, NICKNAMES)?;
     let mut found_target = false;
-    let mut another_equal_nickname = false;
+    let mut another_equal_nickname =
+        names_equal(ctx, get(ctx, package, widetag::PACKAGE, NAME)?, target)?;
     while current != Word::NIL {
         let nickname = list_car(ctx, current).ok_or(ObjectError::Layout)?;
         if nickname == target && !found_target {

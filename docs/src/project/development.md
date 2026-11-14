@@ -138,6 +138,29 @@ the first commit with a matching artifact. “Non-expired” means the GitHub
 artifact listing reports `expired: false`. If no matching artifact exists, the
 gate fails.
 
+Before pushing a candidate, run `python3 scripts/precheck_changed_path_coverage.py`
+from the workspace root. It finds the same parent artifact, measures only Cargo
+packages containing changed `.rs` paths with `--all-features --all-targets`, and
+passes that summary and the full changed-path list to the CI gate script. The
+local run uses `cargo llvm-cov`'s default Cargo test runner. The checker reports
+both clauses, and exits successfully only when (a) and (b) pass. This command
+requires Python 3.11 or newer, a jj workspace with `main@origin`, an authenticated
+`gh` that can read Actions artifacts, `git`, and `cargo llvm-cov` on `PATH`. Use
+`nix develop path:.` for the pinned Rust coverage tool. For a historical commit
+exported into a source tree, add `--candidate-rev <sha> --source-root <path>`;
+parent lookup still uses current `main@origin`.
+
+Package measurement omits tests from other packages that may call changed code,
+so a precheck can fail while workspace CI passes: with 10 parent misses, package
+tests could report 12 while workspace tests cover three more regions and report
+9. A precheck PASS predicts a CI PASS only when candidate, parent artifact,
+toolchain, target configuration, features, test selection, and instrumented
+region sets match CI and tests are deterministic. For example, with 10 parent
+misses and 9 package misses, a workspace run containing that same package test
+set can only maintain or reduce the missed count, so it also passes. Feature
+unification or build differences that change region sets, or different test
+selection, fall outside this prediction.
+
 For a browsable report, use `--html --output-dir artifacts/rust-coverage` in
 place of `--summary-only`. The flake app supplies the pinned Rust and LLVM
 tools.

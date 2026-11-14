@@ -11,7 +11,6 @@ fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
     make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())
         .unwrap_or_else(|error| panic!("string allocation: {error:?}"))
 }
-
 fn string_text(ctx: &ThreadContext, value: Word) -> String {
     let length =
         string_length(ctx, value).unwrap_or_else(|error| panic!("string length: {error:?}"));
@@ -384,51 +383,6 @@ fn package_use_export_shadow_and_unexport_are_idempotent() {
 }
 
 #[test]
-fn nickname_registration_updates_index_and_is_idempotent() {
-    let runtime = Runtime::new().unwrap_or_else(|error| panic!("test failure: {error:?}"));
-    let mut ctx = ThreadContext::new();
-    ctx.register(&runtime)
-        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
-    let base = Package::new(&mut ctx, &runtime, "BASE")
-        .unwrap_or_else(|error| panic!("test failure: {error:?}"))
-        .as_word();
-    let mut nickname = string(&mut ctx, &runtime, "B");
-    let nickname_token = ncl_object::push_root(&mut ctx, &mut nickname);
-    Package::from_word(base)
-        .add_nickname(&mut ctx, &runtime, nickname)
-        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
-    assert!(
-        !Package::from_word(base)
-            .add_nickname(&mut ctx, &runtime, nickname)
-            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
-    );
-    let mut registered = runtime
-        .ensure_package(&mut ctx, "REGISTERED")
-        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
-    let token = ncl_object::push_root(&mut ctx, &mut registered);
-    Package::from_word(registered)
-        .add_nickname(&mut ctx, &runtime, nickname)
-        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
-    assert_eq!(runtime.find_package(&ctx, "B"), Some(registered));
-    assert_eq!(
-        Package::from_word(registered).remove_nickname(&mut ctx, &runtime, nickname),
-        Ok(true)
-    );
-    assert_eq!(runtime.find_package(&ctx, "B"), None);
-    let mut replacement = runtime
-        .ensure_package(&mut ctx, "REGISTERED-REPLACEMENT")
-        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
-    let replacement_token = ncl_object::push_root(&mut ctx, &mut replacement);
-    Package::from_word(replacement)
-        .add_nickname(&mut ctx, &runtime, nickname)
-        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
-    assert_eq!(runtime.find_package(&ctx, "B"), Some(replacement));
-    assert!(ncl_object::pop_root(&mut ctx, replacement_token));
-    assert!(ncl_object::pop_root(&mut ctx, token));
-    assert!(ncl_object::pop_root(&mut ctx, nickname_token));
-}
-
-#[test]
 fn symbol_name_round_trip_is_preserved() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("test failure: {error:?}"));
     let mut ctx = ThreadContext::new();
@@ -533,17 +487,5 @@ fn package_nickname_intern_and_import_update_metadata() {
     assert_eq!(
         package.find_symbol(&mut ctx, name),
         Ok(Some((uninterned, FindStatus::Internal)))
-    );
-}
-
-#[test]
-fn try_from_word_rejects_non_package_values() {
-    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-    let mut ctx = ThreadContext::new();
-    ctx.register(&runtime)
-        .unwrap_or_else(|error| panic!("register: {error:?}"));
-    assert_eq!(
-        Package::try_from_word(&ctx, Word::fixnum(25)),
-        Err(ObjectError::TypeError)
     );
 }

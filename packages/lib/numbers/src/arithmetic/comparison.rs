@@ -1,6 +1,6 @@
 use super::{
-    Number, ObjectError, Ordering, Runtime, ThreadContext, Word, args_numbers, bool_word, number,
-    word,
+    Integer, Number, ObjectError, Ordering, Runtime, ThreadContext, Word, args_numbers, bool_word,
+    number, word,
 };
 use ncl_object::{ObjectRef, classify_object};
 
@@ -12,16 +12,23 @@ fn comparison(
     let ns = args_numbers(ctx, args)?;
     for pair in ns.windows(2) {
         let [left, right] = pair else { continue };
-        if !cmp(compare_numbers(*left, *right)?) {
+        if !cmp(compare_numbers(left, right)?) {
             return Ok(Word::NIL);
         }
     }
     Ok(Word::TRUE)
 }
 
-fn compare_numbers(left: Number, right: Number) -> Result<Ordering, ObjectError> {
+fn compare_numbers(left: &Number, right: &Number) -> Result<Ordering, ObjectError> {
     match (left, right) {
-        (Number::Integer(left), Number::Integer(right)) => Ok(left.cmp(&right)),
+        (Number::Integer(left), Number::Integer(right)) => Ok(left.cmp(right)),
+        (Number::BigInteger(left), Number::BigInteger(right)) => Ok(left.cmp(right)),
+        (Number::BigInteger(left), Number::Integer(right)) => {
+            Ok(left.cmp(&Integer::from_i128(*right)))
+        }
+        (Number::Integer(left), Number::BigInteger(right)) => {
+            Ok(Integer::from_i128(*left).cmp(right))
+        }
         (left, right) => Ok(left
             .to_f64()?
             .partial_cmp(&right.to_f64()?)
@@ -39,9 +46,16 @@ pub fn eq(_: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectE
     Ok(bool_word(left == right))
 }
 
-const fn eql_numbers(left: Number, right: Number) -> bool {
+fn eql_numbers(left: &Number, right: &Number) -> bool {
     match (left, right) {
         (Number::Integer(left), Number::Integer(right)) => left == right,
+        (Number::BigInteger(left), Number::BigInteger(right)) => left == right,
+        (Number::BigInteger(left), Number::Integer(right)) => {
+            left.cmp(&Integer::from_i128(*right)).is_eq()
+        }
+        (Number::Integer(left), Number::BigInteger(right)) => {
+            Integer::from_i128(*left).cmp(right).is_eq()
+        }
         (Number::Ratio(left_n, left_d), Number::Ratio(right_n, right_d)) => {
             left_n == right_n && left_d == right_d
         }
@@ -74,7 +88,7 @@ pub fn eql_words(ctx: &ThreadContext, left: Word, right: Word) -> bool {
         return false;
     }
     match (number(ctx, left), number(ctx, right)) {
-        (Ok(left), Ok(right)) => eql_numbers(left, right),
+        (Ok(left), Ok(right)) => eql_numbers(&left, &right),
         (Err(_), _) | (_, Err(_)) => false,
     }
 }
@@ -89,7 +103,7 @@ pub fn not_equal(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word
     let ns = args_numbers(ctx, args)?;
     for (index, value) in ns.iter().enumerate() {
         for other in ns.iter().skip(index + 1) {
-            if compare_numbers(*value, *other)? == Ordering::Equal {
+            if compare_numbers(value, other)? == Ordering::Equal {
                 return Ok(Word::NIL);
             }
         }
@@ -113,7 +127,7 @@ pub fn max(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     let mut values = ns.into_iter();
     let mut value = values.next().ok_or(ObjectError::TypeError)?;
     for next in values {
-        if next.to_f64()? > value.to_f64()? {
+        if compare_numbers(&next, &value)? == Ordering::Greater {
             value = next;
         }
     }
@@ -124,7 +138,7 @@ pub fn min(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     let mut values = ns.into_iter();
     let mut value = values.next().ok_or(ObjectError::TypeError)?;
     for next in values {
-        if next.to_f64()? < value.to_f64()? {
+        if compare_numbers(&next, &value)? == Ordering::Less {
             value = next;
         }
     }

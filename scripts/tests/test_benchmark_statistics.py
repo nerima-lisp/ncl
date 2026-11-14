@@ -237,17 +237,42 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         })
 
         self.assertIn("NCL off fail: TypeError: invalid argument", table)
-        self.assertIn("| 8 | missed (0/1) | start 1/2/3; end 1/2/3 |", table)
+        self.assertIn(
+            "| median=8; n=1 | 0/1 met; missed=1 | "
+            "start 1m 1, 5m 2, 15m 3; end 1m 1, 5m 2, 15m 3 |",
+            table,
+        )
         self.assertIn("| FIB | NCL default | passed |", table)
         self.assertIn("SBCL | load 高で未確定", table)
         self.assertIn(
-            "16 | met (1/1) | start 81/90/95; end 82/91/96",
+            "median=16; n=1 | 1/1 met; missed=0 | "
+            "start 1m 81, 5m 90, 15m 95; end 1m 82, 5m 91, 15m 96",
             table,
         )
         self.assertIn("a" * 40, table)
         self.assertIn("2.6.10", table)
         self.assertIn("Linux x86_64", table)
-        self.assertIn("1/2/3", table)
+        self.assertIn("99/99/99", table)
+
+    def test_cl_bench_table_compacts_verbose_failure_reasons(self):
+        table = render_cl_bench_table({
+            "runs": [{
+                "phase": "measurement",
+                "mode": "off",
+                "benchmarks": {
+                    "FIB": {"status": "failed", "error": "TypeError: " + "x" * 5000},
+                },
+            }],
+            "scores": {
+                "benchmark_statistics_seconds": {
+                    "ncl_off": {"FIB": {"sample_count": 0}},
+                },
+            },
+        })
+
+        self.assertIn("NCL off fail: TypeError:", table)
+        self.assertNotIn("x" * 500, table)
+        self.assertLess(max(map(len, table.splitlines())), 2500)
 
     def test_measurement_cells_tolerate_null_and_non_mapping_values(self):
         missing = ("n/a", "n/a", "n/a", "n/a")
@@ -332,7 +357,11 @@ class BenchmarkStatisticsTests(unittest.TestCase):
             },
         })
 
-        self.assertIn("2,fail/4,5", table)
+        self.assertIn(
+            "median=2; n=1; unavailable=1 / median=4.5; range=4–5; n=2",
+            table,
+        )
+        self.assertNotIn("2,fail/4,5", table)
         self.assertIn("abc123", table)
         self.assertIn("2.6.10", table)
         self.assertIn("Linux x86_64", table)
@@ -385,14 +414,20 @@ class BenchmarkStatisticsTests(unittest.TestCase):
                         "suite": "synthetic", "file": "broken.lisp", "status": "failed",
                         "sample_count": 0, "failure_reasons": ["source rejected"],
                         "compile_repetitions_samples": [None],
+                    }, {
+                        "suite": "synthetic", "file": "unrequested.lisp", "status": "passed",
+                        "sample_count": 1,
                     }],
                 },
                 "sbcl": {"files": [{
                     "suite": "synthetic", "file": "case.lisp", "status": "passed",
                     "compile_repetitions_samples": [6, 7],
                 }, {
-                    "suite": "synthetic", "file": "broken.lisp", "status": "passed",
-                    "compile_repetitions_samples": [1],
+                    "suite": "synthetic", "file": "broken.lisp", "status": "failed",
+                    "sample_count": 0, "failure_reasons": ["unsupported form"],
+                    "compile_repetitions_samples": [None],
+                }, {
+                    "suite": "synthetic", "file": "unrequested.lisp", "status": "passed",
                 }]},
             },
             "measurement": {
@@ -406,7 +441,10 @@ class BenchmarkStatisticsTests(unittest.TestCase):
             },
         }
 
-        table = render_compile_table(report)
+        table = render_compile_table(
+            report,
+            file_filter={"synthetic/case.lisp", "synthetic/broken.lisp"},
+        )
 
         self.assertIn("synthetic/case.lisp", table)
         self.assertIn("0.08", table)
@@ -415,10 +453,16 @@ class BenchmarkStatisticsTests(unittest.TestCase):
         self.assertIn("2.6.10", table)
         self.assertIn("Linux x86_64", table)
         self.assertIn("1/2/3", table)
-        self.assertIn("2,3/6,7", table)
-        self.assertIn("synthetic/case.lisp: 2,3", table)
-        self.assertIn("synthetic/case.lisp: 6,7", table)
+        self.assertIn(
+            "median=2.5; range=2–3; n=2 / median=6.5; range=6–7; n=2",
+            table,
+        )
+        self.assertIn("median=2.5; range=2–3; n=2; unavailable=1; files=3", table)
+        self.assertIn("median=6.5; range=6–7; n=2; unavailable=1; files=3", table)
+        self.assertNotIn("2,3/6,7", table)
         self.assertIn("NCL failed: source rejected", table)
+        self.assertIn("SBCL failed: unsupported form", table)
+        self.assertNotIn("unrequested.lisp", table)
 
     def test_ab_scoring_reports_per_file_spread_and_noise(self):
         samples = [10.0, 10.02, 9.98, 10.01, 9.99]

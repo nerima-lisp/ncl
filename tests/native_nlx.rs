@@ -1,5 +1,9 @@
 //! End-to-end tests for native non-local exits and callback control errors.
 
+#[path = "common/mod.rs"]
+mod common;
+
+use common::{CliEvalCase, assert_ncl_eval_cases};
 use std::process::{Command, Output, Stdio};
 
 struct Case {
@@ -161,6 +165,19 @@ fn run(source: &str) -> Output {
         .unwrap_or_else(|error| panic!("failed to run ncl: {error}"))
 }
 
+fn native_case_requires_process(name: &str) -> bool {
+    matches!(
+        name,
+        "unwind-protect around callback"
+            | "unwind-protect inside callback"
+            | "unwind-protect in maphash return-from"
+            | "nested builtins sort mapcar"
+            | "nested builtins mapcar mapcar"
+            | "repeated exits then builtins"
+            | "clos after not run"
+    )
+}
+
 #[test]
 fn native_non_local_exit_cli_cases() {
     assert_eq!(
@@ -168,7 +185,18 @@ fn native_non_local_exit_cli_cases() {
         28,
         "native NLX case table changed unexpectedly"
     );
-    for case in CASES {
+    let batch = CASES
+        .iter()
+        .filter(|case| !native_case_requires_process(case.name))
+        .map(|case| CliEvalCase::new(case.name, case.source, case.expected))
+        .collect::<Vec<_>>();
+    assert_eq!(batch.len(), 21);
+    assert_ncl_eval_cases(&batch);
+
+    for case in CASES
+        .iter()
+        .filter(|case| native_case_requires_process(case.name))
+    {
         let output = run(case.source);
         assert_eq!(output.status.code(), Some(0), "{}: {output:?}", case.name);
         assert!(

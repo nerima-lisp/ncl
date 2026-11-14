@@ -76,7 +76,11 @@ fn strings_equal(
     Ok(true)
 }
 
-pub(super) fn string_equal(ctx: &ThreadContext, word: Word, value: &str) -> Result<bool, ObjectError> {
+pub(super) fn string_equal(
+    ctx: &ThreadContext,
+    word: Word,
+    value: &str,
+) -> Result<bool, ObjectError> {
     if ncl_sys::object_widetag(&ctx.thread, word) != Some(widetag::STRING) {
         return Ok(false);
     }

@@ -34,6 +34,14 @@ pub struct NativeCompilation {
     frame_size: u32,
     function_name: String,
     safepoint_maps: Vec<ncl_codegen::SafepointMap>,
+    pub(crate) type_error_list_constant: bool,
+}
+
+pub fn type_error_list_constant() -> ncl_ir::Constant {
+    ncl_ir::Constant::Symbol {
+        package: "COMMON-LISP".to_owned(),
+        name: "LIST".to_owned(),
+    }
 }
 
 impl NativeCompilation {
@@ -211,6 +219,27 @@ impl crate::Runtime {
         &self,
         function: &ncl_ir::Function,
     ) -> Result<NativeCompilation, RuntimeError> {
+        let needs_type_error_list_constant = function.blocks.iter().any(|block| {
+            block.ops.iter().any(|op| {
+                matches!(
+                    &op.kind,
+                    ncl_ir::OpKind::Prim {
+                        op: ncl_ir::Prim::Car | ncl_ir::Prim::Cdr,
+                        ..
+                    }
+                )
+            })
+        });
+        let mut codegen_function = function.clone();
+        let type_error_list_constant_index = if needs_type_error_list_constant {
+            let index = i64::try_from(codegen_function.constants.len()).map_err(|_| {
+                RuntimeError::Native("LIST type constant index is too large".into())
+            })?;
+            codegen_function.constants.push(type_error_list_constant());
+            Some(index)
+        } else {
+            None
+        };
         let compiled = {
             let functions = self
                 .evaluator
@@ -223,14 +252,18 @@ impl crate::Runtime {
                     object: &self.object,
                     functions: &functions,
                     undefined_function_stub: self.evaluator.state.undefined_function_stub,
+                    type_error_list_constant_index,
                 };
                 #[cfg(target_arch = "aarch64")]
                 let result = ncl_codegen::compile_function_aarch64_preserving_multiple_values(
-                    function, &abi,
+                    &codegen_function,
+                    &abi,
                 );
                 #[cfg(not(target_arch = "aarch64"))]
-                let result =
-                    ncl_codegen::compile_function_x86_64_preserving_multiple_values(function, &abi);
+                let result = ncl_codegen::compile_function_x86_64_preserving_multiple_values(
+                    &codegen_function,
+                    &abi,
+                );
                 result
             };
             drop(functions);
@@ -247,6 +280,7 @@ impl crate::Runtime {
             frame_size: compiled.frame_size,
             function_name: function.name.clone(),
             safepoint_maps: compiled.safepoint_maps,
+            type_error_list_constant: needs_type_error_list_constant,
         })
     }
 

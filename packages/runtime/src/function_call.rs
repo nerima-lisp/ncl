@@ -99,22 +99,23 @@ fn call_native(
     let pending_errors = ctx.take_pending_runtime_errors();
     let count = usize::try_from(count).map_err(|_| ObjectError::Layout)?;
     if ctx.take_non_local_exit() {
-        let non_local_values = {
-            let thread = ctx.thread_access();
-            thread
-                .multiple_values()
-                .get(..thread.multiple_value_count())
-                .ok_or(ObjectError::Layout)?
-                .to_vec()
-        };
-        values.clear();
-        values.set(&non_local_values);
-        ctx.set_non_local_exit(true);
-        return Err(ObjectError::NonLocalExit);
+        return propagate_non_local_exit(ctx, values);
     }
-    if pending_errors.native.is_some() {
+    if let Some(error) = pending_errors.native {
+        let Some(signaled) = crate::native_error::signal_pending_native_error(ctx, runtime, error)
+        else {
+            values.clear();
+            return Err(ObjectError::Layout);
+        };
+        if let Err(error) = signaled {
+            values.clear();
+            return Err(error);
+        }
+        if ctx.take_non_local_exit() {
+            return propagate_non_local_exit(ctx, values);
+        }
         values.clear();
-        return Err(ObjectError::Layout);
+        return Ok(Word::NIL);
     }
     values.clear();
     let result = match count {
@@ -156,6 +157,24 @@ fn call_native(
         return Err(error);
     }
     Ok(result)
+}
+
+fn propagate_non_local_exit(
+    ctx: &mut ThreadContext,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let non_local_values = {
+        let thread = ctx.thread_access();
+        thread
+            .multiple_values()
+            .get(..thread.multiple_value_count())
+            .ok_or(ObjectError::Layout)?
+            .to_vec()
+    };
+    values.clear();
+    values.set(&non_local_values);
+    ctx.set_non_local_exit(true);
+    Err(ObjectError::NonLocalExit)
 }
 
 fn resolve_function(

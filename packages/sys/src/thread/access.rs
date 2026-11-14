@@ -189,6 +189,11 @@ impl<'a> ThreadAccess<'a> {
         crate::poll_safepoint(self.thread);
     }
 
+    /// Request a poll at the next generated safepoint.
+    pub const fn request_poll(&mut self) {
+        self.thread.request_poll();
+    }
+
     /// Enter a foreign or native section.
     pub fn enter_native(&mut self) {
         crate::enter_native(self.thread);

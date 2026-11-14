@@ -8,5 +8,10 @@ license.workspace = true
 [dependencies]
 ncl-object = { path = "../object" }
 
+[dev-dependencies]
+ncl-codegen = { path = "../codegen" }
+ncl-ir = { path = "../ir" }
+ncl-sys = { path = "../sys" }
+
 [lints]
 workspace = true

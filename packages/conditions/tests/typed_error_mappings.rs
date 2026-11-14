@@ -273,7 +273,7 @@ fn file_error_maps_the_affected_pathname_designator() -> Result<(), Box<dyn Erro
 }
 
 #[test]
-fn cell_errors_map_the_class_and_name_slot() -> Result<(), Box<dyn Error>> {
+fn cell_errors_map_the_class_and_standard_slots() -> Result<(), Box<dyn Error>> {
     let (runtime, mut ctx) = setup()?;
     let variable_name = intern(&mut ctx, &runtime, "NCL-TEST", "MISSING-VARIABLE")?;
     let variable_condition = condition_from_lisp_error(
@@ -305,6 +305,24 @@ fn cell_errors_map_the_class_and_name_slot() -> Result<(), Box<dyn Error>> {
         function_condition,
         ConditionIdentifier::UndefinedFunction,
         &[function_name.get()],
+    )?;
+
+    let slot_name = intern(&mut ctx, &runtime, "NCL-TEST", "UNBOUND-SLOT")?;
+    let instance = Word::fixnum(17);
+    let slot_condition = condition_from_lisp_error(
+        &mut ctx,
+        &runtime,
+        LispError::CellError(CellError::UnboundSlot {
+            name: slot_name.get(),
+            instance,
+        }),
+    )?;
+    assert_mapping(
+        &mut ctx,
+        &runtime,
+        slot_condition,
+        ConditionIdentifier::UnboundSlot,
+        &[slot_name.get(), instance],
     )
 }
 

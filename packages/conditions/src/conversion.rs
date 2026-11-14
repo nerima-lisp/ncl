@@ -195,13 +195,13 @@ pub fn condition_from_lisp_error(
             match error {
                 CellError::UnboundVariable { .. } => ConditionIdentifier::UnboundVariable,
                 CellError::UndefinedFunction { .. } => ConditionIdentifier::UndefinedFunction,
-                CellError::UnboundSlot => ConditionIdentifier::UnboundSlot,
+                CellError::UnboundSlot { .. } => ConditionIdentifier::UnboundSlot,
             },
             match error {
                 CellError::UndefinedFunction { name } | CellError::UnboundVariable { name } => {
                     words(&[name])
                 }
-                CellError::UnboundSlot => Vec::new(),
+                CellError::UnboundSlot { name, instance } => words(&[name, instance]),
             },
         ),
         LispError::PackageError(_) => (ConditionIdentifier::PackageError, Vec::new()),

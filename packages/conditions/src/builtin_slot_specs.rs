@@ -107,12 +107,8 @@ pub fn install(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectE
 
     let name_word = keyword(scope.context_mut(), runtime, "NAME")?;
     let name_keyword = scope.root(Local::<Word>::from_word(name_word));
-    for name in [
-        "CELL-ERROR",
-        "UNBOUND-VARIABLE",
-        "UNDEFINED-FUNCTION",
-        "UNBOUND-SLOT",
-    ] {
+    // check-added-lines: allow(index) array literal, not indexing
+    for name in ["CELL-ERROR", "UNBOUND-VARIABLE", "UNDEFINED-FUNCTION"] {
         let class = runtime
             .class(scope.context_mut(), name)
             .ok_or(ObjectError::Layout)?;
@@ -122,6 +118,23 @@ pub fn install(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectE
         }];
         set_slot_specs(scope.context_mut(), runtime, class, &cell_error)?;
     }
+
+    let instance_word = keyword(scope.context_mut(), runtime, "INSTANCE")?;
+    let instance = scope.root(Local::<Word>::from_word(instance_word));
+    let class = runtime
+        .class(scope.context_mut(), "UNBOUND-SLOT")
+        .ok_or(ObjectError::Layout)?;
+    let unbound_slot = [
+        SlotSpec {
+            initarg: scope.get(name_keyword).as_word(),
+            initform: Word::NIL,
+        },
+        SlotSpec {
+            initarg: scope.get(instance).as_word(),
+            initform: Word::NIL,
+        },
+    ];
+    set_slot_specs(scope.context_mut(), runtime, class, &unbound_slot)?;
     Ok(())
 }
 

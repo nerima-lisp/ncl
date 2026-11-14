@@ -1,21 +1,104 @@
 use super::*;
+use ncl_codegen::{AbiError, ContextField, RuntimeAbi, RuntimeFunction};
+use ncl_ir::{FunctionBuilder, OpKind, Terminator};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-#[inline(never)]
-fn insert_weak_key_entry(ctx: &mut ThreadContext, runtime: &Runtime, table_word: Word) {
-    let mut key = string(ctx, runtime, "weak-key");
-    let key_token = ncl_object::push_root(ctx, &mut key);
-    let mut value = string(ctx, runtime, "weak-value");
-    let value_token = ncl_object::push_root(ctx, &mut value);
-    HashTable::from_word(table_word)
-        .insert(ctx, runtime, key, value)
-        .unwrap_or_else(|error| panic!("weak-key insertion failed: {error:?}"));
-    assert_eq!(HashTable::from_word(table_word).count(ctx), Ok(1));
-    assert!(ncl_object::pop_root(ctx, value_token));
-    assert!(ncl_object::pop_root(ctx, key_token));
-    // Release the roots and clear these locals so conservative scanning cannot preserve the weak key.
-    key = Word::NIL;
-    value = Word::NIL;
-    std::hint::black_box((&key, &value));
+static PRECISE_COLLECTIONS: AtomicUsize = AtomicUsize::new(0);
+
+struct PreciseCollectionAbi<T>(T);
+
+impl<T: RuntimeAbi> RuntimeAbi for PreciseCollectionAbi<T> {
+    fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
+        self.0.builtin_address(identifier)
+    }
+
+    fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
+        self.0.field_offset(field)
+    }
+
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
+        if function == RuntimeFunction::SafepointSlow {
+            Ok(collect_precisely as *const () as usize as u64)
+        } else {
+            self.0.runtime_address(function)
+        }
+    }
+}
+
+extern "C" fn collect_precisely(thread: &mut ncl_sys::Thread, frame_fp: usize, return_pc: usize) {
+    thread.capture_native_frame(frame_fp, return_pc);
+    if !thread.frame_snapshot_failed() {
+        ncl_sys::collect(thread, true);
+        PRECISE_COLLECTIONS.fetch_add(1, Ordering::SeqCst);
+    }
+    thread.clear_safepoint_request();
+}
+
+fn compile_collection_function(function: &ncl_ir::Function) -> ncl_codegen::CompiledFunction {
+    #[cfg(target_arch = "aarch64")]
+    let compiled = ncl_codegen::compile_function_aarch64(
+        function,
+        &PreciseCollectionAbi(ncl_codegen::Aarch64Abi),
+    );
+    #[cfg(target_arch = "x86_64")]
+    let compiled = ncl_codegen::compile_function_x86_64(
+        function,
+        &PreciseCollectionAbi(ncl_codegen::X86_64Abi),
+    );
+    compiled.unwrap_or_else(|error| panic!("lower precise collection function: {error:?}"))
+}
+
+fn collect_at_precise_safepoint(ctx: &mut ThreadContext) {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(1),
+        "weak-table-precise-collection",
+        Vec::new(),
+        Vec::new(),
+    );
+    builder
+        .push_op(OpKind::Safepoint, &[])
+        .unwrap_or_else(|error| panic!("build safepoint: {error:?}"));
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .unwrap_or_else(|error| panic!("build return: {error:?}"));
+    let compiled = compile_collection_function(&builder.finish());
+    assert_eq!(compiled.safepoint_maps.len(), 1);
+    let map = &compiled.safepoint_maps[0];
+    let mut encoded_maps = Vec::new();
+    for map in &compiled.safepoint_maps {
+        encoded_maps.extend(
+            map.encode()
+                .unwrap_or_else(|error| panic!("encode safepoint map: {error:?}")),
+        );
+    }
+    let mut code = ncl_sys::alloc_code(compiled.code.len())
+        .unwrap_or_else(|error| panic!("allocate code: {error:?}"));
+    ncl_sys::write_code(&mut code, 0, &compiled.code)
+        .unwrap_or_else(|error| panic!("write code: {error:?}"));
+    ncl_sys::publish_code(&mut code).unwrap_or_else(|error| panic!("publish code: {error:?}"));
+    let metadata = ncl_sys::CodeObjectMetadata {
+        entry_offset: compiled.entry_offset as usize,
+        size: compiled.code.len(),
+        frame_words: map.frame_words,
+        function_name: "weak-table-precise-collection".into(),
+        source_locations: Vec::new(),
+        constant_slots: Vec::new(),
+        safepoint_map: ncl_sys::SafepointMap::decode(&encoded_maps, compiled.safepoint_maps.len())
+            .unwrap_or_else(|error| panic!("decode safepoint maps: {error:?}")),
+        debug_table: Vec::new(),
+    };
+    ctx.thread_access()
+        .register_code(&code, metadata)
+        .unwrap_or_else(|error| panic!("register collection code: {error:?}"));
+
+    PRECISE_COLLECTIONS.store(0, Ordering::SeqCst);
+    ctx.thread_access().request_poll();
+    let (_, count) =
+        ctx.thread_access()
+            .invoke_entry(&code, compiled.entry_offset as usize, 0, [0; 4], 0);
+    assert_eq!(count, 0);
+    assert_eq!(PRECISE_COLLECTIONS.load(Ordering::SeqCst), 1);
+    assert!(ctx.thread_access().unregister_code(&code).is_some());
 }
 
 #[test]
@@ -25,10 +108,20 @@ fn weak_key_entry_is_removed_when_key_dies() {
         .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
         .as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
-    insert_weak_key_entry(&mut ctx, &runtime, table_word);
-    assert!(ctx.collect(true).is_ok());
-    let table = HashTable::from_word(table_word);
-    assert_eq!(table.count(&ctx), Ok(0));
+    let mut key = string(&mut ctx, &runtime, "weak-key");
+    let key_token = ncl_object::push_root(&mut ctx, &mut key);
+    let mut value = string(&mut ctx, &runtime, "weak-value");
+    let value_token = ncl_object::push_root(&mut ctx, &mut value);
+    HashTable::from_word(table_word)
+        .insert(&mut ctx, &runtime, key, value)
+        .unwrap_or_else(|error| panic!("weak-key insertion failed: {error:?}"));
+    assert_eq!(HashTable::from_word(table_word).count(&ctx), Ok(1));
+    assert!(ncl_object::pop_root(&mut ctx, value_token));
+    assert!(ncl_object::pop_root(&mut ctx, key_token));
+    // A generated safepoint keeps stale Rust stack words outside the precise root map.
+    collect_at_precise_safepoint(&mut ctx);
+    assert_eq!(HashTable::from_word(table_word).count(&ctx), Ok(0));
+    assert_ne!(std::hint::black_box(key).bits(), Word::NIL.bits());
     assert!(ncl_object::pop_root(&mut ctx, table_token));
 }
 

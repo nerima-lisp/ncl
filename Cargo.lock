@@ -134,7 +134,10 @@ dependencies = [
 name = "ncl-hash-tables"
 version = "0.1.1"
 dependencies = [
+ "ncl-codegen",
+ "ncl-ir",
  "ncl-object",
+ "ncl-sys",
 ]
 
 [[package]]

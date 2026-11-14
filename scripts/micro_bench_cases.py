@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from benchmark_constants import REPO_ROOT
+from bench.timing import MINIMUM_SAMPLE_SECONDS
 
 
 CASE_DIR = REPO_ROOT / "bench/micro/cases"
@@ -135,9 +136,17 @@ def _driver_source(case: MicroCase, engine: str, iterations: int) -> str:
   (let* ((gc-count-before (and gc-count-counter (funcall gc-count-counter)))
          (allocated-before (and counter (funcall counter)))
          (started (get-internal-real-time))
-         (result (micro-case {iterations}))
-         (ticks (- (get-internal-real-time) started))
-         (allocated-after (and counter (funcall counter)))
+         (minimum-ticks (ceiling (* {MINIMUM_SAMPLE_SECONDS}d0 internal-time-units-per-second)))
+         (repetitions 0)
+         (result nil)
+         (ticks 0))
+    (loop
+      (setf result (micro-case {iterations}))
+      (incf repetitions)
+      (setf ticks (- (get-internal-real-time) started))
+      (when (>= ticks minimum-ticks)
+        (return)))
+    (let* ((allocated-after (and counter (funcall counter)))
          (gc-count-after (and gc-count-counter (funcall gc-count-counter)))
          (gc-count-valid
            (or (not gc-required)
@@ -180,5 +189,6 @@ def _driver_source(case: MicroCase, engine: str, iterations: int) -> str:
     (format t "MICRO_RESULT {{\\\"case\\\":~S,\\\"engine\\\":~S,\\\"result\\\":~D,\\\"ticks\\\":~D,\\\"units_per_second\\\":~D,\\\"allocated_bytes\\\":~A,\\\"allocation_counter\\\":~S,\\\"allocation_reason\\\":~S,\\\"gc_count_before\\\":~A,\\\"gc_count_after\\\":~A,\\\"disassemble_available\\\":~A}}~%"
             "{case.name}" "{engine}" result ticks internal-time-units-per-second
             allocation-json counter-name allocation-reason gc-before-json gc-after-json
-            (if (micro-disassemble-available-p) "true" "false"))))
+            (if (micro-disassemble-available-p) "true" "false"))
+    (format t "~%MICRO_REPETITIONS ~D~%" repetitions))))
 '''

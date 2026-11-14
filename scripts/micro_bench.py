@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import math
 import platform
 import re
 import statistics
@@ -19,14 +20,16 @@ from typing import Any, Mapping, Sequence
 
 import conformance_scoreboard as scoreboard
 from benchmark_constants import REPO_ROOT, SBCL_VERSION
+
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from bench.timing import MINIMUM_SAMPLE_SECONDS, measurement_metadata
 from micro_bench_cases import (
     ALLOCATION_COUNTERS, CASE_DIR, DEFAULT_ITERATIONS, DEFAULT_RUNS, PROCESS_TIMEOUT,
     MICRO_CASES, MICRO_CASE_BY_NAME, RESULT_PREFIX, MicroCase, _driver_source,
     _paired_count, _positive_count, _select_cases,
 )
-
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
 from bench.statistics import paired_statistics, sample_statistics
 
@@ -55,7 +58,14 @@ def _parse_result(
     iterations: int = DEFAULT_ITERATIONS,
 ) -> dict[str, Any]:
     records = []
+    repetition_counts = []
     for line in stdout.splitlines():
+        if line.startswith("MICRO_REPETITIONS "):
+            try:
+                repetition_counts.append(int(line.removeprefix("MICRO_REPETITIONS ")))
+            except ValueError as error:
+                raise ValueError("driver repetition count must be an integer") from error
+            continue
         if not line.startswith(RESULT_PREFIX):
             continue
         try:
@@ -66,6 +76,8 @@ def _parse_result(
             records.append(record)
     if len(records) != 1:
         raise ValueError("driver output must contain exactly one MICRO_RESULT record")
+    if len(repetition_counts) != 1 or repetition_counts[0] < 1:
+        raise ValueError("driver output must contain one positive MICRO_REPETITIONS count")
     record = records[0]
     expected_keys = {
         "case",
@@ -90,6 +102,9 @@ def _parse_result(
             raise ValueError(f"driver result {field} must be an integer")
     if record["ticks"] <= 0 or record["units_per_second"] <= 0:
         raise ValueError("driver time must be positive and above the clock resolution")
+    elapsed_seconds = record["ticks"] / record["units_per_second"]
+    if elapsed_seconds < MINIMUM_SAMPLE_SECONDS:
+        raise ValueError("driver sample is shorter than the minimum measurement time")
     allocation = record["allocated_bytes"]
     if allocation is not None and (
         isinstance(allocation, bool) or not isinstance(allocation, int) or allocation < 0
@@ -126,7 +141,13 @@ def _parse_result(
     expected = case.expected_result(iterations)
     if record["result"] != expected:
         raise ValueError(f"workload result mismatch: expected {expected}, got {record['result']}")
-    record["seconds"] = record["ticks"] / record["units_per_second"]
+    repetitions = repetition_counts[0]
+    record["repetitions"] = repetitions
+    record["iteration_count"] = iterations * repetitions
+    record["elapsed_seconds"] = elapsed_seconds
+    record["seconds"] = elapsed_seconds / repetitions
+    if allocation is not None:
+        record["allocated_bytes_per_batch"] = allocation / repetitions
     return record
 
 
@@ -194,9 +215,15 @@ def _summarize_engine(samples: Sequence[Mapping[str, Any]], runs: int) -> dict[s
     passed = [sample for sample in samples if sample.get("status") == "passed"]
     seconds = [float(sample["seconds"]) for sample in passed]
     timing_statistics = sample_statistics(seconds)
-    allocation_values = [sample.get("allocated_bytes") for sample in passed]
+    allocation_values = [
+        sample.get("allocated_bytes_per_batch", sample.get("allocated_bytes"))
+        for sample in passed
+    ]
     all_allocations = len(passed) == runs and all(
-        isinstance(value, int) and not isinstance(value, bool)
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 0
         for value in allocation_values
     )
     allocation_names = list(
@@ -280,6 +307,7 @@ def run_micro_suite(
         "ncl": _probe_runtime(ncl_binary, "ncl"),
         "sbcl": _probe_runtime(sbcl_binary, "sbcl"),
     }
+    metadata = measurement_metadata(SBCL_VERSION)
     samples: dict[str, dict[str, list[dict[str, Any]]]] = {
         case.name: {"ncl": [], "sbcl": []} for case in selected
     }
@@ -333,6 +361,7 @@ def run_micro_suite(
         }
         case_records[case.name] = {
             "iterations": iterations,
+            "minimum_sample_seconds": MINIMUM_SAMPLE_SECONDS,
             "engines": engine_records,
             "paired_comparison": paired_statistics(
                 engine_records["ncl"]["samples"],
@@ -361,10 +390,13 @@ def run_micro_suite(
             "release": platform.release(),
             "architecture": platform.machine(),
         },
+        "measurement": metadata,
         "runtimes": runtimes,
         "protocol": {
             "runs": runs,
             "iterations": iterations,
+            "minimum_sample_seconds": MINIMUM_SAMPLE_SECONDS,
+            "iteration_count_definition": "iterations per workload call multiplied by repetitions",
             "in_process_warmup_calls": 1,
             "pair_order": pair_order,
             "timer": "GET-INTERNAL-REAL-TIME / INTERNAL-TIME-UNITS-PER-SECOND",

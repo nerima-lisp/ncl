@@ -1,6 +1,9 @@
 //! End-to-end tests for hash-table builtins, options, and array coverage.
 
-use std::process::Command;
+#[path = "common/mod.rs"]
+mod common;
+
+use common::{CliEvalCase, assert_ncl_eval_cases};
 
 struct Case {
     builtin: &'static str,
@@ -294,25 +297,16 @@ const CASES: &[Case] = &[
 #[test]
 fn compiled_hash_array_matrix_reports_every_registered_builtin() {
     assert_eq!(CASES.len(), 56);
-    for case in CASES {
-        let output = match Command::new(env!("CARGO_BIN_EXE_ncl"))
-            .args(["--eval", case.source])
-            .output()
-        {
-            Ok(output) => output,
-            Err(error) => panic!("{}: failed to execute ncl: {error}", case.builtin),
-        };
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        assert!(
-            output.status.success(),
-            "{}: expected success, stderr: {stderr}",
-            case.builtin
-        );
-        assert_eq!(
-            stdout, case.expected,
-            "{}: unexpected stdout (stderr: {stderr})",
-            case.builtin
-        );
-    }
+    let batch = CASES
+        .iter()
+        .enumerate()
+        .map(|(index, case)| {
+            CliEvalCase::new(
+                format!("{}#{index}", case.builtin),
+                case.source,
+                case.expected,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_ncl_eval_cases(&batch);
 }

@@ -15,17 +15,17 @@ from bench.timing import MINIMUM_SAMPLE_SECONDS, measurement_metadata
 
 
 class BenchmarkTimingTests(unittest.TestCase):
-    def test_compile_driver_repeats_until_the_minimum_and_reports_count(self):
+    def test_compile_driver_uses_static_forms_and_reports_count(self):
         with tempfile.TemporaryDirectory() as temporary:
             driver = Path(temporary) / "compile.lisp"
-            _write_compile_driver(driver, Path(temporary) / "source.lisp")
+            _write_compile_driver(driver, Path(temporary) / "source.lisp", repetitions=3)
             source = driver.read_text(encoding="utf-8")
 
-        self.assertIn(f"{MINIMUM_SAMPLE_SECONDS}d0", source)
-        self.assertIn("(loop", source)
-        self.assertIn("(when (>= ticks minimum-ticks)", source)
-        self.assertIn("(incf repetitions)", source)
+        self.assertNotIn("(loop", source)
+        self.assertEqual(source.count("(compile-file #P"), 3)
+        self.assertIn("(progn", source)
         self.assertIn("__NCL_BENCH_RESULT__|2|~D|~D|~D", source)
+        self.assertIn("started) 3)", source)
         depth = 0
         in_string = False
         escaped = False

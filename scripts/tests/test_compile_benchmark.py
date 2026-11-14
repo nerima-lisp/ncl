@@ -14,7 +14,15 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from compile_benchmark import main as compile_benchmark_main
-from bench.corpus.compile import BenchmarkError, _pass_profile, _timed_seconds, run_benchmark, select_sources
+from bench.corpus.compile import (
+    BenchmarkError,
+    _pass_profile,
+    _sample_file,
+    _timed_seconds,
+    _write_compile_driver,
+    run_benchmark,
+    select_sources,
+)
 from bench.corpus.extract_tar import _download, _validate_source_url
 from bench.corpus.fetch import CorpusError, SourceFile, _extract_tar, _manifest, _member_list_sha256
 from bench.corpus.generate_synthetic import generate_source
@@ -65,18 +73,25 @@ class FakeHarness:
         *,
         include_profile_diagnostics: bool = True,
         peak_rss_bytes: int | None = 4096,
+        seconds_per_compile: float = 0.5,
+        zero_first_sample: bool = False,
     ) -> None:
         self.commands: list[list[str]] = []
         self.drivers: list[str] = []
         self.include_profile_diagnostics = include_profile_diagnostics
         self.peak_rss_bytes = peak_rss_bytes
+        self.seconds_per_compile = seconds_per_compile
+        self.zero_first_sample = zero_first_sample
 
     def __call__(self, command, timeout):
         args = list(command)
         self.commands.append(args)
         executable = Path(args[0]).name
+        repetitions = 1
         if "--script" in args:
-            self.drivers.append(Path(args[-1]).read_text(encoding="utf-8"))
+            driver = Path(args[-1]).read_text(encoding="utf-8")
+            self.drivers.append(driver)
+            repetitions = driver.count("(compile-file #P")
         base = {
             "status": "passed",
             "return_code": 0,
@@ -90,7 +105,12 @@ class FakeHarness:
         if args[-1:] == ["--version"]:
             base["stdout"] = "ncl 0.1.0\n" if executable in {"ncl", "ncl-profiler"} else "SBCL 2.6.10\n"
         elif "--script" in args:
-            base["stdout"] = "__NCL_BENCH_RESULT__|2|100|50|1\n"
+            ticks = (
+                0
+                if self.zero_first_sample and len(self.drivers) == 1
+                else round(self.seconds_per_compile * 1_000 * repetitions)
+            )
+            base["stdout"] = f"__NCL_BENCH_RESULT__|2|1000|{ticks}|{repetitions}\n"
             if "--opt-diagnostics" in args and self.include_profile_diagnostics:
                 base["stderr"] = (
                     'ncl-opt iteration=1 function="entry" pass="sccp" '
@@ -361,8 +381,6 @@ class CompileBenchmarkTests(unittest.TestCase):
             driver = root / "driver.lisp"
             driver_source = SourceFile("synthetic", "test", source.name, source)
             source.write_text("(defun f () 1)\n", encoding="utf-8")
-            from bench.corpus.compile import _write_compile_driver
-
             _write_compile_driver(driver, source)
             content = driver.read_text(encoding="utf-8")
             self.assertIn("get-internal-real-time", content)
@@ -372,6 +390,34 @@ class CompileBenchmarkTests(unittest.TestCase):
             self.assertIsNone(_timed_seconds("no timer marker"))
             self.assertIsNone(_timed_seconds("__NCL_BENCH_RESULT__|2|100|50|2\n__NCL_BENCH_RESULT__|2|100|50|2\n"))
             self.assertEqual(driver_source.label, "synthetic/lisp\"file.lisp")
+
+    def test_compile_sample_retries_static_forms_until_minimum_duration(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_path = root / "source.lisp"
+            source_path.write_text("(defun f () 1)\n", encoding="utf-8")
+            source = SourceFile("synthetic", "test", source_path.name, source_path)
+            driver = root / "driver.lisp"
+            harness = FakeHarness(seconds_per_compile=0.025, zero_first_sample=True)
+
+            sample = _sample_file(
+                "ncl",
+                "ncl",
+                source,
+                driver,
+                1.0,
+                supervisor=harness,
+            )
+
+        self.assertEqual(sample["status"], "passed")
+        self.assertEqual(sample["compile_repetitions"], 4)
+        self.assertAlmostEqual(sample["compile_elapsed_seconds"], 0.1)
+        self.assertAlmostEqual(sample["compile_seconds"], 0.025)
+        self.assertEqual(
+            [driver.count("(compile-file #P") for driver in harness.drivers],
+            [1, 2, 4],
+        )
+        self.assertTrue(all("(loop" not in driver for driver in harness.drivers))
 
     def test_pass_profile_summarizes_time_and_allocation_fields(self):
         profile = _pass_profile(

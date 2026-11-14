@@ -1,6 +1,8 @@
 import argparse
 import json
+import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -13,10 +15,20 @@ import conformance_scoreboard as scoreboard
 
 
 class FakeRunner:
-    def __init__(self, *, iterations=100, repetitions=10, fail_case=None):
+    def __init__(
+        self,
+        *,
+        iterations=100,
+        seconds_per_repetition=0.1,
+        zero_first_sample=False,
+        fail_case=None,
+    ):
         self.calls = []
+        self.drivers = []
+        self.repetition_counts = []
         self.iterations = iterations
-        self.repetitions = repetitions
+        self.seconds_per_repetition = seconds_per_repetition
+        self.zero_first_sample = zero_first_sample
         self.fail_case = fail_case
 
     def __call__(self, command, *, cwd, timeout):
@@ -28,6 +40,9 @@ class FakeRunner:
 
         engine = "sbcl" if command[0] == "sbcl" else "ncl"
         driver = Path(command[-1]).read_text(encoding="utf-8")
+        self.drivers.append(driver)
+        repetitions = int(re.search(r"\(repetitions ([0-9]+)\)", driver).group(1))
+        self.repetition_counts.append(repetitions)
         case = next(
             item.name
             for item in micro.MICRO_CASES
@@ -35,13 +50,18 @@ class FakeRunner:
         )
         if self.fail_case == (case, engine):
             return scoreboard.ProcessResult("failed", 134, "", "stack overflow")
+        ticks = (
+            0
+            if self.zero_first_sample and len(self.repetition_counts) == 1
+            else round(self.seconds_per_repetition * repetitions * 1_000_000)
+        )
         record = {
             "case": case,
             "engine": engine,
             "result": micro.MICRO_CASE_BY_NAME[case].expected_result(self.iterations),
-            "ticks": 100_000,
+            "ticks": ticks,
             "units_per_second": 1_000_000,
-            "allocated_bytes": 100 if engine == "sbcl" else None,
+            "allocated_bytes": 100 * repetitions if engine == "sbcl" else None,
             "allocation_counter": (
                 "SB-EXT:GET-BYTES-CONSED" if engine == "sbcl" else "unavailable"
             ),
@@ -58,7 +78,7 @@ class FakeRunner:
             0,
             micro.RESULT_PREFIX
             + json.dumps(record)
-            + f"\nMICRO_REPETITIONS {self.repetitions}\n",
+            + f"\nMICRO_REPETITIONS {repetitions}\n",
         )
 
 
@@ -154,8 +174,8 @@ class MicroBenchTests(unittest.TestCase):
         self.assertNotIn('find-symbol "GC-COUNT"', sbcl_driver)
         for generated in (ncl_driver, sbcl_driver):
             self.assertIn("MICRO_REPETITIONS", generated)
-            self.assertIn("minimum-ticks", generated)
-            self.assertIn("(when (>= ticks minimum-ticks)", generated)
+            self.assertIn("(progn", generated)
+            self.assertNotIn("(loop", generated)
             depth = 0
             in_string = False
             escaped = False
@@ -176,6 +196,44 @@ class MicroBenchTests(unittest.TestCase):
                     self.assertGreaterEqual(depth, 0)
             self.assertEqual(depth, 0)
             self.assertFalse(in_string)
+
+    def test_ncl_driver_uses_static_forms_and_micro_retries_until_minimum(self):
+        case = micro.MICRO_CASE_BY_NAME["float-loop"]
+        ncl_driver = micro._driver_source(case, "ncl", 10, repetitions=3)
+        self.assertNotIn("(loop", ncl_driver)
+        self.assertIn("(progn", ncl_driver)
+        self.assertEqual(ncl_driver.count("(micro-case 10)"), 4)
+
+        for engine in ("ncl", "sbcl"):
+            runner = FakeRunner(
+                iterations=10,
+                seconds_per_repetition=0.025,
+                zero_first_sample=True,
+            )
+            with tempfile.TemporaryDirectory() as temporary:
+                with patch.object(micro, "_run_command", side_effect=runner):
+                    sample = micro._sample(
+                        binary=engine,
+                        engine=engine,
+                        case=case,
+                        pair=1,
+                        iterations=10,
+                        driver_path=Path(temporary) / "micro-adaptive-driver.lisp",
+                    )
+
+            with self.subTest(engine=engine):
+                self.assertEqual(runner.repetition_counts, [1, 2, 4])
+                self.assertTrue(all("(loop" not in driver for driver in runner.drivers))
+                self.assertEqual(sample["status"], "passed")
+                self.assertEqual(sample["result"], case.expected_result(10))
+                self.assertEqual(sample["repetitions"], 4)
+                self.assertEqual(sample["iteration_count"], 40)
+                self.assertAlmostEqual(sample["elapsed_seconds"], micro.MINIMUM_SAMPLE_SECONDS)
+                self.assertAlmostEqual(sample["seconds"], 0.025)
+                if engine == "sbcl":
+                    self.assertEqual(sample["allocated_bytes_per_batch"], 100)
+                else:
+                    self.assertIsNone(sample["allocated_bytes"])
 
     def test_suite_preserves_results_allocation_gaps_and_pair_order(self):
         runner = FakeRunner(iterations=100)
@@ -210,11 +268,11 @@ class MicroBenchTests(unittest.TestCase):
             case["engines"]["ncl"]["allocation_reason"],
         )
         self.assertEqual(case["engines"]["sbcl"]["allocation_status"], "measured")
-        self.assertEqual(case["engines"]["sbcl"]["median_allocated_bytes"], 10)
-        self.assertEqual(case["engines"]["sbcl"]["samples"][0]["repetitions"], 10)
-        self.assertEqual(case["engines"]["sbcl"]["samples"][0]["iteration_count"], 1_000)
+        self.assertEqual(case["engines"]["sbcl"]["median_allocated_bytes"], 100)
+        self.assertEqual(case["engines"]["sbcl"]["samples"][0]["repetitions"], 1)
+        self.assertEqual(case["engines"]["sbcl"]["samples"][0]["iteration_count"], 100)
         self.assertAlmostEqual(case["engines"]["sbcl"]["samples"][0]["elapsed_seconds"], 0.1)
-        self.assertAlmostEqual(case["engines"]["sbcl"]["median_seconds"], 0.01)
+        self.assertAlmostEqual(case["engines"]["sbcl"]["median_seconds"], 0.1)
         self.assertEqual(report["measurement"]["sbcl_version"], "2.6.10")
         self.assertEqual(report["measurement"]["ncl_sha"], "a" * 40)
         self.assertEqual(report["protocol"]["minimum_sample_seconds"], micro.MINIMUM_SAMPLE_SECONDS)

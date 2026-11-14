@@ -175,22 +175,20 @@ def _lisp_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _write_compile_driver(path: Path, source: Path) -> None:
+def _write_compile_driver(path: Path, source: Path, repetitions: int = 1) -> None:
+    if not isinstance(repetitions, int) or isinstance(repetitions, bool) or repetitions < 1:
+        raise ValueError("repetitions must be a positive integer")
     source_literal = _lisp_string(str(source))
+    compile_forms = "\n".join(
+        f"    (compile-file #P{source_literal})" for _ in range(repetitions)
+    )
     content = (
-        "(let* ((minimum-ticks "
-        f"(ceiling (* {MINIMUM_SAMPLE_SECONDS}d0 internal-time-units-per-second)))\n"
-        "       (started (get-internal-real-time))\n"
-        "       (repetitions 0)\n"
-        "       (ticks 0))\n"
-        "  (loop\n"
-        f"    (compile-file #P{source_literal})\n"
-        "    (incf repetitions)\n"
-        "    (setf ticks (- (get-internal-real-time) started))\n"
-        "    (when (>= ticks minimum-ticks)\n"
-        "      (return)))\n"
+        "(let ((started (get-internal-real-time)))\n"
+        "  (progn\n"
+        f"{compile_forms}\n"
+        "  )\n"
         "  (format t \"~&__NCL_BENCH_RESULT__|2|~D|~D|~D~%\"\n"
-        "          internal-time-units-per-second ticks repetitions))\n"
+        f"          internal-time-units-per-second (- (get-internal-real-time) started) {repetitions}))\n"
     )
     path.write_text(content, encoding="utf-8", newline="\n")
 
@@ -202,23 +200,30 @@ def _compile_command(executable: str, suite: str, driver: Path, *, profile: bool
     return [executable, "--noinform", "--no-userinit", "--disable-debugger", "--script", str(driver)]
 
 
-def _timed_result(stdout: str) -> dict[str, float | int] | None:
+def _timed_result(
+    stdout: str,
+    *,
+    expected_repetitions: int | None = None,
+    require_minimum_duration: bool = True,
+) -> dict[str, float | int] | None:
     markers = list(_TIME_MARKER.finditer(stdout))
     if len(markers) != 1:
         return None
     units, ticks, repetitions = (int(value) for value in markers[0].groups())
-    if units < 1 or ticks < 1 or repetitions < 1:
+    if units < 1 or ticks < 0 or repetitions < 1:
+        return None
+    if expected_repetitions is not None and repetitions != expected_repetitions:
+        return None
+    if require_minimum_duration and ticks < 1:
         return None
     try:
         elapsed_seconds = ticks / units
     except OverflowError:
         return None
     seconds = elapsed_seconds / repetitions
-    if (
-        not math.isfinite(elapsed_seconds)
-        or not math.isfinite(seconds)
-        or elapsed_seconds < MINIMUM_SAMPLE_SECONDS
-    ):
+    if not math.isfinite(elapsed_seconds) or not math.isfinite(seconds):
+        return None
+    if require_minimum_duration and elapsed_seconds < MINIMUM_SAMPLE_SECONDS:
         return None
     return {
         "seconds": seconds,
@@ -242,12 +247,35 @@ def _sample_file(
     profile: bool = False,
     supervisor: Callable[[Sequence[str], float], dict[str, Any]] = _supervised,
 ) -> dict[str, Any]:
-    _write_compile_driver(driver, source.path)
-    process = supervisor(_compile_command(executable, suite, driver, profile=profile), timeout)
-    timing = _timed_result(process["stdout"])
+    repetitions = 1
+    total_wall_seconds = 0.0
+    while True:
+        _write_compile_driver(driver, source.path, repetitions)
+        process = supervisor(_compile_command(executable, suite, driver, profile=profile), timeout)
+        total_wall_seconds += float(process["wall_seconds"])
+        timing = _timed_result(
+            process["stdout"],
+            expected_repetitions=repetitions,
+            require_minimum_duration=False,
+        )
+        if (
+            process["status"] == "passed"
+            and process["output_truncated"] is False
+            and timing is not None
+            and timing["elapsed_seconds"] < MINIMUM_SAMPLE_SECONDS
+        ):
+            repetitions *= 2
+            continue
+        break
     seconds = float(timing["seconds"]) if timing is not None else None
     process_status = process["status"]
-    successful = process_status == "passed" and seconds is not None and process["output_truncated"] is False
+    successful = (
+        process_status == "passed"
+        and seconds is not None
+        and process["output_truncated"] is False
+        and timing is not None
+        and timing["elapsed_seconds"] >= MINIMUM_SAMPLE_SECONDS
+    )
     diagnostic_paths = (ROOT, source.path.parent, driver.parent, Path.home())
     reason = None
     if not successful:
@@ -269,7 +297,7 @@ def _sample_file(
         "compile_elapsed_seconds": timing["elapsed_seconds"] if successful else None,
         "compile_repetitions": timing["repetitions"] if successful else None,
         "lines_per_second": _line_count(source.path) / seconds if successful and seconds and seconds > 0 else None,
-        "process_wall_seconds": process["wall_seconds"],
+        "process_wall_seconds": total_wall_seconds,
         "peak_rss_bytes": process["peak_rss_bytes"],
         "reason": reason,
         "_stderr": process["stderr"],

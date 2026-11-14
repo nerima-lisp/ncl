@@ -22,7 +22,12 @@ fn call_package_builtin(
 }
 
 fn register_with_released_cells(setup: Setup, released_cells: usize) -> Result<(), ObjectError> {
-    let runtime = Runtime::new()?;
+    let default_runtime = Runtime::new()?;
+    let mut heap_config = default_runtime.gc_config();
+    // The fixed root slice was sized for the original 64 MiB default heap.
+    heap_config.dynamic_space_size = 64 * 1024 * 1024;
+    drop(default_runtime);
+    let runtime = Runtime::with_config(heap_config)?;
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)?;
     ncl_stdlib::register_all(&mut ctx, &runtime)?;
